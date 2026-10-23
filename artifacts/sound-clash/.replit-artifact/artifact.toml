@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Sound Clash"
+description = "An original browser-based 2D fighting game prototype with responsive controls, two playable fighters, and a dancehall sound-system arena."
+version = "1.0.0"
+id = "artifacts/sound-clash"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19693
+
+[services.development]
+run = "pnpm --filter @workspace/sound-clash run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/sound-clash", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/sound-clash/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19693"
+BASE_PATH = "/"

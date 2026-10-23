@@ -21,13 +21,15 @@ type Fighter = {
   aiWait: number;
   anim: number;
   attackElapsed: number;
-  attackFacing: number;
   hitRegistered: boolean;
 };
 
 const FLOOR = 574;
 const LEFT_BOUND = 92;
 const RIGHT_BOUND = 1188;
+const MIN_FIGHTER_GAP = 76;
+const RIVAL_ENGAGE_RANGE = 108;
+const AIR_PASS_CLEARANCE = 52;
 
 export class GameScene extends Phaser.Scene {
   private onSnapshot: (snapshot: MatchSnapshot) => void;
@@ -43,6 +45,7 @@ export class GameScene extends Phaser.Scene {
   private publishElapsed = 0;
   private timeLeft = 90;
   private shakeTimer = 0;
+  private rivalInRange = false;
   private sparks: { x: number; y: number; vx: number; vy: number; life: number; color: number }[] = [];
   private touchHandler = (event: Event) => {
     const detail = (event as CustomEvent<{ action: TouchAction; pressed: boolean }>).detail;
@@ -87,7 +90,7 @@ export class GameScene extends Phaser.Scene {
       x, y: 0, health: 100, facing, color, accent, skin, name, vx: 0, vy: 0,
       grounded: true, blocking: false, action: 'idle', actionTime: 0, cooldown: 0,
       stun: 0, aiWait: 0.5, anim: Math.random() * 3,
-      attackElapsed: 0, attackFacing: facing, hitRegistered: false,
+      attackElapsed: 0, hitRegistered: false,
     };
   }
 
@@ -99,6 +102,7 @@ export class GameScene extends Phaser.Scene {
     this.timeLeft = 90;
     this.status = 'playing';
     this.winner = null;
+    this.rivalInRange = false;
     this.sparks = [];
     this.shakeTimer = 0;
     this.publish();
@@ -172,10 +176,9 @@ export class GameScene extends Phaser.Scene {
     if (this.status === 'playing') {
       this.elapsed += dt;
       this.timeLeft = Math.max(0, 90 - Math.floor(this.elapsed));
-      const playerWasLeft = this.player.x <= this.rival.x;
       this.updatePlayer(dt);
       this.updateRival(dt);
-      this.separateFighters(playerWasLeft);
+      this.separateFighters();
       this.faceOpponents();
       this.updateFighter(this.player, dt);
       this.updateFighter(this.rival, dt);
@@ -223,24 +226,32 @@ export class GameScene extends Phaser.Scene {
   private updateRival(dt: number) {
     const e = this.rival;
     const distance = this.player.x - e.x;
-    e.aiWait -= dt;
+    const distanceToPlayer = Math.abs(distance);
+    const inAttackRange = distanceToPlayer <= RIVAL_ENGAGE_RANGE;
+    e.aiWait = Math.max(0, e.aiWait - dt);
     e.blocking = e.action === 'block' && e.actionTime > 0 && e.stun <= 0 && e.grounded;
+    if (inAttackRange && !this.rivalInRange) {
+      this.rivalInRange = true;
+      e.aiWait = Math.max(e.aiWait, 0.25);
+    } else if (!inAttackRange) {
+      this.rivalInRange = false;
+    }
+
     if (e.stun <= 0 && this.status === 'playing') {
-      if (Math.abs(distance) > 143) {
+      if (!inAttackRange) {
         e.blocking = false;
         e.vx = Math.sign(distance) * 145;
-      }
-      else {
+      } else {
         e.vx = 0;
-        if (!e.blocking && e.aiWait <= 0) {
+        if (!e.blocking && e.aiWait <= 0 && e.cooldown <= 0) {
           const roll = Math.random();
           if (roll < 0.22 && this.player.action === 'heavy') {
             e.blocking = true; e.action = 'block'; e.actionTime = .48;
           } else this.attack(e, roll > 0.72 ? 'heavy' : 'light');
-          e.aiWait = 0.55 + Math.random() * 0.65;
+          e.aiWait = 0.55 + Math.random() * 0.45;
         }
       }
-      if (Math.abs(distance) > 310 && e.grounded && Math.random() < 0.008) e.vy = -590;
+      if (distanceToPlayer > 310 && e.grounded && Math.random() < 0.008) e.vy = -590;
     } else if (this.status !== 'playing') e.vx = 0;
     this.moveFighter(e, dt);
   }
@@ -265,30 +276,34 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private separateFighters(playerWasLeft: boolean) {
-    const minimumGap = 76;
+  private separateFighters() {
+    // A jump can pass over the other fighter. Once they land, restore the gap
+    // on whichever side they are now on rather than locking them to old sides.
+    if (Math.abs(this.player.y - this.rival.y) > AIR_PASS_CLEARANCE) return;
+
     const gap = Math.abs(this.rival.x - this.player.x);
-    if (gap < minimumGap) {
+    if (gap < MIN_FIGHTER_GAP) {
       const midpoint = Phaser.Math.Clamp(
         (this.player.x + this.rival.x) / 2,
-        LEFT_BOUND + minimumGap / 2,
-        RIGHT_BOUND - minimumGap / 2,
+        LEFT_BOUND + MIN_FIGHTER_GAP / 2,
+        RIGHT_BOUND - MIN_FIGHTER_GAP / 2,
       );
-      const left = midpoint - minimumGap / 2;
-      const right = midpoint + minimumGap / 2;
-      if (playerWasLeft) {
-        this.player.x = left;
-        this.rival.x = right;
-      } else {
-        this.rival.x = left;
-        this.player.x = right;
-      }
+      const relativeDirection =
+        Math.sign(this.rival.x - this.player.x) ||
+        Math.sign(this.player.vx - this.rival.vx) ||
+        this.player.facing ||
+        1;
+      this.player.x = midpoint - relativeDirection * MIN_FIGHTER_GAP / 2;
+      this.rival.x = midpoint + relativeDirection * MIN_FIGHTER_GAP / 2;
     }
   }
 
   private faceOpponents() {
-    const direction = Math.sign(this.rival.x - this.player.x);
-    if (direction === 0) return;
+    const direction =
+      Math.sign(this.rival.x - this.player.x) ||
+      Math.sign(this.player.vx - this.rival.vx) ||
+      this.player.facing ||
+      1;
     this.player.facing = direction;
     this.rival.facing = -direction;
   }
@@ -299,7 +314,6 @@ export class GameScene extends Phaser.Scene {
     attacker.actionTime = kind === 'light' ? 0.29 : 0.48;
     attacker.cooldown = kind === 'light' ? 0.38 : 0.72;
     attacker.attackElapsed = 0;
-    attacker.attackFacing = attacker.facing;
     attacker.hitRegistered = false;
   }
 
@@ -314,7 +328,7 @@ export class GameScene extends Phaser.Scene {
       const activeEnd = isHeavy ? 0.34 : 0.21;
       if (attacker.attackElapsed < activeStart || attacker.attackElapsed > activeEnd) continue;
       const directionToOpponent = Math.sign(defender.x - attacker.x);
-      if (directionToOpponent !== attacker.attackFacing) continue;
+      if (directionToOpponent !== attacker.facing) continue;
       const reach = isHeavy ? 147 : 112;
       const gap = Math.abs(defender.x - attacker.x);
       if (gap > reach || Math.abs(defender.y - attacker.y) > 106) continue;
@@ -388,7 +402,7 @@ export class GameScene extends Phaser.Scene {
     const centerX = f.x;
     const action = f.action;
     const swing = action === 'light' || action === 'heavy';
-    const facing = swing ? f.attackFacing : f.facing;
+    const facing = f.facing;
     const reach = action === 'heavy' ? 83 : 62;
     const swingAmount = swing ? (action === 'heavy' ? 1 : .72) : 0;
     // Ground shadow and planted shoes.

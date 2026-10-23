@@ -22,6 +22,7 @@ type Fighter = {
   anim: number;
   attackElapsed: number;
   hitRegistered: boolean;
+  walkAroundCooldown: number;
 };
 
 const FLOOR = 574;
@@ -30,6 +31,8 @@ const RIGHT_BOUND = 1188;
 const MIN_FIGHTER_GAP = 76;
 const RIVAL_ENGAGE_RANGE = 108;
 const AIR_PASS_CLEARANCE = 52;
+const WALK_AROUND_RANGE = MIN_FIGHTER_GAP + 8;
+const WALK_AROUND_JUMP = -570;
 
 export class GameScene extends Phaser.Scene {
   private onSnapshot: (snapshot: MatchSnapshot) => void;
@@ -90,7 +93,7 @@ export class GameScene extends Phaser.Scene {
       x, y: 0, health: 100, facing, color, accent, skin, name, vx: 0, vy: 0,
       grounded: true, blocking: false, action: 'idle', actionTime: 0, cooldown: 0,
       stun: 0, aiWait: 0.5, anim: Math.random() * 3,
-      attackElapsed: 0, hitRegistered: false,
+      attackElapsed: 0, hitRegistered: false, walkAroundCooldown: 0,
     };
   }
 
@@ -210,6 +213,7 @@ export class GameScene extends Phaser.Scene {
       }
       if (Phaser.Input.Keyboard.JustDown(this.keys.light) || this.touchJust('light')) this.attack(p, 'light');
       if (Phaser.Input.Keyboard.JustDown(this.keys.heavy) || this.touchJust('heavy')) this.attack(p, 'heavy');
+      this.tryWalkAround(p);
     } else if (this.status !== 'playing') p.vx = 0;
     this.moveFighter(p, dt);
   }
@@ -260,6 +264,7 @@ export class GameScene extends Phaser.Scene {
     f.anim += dt * (Math.abs(f.vx) > 0 ? 8 : 2.2);
     f.cooldown = Math.max(0, f.cooldown - dt);
     f.stun = Math.max(0, f.stun - dt);
+    f.walkAroundCooldown = Math.max(0, f.walkAroundCooldown - dt);
     f.actionTime = Math.max(0, f.actionTime - dt);
     if (f.action === 'light' || f.action === 'heavy') f.attackElapsed += dt;
     if (f.actionTime === 0 && f.action !== 'idle') f.action = f.blocking ? 'block' : 'idle';
@@ -277,8 +282,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private separateFighters() {
-    // A jump can pass over the other fighter. Once they land, restore the gap
-    // on whichever side they are now on rather than locking them to old sides.
+    // A jump or walk-around hop can pass over the other fighter. Once they
+    // land, restore the gap on their current sides instead of their old ones.
     if (Math.abs(this.player.y - this.rival.y) > AIR_PASS_CLEARANCE) return;
 
     const gap = Math.abs(this.rival.x - this.player.x);
@@ -290,7 +295,7 @@ export class GameScene extends Phaser.Scene {
       );
       const relativeDirection =
         Math.sign(this.rival.x - this.player.x) ||
-        Math.sign(this.player.vx - this.rival.vx) ||
+        -Math.sign(this.player.vx - this.rival.vx) ||
         this.player.facing ||
         1;
       this.player.x = midpoint - relativeDirection * MIN_FIGHTER_GAP / 2;
@@ -301,11 +306,33 @@ export class GameScene extends Phaser.Scene {
   private faceOpponents() {
     const direction =
       Math.sign(this.rival.x - this.player.x) ||
-      Math.sign(this.player.vx - this.rival.vx) ||
+      -Math.sign(this.player.vx - this.rival.vx) ||
       this.player.facing ||
       1;
     this.player.facing = direction;
     this.rival.facing = -direction;
+  }
+
+  private tryWalkAround(player: Fighter) {
+    const directionToRival = Math.sign(this.rival.x - player.x);
+    const movingTowardRival = directionToRival !== 0 && Math.sign(player.vx) === directionToRival;
+    const isAttacking = player.action === 'light' || player.action === 'heavy';
+    if (
+      !movingTowardRival ||
+      Math.abs(this.rival.x - player.x) > WALK_AROUND_RANGE ||
+      !player.grounded ||
+      player.blocking ||
+      player.stun > 0 ||
+      player.walkAroundCooldown > 0 ||
+      isAttacking
+    ) return;
+
+    // A small automatic vault lets horizontal movement pass the CPU without
+    // disabling body collision or changing the existing jump controls.
+    player.vy = WALK_AROUND_JUMP;
+    player.grounded = false;
+    player.walkAroundCooldown = 0.9;
+    this.soundPing('jump');
   }
 
   private attack(attacker: Fighter, kind: 'light' | 'heavy') {

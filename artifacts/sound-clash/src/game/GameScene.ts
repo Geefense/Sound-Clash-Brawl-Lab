@@ -20,6 +20,9 @@ type Fighter = {
   stun: number;
   aiWait: number;
   anim: number;
+  attackElapsed: number;
+  attackFacing: number;
+  hitRegistered: boolean;
 };
 
 const FLOOR = 574;
@@ -84,6 +87,7 @@ export class GameScene extends Phaser.Scene {
       x, y: 0, health: 100, facing, color, accent, skin, name, vx: 0, vy: 0,
       grounded: true, blocking: false, action: 'idle', actionTime: 0, cooldown: 0,
       stun: 0, aiWait: 0.5, anim: Math.random() * 3,
+      attackElapsed: 0, attackFacing: facing, hitRegistered: false,
     };
   }
 
@@ -168,11 +172,14 @@ export class GameScene extends Phaser.Scene {
     if (this.status === 'playing') {
       this.elapsed += dt;
       this.timeLeft = Math.max(0, 90 - Math.floor(this.elapsed));
+      const playerWasLeft = this.player.x <= this.rival.x;
       this.updatePlayer(dt);
       this.updateRival(dt);
+      this.separateFighters(playerWasLeft);
+      this.faceOpponents();
       this.updateFighter(this.player, dt);
       this.updateFighter(this.rival, dt);
-      this.resolveCombat(this.player, this.rival, dt);
+      this.resolveCombat(this.player, this.rival);
       if (this.player.health <= 0 || this.rival.health <= 0 || this.timeLeft <= 0) this.finishMatch();
       this.publishElapsed += dt;
       if (this.publishElapsed > 0.12) { this.publishElapsed = 0; this.publish(); }
@@ -190,17 +197,18 @@ export class GameScene extends Phaser.Scene {
     const left = keyDown('left') || keyDown('arrowLeft') || this.touch.has('left');
     const right = keyDown('right') || keyDown('arrowRight') || this.touch.has('right');
     const up = keyDown('up') || keyDown('arrowUp') || this.touch.has('jump');
-    p.blocking = (keyDown('down') || keyDown('arrowDown') || this.touch.has('block')) && p.grounded && p.stun <= 0;
-    if (p.stun <= 0 && this.status === 'playing') {
-      p.vx = (right ? 1 : 0) - (left ? 1 : 0);
+    const canAct = p.stun <= 0 && this.status === 'playing';
+    p.blocking = canAct && (keyDown('down') || keyDown('arrowDown') || this.touch.has('block')) && p.grounded;
+    if (canAct) {
+      p.vx = ((right ? 1 : 0) - (left ? 1 : 0)) * 270;
       if (p.blocking) p.vx *= 0.38;
       if (Phaser.Input.Keyboard.JustDown(this.keys.up) || Phaser.Input.Keyboard.JustDown(this.keys.arrowUp) || this.touchJust('jump')) {
         if (p.grounded) { p.vy = -665; p.grounded = false; this.soundPing('jump'); }
       }
       if (Phaser.Input.Keyboard.JustDown(this.keys.light) || this.touchJust('light')) this.attack(p, 'light');
       if (Phaser.Input.Keyboard.JustDown(this.keys.heavy) || this.touchJust('heavy')) this.attack(p, 'heavy');
-    } else p.vx = 0;
-    this.moveFighter(p, dt, 270);
+    } else if (this.status !== 'playing') p.vx = 0;
+    this.moveFighter(p, dt);
   }
 
   private touchFrame = new Set<TouchAction>();
@@ -215,24 +223,26 @@ export class GameScene extends Phaser.Scene {
   private updateRival(dt: number) {
     const e = this.rival;
     const distance = this.player.x - e.x;
-    e.facing = distance < 0 ? -1 : 1;
     e.aiWait -= dt;
-    e.blocking = false;
+    e.blocking = e.action === 'block' && e.actionTime > 0 && e.stun <= 0 && e.grounded;
     if (e.stun <= 0 && this.status === 'playing') {
-      if (Math.abs(distance) > 143) e.vx = Math.sign(distance) * 145;
+      if (Math.abs(distance) > 143) {
+        e.blocking = false;
+        e.vx = Math.sign(distance) * 145;
+      }
       else {
         e.vx = 0;
-        if (e.aiWait <= 0) {
+        if (!e.blocking && e.aiWait <= 0) {
           const roll = Math.random();
           if (roll < 0.22 && this.player.action === 'heavy') {
-            e.blocking = true; e.action = 'block'; e.actionTime = .38;
+            e.blocking = true; e.action = 'block'; e.actionTime = .48;
           } else this.attack(e, roll > 0.72 ? 'heavy' : 'light');
           e.aiWait = 0.55 + Math.random() * 0.65;
         }
       }
       if (Math.abs(distance) > 310 && e.grounded && Math.random() < 0.008) e.vy = -590;
-    } else e.vx = 0;
-    this.moveFighter(e, dt, 204);
+    } else if (this.status !== 'playing') e.vx = 0;
+    this.moveFighter(e, dt);
   }
 
   private updateFighter(f: Fighter, dt: number) {
@@ -240,13 +250,14 @@ export class GameScene extends Phaser.Scene {
     f.cooldown = Math.max(0, f.cooldown - dt);
     f.stun = Math.max(0, f.stun - dt);
     f.actionTime = Math.max(0, f.actionTime - dt);
+    if (f.action === 'light' || f.action === 'heavy') f.attackElapsed += dt;
     if (f.actionTime === 0 && f.action !== 'idle') f.action = f.blocking ? 'block' : 'idle';
     if (f.stun <= 0 && f.action === 'hit') f.action = 'idle';
   }
 
-  private moveFighter(f: Fighter, dt: number, speed: number) {
-    if (f.stun > 0) f.vx *= 0.82;
-    f.x = Phaser.Math.Clamp(f.x + f.vx * speed * dt, LEFT_BOUND, RIGHT_BOUND);
+  private moveFighter(f: Fighter, dt: number) {
+    if (f.stun > 0) f.vx *= Math.exp(-6 * dt);
+    f.x = Phaser.Math.Clamp(f.x + f.vx * dt, LEFT_BOUND, RIGHT_BOUND);
     if (!f.grounded) {
       f.vy += 1580 * dt;
       f.y += f.vy * dt;
@@ -254,32 +265,67 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private separateFighters(playerWasLeft: boolean) {
+    const minimumGap = 76;
+    const gap = Math.abs(this.rival.x - this.player.x);
+    if (gap < minimumGap) {
+      const midpoint = Phaser.Math.Clamp(
+        (this.player.x + this.rival.x) / 2,
+        LEFT_BOUND + minimumGap / 2,
+        RIGHT_BOUND - minimumGap / 2,
+      );
+      const left = midpoint - minimumGap / 2;
+      const right = midpoint + minimumGap / 2;
+      if (playerWasLeft) {
+        this.player.x = left;
+        this.rival.x = right;
+      } else {
+        this.rival.x = left;
+        this.player.x = right;
+      }
+    }
+  }
+
+  private faceOpponents() {
+    const direction = Math.sign(this.rival.x - this.player.x);
+    if (direction === 0) return;
+    this.player.facing = direction;
+    this.rival.facing = -direction;
+  }
+
   private attack(attacker: Fighter, kind: 'light' | 'heavy') {
     if (attacker.cooldown > 0 || attacker.stun > 0 || attacker.blocking || this.status !== 'playing') return;
     attacker.action = kind;
     attacker.actionTime = kind === 'light' ? 0.29 : 0.48;
     attacker.cooldown = kind === 'light' ? 0.38 : 0.72;
+    attacker.attackElapsed = 0;
+    attacker.attackFacing = attacker.facing;
+    attacker.hitRegistered = false;
   }
 
-  private resolveCombat(a: Fighter, b: Fighter, dt: number) {
+  private resolveCombat(a: Fighter, b: Fighter) {
     const fighters = [a, b];
     for (const attacker of fighters) {
       const defender = attacker === a ? b : a;
       if (attacker.action !== 'light' && attacker.action !== 'heavy') continue;
-      const total = attacker.action === 'light' ? 0.29 : 0.48;
-      if (attacker.actionTime > total - dt * 1.2 || attacker.actionTime < total - dt * 3.2) continue;
-      const reach = attacker.action === 'light' ? 112 : 147;
+      if (attacker.hitRegistered) continue;
+      const isHeavy = attacker.action === 'heavy';
+      const activeStart = isHeavy ? 0.16 : 0.08;
+      const activeEnd = isHeavy ? 0.34 : 0.21;
+      if (attacker.attackElapsed < activeStart || attacker.attackElapsed > activeEnd) continue;
+      const directionToOpponent = Math.sign(defender.x - attacker.x);
+      if (directionToOpponent !== attacker.attackFacing) continue;
+      const reach = isHeavy ? 147 : 112;
       const gap = Math.abs(defender.x - attacker.x);
       if (gap > reach || Math.abs(defender.y - attacker.y) > 106) continue;
-      // Only land once per swing; the cooldown window closes the hitbox after the active frames.
-      attacker.actionTime = Math.min(attacker.actionTime, total - dt * 3.4);
+      attacker.hitRegistered = true;
       const blocked = defender.blocking && defender.facing === Math.sign(attacker.x - defender.x) && defender.grounded;
-      const damage = attacker.action === 'light' ? (blocked ? 3 : 8) : (blocked ? 7 : 15);
+      const damage = isHeavy ? (blocked ? 4 : 15) : (blocked ? 2 : 8);
       defender.health = Math.max(0, defender.health - damage);
-      defender.stun = blocked ? 0.14 : 0.28;
+      defender.stun = blocked ? 0.12 : 0.28;
       defender.action = blocked ? 'block' : 'hit';
       defender.actionTime = blocked ? 0.16 : 0.29;
-      defender.vx = Math.sign(defender.x - attacker.x) * (blocked ? 65 : 190);
+      defender.vx = Math.sign(defender.x - attacker.x) * (blocked ? 145 : 420);
       this.shakeTimer = blocked ? 0.07 : 0.16;
       this.cameras.main.shake(blocked ? 65 : 110, blocked ? 0.002 : 0.004);
       this.burst((attacker.x + defender.x) / 2, FLOOR - 125 + defender.y, blocked ? 0xf3cf67 : 0xffe7ad, blocked ? 8 : 15);
@@ -340,9 +386,9 @@ export class GameScene extends Phaser.Scene {
     const bob = f.grounded ? Math.sin(f.anim) * (moving ? 5 : 2) : 0;
     const crouch = f.blocking ? 19 : 0;
     const centerX = f.x;
-    const facing = f.facing;
     const action = f.action;
     const swing = action === 'light' || action === 'heavy';
+    const facing = swing ? f.attackFacing : f.facing;
     const reach = action === 'heavy' ? 83 : 62;
     const swingAmount = swing ? (action === 'heavy' ? 1 : .72) : 0;
     // Ground shadow and planted shoes.

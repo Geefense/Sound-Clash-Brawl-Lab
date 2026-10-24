@@ -1,6 +1,20 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH, type MatchSnapshot, type TouchAction } from './types';
-import { attackDamage, decideWinner, findPunchContact, getStrikePose, isBlockingHit } from './combatRules';
+import {
+  attackDamage,
+  canBufferComboInput,
+  COMBO_WINDOW_SECONDS,
+  decideWinner,
+  findPunchContact,
+  getAttackDuration,
+  getAttackStage,
+  getComboStepAfterAttack,
+  getStrikePose,
+  isBlockingHit,
+  isComboFollowup,
+  type AttackStage,
+  type ComboStep,
+} from './combatRules';
 
 type Fighter = {
   x: number;
@@ -24,6 +38,13 @@ type Fighter = {
   attackElapsed: number;
   hitRegistered: boolean;
   attackFacing: number;
+  attackStage: AttackStage;
+  comboStep: ComboStep;
+  comboWindow: number;
+  bufferedAttack: 'light' | 'heavy' | null;
+  comboHits: number;
+  comboFeedback: string;
+  comboFeedbackTime: number;
   walkAroundCooldown: number;
 };
 
@@ -47,6 +68,8 @@ export class GameScene extends Phaser.Scene {
   private rival!: Fighter;
   private graphics!: Phaser.GameObjects.Graphics;
   private background!: Phaser.GameObjects.Graphics;
+  private playerComboLabel!: Phaser.GameObjects.Text;
+  private rivalComboLabel!: Phaser.GameObjects.Text;
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
   private touch = new Set<TouchAction>();
   private elapsed = 0;
@@ -73,6 +96,24 @@ export class GameScene extends Phaser.Scene {
     this.background = this.add.graphics();
     this.drawArena();
     this.graphics = this.add.graphics();
+    this.playerComboLabel = this.add.text(0, 0, '', {
+      fontFamily: 'Arial, sans-serif',
+      fontSize: '19px',
+      fontStyle: 'bold',
+      color: '#f0c64c',
+      stroke: '#172d32',
+      strokeThickness: 5,
+      shadow: { color: '#000000', blur: 4, offsetX: 1, offsetY: 2, fill: true },
+    }).setOrigin(0.5, 1).setDepth(5).setVisible(false);
+    this.rivalComboLabel = this.add.text(0, 0, '', {
+      fontFamily: 'Arial, sans-serif',
+      fontSize: '19px',
+      fontStyle: 'bold',
+      color: '#ff916c',
+      stroke: '#172d32',
+      strokeThickness: 5,
+      shadow: { color: '#000000', blur: 4, offsetX: 1, offsetY: 2, fill: true },
+    }).setOrigin(0.5, 1).setDepth(5).setVisible(false);
     this.keys = this.input.keyboard!.addKeys({
       left: Phaser.Input.Keyboard.KeyCodes.A,
       right: Phaser.Input.Keyboard.KeyCodes.D,
@@ -100,7 +141,9 @@ export class GameScene extends Phaser.Scene {
       x, y: 0, health: 100, facing, color, accent, skin, name, vx: 0, vy: 0,
       grounded: true, blocking: false, action: 'idle', actionTime: 0, cooldown: 0,
       stun: 0, aiWait: 0.5, anim: Math.random() * 3,
-      attackElapsed: 0, hitRegistered: false, attackFacing: facing, walkAroundCooldown: 0,
+      attackElapsed: 0, hitRegistered: false, attackFacing: facing, attackStage: 'jab1',
+      comboStep: 0, comboWindow: 0, bufferedAttack: null, comboHits: 0,
+      comboFeedback: '', comboFeedbackTime: 0, walkAroundCooldown: 0,
     };
   }
 
@@ -117,6 +160,8 @@ export class GameScene extends Phaser.Scene {
     this.shakeTimer = 0;
     this.touch.clear();
     this.touchFrame.clear();
+    this.playerComboLabel?.setVisible(false);
+    this.rivalComboLabel?.setVisible(false);
     this.publish();
   }
 
@@ -274,9 +319,26 @@ export class GameScene extends Phaser.Scene {
     f.cooldown = Math.max(0, f.cooldown - dt);
     f.stun = Math.max(0, f.stun - dt);
     f.walkAroundCooldown = Math.max(0, f.walkAroundCooldown - dt);
+    f.comboWindow = Math.max(0, f.comboWindow - dt);
+    f.comboFeedbackTime = Math.max(0, f.comboFeedbackTime - dt);
+    if (f.comboFeedbackTime === 0) f.comboFeedback = '';
+    if (f.comboWindow === 0 && f.comboStep !== 0) {
+      f.comboStep = 0;
+      f.comboHits = 0;
+      f.bufferedAttack = null;
+    }
     f.actionTime = Math.max(0, f.actionTime - dt);
     if (f.action === 'light' || f.action === 'heavy') f.attackElapsed += dt;
-    if (f.actionTime === 0 && f.action !== 'idle') f.action = f.blocking ? 'block' : 'idle';
+    if (f.actionTime === 0 && f.action !== 'idle') {
+      const attackFinished = f.action === 'light' || f.action === 'heavy';
+      if (attackFinished && !f.hitRegistered) f.comboHits = 0;
+      f.action = f.blocking ? 'block' : 'idle';
+      if (attackFinished && f.bufferedAttack) {
+        const nextAttack = f.bufferedAttack;
+        f.bufferedAttack = null;
+        this.attack(f, nextAttack);
+      }
+    }
     if (f.stun <= 0 && f.action === 'hit') f.action = 'idle';
   }
 
@@ -344,13 +406,40 @@ export class GameScene extends Phaser.Scene {
   }
 
   private attack(attacker: Fighter, kind: 'light' | 'heavy') {
-    if (attacker.cooldown > 0 || attacker.stun > 0 || attacker.blocking || this.status !== 'playing') return;
+    if (attacker.stun > 0 || attacker.blocking || this.status !== 'playing') return;
+    const attackInProgress = attacker.action === 'light' || attacker.action === 'heavy';
+    if (attackInProgress) {
+      if (!attacker.bufferedAttack && canBufferComboInput(
+        attacker.comboStep,
+        kind,
+        attacker.attackElapsed,
+        attacker.comboWindow,
+      )) attacker.bufferedAttack = kind;
+      return;
+    }
+    if (attacker.action === 'hit' && attacker.actionTime > 0) return;
+
+    const chained = isComboFollowup(attacker.comboStep, kind, attacker.comboWindow > 0);
+    if (attacker.cooldown > 0 && !chained) return;
+    const stage = getAttackStage(attacker.comboStep, kind, chained);
+    if (!chained) attacker.comboHits = 0;
+
     attacker.action = kind;
-    attacker.actionTime = kind === 'light' ? 0.29 : 0.48;
+    attacker.attackStage = stage;
+    attacker.actionTime = getAttackDuration(stage);
     attacker.cooldown = kind === 'light' ? 0.38 : 0.72;
     attacker.attackElapsed = 0;
     attacker.hitRegistered = false;
     attacker.attackFacing = attacker.facing;
+    attacker.comboStep = getComboStepAfterAttack(stage);
+    attacker.comboWindow = stage === 'power' ? 0 : COMBO_WINDOW_SECONDS;
+    window.dispatchEvent(new CustomEvent('sound-clash:attack-stage', {
+      detail: {
+        fighter: attacker === this.player ? 'player' : 'rival',
+        kind,
+        stage,
+      },
+    }));
   }
 
   private resolveCombat(a: Fighter, b: Fighter) {
@@ -365,6 +454,7 @@ export class GameScene extends Phaser.Scene {
         attacker.x,
         attackerPose.shoulderY,
         attacker.attackFacing,
+        attacker.attackStage,
       );
       const impact = findPunchContact({
         centerX: attacker.x,
@@ -372,6 +462,7 @@ export class GameScene extends Phaser.Scene {
         attackElapsed: attacker.attackElapsed,
         hitRegistered: attacker.hitRegistered,
         kind: attacker.action,
+        stage: attacker.attackStage,
       }, fist, {
         centerX: defender.x,
         body: {
@@ -399,7 +490,25 @@ export class GameScene extends Phaser.Scene {
       defender.stun = blocked ? 0.12 : 0.28;
       defender.action = blocked ? 'block' : 'hit';
       defender.actionTime = blocked ? 0.16 : 0.29;
-      defender.vx = Math.sign(defender.x - attacker.x) * (blocked ? 145 : 420);
+      const knockback = blocked ? 145 : attacker.attackStage === 'power' ? 420 : 60;
+      defender.vx = Math.sign(defender.x - attacker.x) * knockback;
+      defender.comboStep = 0;
+      defender.comboWindow = 0;
+      defender.bufferedAttack = null;
+      defender.comboHits = 0;
+      defender.comboFeedback = '';
+      defender.comboFeedbackTime = 0;
+      if (blocked) {
+        attacker.comboHits = 0;
+      } else {
+        attacker.comboHits = Math.min(3, attacker.comboHits + 1);
+        if (attacker.comboHits >= 2) {
+          attacker.comboFeedback = attacker.attackStage === 'power'
+            ? `${attacker.comboHits}-HIT FINISH`
+            : `${attacker.comboHits}-HIT COMBO`;
+          attacker.comboFeedbackTime = 0.68;
+        }
+      }
       this.shakeTimer = blocked ? 0.07 : 0.16;
       this.cameras.main.shake(blocked ? 65 : 110, blocked ? 0.002 : 0.004);
       this.burst(impact.x, impact.y, blocked ? 0xf3cf67 : 0xffe7ad, blocked ? 8 : 15);
@@ -451,6 +560,20 @@ export class GameScene extends Phaser.Scene {
     g.clear();
     this.drawFighter(g, this.player);
     this.drawFighter(g, this.rival);
+    this.updateComboLabel(this.player, this.playerComboLabel);
+    this.updateComboLabel(this.rival, this.rivalComboLabel);
+  }
+
+  private updateComboLabel(f: Fighter, label: Phaser.GameObjects.Text) {
+    if (!f.comboFeedback || f.comboFeedbackTime <= 0) {
+      label.setVisible(false);
+      return;
+    }
+    const pose = this.getFighterPose(f);
+    label.setText(f.comboFeedback);
+    label.setPosition(f.x, pose.headY - 39);
+    label.setAlpha(Math.min(1, f.comboFeedbackTime * 3));
+    label.setVisible(true);
   }
 
   private getFighterPose(f: Fighter) {
@@ -489,7 +612,7 @@ export class GameScene extends Phaser.Scene {
     g.lineStyle(16, f.skin, 1); g.lineBetween(centerX - facing * 19, shoulderY + 10, centerX - facing * 37, shoulderY + 34);
     g.fillStyle(f.accent, 1); g.fillCircle(centerX - facing * 38, shoulderY + 36, 10);
     // Near arm with a clear extended punch.
-    const strike = swing ? getStrikePose(action, centerX, shoulderY, strikeFacing) : null;
+    const strike = swing ? getStrikePose(action, centerX, shoulderY, strikeFacing, f.attackStage) : null;
     const armX = strike?.x ?? centerX + facing * 28;
     const armY = strike?.y ?? shoulderY + 29 + (f.blocking ? -9 : 0);
     g.lineStyle(action === 'heavy' && swing ? 21 : 17, f.skin, 1);

@@ -1,5 +1,7 @@
 export type AttackKind = 'light' | 'heavy';
+export type AttackStage = 'jab1' | 'jab2' | 'power';
 export type Winner = 'player' | 'rival' | 'draw';
+export type ComboStep = 0 | 1 | 2;
 
 export type PunchAttempt = {
   centerX: number;
@@ -7,6 +9,7 @@ export type PunchAttempt = {
   attackElapsed: number;
   hitRegistered: boolean;
   kind: AttackKind;
+  stage: AttackStage;
 };
 
 export type Point = { x: number; y: number };
@@ -26,22 +29,73 @@ type BlockingState = {
   grounded: boolean;
 };
 
-const ATTACK_TIMING: Record<AttackKind, { start: number; end: number; reach: number }> = {
-  light: { start: 0.08, end: 0.21, reach: 62 * 0.72 },
-  heavy: { start: 0.16, end: 0.34, reach: 83 },
+const ATTACK_PROFILES: Record<AttackStage, {
+  start: number;
+  end: number;
+  duration: number;
+  reach: number;
+  yOffset: number;
+}> = {
+  jab1: { start: 0.08, end: 0.21, duration: 0.29, reach: 62 * 0.72, yOffset: 2 },
+  jab2: { start: 0.06, end: 0.18, duration: 0.25, reach: 49, yOffset: -4 },
+  power: { start: 0.16, end: 0.34, duration: 0.48, reach: 83, yOffset: 8 },
 };
+
+export const COMBO_WINDOW_SECONDS = 0.72;
+export const COMBO_BUFFER_OPEN_AT = 0.14;
+
+export function isComboFollowup(
+  comboStep: ComboStep,
+  kind: AttackKind,
+  windowOpen: boolean,
+): boolean {
+  if (!windowOpen) return false;
+  return (comboStep === 1 && kind === 'light') ||
+    (comboStep === 2 && kind === 'heavy');
+}
+
+export function canBufferComboInput(
+  comboStep: ComboStep,
+  kind: AttackKind,
+  attackElapsed: number,
+  comboWindow: number,
+): boolean {
+  return comboWindow > 0 &&
+    attackElapsed >= COMBO_BUFFER_OPEN_AT &&
+    isComboFollowup(comboStep, kind, true);
+}
+
+export function getAttackStage(
+  comboStep: ComboStep,
+  kind: AttackKind,
+  chained: boolean,
+): AttackStage {
+  if (chained && comboStep === 1 && kind === 'light') return 'jab2';
+  if (kind === 'heavy') return 'power';
+  return 'jab1';
+}
+
+export function getComboStepAfterAttack(stage: AttackStage): ComboStep {
+  if (stage === 'jab1') return 1;
+  if (stage === 'jab2') return 2;
+  return 0;
+}
+
+export function getAttackDuration(stage: AttackStage): number {
+  return ATTACK_PROFILES[stage].duration;
+}
 
 export function getStrikePose(
   kind: AttackKind,
   centerX: number,
   shoulderY: number,
   facing: number,
+  stage: AttackStage = kind === 'heavy' ? 'power' : 'jab1',
 ): StrikePose {
-  const reach = ATTACK_TIMING[kind].reach;
-  const yOffset = kind === 'heavy' ? 8 : 2;
+  const profile = ATTACK_PROFILES[stage];
   return {
-    x: centerX + facing * reach,
-    y: shoulderY + yOffset,
+    x: centerX + facing * profile.reach,
+    y: shoulderY + profile.yOffset,
     radius: 13,
   };
 }
@@ -53,7 +107,7 @@ export function findPunchContact(
 ): Point | null {
   if (attacker.hitRegistered) return null;
 
-  const timing = ATTACK_TIMING[attacker.kind];
+  const timing = ATTACK_PROFILES[attacker.stage];
   if (attacker.attackElapsed < timing.start || attacker.attackElapsed > timing.end) return null;
   if (Math.sign(defender.centerX - attacker.centerX) !== attacker.attackFacing) return null;
 

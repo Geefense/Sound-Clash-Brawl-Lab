@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH, type MatchSnapshot, type TouchAction } from './types';
+import { attackDamage, decideWinner, findPunchContact, getStrikePose, isBlockingHit } from './combatRules';
 
 type Fighter = {
   x: number;
@@ -22,6 +23,7 @@ type Fighter = {
   anim: number;
   attackElapsed: number;
   hitRegistered: boolean;
+  attackFacing: number;
   walkAroundCooldown: number;
 };
 
@@ -33,6 +35,11 @@ const RIVAL_ENGAGE_RANGE = 108;
 const AIR_PASS_CLEARANCE = 52;
 const WALK_AROUND_RANGE = MIN_FIGHTER_GAP + 8;
 const WALK_AROUND_JUMP = -570;
+const TORSO_LEFT = -27;
+const TORSO_RIGHT = 28;
+const TORSO_HEIGHT = 65;
+const HEAD_OFFSET = 3;
+const HEAD_RADIUS = 22;
 
 export class GameScene extends Phaser.Scene {
   private onSnapshot: (snapshot: MatchSnapshot) => void;
@@ -93,7 +100,7 @@ export class GameScene extends Phaser.Scene {
       x, y: 0, health: 100, facing, color, accent, skin, name, vx: 0, vy: 0,
       grounded: true, blocking: false, action: 'idle', actionTime: 0, cooldown: 0,
       stun: 0, aiWait: 0.5, anim: Math.random() * 3,
-      attackElapsed: 0, hitRegistered: false, walkAroundCooldown: 0,
+      attackElapsed: 0, hitRegistered: false, attackFacing: facing, walkAroundCooldown: 0,
     };
   }
 
@@ -108,6 +115,8 @@ export class GameScene extends Phaser.Scene {
     this.rivalInRange = false;
     this.sparks = [];
     this.shakeTimer = 0;
+    this.touch.clear();
+    this.touchFrame.clear();
     this.publish();
   }
 
@@ -306,7 +315,6 @@ export class GameScene extends Phaser.Scene {
   private faceOpponents() {
     const direction =
       Math.sign(this.rival.x - this.player.x) ||
-      -Math.sign(this.player.vx - this.rival.vx) ||
       this.player.facing ||
       1;
     this.player.facing = direction;
@@ -342,6 +350,7 @@ export class GameScene extends Phaser.Scene {
     attacker.cooldown = kind === 'light' ? 0.38 : 0.72;
     attacker.attackElapsed = 0;
     attacker.hitRegistered = false;
+    attacker.attackFacing = attacker.facing;
   }
 
   private resolveCombat(a: Fighter, b: Fighter) {
@@ -349,19 +358,43 @@ export class GameScene extends Phaser.Scene {
     for (const attacker of fighters) {
       const defender = attacker === a ? b : a;
       if (attacker.action !== 'light' && attacker.action !== 'heavy') continue;
-      if (attacker.hitRegistered) continue;
-      const isHeavy = attacker.action === 'heavy';
-      const activeStart = isHeavy ? 0.16 : 0.08;
-      const activeEnd = isHeavy ? 0.34 : 0.21;
-      if (attacker.attackElapsed < activeStart || attacker.attackElapsed > activeEnd) continue;
-      const directionToOpponent = Math.sign(defender.x - attacker.x);
-      if (directionToOpponent !== attacker.facing) continue;
-      const reach = isHeavy ? 147 : 112;
-      const gap = Math.abs(defender.x - attacker.x);
-      if (gap > reach || Math.abs(defender.y - attacker.y) > 106) continue;
+      const attackerPose = this.getFighterPose(attacker);
+      const defenderPose = this.getFighterPose(defender);
+      const fist = getStrikePose(
+        attacker.action,
+        attacker.x,
+        attackerPose.shoulderY,
+        attacker.attackFacing,
+      );
+      const impact = findPunchContact({
+        centerX: attacker.x,
+        attackFacing: attacker.attackFacing,
+        attackElapsed: attacker.attackElapsed,
+        hitRegistered: attacker.hitRegistered,
+        kind: attacker.action,
+      }, fist, {
+        centerX: defender.x,
+        body: {
+          left: defender.x + TORSO_LEFT,
+          right: defender.x + TORSO_RIGHT,
+          top: defenderPose.shoulderY,
+          bottom: defenderPose.shoulderY + TORSO_HEIGHT + (defender.blocking ? 19 : 0),
+        },
+        head: {
+          x: defender.x + defender.facing * HEAD_OFFSET,
+          y: defenderPose.headY,
+          radius: HEAD_RADIUS,
+        },
+      });
+      if (!impact) continue;
       attacker.hitRegistered = true;
-      const blocked = defender.blocking && defender.facing === Math.sign(attacker.x - defender.x) && defender.grounded;
-      const damage = isHeavy ? (blocked ? 4 : 15) : (blocked ? 2 : 8);
+      const blocked = isBlockingHit(attacker.x, {
+        x: defender.x,
+        facing: defender.facing,
+        blocking: defender.blocking,
+        grounded: defender.grounded,
+      });
+      const damage = attackDamage(attacker.action, blocked);
       defender.health = Math.max(0, defender.health - damage);
       defender.stun = blocked ? 0.12 : 0.28;
       defender.action = blocked ? 'block' : 'hit';
@@ -369,15 +402,14 @@ export class GameScene extends Phaser.Scene {
       defender.vx = Math.sign(defender.x - attacker.x) * (blocked ? 145 : 420);
       this.shakeTimer = blocked ? 0.07 : 0.16;
       this.cameras.main.shake(blocked ? 65 : 110, blocked ? 0.002 : 0.004);
-      this.burst((attacker.x + defender.x) / 2, FLOOR - 125 + defender.y, blocked ? 0xf3cf67 : 0xffe7ad, blocked ? 8 : 15);
+      this.burst(impact.x, impact.y, blocked ? 0xf3cf67 : 0xffe7ad, blocked ? 8 : 15);
       this.soundPing(blocked ? 'block' : 'hit');
     }
   }
 
   private finishMatch() {
     this.status = 'finished';
-    if (this.player.health === this.rival.health || (this.timeLeft === 0 && this.player.health === this.rival.health)) this.winner = 'draw';
-    else this.winner = this.player.health > this.rival.health ? 'player' : 'rival';
+    this.winner = decideWinner(this.player.health, this.rival.health);
     this.publish();
   }
 
@@ -421,22 +453,25 @@ export class GameScene extends Phaser.Scene {
     this.drawFighter(g, this.rival);
   }
 
-  private drawFighter(g: Phaser.GameObjects.Graphics, f: Fighter) {
+  private getFighterPose(f: Fighter) {
     const baseY = FLOOR + 2 + f.y;
     const moving = Math.abs(f.vx) > 8 && f.grounded;
     const bob = f.grounded ? Math.sin(f.anim) * (moving ? 5 : 2) : 0;
     const crouch = f.blocking ? 19 : 0;
+    const hipY = baseY - 68 - crouch + bob;
+    const shoulderY = hipY - 42;
+    return { baseY, moving, bob, crouch, hipY, shoulderY, headY: shoulderY - 30 };
+  }
+
+  private drawFighter(g: Phaser.GameObjects.Graphics, f: Fighter) {
+    const { baseY, moving, bob, crouch, hipY, shoulderY, headY } = this.getFighterPose(f);
     const centerX = f.x;
     const action = f.action;
     const swing = action === 'light' || action === 'heavy';
     const facing = f.facing;
-    const reach = action === 'heavy' ? 83 : 62;
-    const swingAmount = swing ? (action === 'heavy' ? 1 : .72) : 0;
+    const strikeFacing = swing ? f.attackFacing : facing;
     // Ground shadow and planted shoes.
     g.fillStyle(0x14292c, 0.35); g.fillEllipse(centerX, FLOOR + 9, f.grounded ? 89 : 60, 20);
-    const hipY = baseY - 68 - crouch + bob;
-    const shoulderY = hipY - 42;
-    const headY = shoulderY - 30;
     const legKick = moving ? Math.sin(f.anim) * 13 : 0;
     // Back leg and sneaker.
     g.lineStyle(17, f.color, 1); g.lineBetween(centerX - 7, hipY, centerX - 19 + legKick, baseY - 14);
@@ -447,24 +482,25 @@ export class GameScene extends Phaser.Scene {
     g.lineStyle(14, f.skin, 1); g.lineBetween(centerX + 18 - legKick, baseY - 20, centerX + 28 - legKick, baseY - 9);
     g.fillStyle(f.accent, 1); g.fillRoundedRect(centerX + 14 - legKick, baseY - 14, 36, 14, 5);
     // Torso silhouette, bandana sash, jacket.
-    g.fillStyle(f.color, 1); g.fillRoundedRect(centerX - 27, shoulderY, 55, 65 + crouch, 13);
-    g.fillStyle(f.accent, 1); g.fillRect(centerX - 27, shoulderY + 43, 55, 9);
+    g.fillStyle(f.color, 1); g.fillRoundedRect(centerX + TORSO_LEFT, shoulderY, TORSO_RIGHT - TORSO_LEFT, TORSO_HEIGHT + crouch, 13);
+    g.fillStyle(f.accent, 1); g.fillRect(centerX + TORSO_LEFT, shoulderY + 43, TORSO_RIGHT - TORSO_LEFT, 9);
     g.fillStyle(f.skin, 1); g.fillRect(centerX - 9, shoulderY - 7, 18, 19);
     // Far arm.
     g.lineStyle(16, f.skin, 1); g.lineBetween(centerX - facing * 19, shoulderY + 10, centerX - facing * 37, shoulderY + 34);
     g.fillStyle(f.accent, 1); g.fillCircle(centerX - facing * 38, shoulderY + 36, 10);
     // Near arm with a clear extended punch.
-    const armX = swing ? centerX + facing * (reach * swingAmount) : centerX + facing * 28;
-    const armY = swing ? shoulderY + (action === 'heavy' ? 8 : 2) : shoulderY + 29 + (f.blocking ? -9 : 0);
+    const strike = swing ? getStrikePose(action, centerX, shoulderY, strikeFacing) : null;
+    const armX = strike?.x ?? centerX + facing * 28;
+    const armY = strike?.y ?? shoulderY + 29 + (f.blocking ? -9 : 0);
     g.lineStyle(action === 'heavy' && swing ? 21 : 17, f.skin, 1);
-    g.lineBetween(centerX + facing * 18, shoulderY + 9, armX, armY);
-    g.fillStyle(f.accent, 1); g.fillCircle(armX, armY, swing ? 13 : 11);
+    g.lineBetween(centerX + strikeFacing * 18, shoulderY + 9, armX, armY);
+    g.fillStyle(f.accent, 1); g.fillCircle(armX, armY, strike?.radius ?? 11);
     if (f.blocking) {
       g.lineStyle(8, f.accent, .88); g.lineBetween(centerX + facing * 26, shoulderY + 3, centerX + facing * 52, shoulderY - 22);
       g.lineBetween(centerX + facing * 52, shoulderY - 22, centerX + facing * 53, shoulderY + 10);
     }
     // Head, original cap silhouette, face and hair.
-    g.fillStyle(f.skin, 1); g.fillCircle(centerX + facing * 3, headY, 22);
+    g.fillStyle(f.skin, 1); g.fillCircle(centerX + facing * HEAD_OFFSET, headY, HEAD_RADIUS);
     g.fillStyle(0x182d32, 1); g.fillRoundedRect(centerX - 22, headY - 20, 49, 12, 5);
     g.fillStyle(f.accent, 1); g.fillRoundedRect(centerX + facing * 7 - 12, headY - 25, 36, 9, 4);
     g.fillStyle(0x1b2729, 1); g.fillCircle(centerX + facing * 11, headY - 1, 2.4);
@@ -485,5 +521,6 @@ export class GameScene extends Phaser.Scene {
     window.removeEventListener('sound-clash:touch', this.touchHandler);
     window.removeEventListener('sound-clash:restart', this.restartHandler);
     this.touch.clear();
+    this.touchFrame.clear();
   }
 }

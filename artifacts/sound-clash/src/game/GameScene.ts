@@ -92,6 +92,7 @@ export class GameScene extends Phaser.Scene {
       elapsed: 0,
       status: 'playing',
       winner: null,
+      rngState: Date.now() >>> 0, // Unsigned 32-bit int seed
       events: []
     };
     this.accumulator = 0;

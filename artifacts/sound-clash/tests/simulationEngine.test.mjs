@@ -23,6 +23,7 @@ const createInitialState = () => ({
   elapsed: 0,
   status: 'playing',
   winner: null,
+  rngState: 123456789,
   events: []
 });
 

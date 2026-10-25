@@ -10,8 +10,8 @@ import {
   getStrikePose,
   isBlockingHit,
   isComboFollowup
-} from '../combatRules';
-import { FIXED_TIMESTEP, type GameState, type FighterState, type FighterInput, type GameEvent } from './types';
+} from '../combatRules.ts';
+import { FIXED_TIMESTEP, type GameState, type FighterState, type FighterInput, type GameEvent } from './types.ts';
 
 // Constants from GameScene.ts
 export const FLOOR = 574;
@@ -43,7 +43,7 @@ export function simulateTick(state: GameState, playerInput: FighterInput, rivalI
   nextState.timeLeft = Math.max(0, 90 - Math.floor(nextState.elapsed));
 
   updatePlayer(nextState.player, nextState.rival, playerInput, nextState.events);
-  updateRival(nextState.rival, nextState.player, nextState.events); // AI logic uses nextState for current positions
+  updateRival(nextState.rival, nextState.player, nextState);
 
   separateFighters(nextState.player, nextState.rival);
   faceOpponents(nextState.player, nextState.rival);
@@ -84,8 +84,19 @@ function updatePlayer(p: FighterState, rival: FighterState, input: FighterInput,
   moveFighter(p);
 }
 
+/**
+ * Simple 32-bit PRNG (Mulberry32)
+ * Returns a pseudo-random float between 0 and 1, mutating state.rngState.
+ */
+function nextRandom(state: GameState): number {
+  let t = state.rngState += 0x6D2B79F5;
+  t = Math.imul(t ^ t >>> 15, t | 1);
+  t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+  return ((t ^ t >>> 14) >>> 0) / 4294967296;
+}
+
 // Very simple AI logic - extracted from GameScene
-function updateRival(e: FighterState, player: FighterState, events: GameEvent[]) {
+function updateRival(e: FighterState, player: FighterState, state: GameState) {
   const distance = player.x - e.x;
   const distanceToPlayer = Math.abs(distance);
   const inAttackRange = distanceToPlayer <= RIVAL_ENGAGE_RANGE;
@@ -104,23 +115,20 @@ function updateRival(e: FighterState, player: FighterState, events: GameEvent[])
     } else {
       e.vx = 0;
       if (!e.blocking && e.aiWait <= 0 && e.cooldown <= 0) {
-        // Determinism Note: Math.random() makes this non-deterministic.
-        // For Phase 1, we accept this as we aren't doing rollback yet.
-        // In Phase 2, we will pass a seeded RNG or move AI to server entirely.
-        const roll = Math.random();
+        const roll = nextRandom(state);
         if (roll < 0.22 && player.action === 'heavy') {
           e.blocking = true;
           e.action = 'block';
           e.actionTime = 0.48;
         } else {
-          attack(e, roll > 0.72 ? 'heavy' : 'light', events, 'rival');
+          attack(e, roll > 0.72 ? 'heavy' : 'light', state.events, 'rival');
         }
-        e.aiWait = 0.55 + Math.random() * 0.45;
+        e.aiWait = 0.55 + nextRandom(state) * 0.45;
       }
     }
-    if (distanceToPlayer > 310 && e.grounded && Math.random() < 0.008) {
+    if (distanceToPlayer > 310 && e.grounded && nextRandom(state) < 0.008) {
       e.vy = -590;
-      events.push({ type: 'sound', kind: 'jump' });
+      state.events.push({ type: 'sound', kind: 'jump' });
     }
   } else {
     e.vx = 0;

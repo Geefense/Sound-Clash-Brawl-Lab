@@ -49,6 +49,8 @@ export type GameState = {
   elapsed: number;
   status: MatchStatus;
   winner: Winner | null;
+  // Deterministic random seed state
+  rngState: number;
   // Events dispatched during a tick, for rendering/sound (not for gameplay logic)
   events: GameEvent[];
 };

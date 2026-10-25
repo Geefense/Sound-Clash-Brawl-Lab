@@ -1,84 +1,21 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH, type MatchSnapshot, type TouchAction } from './types';
-import {
-  attackDamage,
-  canBufferComboInput,
-  COMBO_WINDOW_SECONDS,
-  decideWinner,
-  findPunchContact,
-  getAttackDuration,
-  getAttackStage,
-  getComboStepAfterAttack,
-  getStrikePose,
-  isBlockingHit,
-  isComboFollowup,
-  type AttackStage,
-  type ComboStep,
-} from './combatRules';
-
-type Fighter = {
-  x: number;
-  y: number;
-  health: number;
-  facing: number;
-  color: number;
-  accent: number;
-  skin: number;
-  name: string;
-  vx: number;
-  vy: number;
-  grounded: boolean;
-  blocking: boolean;
-  action: 'idle' | 'light' | 'heavy' | 'hit' | 'block';
-  actionTime: number;
-  cooldown: number;
-  stun: number;
-  aiWait: number;
-  anim: number;
-  attackElapsed: number;
-  hitRegistered: boolean;
-  attackFacing: number;
-  attackStage: AttackStage;
-  comboStep: ComboStep;
-  comboWindow: number;
-  bufferedAttack: 'light' | 'heavy' | null;
-  comboHits: number;
-  comboFeedback: string;
-  comboFeedbackTime: number;
-  walkAroundCooldown: number;
-};
-
-const FLOOR = 574;
-const LEFT_BOUND = 92;
-const RIGHT_BOUND = 1188;
-const MIN_FIGHTER_GAP = 76;
-const RIVAL_ENGAGE_RANGE = 108;
-const AIR_PASS_CLEARANCE = 52;
-const WALK_AROUND_RANGE = MIN_FIGHTER_GAP + 8;
-const WALK_AROUND_JUMP = -570;
-const TORSO_LEFT = -27;
-const TORSO_RIGHT = 28;
-const TORSO_HEIGHT = 65;
-const HEAD_OFFSET = 3;
-const HEAD_RADIUS = 22;
+import { getStrikePose } from './combatRules';
+import { type GameState, type FighterState, type FighterInput, FIXED_TIMESTEP } from './simulation/types';
+import { simulateTick, FLOOR, TORSO_LEFT, TORSO_RIGHT, TORSO_HEIGHT, HEAD_OFFSET, HEAD_RADIUS } from './simulation/SimulationEngine';
 
 export class GameScene extends Phaser.Scene {
   private onSnapshot: (snapshot: MatchSnapshot) => void;
-  private player!: Fighter;
-  private rival!: Fighter;
+  private state!: GameState;
+  private accumulator = 0;
   private graphics!: Phaser.GameObjects.Graphics;
   private background!: Phaser.GameObjects.Graphics;
   private playerComboLabel!: Phaser.GameObjects.Text;
   private rivalComboLabel!: Phaser.GameObjects.Text;
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
   private touch = new Set<TouchAction>();
-  private elapsed = 0;
-  private status: MatchSnapshot['status'] = 'playing';
-  private winner: MatchSnapshot['winner'] = null;
   private publishElapsed = 0;
-  private timeLeft = 90;
   private shakeTimer = 0;
-  private rivalInRange = false;
   private sparks: { x: number; y: number; vx: number; vy: number; life: number; color: number }[] = [];
   private touchHandler = (event: Event) => {
     const detail = (event as CustomEvent<{ action: TouchAction; pressed: boolean }>).detail;
@@ -136,7 +73,7 @@ export class GameScene extends Phaser.Scene {
     this.resetMatch();
   }
 
-  private makeFighter(x: number, color: number, accent: number, skin: number, name: string, facing: number): Fighter {
+  private makeFighter(x: number, color: number, accent: number, skin: number, name: string, facing: number): FighterState {
     return {
       x, y: 0, health: 100, facing, color, accent, skin, name, vx: 0, vy: 0,
       grounded: true, blocking: false, action: 'idle', actionTime: 0, cooldown: 0,
@@ -148,14 +85,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   private resetMatch() {
-    this.player = this.makeFighter(378, 0x247c72, 0xf0c64c, 0x9d6545, 'SIDEWINDER', 1);
-    this.rival = this.makeFighter(902, 0xd75f3e, 0xedd9b5, 0x754936, 'BASSLINE', -1);
-    this.elapsed = 0;
+    this.state = {
+      player: this.makeFighter(378, 0x247c72, 0xf0c64c, 0x9d6545, 'SIDEWINDER', 1),
+      rival: this.makeFighter(902, 0xd75f3e, 0xedd9b5, 0x754936, 'BASSLINE', -1),
+      timeLeft: 90,
+      elapsed: 0,
+      status: 'playing',
+      winner: null,
+      events: []
+    };
+    this.accumulator = 0;
     this.publishElapsed = 0;
-    this.timeLeft = 90;
-    this.status = 'playing';
-    this.winner = null;
-    this.rivalInRange = false;
     this.sparks = [];
     this.shakeTimer = 0;
     this.touch.clear();
@@ -228,48 +168,70 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number) {
-    if (!this.graphics || !this.player || !this.rival) return;
-    const dt = Math.min(delta / 1000, 0.04);
-    if (this.status === 'playing') {
-      this.elapsed += dt;
-      this.timeLeft = Math.max(0, 90 - Math.floor(this.elapsed));
-      this.updatePlayer(dt);
-      this.updateRival(dt);
-      this.separateFighters();
-      this.faceOpponents();
-      this.updateFighter(this.player, dt);
-      this.updateFighter(this.rival, dt);
-      this.resolveCombat(this.player, this.rival);
-      if (this.player.health <= 0 || this.rival.health <= 0 || this.timeLeft <= 0) this.finishMatch();
-      this.publishElapsed += dt;
-      if (this.publishElapsed > 0.12) { this.publishElapsed = 0; this.publish(); }
-    } else {
-      this.player.anim += dt;
-      this.rival.anim += dt;
+    if (!this.graphics || !this.state) return;
+    const dt = Math.min(delta / 1000, 0.25); // Cap to 250ms to prevent spiral of death
+
+    this.accumulator += dt;
+
+    while (this.accumulator >= FIXED_TIMESTEP) {
+      this.tick();
+      this.accumulator -= FIXED_TIMESTEP;
     }
+
+    if (this.shakeTimer > 0) {
+      this.shakeTimer -= dt;
+    }
+
+    // Publish state to UI occasionally
+    this.publishElapsed += dt;
+    if (this.publishElapsed > 0.12) {
+      this.publishElapsed = 0;
+      this.publish();
+    }
+
     this.drawFighters();
     this.updateSparks(dt);
   }
 
-  private updatePlayer(dt: number) {
-    const p = this.player;
+  private tick() {
     const keyDown = (key: string) => this.keys[key]?.isDown ?? false;
-    const left = keyDown('left') || keyDown('arrowLeft') || this.touch.has('left');
-    const right = keyDown('right') || keyDown('arrowRight') || this.touch.has('right');
-    const up = keyDown('up') || keyDown('arrowUp') || this.touch.has('jump');
-    const canAct = p.stun <= 0 && this.status === 'playing';
-    p.blocking = canAct && (keyDown('down') || keyDown('arrowDown') || this.touch.has('block')) && p.grounded;
-    if (canAct) {
-      p.vx = ((right ? 1 : 0) - (left ? 1 : 0)) * 270;
-      if (p.blocking) p.vx *= 0.38;
-      if (Phaser.Input.Keyboard.JustDown(this.keys.up) || Phaser.Input.Keyboard.JustDown(this.keys.arrowUp) || this.touchJust('jump')) {
-        if (p.grounded) { p.vy = -665; p.grounded = false; this.soundPing('jump'); }
+
+    const playerInput: FighterInput = {
+      left: keyDown('left') || keyDown('arrowLeft') || this.touch.has('left'),
+      right: keyDown('right') || keyDown('arrowRight') || this.touch.has('right'),
+      jump: Phaser.Input.Keyboard.JustDown(this.keys.up) || Phaser.Input.Keyboard.JustDown(this.keys.arrowUp) || this.touchJust('jump'),
+      block: keyDown('down') || keyDown('arrowDown') || this.touch.has('block'),
+      light: Phaser.Input.Keyboard.JustDown(this.keys.light) || this.touchJust('light'),
+      heavy: Phaser.Input.Keyboard.JustDown(this.keys.heavy) || this.touchJust('heavy'),
+    };
+
+    // In Phase 1, CPU is processed inline in the pure function, so we pass empty input for rival.
+    const rivalInput: FighterInput = { left: false, right: false, jump: false, block: false, light: false, heavy: false };
+
+    this.state = simulateTick(this.state, playerInput, rivalInput);
+    this.handleSimulationEvents();
+  }
+
+  private handleSimulationEvents() {
+    for (const event of this.state.events) {
+      switch (event.type) {
+        case 'sound':
+          this.soundPing(event.kind);
+          break;
+        case 'spark':
+          this.burst(event.x, event.y, event.color, event.count);
+          break;
+        case 'shake':
+          this.shakeTimer = event.duration;
+          this.cameras.main.shake(event.intensity, event.speed);
+          break;
+        case 'attack-stage':
+          window.dispatchEvent(new CustomEvent('sound-clash:attack-stage', {
+            detail: { fighter: event.fighter, kind: event.kind, stage: event.stage },
+          }));
+          break;
       }
-      if (Phaser.Input.Keyboard.JustDown(this.keys.light) || this.touchJust('light')) this.attack(p, 'light');
-      if (Phaser.Input.Keyboard.JustDown(this.keys.heavy) || this.touchJust('heavy')) this.attack(p, 'heavy');
-      this.tryWalkAround(p);
-    } else if (this.status !== 'playing') p.vx = 0;
-    this.moveFighter(p, dt);
+    }
   }
 
   private touchFrame = new Set<TouchAction>();
@@ -281,254 +243,13 @@ export class GameScene extends Phaser.Scene {
     return false;
   }
 
-  private updateRival(dt: number) {
-    const e = this.rival;
-    const distance = this.player.x - e.x;
-    const distanceToPlayer = Math.abs(distance);
-    const inAttackRange = distanceToPlayer <= RIVAL_ENGAGE_RANGE;
-    e.aiWait = Math.max(0, e.aiWait - dt);
-    e.blocking = e.action === 'block' && e.actionTime > 0 && e.stun <= 0 && e.grounded;
-    if (inAttackRange && !this.rivalInRange) {
-      this.rivalInRange = true;
-      e.aiWait = Math.max(e.aiWait, 0.25);
-    } else if (!inAttackRange) {
-      this.rivalInRange = false;
-    }
-
-    if (e.stun <= 0 && this.status === 'playing') {
-      if (!inAttackRange) {
-        e.blocking = false;
-        e.vx = Math.sign(distance) * 145;
-      } else {
-        e.vx = 0;
-        if (!e.blocking && e.aiWait <= 0 && e.cooldown <= 0) {
-          const roll = Math.random();
-          if (roll < 0.22 && this.player.action === 'heavy') {
-            e.blocking = true; e.action = 'block'; e.actionTime = .48;
-          } else this.attack(e, roll > 0.72 ? 'heavy' : 'light');
-          e.aiWait = 0.55 + Math.random() * 0.45;
-        }
-      }
-      if (distanceToPlayer > 310 && e.grounded && Math.random() < 0.008) e.vy = -590;
-    } else if (this.status !== 'playing') e.vx = 0;
-    this.moveFighter(e, dt);
-  }
-
-  private updateFighter(f: Fighter, dt: number) {
-    f.anim += dt * (Math.abs(f.vx) > 0 ? 8 : 2.2);
-    f.cooldown = Math.max(0, f.cooldown - dt);
-    f.stun = Math.max(0, f.stun - dt);
-    f.walkAroundCooldown = Math.max(0, f.walkAroundCooldown - dt);
-    f.comboWindow = Math.max(0, f.comboWindow - dt);
-    f.comboFeedbackTime = Math.max(0, f.comboFeedbackTime - dt);
-    if (f.comboFeedbackTime === 0) f.comboFeedback = '';
-    if (f.comboWindow === 0 && f.comboStep !== 0) {
-      f.comboStep = 0;
-      f.comboHits = 0;
-      f.bufferedAttack = null;
-    }
-    f.actionTime = Math.max(0, f.actionTime - dt);
-    if (f.action === 'light' || f.action === 'heavy') f.attackElapsed += dt;
-    if (f.actionTime === 0 && f.action !== 'idle') {
-      const attackFinished = f.action === 'light' || f.action === 'heavy';
-      if (attackFinished && !f.hitRegistered) f.comboHits = 0;
-      f.action = f.blocking ? 'block' : 'idle';
-      if (attackFinished && f.bufferedAttack) {
-        const nextAttack = f.bufferedAttack;
-        f.bufferedAttack = null;
-        this.attack(f, nextAttack);
-      }
-    }
-    if (f.stun <= 0 && f.action === 'hit') f.action = 'idle';
-  }
-
-  private moveFighter(f: Fighter, dt: number) {
-    if (f.stun > 0) f.vx *= Math.exp(-6 * dt);
-    f.x = Phaser.Math.Clamp(f.x + f.vx * dt, LEFT_BOUND, RIGHT_BOUND);
-    if (!f.grounded) {
-      f.vy += 1580 * dt;
-      f.y += f.vy * dt;
-      if (f.y >= 0) { f.y = 0; f.vy = 0; f.grounded = true; }
-    }
-  }
-
-  private separateFighters() {
-    // A jump or walk-around hop can pass over the other fighter. Once they
-    // land, restore the gap on their current sides instead of their old ones.
-    if (Math.abs(this.player.y - this.rival.y) > AIR_PASS_CLEARANCE) return;
-
-    const gap = Math.abs(this.rival.x - this.player.x);
-    if (gap < MIN_FIGHTER_GAP) {
-      const midpoint = Phaser.Math.Clamp(
-        (this.player.x + this.rival.x) / 2,
-        LEFT_BOUND + MIN_FIGHTER_GAP / 2,
-        RIGHT_BOUND - MIN_FIGHTER_GAP / 2,
-      );
-      const relativeDirection =
-        Math.sign(this.rival.x - this.player.x) ||
-        -Math.sign(this.player.vx - this.rival.vx) ||
-        this.player.facing ||
-        1;
-      this.player.x = midpoint - relativeDirection * MIN_FIGHTER_GAP / 2;
-      this.rival.x = midpoint + relativeDirection * MIN_FIGHTER_GAP / 2;
-    }
-  }
-
-  private faceOpponents() {
-    const direction =
-      Math.sign(this.rival.x - this.player.x) ||
-      this.player.facing ||
-      1;
-    this.player.facing = direction;
-    this.rival.facing = -direction;
-  }
-
-  private tryWalkAround(player: Fighter) {
-    const directionToRival = Math.sign(this.rival.x - player.x);
-    const movingTowardRival = directionToRival !== 0 && Math.sign(player.vx) === directionToRival;
-    const isAttacking = player.action === 'light' || player.action === 'heavy';
-    if (
-      !movingTowardRival ||
-      Math.abs(this.rival.x - player.x) > WALK_AROUND_RANGE ||
-      !player.grounded ||
-      player.blocking ||
-      player.stun > 0 ||
-      player.walkAroundCooldown > 0 ||
-      isAttacking
-    ) return;
-
-    // A small automatic vault lets horizontal movement pass the CPU without
-    // disabling body collision or changing the existing jump controls.
-    player.vy = WALK_AROUND_JUMP;
-    player.grounded = false;
-    player.walkAroundCooldown = 0.9;
-    this.soundPing('jump');
-  }
-
-  private attack(attacker: Fighter, kind: 'light' | 'heavy') {
-    if (attacker.stun > 0 || attacker.blocking || this.status !== 'playing') return;
-    const attackInProgress = attacker.action === 'light' || attacker.action === 'heavy';
-    if (attackInProgress) {
-      if (!attacker.bufferedAttack && canBufferComboInput(
-        attacker.comboStep,
-        kind,
-        attacker.attackElapsed,
-        attacker.comboWindow,
-      )) attacker.bufferedAttack = kind;
-      return;
-    }
-    if (attacker.action === 'hit' && attacker.actionTime > 0) return;
-
-    const chained = isComboFollowup(attacker.comboStep, kind, attacker.comboWindow > 0);
-    if (attacker.cooldown > 0 && !chained) return;
-    const stage = getAttackStage(attacker.comboStep, kind, chained);
-    if (!chained) attacker.comboHits = 0;
-
-    attacker.action = kind;
-    attacker.attackStage = stage;
-    attacker.actionTime = getAttackDuration(stage);
-    attacker.cooldown = kind === 'light' ? 0.38 : 0.72;
-    attacker.attackElapsed = 0;
-    attacker.hitRegistered = false;
-    attacker.attackFacing = attacker.facing;
-    attacker.comboStep = getComboStepAfterAttack(stage);
-    attacker.comboWindow = stage === 'power' ? 0 : COMBO_WINDOW_SECONDS;
-    window.dispatchEvent(new CustomEvent('sound-clash:attack-stage', {
-      detail: {
-        fighter: attacker === this.player ? 'player' : 'rival',
-        kind,
-        stage,
-      },
-    }));
-  }
-
-  private resolveCombat(a: Fighter, b: Fighter) {
-    const fighters = [a, b];
-    for (const attacker of fighters) {
-      const defender = attacker === a ? b : a;
-      if (attacker.action !== 'light' && attacker.action !== 'heavy') continue;
-      const attackerPose = this.getFighterPose(attacker);
-      const defenderPose = this.getFighterPose(defender);
-      const fist = getStrikePose(
-        attacker.action,
-        attacker.x,
-        attackerPose.shoulderY,
-        attacker.attackFacing,
-        attacker.attackStage,
-      );
-      const impact = findPunchContact({
-        centerX: attacker.x,
-        attackFacing: attacker.attackFacing,
-        attackElapsed: attacker.attackElapsed,
-        hitRegistered: attacker.hitRegistered,
-        kind: attacker.action,
-        stage: attacker.attackStage,
-      }, fist, {
-        centerX: defender.x,
-        body: {
-          left: defender.x + TORSO_LEFT,
-          right: defender.x + TORSO_RIGHT,
-          top: defenderPose.shoulderY,
-          bottom: defenderPose.shoulderY + TORSO_HEIGHT + (defender.blocking ? 19 : 0),
-        },
-        head: {
-          x: defender.x + defender.facing * HEAD_OFFSET,
-          y: defenderPose.headY,
-          radius: HEAD_RADIUS,
-        },
-      });
-      if (!impact) continue;
-      attacker.hitRegistered = true;
-      const blocked = isBlockingHit(attacker.x, {
-        x: defender.x,
-        facing: defender.facing,
-        blocking: defender.blocking,
-        grounded: defender.grounded,
-      });
-      const damage = attackDamage(attacker.action, blocked);
-      defender.health = Math.max(0, defender.health - damage);
-      defender.stun = blocked ? 0.12 : 0.28;
-      defender.action = blocked ? 'block' : 'hit';
-      defender.actionTime = blocked ? 0.16 : 0.29;
-      const knockback = blocked ? 145 : attacker.attackStage === 'power' ? 420 : 60;
-      defender.vx = Math.sign(defender.x - attacker.x) * knockback;
-      defender.comboStep = 0;
-      defender.comboWindow = 0;
-      defender.bufferedAttack = null;
-      defender.comboHits = 0;
-      defender.comboFeedback = '';
-      defender.comboFeedbackTime = 0;
-      if (blocked) {
-        attacker.comboHits = 0;
-      } else {
-        attacker.comboHits = Math.min(3, attacker.comboHits + 1);
-        if (attacker.comboHits >= 2) {
-          attacker.comboFeedback = attacker.attackStage === 'power'
-            ? `${attacker.comboHits}-HIT FINISH`
-            : `${attacker.comboHits}-HIT COMBO`;
-          attacker.comboFeedbackTime = 0.68;
-        }
-      }
-      this.shakeTimer = blocked ? 0.07 : 0.16;
-      this.cameras.main.shake(blocked ? 65 : 110, blocked ? 0.002 : 0.004);
-      this.burst(impact.x, impact.y, blocked ? 0xf3cf67 : 0xffe7ad, blocked ? 8 : 15);
-      this.soundPing(blocked ? 'block' : 'hit');
-    }
-  }
-
-  private finishMatch() {
-    this.status = 'finished';
-    this.winner = decideWinner(this.player.health, this.rival.health);
-    this.publish();
-  }
-
   private publish() {
     this.onSnapshot({
-      playerHealth: Math.ceil(this.player?.health ?? 100),
-      rivalHealth: Math.ceil(this.rival?.health ?? 100),
-      timeLeft: this.timeLeft,
-      status: this.status,
-      winner: this.winner,
+      playerHealth: Math.ceil(this.state?.player?.health ?? 100),
+      rivalHealth: Math.ceil(this.state?.rival?.health ?? 100),
+      timeLeft: this.state?.timeLeft ?? 90,
+      status: this.state?.status ?? 'playing',
+      winner: this.state?.winner ?? null,
       round: 1,
     });
   }
@@ -558,13 +279,13 @@ export class GameScene extends Phaser.Scene {
   private drawFighters() {
     const g = this.graphics;
     g.clear();
-    this.drawFighter(g, this.player);
-    this.drawFighter(g, this.rival);
-    this.updateComboLabel(this.player, this.playerComboLabel);
-    this.updateComboLabel(this.rival, this.rivalComboLabel);
+    this.drawFighter(g, this.state.player);
+    this.drawFighter(g, this.state.rival);
+    this.updateComboLabel(this.state.player, this.playerComboLabel);
+    this.updateComboLabel(this.state.rival, this.rivalComboLabel);
   }
 
-  private updateComboLabel(f: Fighter, label: Phaser.GameObjects.Text) {
+  private updateComboLabel(f: FighterState, label: Phaser.GameObjects.Text) {
     if (!f.comboFeedback || f.comboFeedbackTime <= 0) {
       label.setVisible(false);
       return;
@@ -576,7 +297,7 @@ export class GameScene extends Phaser.Scene {
     label.setVisible(true);
   }
 
-  private getFighterPose(f: Fighter) {
+  private getFighterPose(f: FighterState) {
     const baseY = FLOOR + 2 + f.y;
     const moving = Math.abs(f.vx) > 8 && f.grounded;
     const bob = f.grounded ? Math.sin(f.anim) * (moving ? 5 : 2) : 0;
@@ -586,7 +307,7 @@ export class GameScene extends Phaser.Scene {
     return { baseY, moving, bob, crouch, hipY, shoulderY, headY: shoulderY - 30 };
   }
 
-  private drawFighter(g: Phaser.GameObjects.Graphics, f: Fighter) {
+  private drawFighter(g: Phaser.GameObjects.Graphics, f: FighterState) {
     const { baseY, moving, bob, crouch, hipY, shoulderY, headY } = this.getFighterPose(f);
     const centerX = f.x;
     const action = f.action;

@@ -104,9 +104,7 @@ function updateRival(e: FighterState, player: FighterState, state: GameState) {
   e.aiWait = Math.max(0, e.aiWait - FIXED_TIMESTEP);
   e.blocking = e.action === 'block' && e.actionTime > 0 && e.stun <= 0 && e.grounded;
 
-  if (inAttackRange && e.aiWait < 0.25 && e.action === 'idle') {
-      e.aiWait = Math.max(e.aiWait, 0.25);
-  }
+  
 
   if (e.stun <= 0) {
     if (!inAttackRange) {

@@ -23,6 +23,12 @@ const createInitialState = () => ({
   elapsed: 0,
   status: 'playing',
   winner: null,
+  matchWinner: null,
+  roundWinner: null,
+  round: 1,
+  playerWins: 0,
+  rivalWins: 0,
+  transitionTimer: 0,
   rngState: 123456789,
   events: []
 });
@@ -65,4 +71,62 @@ test('simulateTick is deterministic', () => {
   // We check player deterministic state for now.
   assert.equal(stateA.player.x, stateB.player.x, 'player x should be identical');
   assert.equal(stateA.player.vx, stateB.player.vx, 'player vx should be identical');
+});
+
+
+test('simulateTick triggers round transition when health drops to 0', () => {
+  const state = createInitialState();
+  state.player.health = 5;
+  state.rival.health = 100;
+
+  // A heavy attack from rival could instantly end the round
+  state.player.health = 0;
+  const nextState = simulateTick(state, emptyInput, emptyInput);
+
+  assert.equal(nextState.status, 'round-transition', 'Should transition to wait state');
+  assert.equal(nextState.roundWinner, 'rival', 'Rival should win the round');
+  assert.equal(nextState.rivalWins, 1, 'Rival wins incremented');
+});
+
+test('simulateTick triggers match over when best of 3 is met', () => {
+  const state = createInitialState();
+  state.player.health = 0;
+  state.rival.health = 100;
+  state.rivalWins = 1; // already has one win
+
+  const nextState = simulateTick(state, emptyInput, emptyInput);
+
+  assert.equal(nextState.status, 'finished', 'Match should finish');
+  assert.equal(nextState.matchWinner, 'rival', 'Rival should win the match');
+  assert.equal(nextState.rivalWins, 2, 'Rival gets the final win');
+});
+
+test('simulateTick processes round transitions correctly and keeps wins', () => {
+  const state = createInitialState();
+  state.status = 'round-transition';
+  state.transitionTimer = 0.01;
+  state.playerWins = 1;
+  state.roundWinner = 'player';
+
+  const nextState = simulateTick(state, emptyInput, emptyInput); // transitionTimer becomes < 0 -> resets round
+
+  assert.equal(nextState.status, 'pre-round', 'Should enter pre-round state');
+  assert.equal(nextState.playerWins, 1, 'Wins should be preserved');
+  assert.equal(nextState.round, 2, 'Round should increment');
+  assert.equal(nextState.player.health, 100, 'Health restored');
+  assert.equal(nextState.roundWinner, null, 'Round winner cleared');
+});
+
+test('draw does not award wins but restarts round', () => {
+  const state = createInitialState();
+  state.elapsed = 90; // timeout
+  state.player.health = 50;
+  state.rival.health = 50; // exact same health
+
+  const nextState = simulateTick(state, emptyInput, emptyInput);
+
+  assert.equal(nextState.status, 'round-transition');
+  assert.equal(nextState.roundWinner, 'draw');
+  assert.equal(nextState.playerWins, 0);
+  assert.equal(nextState.rivalWins, 0);
 });

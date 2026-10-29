@@ -29,16 +29,37 @@ export const HEAD_OFFSET = 3;
 export const HEAD_RADIUS = 22;
 
 export function simulateTick(state: GameState, playerInput: FighterInput, rivalInput: FighterInput): GameState {
-  // We perform deep copy to ensure immutability
   const nextState: GameState = JSON.parse(JSON.stringify(state));
-  nextState.events = []; // clear events for this tick
+  nextState.events = [];
 
-  if (nextState.status !== 'playing') {
+  if (nextState.status === 'pre-round') {
+    nextState.transitionTimer = Math.max(0, nextState.transitionTimer - FIXED_TIMESTEP);
+    nextState.player.anim += FIXED_TIMESTEP * 2.2;
+    nextState.rival.anim += FIXED_TIMESTEP * 2.2;
+    if (nextState.transitionTimer <= 0) {
+      nextState.status = 'playing';
+      nextState.events.push({ type: 'sound', kind: 'round' }); // Optional, if they have a 'fight' sound
+    }
+    return nextState;
+  }
+
+  if (nextState.status === 'round-transition') {
+    nextState.transitionTimer = Math.max(0, nextState.transitionTimer - FIXED_TIMESTEP);
+    nextState.player.anim += FIXED_TIMESTEP * 2.2;
+    nextState.rival.anim += FIXED_TIMESTEP * 2.2;
+    if (nextState.transitionTimer <= 0) {
+      resetRoundForNext(nextState);
+    }
+    return nextState;
+  }
+
+  if (nextState.status === 'finished') {
     nextState.player.anim += FIXED_TIMESTEP * 2.2;
     nextState.rival.anim += FIXED_TIMESTEP * 2.2;
     return nextState;
   }
 
+  // status === 'playing'
   nextState.elapsed += FIXED_TIMESTEP;
   nextState.timeLeft = Math.max(0, 90 - Math.floor(nextState.elapsed));
 
@@ -54,11 +75,91 @@ export function simulateTick(state: GameState, playerInput: FighterInput, rivalI
   resolveCombat(nextState.player, nextState.rival, nextState.events);
 
   if (nextState.player.health <= 0 || nextState.rival.health <= 0 || nextState.timeLeft <= 0) {
-    nextState.status = 'finished';
-    nextState.winner = decideWinner(nextState.player.health, nextState.rival.health);
+    const roundWinner = decideWinner(nextState.player.health, nextState.rival.health);
+    nextState.roundWinner = roundWinner;
+
+    if (roundWinner === 'player') nextState.playerWins++;
+    if (roundWinner === 'rival') nextState.rivalWins++;
+
+    if (nextState.playerWins >= 2 || nextState.rivalWins >= 2) {
+      nextState.status = 'finished';
+      nextState.matchWinner = nextState.playerWins >= 2 ? 'player' : 'rival';
+      nextState.winner = nextState.matchWinner; // For backward compatibility just in case
+    } else {
+      nextState.status = 'round-transition';
+      nextState.transitionTimer = 3;
+    }
+
+    if (nextState.player.health <= 0 || nextState.rival.health <= 0) {
+      nextState.events.push({ type: 'sound', kind: 'ko' });
+    }
   }
 
   return nextState;
+}
+
+function resetRoundForNext(state: GameState) {
+  if (state.roundWinner !== 'draw') {
+    state.round++;
+  }
+  state.roundWinner = null;
+  state.status = 'pre-round';
+  state.transitionTimer = 1.5;
+  state.elapsed = 0;
+  state.timeLeft = 90;
+
+  // reset player
+  state.player.x = 378;
+  state.player.y = 0;
+  state.player.health = 100;
+  state.player.facing = 1;
+  state.player.vx = 0;
+  state.player.vy = 0;
+  state.player.grounded = true;
+  state.player.blocking = false;
+  state.player.action = 'idle';
+  state.player.actionTime = 0;
+  state.player.cooldown = 0;
+  state.player.stun = 0;
+  state.player.anim = 0;
+  state.player.attackElapsed = 0;
+  state.player.hitRegistered = false;
+  state.player.attackFacing = 1;
+  state.player.attackStage = 'jab1';
+  state.player.comboStep = 0;
+  state.player.comboWindow = 0;
+  state.player.bufferedAttack = null;
+  state.player.comboHits = 0;
+  state.player.comboFeedback = '';
+  state.player.comboFeedbackTime = 0;
+  state.player.walkAroundCooldown = 0;
+
+  // reset rival
+  state.rival.x = 902;
+  state.rival.y = 0;
+  state.rival.health = 100;
+  state.rival.facing = -1;
+  state.rival.vx = 0;
+  state.rival.vy = 0;
+  state.rival.grounded = true;
+  state.rival.blocking = false;
+  state.rival.action = 'idle';
+  state.rival.actionTime = 0;
+  state.rival.cooldown = 0;
+  state.rival.stun = 0;
+  state.rival.aiWait = 0.5;
+  state.rival.anim = 0;
+  state.rival.attackElapsed = 0;
+  state.rival.hitRegistered = false;
+  state.rival.attackFacing = -1;
+  state.rival.attackStage = 'jab1';
+  state.rival.comboStep = 0;
+  state.rival.comboWindow = 0;
+  state.rival.bufferedAttack = null;
+  state.rival.comboHits = 0;
+  state.rival.comboFeedback = '';
+  state.rival.comboFeedbackTime = 0;
+  state.rival.walkAroundCooldown = 0;
 }
 
 function updatePlayer(p: FighterState, rival: FighterState, input: FighterInput, events: GameEvent[]) {

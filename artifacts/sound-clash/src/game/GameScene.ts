@@ -90,8 +90,14 @@ export class GameScene extends Phaser.Scene {
       rival: this.makeFighter(902, 0xd75f3e, 0xedd9b5, 0x754936, 'BASSLINE', -1),
       timeLeft: 90,
       elapsed: 0,
-      status: 'playing',
+      status: 'pre-round',
       winner: null,
+      matchWinner: null,
+      roundWinner: null,
+      round: 1,
+      playerWins: 0,
+      rivalWins: 0,
+      transitionTimer: 2,
       rngState: Date.now() >>> 0, // Unsigned 32-bit int seed
       events: []
     };
@@ -249,13 +255,17 @@ export class GameScene extends Phaser.Scene {
       playerHealth: Math.ceil(this.state?.player?.health ?? 100),
       rivalHealth: Math.ceil(this.state?.rival?.health ?? 100),
       timeLeft: this.state?.timeLeft ?? 90,
-      status: this.state?.status ?? 'playing',
+      status: this.state?.status ?? 'pre-round',
       winner: this.state?.winner ?? null,
-      round: 1,
+      matchWinner: this.state?.matchWinner ?? null,
+      roundWinner: this.state?.roundWinner ?? null,
+      round: this.state?.round ?? 1,
+      playerWins: this.state?.playerWins ?? 0,
+      rivalWins: this.state?.rivalWins ?? 0,
     });
   }
 
-  private soundPing(kind: 'hit' | 'block' | 'jump' | 'round') {
+  private soundPing(kind: 'hit' | 'block' | 'jump' | 'round' | 'ko') {
     window.dispatchEvent(new CustomEvent('sound-clash:sound', { detail: kind }));
   }
 

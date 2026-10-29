@@ -11,13 +11,13 @@ export class SoundEffects {
     if (enabled && this.context?.state === 'suspended') void this.context.resume();
   }
 
-  play(kind: 'hit' | 'block' | 'jump' | 'round') {
+  play(kind: 'hit' | 'block' | 'jump' | 'round' | 'ko') {
     if (!this.enabled || !this.context) return;
     const now = this.context.currentTime;
     const oscillator = this.context.createOscillator();
     const gain = this.context.createGain();
     oscillator.type = kind === 'hit' ? 'sawtooth' : 'triangle';
-    const tones = { hit: 110, block: 210, jump: 310, round: 170 };
+    const tones = { hit: 110, block: 210, jump: 310, round: 170, ko: 90 };
     oscillator.frequency.setValueAtTime(tones[kind], now);
     oscillator.frequency.exponentialRampToValueAtTime(Math.max(55, tones[kind] * 0.52), now + 0.11);
     gain.gain.setValueAtTime(kind === 'hit' ? 0.07 : 0.035, now);

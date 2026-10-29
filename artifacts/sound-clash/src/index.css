@@ -228,3 +228,55 @@ button:focus-visible { outline: 3px solid #efbd45; outline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+
+.win-indicators {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.win-indicators.rival {
+  left: auto;
+  right: 0;
+}
+.win-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.win-dot.won {
+  background: #f0c64c;
+  box-shadow: 0 0 5px #f0c64c;
+  border-color: #f0c64c;
+}
+
+.overlay-screen {
+  position: absolute; z-index: 4; inset: 0; display: grid; place-content: center;
+  background: rgba(19,43,48,.4);
+  animation: fade-in .2s ease-out;
+  text-align: center;
+}
+.overlay-title {
+  color: #fff; font: clamp(40px,8vw,60px) 'Archivo Black',sans-serif;
+  text-shadow: 2px 4px 0 #d95f3b;
+  margin: 0;
+}
+.ko-text {
+  color: #f0c64c;
+  text-shadow: 3px 5px 0 #19343d;
+  font-size: clamp(60px, 12vw, 100px);
+}
+.overlay-subtitle {
+  color: #f1e9d9;
+  font-size: 20px;
+  letter-spacing: .1em;
+  background: rgba(0,0,0,0.6);
+  padding: 4px 12px;
+  border-radius: 4px;
+  margin-top: 10px;
+}

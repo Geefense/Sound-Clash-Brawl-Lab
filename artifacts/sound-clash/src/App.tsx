@@ -8,9 +8,13 @@ const initialSnapshot: MatchSnapshot = {
   playerHealth: 100,
   rivalHealth: 100,
   timeLeft: 90,
-  status: 'playing',
+  status: 'pre-round',
   winner: null,
+  matchWinner: null,
+  roundWinner: null,
   round: 1,
+  playerWins: 0,
+  rivalWins: 0,
 };
 
 function Home() {
@@ -46,7 +50,7 @@ function Home() {
       audio: { noAudio: true },
     });
     gameRef.current = game;
-    const onSound = (event: Event) => sound.play((event as CustomEvent<'hit' | 'block' | 'jump' | 'round'>).detail);
+    const onSound = (event: Event) => sound.play((event as CustomEvent<'hit' | 'block' | 'jump' | 'round' | 'ko'>).detail);
     window.addEventListener('sound-clash:sound', onSound);
     return () => {
       window.removeEventListener('sound-clash:sound', onSound);
@@ -74,12 +78,12 @@ function Home() {
   };
 
   const time = `0:${String(snapshot.timeLeft).padStart(2, '0')}`;
-  const resultTitle = snapshot.winner === 'draw'
+  const resultTitle = snapshot.matchWinner === 'draw'
     ? 'SPLIT THE SOUND'
-    : snapshot.winner === 'player' ? 'SIDEWINDER TAKES IT' : 'BASSLINE TAKES IT';
-  const resultDetail = snapshot.winner === 'draw'
+    : snapshot.matchWinner === 'player' ? 'SIDEWINDER TAKES IT' : 'BASSLINE TAKES IT';
+  const resultDetail = snapshot.matchWinner === 'draw'
     ? 'Even stevens. Run it back?'
-    : snapshot.winner === 'player' ? 'Your set, your victory.' : 'The rival held the block this round.';
+    : snapshot.matchWinner === 'player' ? 'Your set, your victory.' : 'The rival took the set.';
 
   return (
     <main className="game-page">
@@ -109,11 +113,14 @@ function Home() {
               </div>
               <span className="fighter-origin">Kingston · Selector</span>
               <div className="health-track" aria-label={`Sidewinder health ${snapshot.playerHealth}%`}>
+                <div className="win-indicators">
+                  {[0, 1].map(i => <div key={i} className={`win-dot ${snapshot.playerWins > i ? 'won' : ''}`} />)}
+                </div>
                 <div className="health-fill" style={{ width: `${snapshot.playerHealth}%` }} />
               </div>
             </div>
             <div className="round-clock" aria-live="polite">
-              <span className="clock-label">ROUND 01</span>
+              <span className="clock-label">ROUND {String(snapshot.round).padStart(2, '0')}</span>
               <span className="clock-time" data-testid="text-round-timer">{time}</span>
             </div>
             <div className="fighter-info right">
@@ -123,6 +130,9 @@ function Home() {
               </div>
               <span className="fighter-origin">Toronto · Soundboy</span>
               <div className="health-track" aria-label={`Bassline health ${snapshot.rivalHealth}%`}>
+                <div className="win-indicators rival">
+                  {[0, 1].map(i => <div key={i} className={`win-dot ${snapshot.rivalWins > i ? 'won' : ''}`} />)}
+                </div>
                 <div className="health-fill" style={{ width: `${snapshot.rivalHealth}%` }} />
               </div>
             </div>
@@ -131,6 +141,20 @@ function Home() {
           <div className="arena-frame" aria-label="Live fighting arena">
             <div className="game-mount" ref={mountRef} data-testid="game-canvas" />
             <div className="arena-vignette" />
+
+            {snapshot.status === 'pre-round' && (
+              <div className="overlay-screen">
+                <h2 className="overlay-title">ROUND {snapshot.round}</h2>
+              </div>
+            )}
+            {snapshot.status === 'round-transition' && (
+              <div className="overlay-screen">
+                <h2 className="overlay-title ko-text">KO!</h2>
+                <div className="overlay-subtitle">
+                  {snapshot.roundWinner === 'player' ? 'SIDEWINDER WINS' : snapshot.roundWinner === 'rival' ? 'BASSLINE WINS' : 'DRAW'}
+                </div>
+              </div>
+            )}
             {snapshot.status === 'finished' && (
               <div className="result-screen" role="dialog" aria-modal="true" aria-labelledby="result-title">
                 <div className="result-card">

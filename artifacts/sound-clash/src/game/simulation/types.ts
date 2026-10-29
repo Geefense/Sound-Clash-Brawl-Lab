@@ -49,6 +49,12 @@ export type GameState = {
   elapsed: number;
   status: MatchStatus;
   winner: Winner | null;
+  matchWinner: Winner | null;
+  roundWinner: Winner | null;
+  round: number;
+  playerWins: number;
+  rivalWins: number;
+  transitionTimer: number;
   // Deterministic random seed state
   rngState: number;
   // Events dispatched during a tick, for rendering/sound (not for gameplay logic)
@@ -56,7 +62,7 @@ export type GameState = {
 };
 
 export type GameEvent =
-  | { type: 'sound'; kind: 'hit' | 'block' | 'jump' | 'round' }
+  | { type: 'sound'; kind: 'hit' | 'block' | 'jump' | 'round' | 'ko' }
   | { type: 'spark'; x: number; y: number; color: number; count: number }
   | { type: 'shake'; duration: number; intensity: number; speed: number }
   | { type: 'attack-stage'; fighter: 'player' | 'rival'; kind: AttackKind; stage: AttackStage };

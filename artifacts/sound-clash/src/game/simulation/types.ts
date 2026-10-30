@@ -55,6 +55,8 @@ export type GameState = {
   playerWins: number;
   rivalWins: number;
   transitionTimer: number;
+  roundEndReason: 'ko' | 'timeout' | null;
+  ko: { ticks: number; player: { x: number; y: number; direction: number }; rival: { x: number; y: number; direction: number } } | null;
   // Deterministic random seed state
   rngState: number;
   // Events dispatched during a tick, for rendering/sound (not for gameplay logic)
@@ -65,6 +67,7 @@ export type GameEvent =
   | { type: 'sound'; kind: 'hit' | 'block' | 'jump' | 'round' | 'ko' }
   | { type: 'spark'; x: number; y: number; color: number; count: number }
   | { type: 'shake'; duration: number; intensity: number; speed: number }
+  | { type: 'hit-reaction'; fighter: 'player' | 'rival'; kind: AttackKind; region: 'head' | 'body'; direction: number }
   | { type: 'attack-stage'; fighter: 'player' | 'rival'; kind: AttackKind; stage: AttackStage };
 
 export const TICK_RATE = 60;

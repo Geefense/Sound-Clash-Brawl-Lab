@@ -1,4 +1,4 @@
-export type MatchStatus = 'pre-round' | 'playing' | 'round-transition' | 'finished';
+export type MatchStatus = 'impact-freeze' | 'knockdown' | 'ko-announcement' | 'pre-round' | 'playing' | 'round-transition' | 'finished';
 
 export type MatchSnapshot = {
   playerHealth: number;
@@ -7,6 +7,7 @@ export type MatchSnapshot = {
   status: MatchStatus;
   winner: 'player' | 'rival' | 'draw' | null;
   matchWinner: 'player' | 'rival' | 'draw' | null;
+  roundEndReason: 'ko' | 'timeout' | null;
   roundWinner: 'player' | 'rival' | 'draw' | null;
   round: number;
   playerWins: number;

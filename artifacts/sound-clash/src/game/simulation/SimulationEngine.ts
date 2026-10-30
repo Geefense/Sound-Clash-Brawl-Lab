@@ -13,6 +13,10 @@ import {
 } from '../combatRules.ts';
 import { FIXED_TIMESTEP, type GameState, type FighterState, type FighterInput, type GameEvent } from './types.ts';
 
+export const IMPACT_FREEZE_TICKS = 9;
+export const KNOCKDOWN_TICKS = 36;
+export const KO_ANNOUNCEMENT_TICKS = 72;
+
 // Constants from GameScene.ts
 export const FLOOR = 574;
 export const LEFT_BOUND = 92;
@@ -31,6 +35,31 @@ export const HEAD_RADIUS = 22;
 export function simulateTick(state: GameState, playerInput: FighterInput, rivalInput: FighterInput): GameState {
   const nextState: GameState = JSON.parse(JSON.stringify(state));
   nextState.events = [];
+
+  if (nextState.ko && (nextState.status === 'impact-freeze' || nextState.status === 'knockdown' || nextState.status === 'ko-announcement')) {
+    nextState.ko.ticks++;
+    const ticks = nextState.ko.ticks;
+    if (ticks < IMPACT_FREEZE_TICKS) return nextState;
+    if (ticks < IMPACT_FREEZE_TICKS + KNOCKDOWN_TICKS) {
+      nextState.status = 'knockdown';
+    } else {
+      if (nextState.status !== 'ko-announcement') nextState.events.push({ type: 'sound', kind: 'ko' });
+      nextState.status = 'ko-announcement';
+    }
+    const progress = Math.min(1, (ticks - IMPACT_FREEZE_TICKS) / KNOCKDOWN_TICKS);
+    for (const id of ['player', 'rival'] as const) {
+      const fighter = nextState[id];
+      if (fighter.health > 0) continue;
+      const start = nextState.ko[id];
+      fighter.x = Math.max(LEFT_BOUND, Math.min(RIGHT_BOUND, start.x + start.direction * 42 * Math.sin(progress * Math.PI / 2)));
+      fighter.y = progress === 1 ? 0 : start.y * (1 - progress) - Math.sin(progress * Math.PI) * 18;
+      fighter.grounded = progress === 1;
+      fighter.vx = 0;
+      fighter.vy = 0;
+    }
+    if (ticks >= IMPACT_FREEZE_TICKS + KNOCKDOWN_TICKS + KO_ANNOUNCEMENT_TICKS) finishRound(nextState);
+    return nextState;
+  }
 
   if (nextState.status === 'pre-round') {
     nextState.transitionTimer = Math.max(0, nextState.transitionTimer - FIXED_TIMESTEP);
@@ -81,24 +110,36 @@ export function simulateTick(state: GameState, playerInput: FighterInput, rivalI
     if (roundWinner === 'player') nextState.playerWins++;
     if (roundWinner === 'rival') nextState.rivalWins++;
 
-    if (nextState.playerWins >= 2 || nextState.rivalWins >= 2) {
-      nextState.status = 'finished';
-      nextState.matchWinner = nextState.playerWins >= 2 ? 'player' : 'rival';
-      nextState.winner = nextState.matchWinner; // For backward compatibility just in case
+    nextState.roundEndReason = nextState.player.health <= 0 || nextState.rival.health <= 0 ? 'ko' : 'timeout';
+    if (nextState.roundEndReason === 'ko') {
+      nextState.status = 'impact-freeze';
+      nextState.ko = {
+        ticks: 0,
+        player: { x: nextState.player.x, y: nextState.player.y, direction: -nextState.player.facing },
+        rival: { x: nextState.rival.x, y: nextState.rival.y, direction: -nextState.rival.facing },
+      };
     } else {
-      nextState.status = 'round-transition';
-      nextState.transitionTimer = 3;
-    }
-
-    if (nextState.player.health <= 0 || nextState.rival.health <= 0) {
-      nextState.events.push({ type: 'sound', kind: 'ko' });
+      finishRound(nextState);
     }
   }
 
   return nextState;
 }
 
+function finishRound(state: GameState) {
+  if (state.playerWins >= 2 || state.rivalWins >= 2) {
+    state.status = 'finished';
+    state.matchWinner = state.playerWins >= 2 ? 'player' : 'rival';
+    state.winner = state.matchWinner;
+  } else {
+    state.status = 'round-transition';
+    state.transitionTimer = 3;
+  }
+}
+
 function resetRoundForNext(state: GameState) {
+  state.ko = null;
+  state.roundEndReason = null;
   if (state.roundWinner !== 'draw') {
     state.round++;
   }
@@ -427,6 +468,14 @@ function resolveCombat(player: FighterState, rival: FighterState, events: GameEv
       facing: defender.facing,
       blocking: defender.blocking,
       grounded: defender.grounded,
+    });
+
+    if (!blocked) events.push({
+      type: 'hit-reaction',
+      fighter: defender === player ? 'player' : 'rival',
+      kind: attacker.action,
+      region: impact.y < defenderPose.shoulderY ? 'head' : 'body',
+      direction: attacker.attackFacing,
     });
 
     const damage = attackDamage(attacker.action, blocked);

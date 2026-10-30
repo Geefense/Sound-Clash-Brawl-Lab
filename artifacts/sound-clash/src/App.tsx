@@ -12,6 +12,7 @@ const initialSnapshot: MatchSnapshot = {
   winner: null,
   matchWinner: null,
   roundWinner: null,
+  roundEndReason: null,
   round: 1,
   playerWins: 0,
   rivalWins: 0,
@@ -147,9 +148,9 @@ function Home() {
                 <h2 className="overlay-title">ROUND {snapshot.round}</h2>
               </div>
             )}
-            {snapshot.status === 'round-transition' && (
+            {(snapshot.status === 'round-transition' || snapshot.status === 'ko-announcement') && (
               <div className="overlay-screen">
-                <h2 className="overlay-title ko-text">KO!</h2>
+                <h2 className="overlay-title ko-text">{snapshot.status === 'ko-announcement' ? 'KO!' : snapshot.roundEndReason === 'timeout' ? 'TIME!' : 'ROUND OVER'}</h2>
                 <div className="overlay-subtitle">
                   {snapshot.roundWinner === 'player' ? 'SIDEWINDER WINS' : snapshot.roundWinner === 'rival' ? 'BASSLINE WINS' : 'DRAW'}
                 </div>

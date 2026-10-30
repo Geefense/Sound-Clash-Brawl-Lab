@@ -1,13 +1,15 @@
 import Phaser from 'phaser';
+import { getHitReactionPose, getKnockdownPose, type HitReaction } from './visualReactions';
 import { GAME_HEIGHT, GAME_WIDTH, type MatchSnapshot, type TouchAction } from './types';
 import { getStrikePose } from './combatRules';
 import { type GameState, type FighterState, type FighterInput, FIXED_TIMESTEP } from './simulation/types';
-import { simulateTick, FLOOR, TORSO_LEFT, TORSO_RIGHT, TORSO_HEIGHT, HEAD_OFFSET, HEAD_RADIUS } from './simulation/SimulationEngine';
+import { simulateTick, IMPACT_FREEZE_TICKS, KNOCKDOWN_TICKS, FLOOR, TORSO_LEFT, TORSO_RIGHT, TORSO_HEIGHT, HEAD_OFFSET, HEAD_RADIUS } from './simulation/SimulationEngine';
 
 export class GameScene extends Phaser.Scene {
   private onSnapshot: (snapshot: MatchSnapshot) => void;
   private state!: GameState;
   private accumulator = 0;
+  private reactions: Record<'player' | 'rival', HitReaction | null> = { player: null, rival: null };
   private graphics!: Phaser.GameObjects.Graphics;
   private background!: Phaser.GameObjects.Graphics;
   private playerComboLabel!: Phaser.GameObjects.Text;
@@ -77,7 +79,7 @@ export class GameScene extends Phaser.Scene {
     return {
       x, y: 0, health: 100, facing, color, accent, skin, name, vx: 0, vy: 0,
       grounded: true, blocking: false, action: 'idle', actionTime: 0, cooldown: 0,
-      stun: 0, aiWait: 0.5, anim: Math.random() * 3,
+      stun: 0, aiWait: 0.5, anim: 0,
       attackElapsed: 0, hitRegistered: false, attackFacing: facing, attackStage: 'jab1',
       comboStep: 0, comboWindow: 0, bufferedAttack: null, comboHits: 0,
       comboFeedback: '', comboFeedbackTime: 0, walkAroundCooldown: 0,
@@ -94,6 +96,8 @@ export class GameScene extends Phaser.Scene {
       winner: null,
       matchWinner: null,
       roundWinner: null,
+      roundEndReason: null,
+      ko: null,
       round: 1,
       playerWins: 0,
       rivalWins: 0,
@@ -102,6 +106,7 @@ export class GameScene extends Phaser.Scene {
       events: []
     };
     this.accumulator = 0;
+    this.reactions = { player: null, rival: null };
     this.publishElapsed = 0;
     this.sparks = [];
     this.shakeTimer = 0;
@@ -215,13 +220,35 @@ export class GameScene extends Phaser.Scene {
     // In Phase 1, CPU is processed inline in the pure function, so we pass empty input for rival.
     const rivalInput: FighterInput = { left: false, right: false, jump: false, block: false, light: false, heavy: false };
 
+    const previousStatus = this.state.status;
+    // Reaction ages advance with simulation ticks and hold the impact pose during hitstop.
+    if (previousStatus === 'playing') {
+      for (const reaction of Object.values(this.reactions)) if (reaction) reaction.age++;
+    }
     this.state = simulateTick(this.state, playerInput, rivalInput);
+    if (previousStatus !== this.state.status) {
+      this.publish();
+      if (this.state.status === 'pre-round') this.reactions = { player: null, rival: null };
+      if (this.state.status === 'ko-announcement') {
+        for (const id of ['player', 'rival'] as const) {
+          const fighter = this.state[id];
+          if (fighter.health > 0) continue;
+          const fall = getKnockdownPose(this.state.ko!.ticks, IMPACT_FREEZE_TICKS, KNOCKDOWN_TICKS, -fighter.facing, this.reactions[id]?.kind === 'heavy');
+          this.burst(fighter.x + fall.x - fighter.facing * 65, FLOOR, 0xc9b38c, 24);
+        }
+        this.cameras.main.shake(130, 0.007);
+        this.soundPing('hit');
+      }
+    }
     this.handleSimulationEvents();
   }
 
   private handleSimulationEvents() {
     for (const event of this.state.events) {
       switch (event.type) {
+        case 'hit-reaction':
+          this.reactions[event.fighter] = { kind: event.kind, region: event.region, direction: event.direction, age: 0 };
+          break;
         case 'sound':
           this.soundPing(event.kind);
           break;
@@ -259,6 +286,7 @@ export class GameScene extends Phaser.Scene {
       winner: this.state?.winner ?? null,
       matchWinner: this.state?.matchWinner ?? null,
       roundWinner: this.state?.roundWinner ?? null,
+      roundEndReason: this.state?.roundEndReason ?? null,
       round: this.state?.round ?? 1,
       playerWins: this.state?.playerWins ?? 0,
       rivalWins: this.state?.rivalWins ?? 0,
@@ -297,7 +325,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateComboLabel(f: FighterState, label: Phaser.GameObjects.Text) {
-    if (!f.comboFeedback || f.comboFeedbackTime <= 0) {
+    if (this.state.ko || !f.comboFeedback || f.comboFeedbackTime <= 0) {
       label.setVisible(false);
       return;
     }
@@ -319,14 +347,34 @@ export class GameScene extends Phaser.Scene {
   }
 
   private drawFighter(g: Phaser.GameObjects.Graphics, f: FighterState) {
-    const { baseY, moving, bob, crouch, hipY, shoulderY, headY } = this.getFighterPose(f);
+    const id = f === this.state.player ? 'player' : 'rival';
+    const hit = this.reactions[id];
+    const reaction = getHitReactionPose(hit);
+    const knockedDown = f.health <= 0 && this.state.ko !== null && this.state.status !== 'impact-freeze';
+    const fall = getKnockdownPose(this.state.ko?.ticks ?? 0, IMPACT_FREEZE_TICKS, KNOCKDOWN_TICKS, -f.facing, hit?.kind === 'heavy');
+    if (knockedDown) {
+      g.fillStyle(0x14292c, 0.35);
+      g.fillEllipse(f.x + fall.x - f.facing * 65 * fall.progress, FLOOR + 9, 89 + 90 * fall.progress, 20);
+      if (fall.impact > 0) {
+        g.lineStyle(4 * fall.impact, 0xe4d2a2, fall.impact * 0.65);
+        g.strokeEllipse(f.x + fall.x - f.facing * 65, FLOOR + 5, 160 + (1 - fall.impact) * 110, 20 + (1 - fall.impact) * 20);
+      }
+    }
+    g.save();
+    if (knockedDown) {
+      g.translateCanvas(f.x + fall.x, FLOOR + 2 + f.y + fall.y);
+      g.rotateCanvas(fall.angle);
+      g.translateCanvas(-f.x, -(FLOOR + 2 + f.y));
+    }
+    const renderFighter = knockedDown ? { ...f, vx: 0, anim: 0, blocking: false, action: 'idle' as const } : f;
+    const { baseY, moving, bob, crouch, hipY, shoulderY, headY } = this.getFighterPose(renderFighter);
     const centerX = f.x;
-    const action = f.action;
+    const action = renderFighter.action;
     const swing = action === 'light' || action === 'heavy';
     const facing = f.facing;
     const strikeFacing = swing ? f.attackFacing : facing;
     // Ground shadow and planted shoes.
-    g.fillStyle(0x14292c, 0.35); g.fillEllipse(centerX, FLOOR + 9, f.grounded ? 89 : 60, 20);
+    if (!knockedDown) { g.fillStyle(0x14292c, 0.35); g.fillEllipse(centerX, FLOOR + 9, f.grounded ? 89 : 60, 20); }
     const legKick = moving ? Math.sin(f.anim) * 13 : 0;
     // Back leg and sneaker.
     g.lineStyle(17, f.color, 1); g.lineBetween(centerX - 7, hipY, centerX - 19 + legKick, baseY - 14);
@@ -336,6 +384,13 @@ export class GameScene extends Phaser.Scene {
     g.lineStyle(19, f.color, 1); g.lineBetween(centerX + 7, hipY, centerX + 18 - legKick, baseY - 16);
     g.lineStyle(14, f.skin, 1); g.lineBetween(centerX + 18 - legKick, baseY - 20, centerX + 28 - legKick, baseY - 9);
     g.fillStyle(f.accent, 1); g.fillRoundedRect(centerX + 14 - legKick, baseY - 14, 36, 14, 5);
+    // Deform only the drawn upper body; the simulation keeps its original hurtboxes.
+    g.save();
+    if (!knockedDown && f.action === 'hit') {
+      g.translateCanvas(centerX + reaction.shoulderX + reaction.shakeX, hipY);
+      g.scaleCanvas(1 + reaction.compression * 0.25, 1 - reaction.compression);
+      g.translateCanvas(-centerX, -hipY);
+    }
     // Torso silhouette, bandana sash, jacket.
     g.fillStyle(f.color, 1); g.fillRoundedRect(centerX + TORSO_LEFT, shoulderY, TORSO_RIGHT - TORSO_LEFT, TORSO_HEIGHT + crouch, 13);
     g.fillStyle(f.accent, 1); g.fillRect(centerX + TORSO_LEFT, shoulderY + 43, TORSO_RIGHT - TORSO_LEFT, 9);
@@ -346,13 +401,20 @@ export class GameScene extends Phaser.Scene {
     // Near arm with a clear extended punch.
     const strike = swing ? getStrikePose(action, centerX, shoulderY, strikeFacing, f.attackStage) : null;
     const armX = strike?.x ?? centerX + facing * 28;
-    const armY = strike?.y ?? shoulderY + 29 + (f.blocking ? -9 : 0);
+    const armY = strike?.y ?? shoulderY + 29 + (renderFighter.blocking ? -9 : 0);
     g.lineStyle(action === 'heavy' && swing ? 21 : 17, f.skin, 1);
     g.lineBetween(centerX + strikeFacing * 18, shoulderY + 9, armX, armY);
     g.fillStyle(f.accent, 1); g.fillCircle(armX, armY, strike?.radius ?? 11);
-    if (f.blocking) {
+    if (renderFighter.blocking) {
       g.lineStyle(8, f.accent, .88); g.lineBetween(centerX + facing * 26, shoulderY + 3, centerX + facing * 52, shoulderY - 22);
       g.lineBetween(centerX + facing * 52, shoulderY - 22, centerX + facing * 53, shoulderY + 10);
+    }
+    g.fillStyle(f.accent, .9); g.fillCircle(centerX - facing * 8, shoulderY + 24, 4);
+    g.save();
+    if (!knockedDown && f.action === 'hit') {
+      g.translateCanvas(centerX + reaction.headX, headY);
+      g.rotateCanvas(reaction.headTilt);
+      g.translateCanvas(-centerX, -headY);
     }
     // Head, original cap silhouette, face and hair.
     g.fillStyle(f.skin, 1); g.fillCircle(centerX + facing * HEAD_OFFSET, headY, HEAD_RADIUS);
@@ -360,16 +422,18 @@ export class GameScene extends Phaser.Scene {
     g.fillStyle(f.accent, 1); g.fillRoundedRect(centerX + facing * 7 - 12, headY - 25, 36, 9, 4);
     g.fillStyle(0x1b2729, 1); g.fillCircle(centerX + facing * 11, headY - 1, 2.4);
     g.lineStyle(2, 0x553a30, 1); g.lineBetween(centerX + facing * 7, headY + 10, centerX + facing * 15, headY + 10);
-    // Character-specific jacket marks, making the procedural silhouettes legible.
-    g.fillStyle(f.accent, .9); g.fillCircle(centerX - facing * 8, shoulderY + 24, 4);
+
     if (swing) {
       g.lineStyle(3, f.accent, .32); g.strokeCircle(armX, armY, action === 'heavy' ? 22 : 17);
     }
-    if (f.action === 'hit') {
+    if (!knockedDown && f.action === 'hit') {
       g.fillStyle(0xffe4a8, 0.7); g.fillCircle(centerX - facing * 4, headY - 2, 25);
     }
     // Tiny artist-painted identifier above the cap.
     g.fillStyle(f.accent, 1); g.fillTriangle(centerX - 7, headY - 37, centerX + 7, headY - 37, centerX, headY - 47);
+    g.restore(); // Head recoil.
+    g.restore(); // Upper-body compression.
+    g.restore(); // Knockdown transform.
   }
 
   shutdown() {

@@ -62,3 +62,21 @@ test('ground impact happens at tick 45, rebounds briefly, and holds a flat resti
   assert.deepEqual(fall(117), fall(400));
   assert.equal(fall(117).impact, 0);
 });
+
+test('heavy body recoil emphasizes the torso with minimal head tilt', () => {
+  const body = getHitReactionPose(hit({ kind: 'heavy', region: 'body' }));
+  const head = getHitReactionPose(hit({ kind: 'heavy' }));
+  assert.ok(body.shoulderX > head.shoulderX);
+  assert.ok(body.compression >= 0.3);
+  assert.ok(Math.abs(body.headTilt) <= 0.05);
+  assert.ok(body.headTilt < head.headTilt / 4);
+});
+
+test('Upper Box snaps the head and staggers the feet without changing the knockdown curve', () => {
+  const slap = getHitReactionPose(hit({ kind: 'upper', age: 1 }));
+  const punch = getHitReactionPose(hit({ kind: 'head', age: 1 }));
+  assert.ok(slap.headTilt > punch.headTilt);
+  assert.notEqual(slap.stumble, 0);
+  assert.equal(punch.stumble, 0);
+  assert.deepEqual(getHitReactionPose(hit({ kind: 'upper', age: 17 })), getHitReactionPose(null));
+});

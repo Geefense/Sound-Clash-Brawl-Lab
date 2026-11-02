@@ -7,7 +7,9 @@ export type FighterInput = {
   jump: boolean;
   block: boolean;
   light: boolean;
-  heavy: boolean;
+  heavy: boolean; // Heavy body shot (L); retained for existing input clients.
+  head?: boolean;
+  upper?: boolean;
 };
 
 export type FighterState = {
@@ -23,7 +25,7 @@ export type FighterState = {
   vy: number;
   grounded: boolean;
   blocking: boolean;
-  action: 'idle' | 'light' | 'heavy' | 'hit' | 'block';
+  action: 'idle' | AttackKind | 'hit' | 'block' | 'down';
   actionTime: number;
   cooldown: number;
   stun: number;
@@ -40,6 +42,9 @@ export type FighterState = {
   comboFeedback: string;
   comboFeedbackTime: number;
   walkAroundCooldown: number;
+  threePieceStep: 0 | 1 | 2;
+  threePieceWindow: number;
+  knockdown: { ticks: number; x: number; y: number; direction: number } | null;
 };
 
 export type GameState = {
@@ -55,6 +60,7 @@ export type GameState = {
   playerWins: number;
   rivalWins: number;
   transitionTimer: number;
+  threePieceKO: boolean;
   roundEndReason: 'ko' | 'timeout' | null;
   ko: { ticks: number; player: { x: number; y: number; direction: number }; rival: { x: number; y: number; direction: number } } | null;
   // Deterministic random seed state
@@ -64,6 +70,7 @@ export type GameState = {
 };
 
 export type GameEvent =
+  | { type: 'three-piece'; fighter: 'player' | 'rival'; ko: boolean }
   | { type: 'sound'; kind: 'hit' | 'block' | 'jump' | 'round' | 'ko' }
   | { type: 'spark'; x: number; y: number; color: number; count: number }
   | { type: 'shake'; duration: number; intensity: number; speed: number }

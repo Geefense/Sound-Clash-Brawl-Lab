@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { getHitReactionPose, getKnockdownPose, type HitReaction } from './visualReactions';
 import { GAME_HEIGHT, GAME_WIDTH, type MatchSnapshot, type TouchAction } from './types';
-import { getStrikePose } from './combatRules';
+import { getStrikePose, isAttackAction } from './combatRules';
 import { type GameState, type FighterState, type FighterInput, FIXED_TIMESTEP } from './simulation/types';
 import { simulateTick, IMPACT_FREEZE_TICKS, KNOCKDOWN_TICKS, FLOOR, TORSO_LEFT, TORSO_RIGHT, TORSO_HEIGHT, HEAD_OFFSET, HEAD_RADIUS } from './simulation/SimulationEngine';
 
@@ -64,6 +64,8 @@ export class GameScene extends Phaser.Scene {
       arrowDown: Phaser.Input.Keyboard.KeyCodes.DOWN,
       light: Phaser.Input.Keyboard.KeyCodes.J,
       heavy: Phaser.Input.Keyboard.KeyCodes.K,
+      body: Phaser.Input.Keyboard.KeyCodes.L,
+      upper: Phaser.Input.Keyboard.KeyCodes.I,
     }) as Record<string, Phaser.Input.Keyboard.Key>;
     this.input.keyboard!.addCapture([
       Phaser.Input.Keyboard.KeyCodes.LEFT, Phaser.Input.Keyboard.KeyCodes.RIGHT,
@@ -83,6 +85,7 @@ export class GameScene extends Phaser.Scene {
       attackElapsed: 0, hitRegistered: false, attackFacing: facing, attackStage: 'jab1',
       comboStep: 0, comboWindow: 0, bufferedAttack: null, comboHits: 0,
       comboFeedback: '', comboFeedbackTime: 0, walkAroundCooldown: 0,
+      threePieceStep: 0, threePieceWindow: 0, knockdown: null,
     };
   }
 
@@ -97,6 +100,7 @@ export class GameScene extends Phaser.Scene {
       matchWinner: null,
       roundWinner: null,
       roundEndReason: null,
+      threePieceKO: false,
       ko: null,
       round: 1,
       playerWins: 0,
@@ -214,7 +218,9 @@ export class GameScene extends Phaser.Scene {
       jump: Phaser.Input.Keyboard.JustDown(this.keys.up) || Phaser.Input.Keyboard.JustDown(this.keys.arrowUp) || this.touchJust('jump'),
       block: keyDown('down') || keyDown('arrowDown') || this.touch.has('block'),
       light: Phaser.Input.Keyboard.JustDown(this.keys.light) || this.touchJust('light'),
-      heavy: Phaser.Input.Keyboard.JustDown(this.keys.heavy) || this.touchJust('heavy'),
+      head: Phaser.Input.Keyboard.JustDown(this.keys.heavy) || this.touchJust('heavy'),
+      heavy: Phaser.Input.Keyboard.JustDown(this.keys.body) || this.touchJust('body'),
+      upper: Phaser.Input.Keyboard.JustDown(this.keys.upper) || this.touchJust('upper'),
     };
 
     // In Phase 1, CPU is processed inline in the pure function, so we pass empty input for rival.
@@ -233,7 +239,7 @@ export class GameScene extends Phaser.Scene {
         for (const id of ['player', 'rival'] as const) {
           const fighter = this.state[id];
           if (fighter.health > 0) continue;
-          const fall = getKnockdownPose(this.state.ko!.ticks, IMPACT_FREEZE_TICKS, KNOCKDOWN_TICKS, -fighter.facing, this.reactions[id]?.kind === 'heavy');
+          const fall = getKnockdownPose(this.state.ko!.ticks, IMPACT_FREEZE_TICKS, KNOCKDOWN_TICKS, -fighter.facing, this.reactions[id]?.kind !== 'light');
           this.burst(fighter.x + fall.x - fighter.facing * 65, FLOOR, 0xc9b38c, 24);
         }
         this.cameras.main.shake(130, 0.007);
@@ -287,6 +293,7 @@ export class GameScene extends Phaser.Scene {
       matchWinner: this.state?.matchWinner ?? null,
       roundWinner: this.state?.roundWinner ?? null,
       roundEndReason: this.state?.roundEndReason ?? null,
+      threePieceKO: this.state?.threePieceKO ?? false,
       round: this.state?.round ?? 1,
       playerWins: this.state?.playerWins ?? 0,
       rivalWins: this.state?.rivalWins ?? 0,
@@ -350,8 +357,9 @@ export class GameScene extends Phaser.Scene {
     const id = f === this.state.player ? 'player' : 'rival';
     const hit = this.reactions[id];
     const reaction = getHitReactionPose(hit);
-    const knockedDown = f.health <= 0 && this.state.ko !== null && this.state.status !== 'impact-freeze';
-    const fall = getKnockdownPose(this.state.ko?.ticks ?? 0, IMPACT_FREEZE_TICKS, KNOCKDOWN_TICKS, -f.facing, hit?.kind === 'heavy');
+    const knockedDown = !!f.knockdown || (f.health <= 0 && this.state.ko !== null && this.state.status !== 'impact-freeze');
+    const downTicks = f.knockdown ? f.knockdown.ticks + IMPACT_FREEZE_TICKS : this.state.ko?.ticks ?? 0;
+    const fall = getKnockdownPose(downTicks, IMPACT_FREEZE_TICKS, KNOCKDOWN_TICKS, f.knockdown?.direction ?? -f.facing, hit?.kind !== 'light');
     if (knockedDown) {
       g.fillStyle(0x14292c, 0.35);
       g.fillEllipse(f.x + fall.x - f.facing * 65 * fall.progress, FLOOR + 9, 89 + 90 * fall.progress, 20);
@@ -370,12 +378,12 @@ export class GameScene extends Phaser.Scene {
     const { baseY, moving, bob, crouch, hipY, shoulderY, headY } = this.getFighterPose(renderFighter);
     const centerX = f.x;
     const action = renderFighter.action;
-    const swing = action === 'light' || action === 'heavy';
+    const swing = isAttackAction(action);
     const facing = f.facing;
     const strikeFacing = swing ? f.attackFacing : facing;
     // Ground shadow and planted shoes.
     if (!knockedDown) { g.fillStyle(0x14292c, 0.35); g.fillEllipse(centerX, FLOOR + 9, f.grounded ? 89 : 60, 20); }
-    const legKick = moving ? Math.sin(f.anim) * 13 : 0;
+    const legKick = moving ? Math.sin(f.anim) * 13 : f.action === 'hit' && !knockedDown ? reaction.stumble : 0;
     // Back leg and sneaker.
     g.lineStyle(17, f.color, 1); g.lineBetween(centerX - 7, hipY, centerX - 19 + legKick, baseY - 14);
     g.lineStyle(13, f.skin, 1); g.lineBetween(centerX - 19 + legKick, baseY - 19, centerX - 32 + legKick, baseY - 8);
@@ -399,17 +407,48 @@ export class GameScene extends Phaser.Scene {
     g.lineStyle(16, f.skin, 1); g.lineBetween(centerX - facing * 19, shoulderY + 10, centerX - facing * 37, shoulderY + 34);
     g.fillStyle(f.accent, 1); g.fillCircle(centerX - facing * 38, shoulderY + 36, 10);
     // Near arm with a clear extended punch.
-    const strike = swing ? getStrikePose(action, centerX, shoulderY, strikeFacing, f.attackStage) : null;
+    const strike = swing ? getStrikePose(action, centerX, shoulderY, strikeFacing, f.attackStage, f.attackElapsed) : null;
     const armX = strike?.x ?? centerX + facing * 28;
     const armY = strike?.y ?? shoulderY + 29 + (renderFighter.blocking ? -9 : 0);
-    g.lineStyle(action === 'heavy' && swing ? 21 : 17, f.skin, 1);
-    g.lineBetween(centerX + strikeFacing * 18, shoulderY + 9, armX, armY);
-    g.fillStyle(f.accent, 1); g.fillCircle(armX, armY, strike?.radius ?? 11);
+    g.lineStyle(swing && action !== 'light' ? 21 : 17, f.skin, 1);
+    if (action === 'light') {
+      // A bent guard opens into a straight arm; the fist uses the collision pose above.
+      const shoulderX = centerX + strikeFacing * 18;
+      const shoulderArmY = shoulderY + 9;
+      const peak = getStrikePose('light', centerX, shoulderY, strikeFacing, f.attackStage);
+      const extension = Math.max(0, Math.min(1, (armY - (shoulderY + 29)) / (peak.y - (shoulderY + 29))));
+      const elbowX = (shoulderX + armX) / 2 - strikeFacing * 8 * (1 - extension);
+      const elbowY = (shoulderArmY + armY) / 2 + 17 * (1 - extension);
+      g.lineBetween(shoulderX, shoulderArmY, elbowX, elbowY);
+      g.fillStyle(f.skin, 1); g.fillCircle(elbowX, elbowY, 8.5);
+      g.lineBetween(elbowX, elbowY, armX, armY);
+    } else {
+      g.lineBetween(centerX + strikeFacing * 18, shoulderY + 9, armX, armY);
+    }
+    g.fillStyle(f.accent, 1);
+    if (action === 'upper') {
+      // An open palm and four extended fingers sweep upward, rather than a fist uppercut.
+      const elapsed = Math.min(1, f.attackElapsed / 0.24);
+      g.save();
+      g.translateCanvas(armX, armY);
+      g.rotateCanvas(strikeFacing * (-0.8 + elapsed * 1.3));
+      g.fillStyle(f.skin, 1); g.fillRoundedRect(-10, -7, 20, 16, 5);
+      g.lineStyle(4, f.skin, 1);
+      for (let finger = 0; finger < 4; finger++) g.lineBetween(-7 + finger * 5, -5, -8 + finger * 5, -19 - (finger === 1 || finger === 2 ? 3 : 0));
+      g.lineBetween(8, 3, 16, -3);
+      g.fillStyle(f.accent, 1); g.fillRect(-9, 7, 18, 5);
+      g.restore();
+    } else g.fillCircle(armX, armY, strike?.radius ?? 11);
     if (renderFighter.blocking) {
       g.lineStyle(8, f.accent, .88); g.lineBetween(centerX + facing * 26, shoulderY + 3, centerX + facing * 52, shoulderY - 22);
       g.lineBetween(centerX + facing * 52, shoulderY - 22, centerX + facing * 53, shoulderY + 10);
     }
     g.fillStyle(f.accent, .9); g.fillCircle(centerX - facing * 8, shoulderY + 24, 4);
+    // Keep the body flash inside the torso's compression transform, outside head recoil.
+    if (!knockedDown && f.action === 'hit' && hit?.region === 'body') {
+      g.fillStyle(0xffe4a8, 0.65);
+      g.fillEllipse(centerX, shoulderY + 32, 44, 38);
+    }
     g.save();
     if (!knockedDown && f.action === 'hit') {
       g.translateCanvas(centerX + reaction.headX, headY);
@@ -424,9 +463,9 @@ export class GameScene extends Phaser.Scene {
     g.lineStyle(2, 0x553a30, 1); g.lineBetween(centerX + facing * 7, headY + 10, centerX + facing * 15, headY + 10);
 
     if (swing) {
-      g.lineStyle(3, f.accent, .32); g.strokeCircle(armX, armY, action === 'heavy' ? 22 : 17);
+      g.lineStyle(3, f.accent, .32); g.strokeCircle(armX, armY, action !== 'light' ? 22 : 17);
     }
-    if (!knockedDown && f.action === 'hit') {
+    if (!knockedDown && f.action === 'hit' && hit?.region === 'head') {
       g.fillStyle(0xffe4a8, 0.7); g.fillCircle(centerX - facing * 4, headY - 2, 25);
     }
     // Tiny artist-painted identifier above the cap.

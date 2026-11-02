@@ -1,5 +1,5 @@
-export type AttackKind = 'light' | 'heavy';
-export type AttackStage = 'jab1' | 'jab2' | 'power';
+export type AttackKind = 'light' | 'heavy' | 'head' | 'upper';
+export type AttackStage = 'jab1' | 'jab2' | 'power' | 'head' | 'upper';
 export type Winner = 'player' | 'rival' | 'draw';
 export type ComboStep = 0 | 1 | 2;
 
@@ -36,9 +36,11 @@ const ATTACK_PROFILES: Record<AttackStage, {
   reach: number;
   yOffset: number;
 }> = {
-  jab1: { start: 0.08, end: 0.21, duration: 0.29, reach: 62 * 0.72, yOffset: 2 },
-  jab2: { start: 0.06, end: 0.18, duration: 0.25, reach: 49, yOffset: -4 },
-  power: { start: 0.16, end: 0.34, duration: 0.48, reach: 83, yOffset: 8 },
+  jab1: { start: 0.08, end: 0.21, duration: 0.29, reach: 62 * 0.72 * 1.12, yOffset: 2 },
+  jab2: { start: 0.06, end: 0.18, duration: 0.25, reach: 49 * 1.12, yOffset: -4 },
+  head: { start: 0.16, end: 0.34, duration: 0.48, reach: 83, yOffset: -24 },
+  upper: { start: 0.12, end: 0.24, duration: 0.4, reach: 80, yOffset: -30 },
+  power: { start: 0.16, end: 0.34, duration: 0.48, reach: 83, yOffset: 32 },
 };
 
 export const COMBO_WINDOW_SECONDS = 0.72;
@@ -51,7 +53,7 @@ export function isComboFollowup(
 ): boolean {
   if (!windowOpen) return false;
   return (comboStep === 1 && kind === 'light') ||
-    (comboStep === 2 && kind === 'heavy');
+    (comboStep === 2 && (kind === 'heavy' || kind === 'head'));
 }
 
 export function canBufferComboInput(
@@ -71,6 +73,7 @@ export function getAttackStage(
   chained: boolean,
 ): AttackStage {
   if (chained && comboStep === 1 && kind === 'light') return 'jab2';
+  if (kind === 'head' || kind === 'upper') return kind;
   if (kind === 'heavy') return 'power';
   return 'jab1';
 }
@@ -90,9 +93,32 @@ export function getStrikePose(
   centerX: number,
   shoulderY: number,
   facing: number,
-  stage: AttackStage = kind === 'heavy' ? 'power' : 'jab1',
+  stage: AttackStage = kind === 'head' || kind === 'upper' ? kind : kind === 'heavy' ? 'power' : 'jab1',
+  attackElapsed?: number,
 ): StrikePose {
   const profile = ATTACK_PROFILES[stage];
+  if (kind === 'upper') {
+    const elapsed = attackElapsed ?? 0.18;
+    const rise = clamp(elapsed / 0.24, 0, 1);
+    const retract = clamp((elapsed - 0.24) / 0.1, 0, 1);
+    return {
+      x: centerX + facing * (28 + (profile.reach - 28) * Math.min(1, rise * 2) * (1 - retract)),
+      y: shoulderY + (30 - 80 * rise) * (1 - retract) + 29 * retract,
+      radius: 13,
+    };
+  }
+  if (kind === 'light' && attackElapsed !== undefined) {
+    // Snap outward early, keep the exact existing reach through every active frame,
+    // then pull back to guard in three ticks without shortening recovery/buffering.
+    const extension = attackElapsed < profile.start
+      ? 1 - Math.pow(1 - clamp(attackElapsed / profile.start, 0, 1), 3)
+      : 1 - clamp((attackElapsed - profile.end) / 0.05, 0, 1);
+    return {
+      x: centerX + facing * (24 + (profile.reach - 24) * extension),
+      y: shoulderY + 29 + (profile.yOffset - 29) * extension,
+      radius: 13,
+    };
+  }
   return {
     x: centerX + facing * profile.reach,
     y: shoulderY + profile.yOffset,
@@ -166,11 +192,15 @@ export function isBlockingHit(attackerX: number, defender: BlockingState): boole
 }
 
 export function attackDamage(kind: AttackKind, blocked: boolean): number {
-  if (kind === 'heavy') return blocked ? 4 : 15;
+  if (kind !== 'light') return blocked ? 4 : 15;
   return blocked ? 2 : 8;
 }
 
 export function decideWinner(playerHealth: number, rivalHealth: number): Winner {
   if (playerHealth === rivalHealth) return 'draw';
   return playerHealth > rivalHealth ? 'player' : 'rival';
+}
+
+export function isAttackAction(action: string): action is AttackKind {
+  return action === 'light' || action === 'heavy' || action === 'head' || action === 'upper';
 }

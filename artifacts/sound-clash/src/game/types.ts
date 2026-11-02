@@ -7,6 +7,7 @@ export type MatchSnapshot = {
   status: MatchStatus;
   winner: 'player' | 'rival' | 'draw' | null;
   matchWinner: 'player' | 'rival' | 'draw' | null;
+  threePieceKO: boolean;
   roundEndReason: 'ko' | 'timeout' | null;
   roundWinner: 'player' | 'rival' | 'draw' | null;
   round: number;
@@ -14,7 +15,7 @@ export type MatchSnapshot = {
   rivalWins: number;
 };
 
-export type TouchAction = 'left' | 'right' | 'jump' | 'block' | 'light' | 'heavy';
+export type TouchAction = 'left' | 'right' | 'jump' | 'block' | 'light' | 'heavy' | 'body' | 'upper';
 
 export const GAME_WIDTH = 1280;
 export const GAME_HEIGHT = 720;

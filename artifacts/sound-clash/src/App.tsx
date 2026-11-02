@@ -13,6 +13,7 @@ const initialSnapshot: MatchSnapshot = {
   matchWinner: null,
   roundWinner: null,
   roundEndReason: null,
+  threePieceKO: false,
   round: 1,
   playerWins: 0,
   rivalWins: 0,
@@ -150,7 +151,7 @@ function Home() {
             )}
             {(snapshot.status === 'round-transition' || snapshot.status === 'ko-announcement') && (
               <div className="overlay-screen">
-                <h2 className="overlay-title ko-text">{snapshot.status === 'ko-announcement' ? 'KO!' : snapshot.roundEndReason === 'timeout' ? 'TIME!' : 'ROUND OVER'}</h2>
+                <h2 className="overlay-title ko-text">{snapshot.status === 'ko-announcement' ? (snapshot.threePieceKO ? 'HIM DUN!' : 'KO!') : snapshot.roundEndReason === 'timeout' ? 'TIME!' : 'ROUND OVER'}</h2>
                 <div className="overlay-subtitle">
                   {snapshot.roundWinner === 'player' ? 'SIDEWINDER WINS' : snapshot.roundWinner === 'rival' ? 'BASSLINE WINS' : 'DRAW'}
                 </div>
@@ -192,12 +193,14 @@ function Home() {
               <div className="control-group"><span className="keycap">W</span><span className="control-text">Jump</span></div>
               <div className="control-group"><span className="keycap">S</span><span className="control-text">Block</span></div>
               <div className="control-group"><span className="keycap">J</span><span className="control-text">Jab</span></div>
-              <div className="control-group"><span className="keycap">K</span><span className="control-text">Heavy</span></div>
+              <div className="control-group"><span className="keycap">K</span><span className="control-text">Heavy head</span></div>
+              <div className="control-group"><span className="keycap">L</span><span className="control-text">Body shot</span></div>
+              <div className="control-group"><span className="keycap">I</span><span className="control-text">Upper Box</span></div>
             </div>
           </div>
           <div className="match-note">
             <strong>Catch the beat, then close the gap.</strong>
-            Hold block to brace. Heavy hits land harder, but leave a longer opening.
+            Land J → L → I unblocked for the Three Piece. Hold S to block.
           </div>
         </section>
 
@@ -210,7 +213,9 @@ function Home() {
           </div>
           <div className="touch-cluster">
             <TouchButton label="Jab" action="light" onAction={touchAction} actionButton />
-            <TouchButton label="Heavy" action="heavy" onAction={touchAction} actionButton />
+            <TouchButton label="Head" action="heavy" onAction={touchAction} actionButton />
+            <TouchButton label="Body" action="body" onAction={touchAction} actionButton />
+            <TouchButton label="Upper Box" action="upper" onAction={touchAction} actionButton />
           </div>
         </div>
       </div>

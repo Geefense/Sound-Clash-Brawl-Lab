@@ -1,42 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { simulateTick, IMPACT_FREEZE_TICKS, KNOCKDOWN_TICKS, KO_ANNOUNCEMENT_TICKS } from '../src/game/simulation/SimulationEngine.ts';
+import { createMatchState } from '../src/game/simulation/initialState.ts';
 
 const emptyInput = { left: false, right: false, jump: false, block: false, light: false, heavy: false };
 
-const createInitialState = () => ({
-  player: {
-    x: 378, y: 0, health: 100, facing: 1, color: 0, accent: 0, skin: 0, name: 'P1',
-    vx: 0, vy: 0, grounded: true, blocking: false, action: 'idle', actionTime: 0,
-    cooldown: 0, stun: 0, aiWait: 0, anim: 0, attackElapsed: 0, hitRegistered: false,
-    attackFacing: 1, attackStage: 'jab1', comboStep: 0, comboWindow: 0, bufferedAttack: null,
-    comboHits: 0, comboFeedback: '', comboFeedbackTime: 0, walkAroundCooldown: 0,
-    threePieceStep: 0, threePieceWindow: 0, knockdown: null
-  },
-  rival: {
-    x: 902, y: 0, health: 100, facing: -1, color: 0, accent: 0, skin: 0, name: 'P2',
-    vx: 0, vy: 0, grounded: true, blocking: false, action: 'idle', actionTime: 0,
-    cooldown: 0, stun: 0, aiWait: 0.5, anim: 0, attackElapsed: 0, hitRegistered: false,
-    attackFacing: -1, attackStage: 'jab1', comboStep: 0, comboWindow: 0, bufferedAttack: null,
-    comboHits: 0, comboFeedback: '', comboFeedbackTime: 0, walkAroundCooldown: 0,
-    threePieceStep: 0, threePieceWindow: 0, knockdown: null
-  },
-  timeLeft: 90,
-  elapsed: 0,
-  status: 'playing',
-  winner: null,
-  matchWinner: null,
-  roundWinner: null,
-  roundEndReason: null,
-  threePieceKO: false,
-  ko: null,
-  round: 1,
-  playerWins: 0,
-  rivalWins: 0,
-  transitionTimer: 0,
-  rngState: 123456789,
-  events: []
-});
+const createInitialState = () => {
+  // One definition of a fresh match lives in the engine; the tests reuse it.
+  const state = createMatchState(123456789);
+  state.status = 'playing';
+  state.transitionTimer = 0;
+  return state;
+};
 
 test('simulateTick updates position based on input', () => {
   const state = createInitialState();
@@ -406,12 +381,19 @@ test('animated first and buffered second jab both land once with unchanged damag
   state.rival.aiWait = 100;
   const stages = [];
   let hitSounds = 0;
-  for (let tick = 0; tick < 40; tick++) {
-    state = simulateTick(state, { ...emptyInput, light: tick === 0 || tick === 10 }, emptyInput);
+  let secondQueued = false;
+  for (let tick = 0; tick < 70; tick++) {
+    const input = { ...emptyInput, light: tick === 0 };
+    if (!secondQueued && state.player.attackStage === 'jab1' && state.player.attackElapsed >= 0.15) {
+      input.light = true;
+      secondQueued = true;
+    }
+    state = simulateTick(state, input, emptyInput);
     for (const event of state.events) {
       if (event.type === 'attack-stage' && event.fighter === 'player') stages.push(event.stage);
       if (event.type === 'sound' && event.kind === 'hit') hitSounds++;
     }
+    if (hitSounds === 2) break;
   }
   assert.deepEqual(stages, ['jab1', 'jab2']);
   assert.equal(hitSounds, 2);
@@ -464,17 +446,17 @@ test('connected J-L-I launches a living opponent without KO or scoring, in eithe
     assert.deepEqual(events.filter(e => e.type === 'attack-stage').map(e => e.stage), ['jab1', 'power', 'upper']);
     assert.deepEqual(events.filter(e => e.type === 'three-piece'), [{ type: 'three-piece', fighter: 'player', ko: false }]);
     assert.equal(state.rival.knockdown.direction, direction);
-    const airborne = advance(state, 18);
+    const airborne = advance(state, state.hitstop + 18);
     assert.ok(airborne.rival.y < -70);
     assert.equal(airborne.rival.grounded, false);
     assert.ok((airborne.rival.x - state.rival.x) * direction > 0);
-    const landed = advance(state, 36);
+    const landed = advance(state, state.hitstop + 36);
     assert.equal(landed.rival.y, 0);
     assert.equal(landed.rival.grounded, true);
     assert.equal(landed.rival.action, 'down');
     assert.equal(landed.events.filter(e => e.type === 'shake').length, 1);
-    assert.equal(advance(state, 37).events.filter(e => e.type === 'shake').length, 0);
-    const recovered = advance(state, 48);
+    assert.equal(advance(state, state.hitstop + 37).events.filter(e => e.type === 'shake').length, 0);
+    const recovered = advance(state, state.hitstop + 48);
     assert.equal(recovered.rival.knockdown, null);
     assert.equal(recovered.rival.action, 'idle');
     assert.equal(recovered.rival.health, 62);
@@ -533,7 +515,7 @@ test('lethal Three Piece announces HIM DUN only after real KO, preserving all KO
   assert.equal(advance(final, 117).matchWinner, 'player');
   const reset = advance(impact, 298);
   assert.equal(reset.threePieceKO, false);
-  assert.equal(reset.player.threePieceStep, 0);
+  assert.equal(reset.player.comboStep, 0);
   assert.equal(reset.rival.knockdown, null);
 });
 
@@ -543,14 +525,18 @@ test('misses, wrong intervening attacks, and expired windows cannot produce a Th
     state.player.x = 500;
     state.rival.x = 580;
     state.rival.aiWait = 100;
-    state.player.threePieceStep = 2;
-    state.player.threePieceWindow = failure === 'expired' ? 0.001 : 0.72;
+    state.player.comboChain = 'three-piece';
+    state.player.comboStep = 2;
+    state.player.comboHits = 2;
+    // A closed window means the chain cannot be extended when the input arrives.
+    state.player.comboWindow = failure === 'expired' ? 0 : 0.72;
     if (failure === 'miss') state.rival.x = 850;
     const input = failure === 'wrong' ? { ...emptyInput, head: true } : { ...emptyInput, upper: true };
     if (failure === 'interrupted') {
       state.player.action = 'hit';
       state.player.actionTime = state.player.stun = 0.3;
-      state.player.threePieceStep = 0;
+      state.player.comboStep = 0;
+      state.player.comboChain = null;
     }
     let next = simulateTick(state, input, emptyInput);
     let launch = false;
@@ -604,13 +590,15 @@ test('an actual incoming hit interrupts Three Piece confirmation', () => {
   const state = createInitialState();
   state.player.x = 500;
   state.rival.x = 580;
-  state.player.threePieceStep = 2;
-  state.player.threePieceWindow = 0.72;
+  state.player.comboChain = 'three-piece';
+  state.player.comboStep = 2;
+  state.player.comboWindow = 0.72;
+  state.player.comboHits = 2;
   Object.assign(state.rival, { action: 'heavy', attackStage: 'power', attackFacing: -1, attackElapsed: 0.17, actionTime: 0.3, aiWait: 100 });
   const next = simulateTick(state, emptyInput, emptyInput);
   assert.equal(next.player.health, 85);
-  assert.equal(next.player.threePieceStep, 0);
-  assert.equal(next.player.threePieceWindow, 0);
+  assert.equal(next.player.comboStep, 0);
+  assert.equal(next.player.comboChain, null);
   assert.equal(next.player.action, 'hit');
 });
 

@@ -1,30 +1,107 @@
 import Phaser from 'phaser';
-import { getHitReactionPose, getKnockdownPose, type HitReaction } from './visualReactions';
-import { GAME_HEIGHT, GAME_WIDTH, type MatchSnapshot, type TouchAction } from './types';
-import { getStrikePose, isAttackAction } from './combatRules';
-import { type GameState, type FighterState, type FighterInput, FIXED_TIMESTEP } from './simulation/types';
-import { simulateTick, IMPACT_FREEZE_TICKS, KNOCKDOWN_TICKS, FLOOR, TORSO_LEFT, TORSO_RIGHT, TORSO_HEIGHT, HEAD_OFFSET, HEAD_RADIUS } from './simulation/SimulationEngine';
+import { getHitReactionPose } from './visualReactions.ts';
+import { getKnockdownPose } from './fighterGeometry.ts';
+import { GAME_HEIGHT, GAME_WIDTH, type MatchSnapshot, type TouchAction } from './types.ts';
+import { getStrikePose, isAttackAction } from './combatRules.ts';
+import {
+  FIXED_TIMESTEP,
+  type FighterInput,
+  type FighterState,
+  type GameState,
+} from './simulation/types.ts';
+import { IMPACT_FREEZE_TICKS, KNOCKDOWN_TICKS, simulateTick } from './simulation/SimulationEngine.ts';
+import { createMatchState } from './simulation/initialState.ts';
+import {
+  FLOOR,
+  HEAD_OFFSET,
+  HEAD_RADIUS,
+  TORSO_HEIGHT,
+  TORSO_LEFT,
+  TORSO_RIGHT,
+  getFighterPose,
+} from './fighterGeometry.ts';
+import { InputBuffer, NEUTRAL_DEVICE_INPUT, type DeviceAction } from './input/InputBuffer.ts';
+import type { InputFrame } from './simulation/replay.ts';
+
+/** Maximum catch-up ticks per rendered frame; prevents input bursts on stalls. */
+const MAX_STEPS_PER_FRAME = 5;
+
+/** Keyboard keys that are held rather than tapped. */
+const HELD_KEYS: ReadonlyArray<readonly [string, DeviceAction]> = [
+  ['left', 'left'],
+  ['arrowLeft', 'left'],
+  ['right', 'right'],
+  ['arrowRight', 'right'],
+  ['down', 'block'],
+  ['arrowDown', 'block'],
+];
+
+/** Keyboard keys that produce exactly one press. */
+const PRESS_KEYS: ReadonlyArray<readonly [string, DeviceAction]> = [
+  ['up', 'jump'],
+  ['arrowUp', 'jump'],
+  ['light', 'light'],
+  // K is the backhand BOX to the head.
+  ['heavy', 'head'],
+  // L is the TUMP body shot.
+  ['body', 'heavy'],
+  ['upper', 'upper'],
+];
+
+/**
+ * The touch layer's historical labels are translated once, here:
+ * touch "heavy" is the head BOX and touch "body" is the TUMP body shot.
+ */
+const TOUCH_ACTIONS: Record<TouchAction, DeviceAction> = {
+  left: 'left',
+  right: 'right',
+  jump: 'jump',
+  block: 'block',
+  light: 'light',
+  heavy: 'head',
+  body: 'heavy',
+  upper: 'upper',
+};
+
+const NEUTRAL_INPUT: FighterInput = NEUTRAL_DEVICE_INPUT;
+
+/** Deterministic spark RNG, deliberately separate from the combat RNG. */
+let sparkSeed = 0x9e3779b9;
+function nextSparkRandom(): number {
+  sparkSeed = (sparkSeed + 0x6d2b79f5) >>> 0;
+  let t = sparkSeed;
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
 
 export class GameScene extends Phaser.Scene {
   private onSnapshot: (snapshot: MatchSnapshot) => void;
   private state!: GameState;
   private accumulator = 0;
-  private reactions: Record<'player' | 'rival', HitReaction | null> = { player: null, rival: null };
   private graphics!: Phaser.GameObjects.Graphics;
   private background!: Phaser.GameObjects.Graphics;
   private playerComboLabel!: Phaser.GameObjects.Text;
   private rivalComboLabel!: Phaser.GameObjects.Text;
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
-  private touch = new Set<TouchAction>();
+  private inputBuffer = new InputBuffer();
   private publishElapsed = 0;
-  private shakeTimer = 0;
   private sparks: { x: number; y: number; vx: number; vy: number; life: number; color: number }[] = [];
+  private seed = 0;
+  private inputLog: InputFrame[] = [];
+
   private touchHandler = (event: Event) => {
     const detail = (event as CustomEvent<{ action: TouchAction; pressed: boolean }>).detail;
-    if (detail.pressed) this.touch.add(detail.action);
-    else this.touch.delete(detail.action);
+    const device = TOUCH_ACTIONS[detail.action];
+    if (!device) return;
+    if (detail.pressed) this.inputBuffer.press(device);
+    else this.inputBuffer.release(device);
   };
   private restartHandler = () => this.resetMatch();
+  private visibilityHandler = () => {
+    // Never fast-forward through a hidden tab.
+    this.accumulator = 0;
+  };
 
   constructor(onSnapshot: (snapshot: MatchSnapshot) => void) {
     super('SoundClashArena');
@@ -68,57 +145,35 @@ export class GameScene extends Phaser.Scene {
       upper: Phaser.Input.Keyboard.KeyCodes.I,
     }) as Record<string, Phaser.Input.Keyboard.Key>;
     this.input.keyboard!.addCapture([
-      Phaser.Input.Keyboard.KeyCodes.LEFT, Phaser.Input.Keyboard.KeyCodes.RIGHT,
-      Phaser.Input.Keyboard.KeyCodes.UP, Phaser.Input.Keyboard.KeyCodes.DOWN,
+      Phaser.Input.Keyboard.KeyCodes.LEFT,
+      Phaser.Input.Keyboard.KeyCodes.RIGHT,
+      Phaser.Input.Keyboard.KeyCodes.UP,
+      Phaser.Input.Keyboard.KeyCodes.DOWN,
       Phaser.Input.Keyboard.KeyCodes.SPACE,
     ]);
     window.addEventListener('sound-clash:touch', this.touchHandler);
     window.addEventListener('sound-clash:restart', this.restartHandler);
+    document.addEventListener('visibilitychange', this.visibilityHandler);
     this.resetMatch();
   }
 
-  private makeFighter(x: number, color: number, accent: number, skin: number, name: string, facing: number): FighterState {
-    return {
-      x, y: 0, health: 100, facing, color, accent, skin, name, vx: 0, vy: 0,
-      grounded: true, blocking: false, action: 'idle', actionTime: 0, cooldown: 0,
-      stun: 0, aiWait: 0.5, anim: 0,
-      attackElapsed: 0, hitRegistered: false, attackFacing: facing, attackStage: 'jab1',
-      comboStep: 0, comboWindow: 0, bufferedAttack: null, comboHits: 0,
-      comboFeedback: '', comboFeedbackTime: 0, walkAroundCooldown: 0,
-      threePieceStep: 0, threePieceWindow: 0, knockdown: null,
-    };
-  }
-
   private resetMatch() {
-    this.state = {
-      player: this.makeFighter(378, 0x247c72, 0xf0c64c, 0x9d6545, 'SIDEWINDER', 1),
-      rival: this.makeFighter(902, 0xd75f3e, 0xedd9b5, 0x754936, 'BASSLINE', -1),
-      timeLeft: 90,
-      elapsed: 0,
-      status: 'pre-round',
-      winner: null,
-      matchWinner: null,
-      roundWinner: null,
-      roundEndReason: null,
-      threePieceKO: false,
-      ko: null,
-      round: 1,
-      playerWins: 0,
-      rivalWins: 0,
-      transitionTimer: 2,
-      rngState: Date.now() >>> 0, // Unsigned 32-bit int seed
-      events: []
-    };
+    this.seed = Date.now() >>> 0;
+    this.state = createMatchState(this.seed);
     this.accumulator = 0;
-    this.reactions = { player: null, rival: null };
     this.publishElapsed = 0;
     this.sparks = [];
-    this.shakeTimer = 0;
-    this.touch.clear();
-    this.touchFrame.clear();
+    sparkSeed = 0x9e3779b9;
+    this.inputBuffer.clear();
+    this.inputLog = [];
     this.playerComboLabel?.setVisible(false);
     this.rivalComboLabel?.setVisible(false);
     this.publish();
+  }
+
+  /** Deterministic input log for a future replay/network layer. */
+  getReplay(): { seed: number; frames: InputFrame[] } {
+    return { seed: this.seed, frames: this.inputLog.map(frame => ({ ...frame })) };
   }
 
   private drawArena() {
@@ -185,17 +240,20 @@ export class GameScene extends Phaser.Scene {
 
   update(_time: number, delta: number) {
     if (!this.graphics || !this.state) return;
-    const dt = Math.min(delta / 1000, 0.25); // Cap to 250ms to prevent spiral of death
+    const dt = Math.min(delta / 1000, 0.25);
 
+    this.sampleDevices();
     this.accumulator += dt;
 
+    let steps = 0;
     while (this.accumulator >= FIXED_TIMESTEP) {
+      if (steps >= MAX_STEPS_PER_FRAME) {
+        this.accumulator = 0;
+        break;
+      }
       this.tick();
       this.accumulator -= FIXED_TIMESTEP;
-    }
-
-    if (this.shakeTimer > 0) {
-      this.shakeTimer -= dt;
+      steps += 1;
     }
 
     // Publish state to UI occasionally
@@ -209,38 +267,46 @@ export class GameScene extends Phaser.Scene {
     this.updateSparks(dt);
   }
 
+  /** Read devices once per rendered frame, never once per simulation tick. */
+  private sampleDevices() {
+    // Two keys can map to one action (A/Left): any key still down keeps it held.
+    const held = new Map<DeviceAction, boolean>();
+    for (const [key, action] of HELD_KEYS) {
+      const phaserKey = this.keys[key];
+      if (!phaserKey) continue;
+      if (phaserKey.isDown) held.set(action, true);
+      else if (!held.has(action)) held.set(action, false);
+    }
+    for (const [action, pressed] of held) this.inputBuffer.setHeld(action, pressed);
+    for (const [key, action] of PRESS_KEYS) {
+      const phaserKey = this.keys[key];
+      if (phaserKey && Phaser.Input.Keyboard.JustDown(phaserKey)) this.inputBuffer.press(action);
+    }
+  }
+
   private tick() {
-    const keyDown = (key: string) => this.keys[key]?.isDown ?? false;
-
-    const playerInput: FighterInput = {
-      left: keyDown('left') || keyDown('arrowLeft') || this.touch.has('left'),
-      right: keyDown('right') || keyDown('arrowRight') || this.touch.has('right'),
-      jump: Phaser.Input.Keyboard.JustDown(this.keys.up) || Phaser.Input.Keyboard.JustDown(this.keys.arrowUp) || this.touchJust('jump'),
-      block: keyDown('down') || keyDown('arrowDown') || this.touch.has('block'),
-      light: Phaser.Input.Keyboard.JustDown(this.keys.light) || this.touchJust('light'),
-      head: Phaser.Input.Keyboard.JustDown(this.keys.heavy) || this.touchJust('heavy'),
-      heavy: Phaser.Input.Keyboard.JustDown(this.keys.body) || this.touchJust('body'),
-      upper: Phaser.Input.Keyboard.JustDown(this.keys.upper) || this.touchJust('upper'),
-    };
-
-    // In Phase 1, CPU is processed inline in the pure function, so we pass empty input for rival.
-    const rivalInput: FighterInput = { left: false, right: false, jump: false, block: false, light: false, heavy: false };
+    const playerInput = this.inputBuffer.sample();
+    this.inputLog.push({ player: { ...playerInput }, rival: { ...NEUTRAL_INPUT } });
+    if (this.inputLog.length > 60 * 60 * 3) this.inputLog.shift();
 
     const previousStatus = this.state.status;
-    // Reaction ages advance with simulation ticks and hold the impact pose during hitstop.
-    if (previousStatus === 'playing') {
-      for (const reaction of Object.values(this.reactions)) if (reaction) reaction.age++;
-    }
-    this.state = simulateTick(this.state, playerInput, rivalInput);
+    this.state = simulateTick(this.state, playerInput, NEUTRAL_INPUT);
+
     if (previousStatus !== this.state.status) {
       this.publish();
-      if (this.state.status === 'pre-round') this.reactions = { player: null, rival: null };
-      if (this.state.status === 'ko-announcement') {
+      if (this.state.status === 'ko-announcement' && this.state.ko) {
         for (const id of ['player', 'rival'] as const) {
           const fighter = this.state[id];
           if (fighter.health > 0) continue;
-          const fall = getKnockdownPose(this.state.ko!.ticks, IMPACT_FREEZE_TICKS, KNOCKDOWN_TICKS, -fighter.facing, this.reactions[id]?.kind !== 'light');
-          this.burst(fighter.x + fall.x - fighter.facing * 65, FLOOR, 0xc9b38c, 24);
+          const start = this.state.ko[id];
+          const fall = getKnockdownPose(
+            this.state.ko.ticks,
+            IMPACT_FREEZE_TICKS,
+            KNOCKDOWN_TICKS,
+            start.direction,
+            start.heavy,
+          );
+          this.burst(start.x + fall.x, FLOOR, 0xc9b38c, 24);
         }
         this.cameras.main.shake(130, 0.007);
         this.soundPing('hit');
@@ -252,9 +318,6 @@ export class GameScene extends Phaser.Scene {
   private handleSimulationEvents() {
     for (const event of this.state.events) {
       switch (event.type) {
-        case 'hit-reaction':
-          this.reactions[event.fighter] = { kind: event.kind, region: event.region, direction: event.direction, age: 0 };
-          break;
         case 'sound':
           this.soundPing(event.kind);
           break;
@@ -262,25 +325,12 @@ export class GameScene extends Phaser.Scene {
           this.burst(event.x, event.y, event.color, event.count);
           break;
         case 'shake':
-          this.shakeTimer = event.duration;
           this.cameras.main.shake(event.intensity, event.speed);
           break;
-        case 'attack-stage':
-          window.dispatchEvent(new CustomEvent('sound-clash:attack-stage', {
-            detail: { fighter: event.fighter, kind: event.kind, stage: event.stage },
-          }));
+        default:
           break;
       }
     }
-  }
-
-  private touchFrame = new Set<TouchAction>();
-  private touchJust(action: TouchAction) {
-    const now = this.touch.has(action);
-    const was = this.touchFrame.has(action);
-    if (now && !was) { this.touchFrame.add(action); return true; }
-    if (!now) this.touchFrame.delete(action);
-    return false;
   }
 
   private publish() {
@@ -306,9 +356,16 @@ export class GameScene extends Phaser.Scene {
 
   private burst(x: number, y: number, color: number, count: number) {
     for (let i = 0; i < count; i++) {
-      const angle = (Math.PI * 2 * i) / count + Math.random() * 0.25;
-      const speed = 60 + Math.random() * 250;
-      this.sparks.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: .18 + Math.random() * .28, color });
+      const angle = (Math.PI * 2 * i) / count + nextSparkRandom() * 0.25;
+      const speed = 60 + nextSparkRandom() * 250;
+      this.sparks.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 0.18 + nextSparkRandom() * 0.28,
+        color,
+      });
     }
   }
 
@@ -336,46 +393,48 @@ export class GameScene extends Phaser.Scene {
       label.setVisible(false);
       return;
     }
-    const pose = this.getFighterPose(f);
+    const pose = getFighterPose(f);
     label.setText(f.comboFeedback);
     label.setPosition(f.x, pose.headY - 39);
     label.setAlpha(Math.min(1, f.comboFeedbackTime * 3));
     label.setVisible(true);
   }
 
-  private getFighterPose(f: FighterState) {
-    const baseY = FLOOR + 2 + f.y;
-    const moving = Math.abs(f.vx) > 8 && f.grounded;
-    const bob = f.grounded ? Math.sin(f.anim) * (moving ? 5 : 2) : 0;
-    const crouch = f.blocking ? 19 : 0;
-    const hipY = baseY - 68 - crouch + bob;
-    const shoulderY = hipY - 42;
-    return { baseY, moving, bob, crouch, hipY, shoulderY, headY: shoulderY - 30 };
-  }
-
   private drawFighter(g: Phaser.GameObjects.Graphics, f: FighterState) {
     const id = f === this.state.player ? 'player' : 'rival';
-    const hit = this.reactions[id];
-    const reaction = getHitReactionPose(hit);
-    const knockedDown = !!f.knockdown || (f.health <= 0 && this.state.ko !== null && this.state.status !== 'impact-freeze');
-    const downTicks = f.knockdown ? f.knockdown.ticks + IMPACT_FREEZE_TICKS : this.state.ko?.ticks ?? 0;
-    const fall = getKnockdownPose(downTicks, IMPACT_FREEZE_TICKS, KNOCKDOWN_TICKS, f.knockdown?.direction ?? -f.facing, hit?.kind !== 'light');
+    const reaction = getHitReactionPose(f.hitReaction);
+    const knockedDown =
+      !!f.knockdown ||
+      (f.health <= 0 && this.state.ko !== null && this.state.status !== 'impact-freeze');
+    // The simulation owns the trajectory; the renderer only asks it for the
+    // rotation and the ground-impact ring so both stay in lockstep.
+    const isKnockdown = !!f.knockdown;
+    const downTicks = isKnockdown ? f.knockdown!.ticks : (this.state.ko?.ticks ?? 0);
+    const freezeTicks = isKnockdown ? 0 : IMPACT_FREEZE_TICKS;
+    const direction = f.knockdown?.direction ?? this.state.ko?.[id]?.direction ?? -f.facing;
+    const heavy =
+      f.knockdown?.heavy ?? this.state.ko?.[id]?.heavy ?? f.hitReaction?.kind !== 'light';
+    const fall = getKnockdownPose(downTicks, freezeTicks, KNOCKDOWN_TICKS, direction, heavy);
+
     if (knockedDown) {
       g.fillStyle(0x14292c, 0.35);
-      g.fillEllipse(f.x + fall.x - f.facing * 65 * fall.progress, FLOOR + 9, 89 + 90 * fall.progress, 20);
+      g.fillEllipse(f.x, FLOOR + 9, 89 + 90 * fall.progress, 20);
       if (fall.impact > 0) {
         g.lineStyle(4 * fall.impact, 0xe4d2a2, fall.impact * 0.65);
-        g.strokeEllipse(f.x + fall.x - f.facing * 65, FLOOR + 5, 160 + (1 - fall.impact) * 110, 20 + (1 - fall.impact) * 20);
+        g.strokeEllipse(f.x, FLOOR + 5, 160 + (1 - fall.impact) * 110, 20 + (1 - fall.impact) * 20);
       }
     }
     g.save();
     if (knockedDown) {
-      g.translateCanvas(f.x + fall.x, FLOOR + 2 + f.y + fall.y);
+      // Position already includes the launch: rotate in place, never re-add it.
+      g.translateCanvas(f.x, FLOOR + 2 + f.y);
       g.rotateCanvas(fall.angle);
       g.translateCanvas(-f.x, -(FLOOR + 2 + f.y));
     }
-    const renderFighter = knockedDown ? { ...f, vx: 0, anim: 0, blocking: false, action: 'idle' as const } : f;
-    const { baseY, moving, bob, crouch, hipY, shoulderY, headY } = this.getFighterPose(renderFighter);
+    const renderFighter = knockedDown
+      ? { ...f, vx: 0, anim: 0, blocking: false, action: 'idle' as const }
+      : f;
+    const { baseY, moving, hipY, shoulderY, headY } = getFighterPose(renderFighter);
     const centerX = f.x;
     const action = renderFighter.action;
     const swing = isAttackAction(action);
@@ -400,13 +459,13 @@ export class GameScene extends Phaser.Scene {
       g.translateCanvas(-centerX, -hipY);
     }
     // Torso silhouette, bandana sash, jacket.
-    g.fillStyle(f.color, 1); g.fillRoundedRect(centerX + TORSO_LEFT, shoulderY, TORSO_RIGHT - TORSO_LEFT, TORSO_HEIGHT + crouch, 13);
+    g.fillStyle(f.color, 1); g.fillRoundedRect(centerX + TORSO_LEFT, shoulderY, TORSO_RIGHT - TORSO_LEFT, TORSO_HEIGHT + (renderFighter.blocking ? 19 : 0), 13);
     g.fillStyle(f.accent, 1); g.fillRect(centerX + TORSO_LEFT, shoulderY + 43, TORSO_RIGHT - TORSO_LEFT, 9);
     g.fillStyle(f.skin, 1); g.fillRect(centerX - 9, shoulderY - 7, 18, 19);
     // Far arm.
     g.lineStyle(16, f.skin, 1); g.lineBetween(centerX - facing * 19, shoulderY + 10, centerX - facing * 37, shoulderY + 34);
     g.fillStyle(f.accent, 1); g.fillCircle(centerX - facing * 38, shoulderY + 36, 10);
-    // Near arm with a clear extended punch.
+    // Near arm with a clear extended punch, using the exact collision pose.
     const strike = swing ? getStrikePose(action, centerX, shoulderY, strikeFacing, f.attackStage, f.attackElapsed) : null;
     const armX = strike?.x ?? centerX + facing * 28;
     const armY = strike?.y ?? shoulderY + 29 + (renderFighter.blocking ? -9 : 0);
@@ -445,7 +504,7 @@ export class GameScene extends Phaser.Scene {
     }
     g.fillStyle(f.accent, .9); g.fillCircle(centerX - facing * 8, shoulderY + 24, 4);
     // Keep the body flash inside the torso's compression transform, outside head recoil.
-    if (!knockedDown && f.action === 'hit' && hit?.region === 'body') {
+    if (!knockedDown && f.action === 'hit' && f.hitReaction?.region === 'body') {
       g.fillStyle(0xffe4a8, 0.65);
       g.fillEllipse(centerX, shoulderY + 32, 44, 38);
     }
@@ -465,7 +524,7 @@ export class GameScene extends Phaser.Scene {
     if (swing) {
       g.lineStyle(3, f.accent, .32); g.strokeCircle(armX, armY, action !== 'light' ? 22 : 17);
     }
-    if (!knockedDown && f.action === 'hit' && hit?.region === 'head') {
+    if (!knockedDown && f.action === 'hit' && f.hitReaction?.region === 'head') {
       g.fillStyle(0xffe4a8, 0.7); g.fillCircle(centerX - facing * 4, headY - 2, 25);
     }
     // Tiny artist-painted identifier above the cap.
@@ -478,7 +537,7 @@ export class GameScene extends Phaser.Scene {
   shutdown() {
     window.removeEventListener('sound-clash:touch', this.touchHandler);
     window.removeEventListener('sound-clash:restart', this.restartHandler);
-    this.touch.clear();
-    this.touchFrame.clear();
+    document.removeEventListener('visibilitychange', this.visibilityHandler);
+    this.inputBuffer.clear();
   }
 }

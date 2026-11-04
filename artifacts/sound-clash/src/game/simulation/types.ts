@@ -1,15 +1,41 @@
-import type { AttackStage, ComboStep, AttackKind, Winner } from '../combatRules';
-import type { MatchStatus } from '../types';
+import type { AttackKind, AttackStage, ComboChainId, ComboStep, Winner } from '../combatConfig.ts';
+import type { MatchStatus } from '../types.ts';
+
+/**
+ * A single hit reaction, owned by the simulation so it advances with the tick
+ * and is part of the deterministic state (previously it lived in the scene and
+ * drifted from the simulation).
+ */
+export type HitReaction = {
+  kind: AttackKind;
+  region: 'head' | 'body';
+  direction: number;
+  age: number;
+  counter?: true;
+};
 
 export type FighterInput = {
   left: boolean;
   right: boolean;
   jump: boolean;
   block: boolean;
+  /** Jab (J). */
   light: boolean;
-  heavy: boolean; // Heavy body shot (L); retained for existing input clients.
+  /** TUMP body shot (L). */
+  heavy: boolean;
+  /** Backhand BOX to the head (K). */
   head?: boolean;
+  /** Upper Box (I). */
   upper?: boolean;
+};
+
+export type KnockdownState = {
+  ticks: number;
+  x: number;
+  y: number;
+  direction: number;
+  /** Whether the launch used the heavy trajectory (also drives the renderer). */
+  heavy: boolean;
 };
 
 export type FighterState = {
@@ -29,23 +55,42 @@ export type FighterState = {
   actionTime: number;
   cooldown: number;
   stun: number;
-  aiWait: number; // Keep for now, maybe move out later if AI runs as an external client
+  /** Kept for AI pacing; ignored for a human-controlled fighter. */
+  aiWait: number;
   anim: number;
   attackElapsed: number;
   hitRegistered: boolean;
   attackFacing: number;
   attackStage: AttackStage;
+  /** Which chain the committed attack belongs to, if any. */
+  comboChain: ComboChainId | null;
   comboStep: ComboStep;
   comboWindow: number;
+  /** Attack press remembered while the fighter cannot act. */
   bufferedAttack: AttackKind | null;
+  bufferedAttackTimer: number;
   comboHits: number;
   comboFeedback: string;
   comboFeedbackTime: number;
   walkAroundCooldown: number;
-  threePieceStep: 0 | 1 | 2;
-  threePieceWindow: number;
-  knockdown: { ticks: number; x: number; y: number; direction: number } | null;
+  knockdown: KnockdownState | null;
+  hitReaction: HitReaction | null;
 };
+
+export type GameEvent =
+  | { type: 'three-piece'; fighter: 'player' | 'rival'; ko: boolean }
+  | { type: 'sound'; kind: 'hit' | 'block' | 'jump' | 'round' | 'ko' }
+  | { type: 'spark'; x: number; y: number; color: number; count: number }
+  | { type: 'shake'; duration: number; intensity: number; speed: number }
+  | {
+      type: 'hit-reaction';
+      fighter: 'player' | 'rival';
+      kind: AttackKind;
+      region: 'head' | 'body';
+      direction: number;
+      counter?: true;
+    }
+  | { type: 'attack-stage'; fighter: 'player' | 'rival'; kind: AttackKind; stage: AttackStage };
 
 export type GameState = {
   player: FighterState;
@@ -62,20 +107,20 @@ export type GameState = {
   transitionTimer: number;
   threePieceKO: boolean;
   roundEndReason: 'ko' | 'timeout' | null;
-  ko: { ticks: number; player: { x: number; y: number; direction: number }; rival: { x: number; y: number; direction: number } } | null;
-  // Deterministic random seed state
+  ko: {
+    ticks: number;
+    player: { x: number; y: number; direction: number; heavy: boolean };
+    rival: { x: number; y: number; direction: number; heavy: boolean };
+  } | null;
+  /** Deterministic random seed state. */
   rngState: number;
-  // Events dispatched during a tick, for rendering/sound (not for gameplay logic)
+  /** Ticks both fighters freeze for after a clean impact. */
+  hitstop: number;
+  /** Who drives the rival: the built-in CPU or an external input client. */
+  rivalControl: 'ai' | 'human';
+  /** Events dispatched during a tick, for rendering/sound (not for gameplay). */
   events: GameEvent[];
 };
-
-export type GameEvent =
-  | { type: 'three-piece'; fighter: 'player' | 'rival'; ko: boolean }
-  | { type: 'sound'; kind: 'hit' | 'block' | 'jump' | 'round' | 'ko' }
-  | { type: 'spark'; x: number; y: number; color: number; count: number }
-  | { type: 'shake'; duration: number; intensity: number; speed: number }
-  | { type: 'hit-reaction'; fighter: 'player' | 'rival'; kind: AttackKind; region: 'head' | 'body'; direction: number }
-  | { type: 'attack-stage'; fighter: 'player' | 'rival'; kind: AttackKind; stage: AttackStage };
 
 export const TICK_RATE = 60;
 export const FIXED_TIMESTEP = 1 / TICK_RATE;

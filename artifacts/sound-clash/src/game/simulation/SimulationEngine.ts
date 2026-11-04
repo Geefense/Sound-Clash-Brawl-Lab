@@ -1,143 +1,266 @@
+/**
+ * Deterministic 60 Hz combat simulation.
+ *
+ * Determinism contract:
+ *  - `simulateTick` is a pure function of (state, playerInput, rivalInput).
+ *  - No wall clock, no Math.random, no DOM. The only randomness is `rngState`.
+ *  - Hits are resolved from pre-hit snapshots and applied in two passes, so the
+ *    result never depends on which fighter is evaluated first and genuine
+ *    trades are possible.
+ */
+import {
+  AI_TUNING,
+  ATTACK_SPECS,
+  COMBO_BUFFER_OPEN_AT,
+  COMBO_FEEDBACK,
+  COMBO_WINDOW_SECONDS,
+  INPUT_BUFFER_SECONDS,
+  KO_SEQUENCE,
+  MATCH_RULES,
+  MOVEMENT,
+} from '../combatConfig.ts';
+import type { AttackKind, AttackStage, ComboChainId } from '../combatConfig.ts';
 import {
   attackDamage,
-  isAttackAction,
-  COMBO_BUFFER_OPEN_AT,
-  canBufferComboInput,
-  COMBO_WINDOW_SECONDS,
   decideWinner,
   findPunchContact,
   getAttackDuration,
   getAttackStage,
-  getComboStepAfterAttack,
+  getChainContinuation,
+  getChainStepAfterStage,
+  getCounterDamage,
+  getHitstun,
+  getHitstopTicks,
+  getReactionTime,
   getStrikePose,
+  isAttackAction,
   isBlockingHit,
-  isComboFollowup
+  isCounterHit,
 } from '../combatRules.ts';
-import type { AttackKind } from '../combatRules.ts';
-import { FIXED_TIMESTEP, type GameState, type FighterState, type FighterInput, type GameEvent } from './types.ts';
+import {
+  FLOOR,
+  LEFT_BOUND,
+  RIGHT_BOUND,
+  getFighterPose,
+  getHurtbox,
+  getKnockdownPose,
+} from '../fighterGeometry.ts';
+import { resetFighterForRound } from './initialState.ts';
+import {
+  FIXED_TIMESTEP,
+  type FighterInput,
+  type FighterState,
+  type GameEvent,
+  type GameState,
+} from './types.ts';
 
-export const IMPACT_FREEZE_TICKS = 9;
-export const KNOCKDOWN_TICKS = 36;
-export const KO_ANNOUNCEMENT_TICKS = 72;
+export const IMPACT_FREEZE_TICKS = KO_SEQUENCE.impactFreezeTicks;
+export const KNOCKDOWN_TICKS = KO_SEQUENCE.knockdownTicks;
+export const KO_ANNOUNCEMENT_TICKS = KO_SEQUENCE.announcementTicks;
 
-// Constants from GameScene.ts
-export const FLOOR = 574;
-export const LEFT_BOUND = 92;
-export const RIGHT_BOUND = 1188;
-export const MIN_FIGHTER_GAP = 76;
-export const RIVAL_ENGAGE_RANGE = 108;
-export const AIR_PASS_CLEARANCE = 52;
-export const WALK_AROUND_RANGE = MIN_FIGHTER_GAP + 8;
-export const WALK_AROUND_JUMP = -570;
-export const TORSO_LEFT = -27;
-export const TORSO_RIGHT = 28;
-export const TORSO_HEIGHT = 65;
-export const HEAD_OFFSET = 3;
-export const HEAD_RADIUS = 22;
+/* --------------------------------------------------------------- cloning */
 
-export function simulateTick(state: GameState, playerInput: FighterInput, rivalInput: FighterInput): GameState {
-  const nextState: GameState = JSON.parse(JSON.stringify(state));
-  nextState.events = [];
+function cloneFighter(fighter: FighterState): FighterState {
+  return {
+    ...fighter,
+    knockdown: fighter.knockdown ? { ...fighter.knockdown } : null,
+    hitReaction: fighter.hitReaction ? { ...fighter.hitReaction } : null,
+  };
+}
 
-  if (nextState.ko && (nextState.status === 'impact-freeze' || nextState.status === 'knockdown' || nextState.status === 'ko-announcement')) {
-    nextState.ko.ticks++;
-    const ticks = nextState.ko.ticks;
-    if (ticks < IMPACT_FREEZE_TICKS) return nextState;
-    if (ticks < IMPACT_FREEZE_TICKS + KNOCKDOWN_TICKS) {
-      nextState.status = 'knockdown';
-    } else {
-      if (nextState.status !== 'ko-announcement') nextState.events.push({ type: 'sound', kind: 'ko' });
-      nextState.status = 'ko-announcement';
-    }
-    const progress = Math.min(1, (ticks - IMPACT_FREEZE_TICKS) / KNOCKDOWN_TICKS);
-    for (const id of ['player', 'rival'] as const) {
-      const fighter = nextState[id];
-      if (fighter.health > 0) continue;
-      const start = nextState.ko[id];
-      fighter.x = Math.max(LEFT_BOUND, Math.min(RIGHT_BOUND, start.x + start.direction * 42 * Math.sin(progress * Math.PI / 2)));
-      fighter.y = progress === 1 ? 0 : start.y * (1 - progress) - Math.sin(progress * Math.PI) * 18;
-      fighter.grounded = progress === 1;
-      fighter.vx = 0;
-      fighter.vy = 0;
-    }
-    if (ticks >= IMPACT_FREEZE_TICKS + KNOCKDOWN_TICKS + KO_ANNOUNCEMENT_TICKS) finishRound(nextState);
-    return nextState;
+/**
+ * Explicit structural copy. Much cheaper than JSON round-tripping at 60 Hz and
+ * it cannot silently drop non-JSON values the way JSON does.
+ */
+export function cloneState(state: GameState): GameState {
+  return {
+    ...state,
+    player: cloneFighter(state.player),
+    rival: cloneFighter(state.rival),
+    ko: state.ko
+      ? { ticks: state.ko.ticks, player: { ...state.ko.player }, rival: { ...state.ko.rival } }
+      : null,
+    events: [],
+  };
+}
+
+/* ------------------------------------------------------------------ tick */
+
+export function simulateTick(
+  state: GameState,
+  playerInput: FighterInput,
+  rivalInput: FighterInput,
+): GameState {
+  const next = cloneState(state);
+
+  if (
+    next.ko &&
+    (next.status === 'impact-freeze' ||
+      next.status === 'knockdown' ||
+      next.status === 'ko-announcement')
+  ) {
+    return tickKoSequence(next);
   }
 
-  if (nextState.status === 'pre-round') {
-    nextState.transitionTimer = Math.max(0, nextState.transitionTimer - FIXED_TIMESTEP);
-    nextState.player.anim += FIXED_TIMESTEP * 2.2;
-    nextState.rival.anim += FIXED_TIMESTEP * 2.2;
-    if (nextState.transitionTimer <= 0) {
-      nextState.status = 'playing';
-      nextState.events.push({ type: 'sound', kind: 'round' }); // Optional, if they have a 'fight' sound
+  if (next.status === 'pre-round') {
+    next.transitionTimer = Math.max(0, next.transitionTimer - FIXED_TIMESTEP);
+    next.player.anim += FIXED_TIMESTEP * 2.2;
+    next.rival.anim += FIXED_TIMESTEP * 2.2;
+    if (next.transitionTimer <= 0) {
+      next.status = 'playing';
+      next.events.push({ type: 'sound', kind: 'round' });
     }
-    return nextState;
+    return next;
   }
 
-  if (nextState.status === 'round-transition') {
-    nextState.transitionTimer = Math.max(0, nextState.transitionTimer - FIXED_TIMESTEP);
-    nextState.player.anim += FIXED_TIMESTEP * 2.2;
-    nextState.rival.anim += FIXED_TIMESTEP * 2.2;
-    if (nextState.transitionTimer <= 0) {
-      resetRoundForNext(nextState);
-    }
-    return nextState;
+  if (next.status === 'round-transition') {
+    next.transitionTimer = Math.max(0, next.transitionTimer - FIXED_TIMESTEP);
+    next.player.anim += FIXED_TIMESTEP * 2.2;
+    next.rival.anim += FIXED_TIMESTEP * 2.2;
+    if (next.transitionTimer <= 0) resetRoundForNext(next);
+    return next;
   }
 
-  if (nextState.status === 'finished') {
-    nextState.player.anim += FIXED_TIMESTEP * 2.2;
-    nextState.rival.anim += FIXED_TIMESTEP * 2.2;
-    return nextState;
+  if (next.status === 'finished') {
+    next.player.anim += FIXED_TIMESTEP * 2.2;
+    next.rival.anim += FIXED_TIMESTEP * 2.2;
+    return next;
   }
 
   // status === 'playing'
-  nextState.elapsed += FIXED_TIMESTEP;
-  nextState.timeLeft = Math.max(0, 90 - Math.floor(nextState.elapsed));
+  if (next.hitstop > 0) {
+    // Deterministic per-hit hitstop: the whole world holds for N ticks.
+    next.hitstop -= 1;
+    // A press during the freeze must not be swallowed: remember it (the buffer
+    // timer does not tick while the world is frozen).
+    rememberFrozenPresses(next.player, playerInput);
+    if (next.rivalControl === 'human') rememberFrozenPresses(next.rival, rivalInput);
+    return next;
+  }
 
-  updatePlayer(nextState.player, nextState.rival, playerInput, nextState.events);
-  updateRival(nextState.rival, nextState.player, nextState);
+  next.elapsed += FIXED_TIMESTEP;
+  next.timeLeft = Math.max(0, MATCH_RULES.roundSeconds - Math.floor(next.elapsed));
 
-  separateFighters(nextState.player, nextState.rival);
-  faceOpponents(nextState.player, nextState.rival);
+  updateFromInput(next.player, next.rival, playerInput, next.events, 'player');
+  if (next.rivalControl === 'human') {
+    updateFromInput(next.rival, next.player, rivalInput, next.events, 'rival');
+  } else {
+    updateRivalAi(next.rival, next.player, next);
+  }
 
-  updateFighterTimers(nextState.player, nextState.events, 'player');
-  updateFighterTimers(nextState.rival, nextState.events, 'rival');
+  separateFighters(next.player, next.rival);
+  faceOpponents(next.player, next.rival);
 
-  resolveCombat(nextState.player, nextState.rival, nextState.events);
+  updateFighterTimers(next.player, next.events, 'player');
+  updateFighterTimers(next.rival, next.events, 'rival');
 
-  if (nextState.player.health <= 0 || nextState.rival.health <= 0 || nextState.timeLeft <= 0) {
-    const roundWinner = decideWinner(nextState.player.health, nextState.rival.health);
-    nextState.roundWinner = roundWinner;
+  resolveCombat(next.player, next.rival, next);
 
-    if (roundWinner === 'player') nextState.playerWins++;
-    if (roundWinner === 'rival') nextState.rivalWins++;
+  if (next.player.health <= 0 || next.rival.health <= 0 || next.timeLeft <= 0) {
+    const roundWinner = decideWinner(next.player.health, next.rival.health);
+    next.roundWinner = roundWinner;
+    if (roundWinner === 'player') next.playerWins++;
+    if (roundWinner === 'rival') next.rivalWins++;
 
-    nextState.roundEndReason = nextState.player.health <= 0 || nextState.rival.health <= 0 ? 'ko' : 'timeout';
-    if (nextState.roundEndReason === 'ko') {
-      nextState.threePieceKO = nextState.events.some(event => event.type === 'three-piece' && event.ko);
-      nextState.status = 'impact-freeze';
-      nextState.ko = {
+    const knockout = next.player.health <= 0 || next.rival.health <= 0;
+    next.roundEndReason = knockout ? 'ko' : 'timeout';
+    if (knockout) {
+      next.threePieceKO = next.events.some(event => event.type === 'three-piece' && event.ko);
+      next.status = 'impact-freeze';
+      next.hitstop = 0;
+      next.ko = {
         ticks: 0,
-        player: { x: nextState.player.x, y: nextState.player.y, direction: -nextState.player.facing },
-        rival: { x: nextState.rival.x, y: nextState.rival.y, direction: -nextState.rival.facing },
+        player: {
+          x: next.player.x,
+          y: next.player.y,
+          direction: -next.player.facing,
+          heavy: finishingBlowWasHeavy(next, 'player'),
+        },
+        rival: {
+          x: next.rival.x,
+          y: next.rival.y,
+          direction: -next.rival.facing,
+          heavy: finishingBlowWasHeavy(next, 'rival'),
+        },
       };
     } else {
-      finishRound(nextState);
+      finishRound(next);
     }
   }
 
-  return nextState;
+  return next;
+}
+
+function finishingBlowWasHeavy(state: GameState, id: 'player' | 'rival'): boolean {
+  for (let i = state.events.length - 1; i >= 0; i--) {
+    const event = state.events[i];
+    if (event.type === 'hit-reaction' && event.fighter === id) return event.kind !== 'light';
+    if (event.type === 'three-piece' && event.fighter === id) return true;
+  }
+  return false;
+}
+
+/* -------------------------------------------------------------- KO phase */
+
+function tickKoSequence(next: GameState): GameState {
+  const ko = next.ko!;
+  ko.ticks += 1;
+  const ticks = ko.ticks;
+
+  if (ticks < IMPACT_FREEZE_TICKS) return next;
+
+  for (const id of ['player', 'rival'] as const) {
+    const fighter = next[id];
+    const start = ko[id];
+    if (fighter.health > 0) {
+      // The survivor settles into an idle stance and keeps breathing instead of
+      // being frozen mid-punch for the entire cinematic.
+      if (fighter.action !== 'idle') {
+        fighter.action = 'idle';
+        fighter.actionTime = 0;
+        fighter.blocking = false;
+      }
+      fighter.anim += FIXED_TIMESTEP * 2.2;
+      moveFighter(fighter);
+      continue;
+    }
+    const pose = getKnockdownPose(
+      ticks,
+      IMPACT_FREEZE_TICKS,
+      KNOCKDOWN_TICKS,
+      start.direction,
+      start.heavy,
+    );
+    fighter.x = clamp(start.x + pose.x, LEFT_BOUND, RIGHT_BOUND);
+    fighter.y = pose.y;
+    fighter.grounded = pose.progress === 1;
+    fighter.vx = 0;
+    fighter.vy = 0;
+    fighter.blocking = false;
+    fighter.action = 'down';
+    fighter.actionTime = 0;
+  }
+
+  if (ticks < IMPACT_FREEZE_TICKS + KNOCKDOWN_TICKS) {
+    next.status = 'knockdown';
+  } else {
+    if (next.status !== 'ko-announcement') next.events.push({ type: 'sound', kind: 'ko' });
+    next.status = 'ko-announcement';
+  }
+
+  if (ticks >= IMPACT_FREEZE_TICKS + KNOCKDOWN_TICKS + KO_ANNOUNCEMENT_TICKS) finishRound(next);
+  return next;
 }
 
 function finishRound(state: GameState) {
-  if (state.playerWins >= 2 || state.rivalWins >= 2) {
+  state.hitstop = 0;
+  if (state.playerWins >= MATCH_RULES.roundsToWin || state.rivalWins >= MATCH_RULES.roundsToWin) {
     state.status = 'finished';
-    state.matchWinner = state.playerWins >= 2 ? 'player' : 'rival';
+    state.matchWinner = state.playerWins >= MATCH_RULES.roundsToWin ? 'player' : 'rival';
     state.winner = state.matchWinner;
   } else {
     state.status = 'round-transition';
-    state.transitionTimer = 3;
+    state.transitionTimer = MATCH_RULES.roundTransitionSeconds;
   }
 }
 
@@ -145,221 +268,329 @@ function resetRoundForNext(state: GameState) {
   state.ko = null;
   state.roundEndReason = null;
   state.threePieceKO = false;
-  for (const fighter of [state.player, state.rival]) {
-    clearThreePiece(fighter);
-    fighter.knockdown = null;
-  }
-  if (state.roundWinner !== 'draw') {
-    state.round++;
-  }
+  state.hitstop = 0;
+  if (state.roundWinner !== 'draw') state.round++;
   state.roundWinner = null;
   state.status = 'pre-round';
-  state.transitionTimer = 1.5;
+  state.transitionTimer = MATCH_RULES.preRoundSeconds;
   state.elapsed = 0;
-  state.timeLeft = 90;
+  state.timeLeft = MATCH_RULES.roundSeconds;
 
-  // reset player
-  state.player.x = 378;
-  state.player.y = 0;
-  state.player.health = 100;
-  state.player.facing = 1;
-  state.player.vx = 0;
-  state.player.vy = 0;
-  state.player.grounded = true;
-  state.player.blocking = false;
-  state.player.action = 'idle';
-  state.player.actionTime = 0;
-  state.player.cooldown = 0;
-  state.player.stun = 0;
-  state.player.anim = 0;
-  state.player.attackElapsed = 0;
-  state.player.hitRegistered = false;
-  state.player.attackFacing = 1;
-  state.player.attackStage = 'jab1';
-  state.player.comboStep = 0;
-  state.player.comboWindow = 0;
-  state.player.bufferedAttack = null;
-  state.player.comboHits = 0;
-  state.player.comboFeedback = '';
-  state.player.comboFeedbackTime = 0;
-  state.player.walkAroundCooldown = 0;
-
-  // reset rival
-  state.rival.x = 902;
-  state.rival.y = 0;
-  state.rival.health = 100;
-  state.rival.facing = -1;
-  state.rival.vx = 0;
-  state.rival.vy = 0;
-  state.rival.grounded = true;
-  state.rival.blocking = false;
-  state.rival.action = 'idle';
-  state.rival.actionTime = 0;
-  state.rival.cooldown = 0;
-  state.rival.stun = 0;
-  state.rival.aiWait = 0.5;
-  state.rival.anim = 0;
-  state.rival.attackElapsed = 0;
-  state.rival.hitRegistered = false;
-  state.rival.attackFacing = -1;
-  state.rival.attackStage = 'jab1';
-  state.rival.comboStep = 0;
-  state.rival.comboWindow = 0;
-  state.rival.bufferedAttack = null;
-  state.rival.comboHits = 0;
-  state.rival.comboFeedback = '';
-  state.rival.comboFeedbackTime = 0;
-  state.rival.walkAroundCooldown = 0;
+  resetFighterForRound(state.player, { x: MATCH_RULES.playerStartX, facing: 1 });
+  resetFighterForRound(state.rival, {
+    x: MATCH_RULES.rivalStartX,
+    facing: -1,
+    aiWait: AI_TUNING.initialWait,
+  });
 }
 
-function updatePlayer(p: FighterState, rival: FighterState, input: FighterInput, events: GameEvent[]) {
-  if (p.knockdown) { updateKnockdown(p, events); return; }
-  const canAct = p.stun <= 0;
-  p.blocking = canAct && input.block && p.grounded;
+/* ----------------------------------------------------------------- input */
+
+function updateFromInput(
+  fighter: FighterState,
+  opponent: FighterState,
+  input: FighterInput,
+  events: GameEvent[],
+  id: 'player' | 'rival',
+) {
+  if (fighter.knockdown) {
+    updateKnockdown(fighter, events);
+    return;
+  }
+  const canAct = fighter.stun <= 0;
+  // Blocking is a committed stance: never during your own attack.
+  fighter.blocking =
+    canAct && !isAttackAction(fighter.action) && input.block && fighter.grounded;
 
   if (canAct) {
-    p.vx = ((input.right ? 1 : 0) - (input.left ? 1 : 0)) * 270;
-    if (p.blocking) p.vx *= 0.38;
+    fighter.vx = ((input.right ? 1 : 0) - (input.left ? 1 : 0)) * MOVEMENT.walkSpeed;
+    if (fighter.blocking) fighter.vx *= MOVEMENT.blockWalkMultiplier;
 
-    if (input.jump && p.grounded) {
-      p.vy = -665;
-      p.grounded = false;
+    if (input.jump && fighter.grounded) {
+      fighter.vy = MOVEMENT.jumpVelocity;
+      fighter.grounded = false;
       events.push({ type: 'sound', kind: 'jump' });
     }
 
-    if (input.light) attack(p, 'light', events, 'player');
-    if (input.heavy) attack(p, 'heavy', events, 'player');
-    if (input.head) attack(p, 'head', events, 'player');
-    if (input.upper) attack(p, 'upper', events, 'player');
-    tryWalkAround(p, rival, events);
+    if (input.light) attack(fighter, 'light', events, id);
+    if (input.heavy) attack(fighter, 'heavy', events, id);
+    if (input.head) attack(fighter, 'head', events, id);
+    if (input.upper) attack(fighter, 'upper', events, id);
+    tryWalkAround(fighter, opponent, events);
   } else {
-    p.vx = 0;
+    fighter.vx = 0;
   }
-  moveFighter(p);
+  moveFighter(fighter);
 }
 
 /**
- * Simple 32-bit PRNG (Mulberry32)
- * Returns a pseudo-random float between 0 and 1, mutating state.rngState.
+ * Simple 32-bit PRNG (Mulberry32). Mutates state.rngState so the entire match
+ * is reproducible from a single seed.
  */
 function nextRandom(state: GameState): number {
-  let t = state.rngState += 0x6D2B79F5;
-  t = Math.imul(t ^ t >>> 15, t | 1);
-  t ^= t + Math.imul(t ^ t >>> 7, t | 61);
-  return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  let t = (state.rngState += 0x6d2b79f5);
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 }
 
-// Very simple AI logic - extracted from GameScene
-function updateRival(e: FighterState, player: FighterState, state: GameState) {
-  if (e.knockdown) { updateKnockdown(e, state.events); return; }
-  const distance = player.x - e.x;
+function updateRivalAi(rival: FighterState, player: FighterState, state: GameState) {
+  if (rival.knockdown) {
+    updateKnockdown(rival, state.events);
+    return;
+  }
+  const distance = player.x - rival.x;
   const distanceToPlayer = Math.abs(distance);
-  const inAttackRange = distanceToPlayer <= RIVAL_ENGAGE_RANGE;
+  const inAttackRange = distanceToPlayer <= AI_TUNING.engageRange;
 
-  e.aiWait = Math.max(0, e.aiWait - FIXED_TIMESTEP);
-  e.blocking = e.action === 'block' && e.actionTime > 0 && e.stun <= 0 && e.grounded;
+  rival.aiWait = Math.max(0, rival.aiWait - FIXED_TIMESTEP);
+  rival.blocking =
+    rival.action === 'block' && rival.actionTime > 0 && rival.stun <= 0 && rival.grounded;
 
-  
-
-  if (e.stun <= 0) {
+  if (rival.stun <= 0) {
     if (!inAttackRange) {
-      e.blocking = false;
-      e.vx = Math.sign(distance) * 145;
+      rival.blocking = false;
+      rival.vx = Math.sign(distance) * AI_TUNING.walkSpeed;
     } else {
-      e.vx = 0;
-      if (!e.blocking && e.aiWait <= 0 && e.cooldown <= 0) {
+      rival.vx = 0;
+      if (!rival.blocking && rival.aiWait <= 0 && rival.cooldown <= 0) {
         const roll = nextRandom(state);
-        if (roll < 0.22 && isAttackAction(player.action) && player.action !== 'light') {
-          e.blocking = true;
-          e.action = 'block';
-          e.actionTime = 0.48;
+        if (
+          roll < AI_TUNING.blockChance &&
+          isAttackAction(player.action) &&
+          player.action !== 'light'
+        ) {
+          rival.blocking = true;
+          rival.action = 'block';
+          rival.actionTime = 0.48;
         } else {
-          attack(e, roll > 0.72 ? 'heavy' : 'light', state.events, 'rival');
+          attack(
+            rival,
+            roll > 1 - AI_TUNING.heavyChance ? 'heavy' : 'light',
+            state.events,
+            'rival',
+          );
         }
-        e.aiWait = 0.55 + nextRandom(state) * 0.45;
+        rival.aiWait = AI_TUNING.waitMin + nextRandom(state) * AI_TUNING.waitJitter;
       }
     }
-    if (distanceToPlayer > 310 && e.grounded && nextRandom(state) < 0.008) {
-      e.vy = -590;
+    if (
+      distanceToPlayer > AI_TUNING.jumpRange &&
+      rival.grounded &&
+      nextRandom(state) < AI_TUNING.jumpChance
+    ) {
+      rival.vy = AI_TUNING.jumpVelocity;
       state.events.push({ type: 'sound', kind: 'jump' });
     }
   } else {
-    e.vx = 0;
+    rival.vx = 0;
   }
-  moveFighter(e);
+  moveFighter(rival);
 }
 
-function updateFighterTimers(f: FighterState, events: GameEvent[], id: 'player' | 'rival') {
-  f.anim += FIXED_TIMESTEP * (Math.abs(f.vx) > 0 ? 8 : 2.2);
-  f.cooldown = Math.max(0, f.cooldown - FIXED_TIMESTEP);
-  f.stun = Math.max(0, f.stun - FIXED_TIMESTEP);
-  f.walkAroundCooldown = Math.max(0, f.walkAroundCooldown - FIXED_TIMESTEP);
-  f.threePieceWindow = Math.max(0, f.threePieceWindow - FIXED_TIMESTEP);
-  if (f.threePieceWindow === 0) clearThreePiece(f);
-  f.comboWindow = Math.max(0, f.comboWindow - FIXED_TIMESTEP);
-  f.comboFeedbackTime = Math.max(0, f.comboFeedbackTime - FIXED_TIMESTEP);
+/* --------------------------------------------------------------- attacks */
 
-  if (f.comboFeedbackTime === 0) f.comboFeedback = '';
+function chainContinuation(fighter: FighterState, kind: AttackKind) {
+  return getChainContinuation(fighter.comboStep, kind, fighter.comboWindow > 0);
+}
 
-  if (f.comboWindow === 0 && f.comboStep !== 0) {
-    f.comboStep = 0;
-    f.comboHits = 0;
-    f.bufferedAttack = null;
+function rememberFrozenPresses(fighter: FighterState, input: FighterInput) {
+  if (input.light) rememberPress(fighter, 'light');
+  if (input.heavy) rememberPress(fighter, 'heavy');
+  if (input.head) rememberPress(fighter, 'head');
+  if (input.upper) rememberPress(fighter, 'upper');
+}
+
+function rememberPress(fighter: FighterState, kind: AttackKind) {
+  if (fighter.bufferedAttack) return;
+  fighter.bufferedAttack = kind;
+  fighter.bufferedAttackTimer = INPUT_BUFFER_SECONDS;
+}
+
+function attack(
+  attacker: FighterState,
+  kind: AttackKind,
+  events: GameEvent[],
+  id: 'player' | 'rival',
+) {
+  if (attacker.knockdown) return;
+
+  if (isAttackAction(attacker.action)) {
+    // Buffering a follow-up is only allowed once the current stage is past its
+    // input lock and the press is a valid chain continuation.
+    const continuation = chainContinuation(attacker, kind);
+    if (continuation && attacker.attackElapsed >= COMBO_BUFFER_OPEN_AT) {
+      rememberPress(attacker, kind);
+    }
+    return;
   }
 
-  if (f.knockdown) return;
-  f.actionTime = Math.max(0, f.actionTime - FIXED_TIMESTEP);
-  if (isAttackAction(f.action)) {
-    f.attackElapsed += FIXED_TIMESTEP;
+  if (
+    attacker.stun > 0 ||
+    attacker.blocking ||
+    (attacker.action === 'hit' && attacker.actionTime > 0)
+  ) {
+    rememberPress(attacker, kind);
+    return;
   }
 
-  if (f.actionTime === 0 && f.action !== 'idle') {
-    const attackFinished = isAttackAction(f.action);
-    if (attackFinished && !f.hitRegistered) { f.comboHits = 0; clearThreePiece(f); }
-    f.action = f.blocking ? 'block' : 'idle';
-    if (attackFinished && f.bufferedAttack) {
-      const nextAttack = f.bufferedAttack;
-      f.bufferedAttack = null;
-      attack(f, nextAttack, events, id);
+  const continuation = chainContinuation(attacker, kind);
+  if (attacker.cooldown > 0 && !continuation) {
+    rememberPress(attacker, kind);
+    return;
+  }
+
+  startAttack(attacker, kind, continuation, events, id);
+}
+
+function startAttack(
+  attacker: FighterState,
+  kind: AttackKind,
+  continuation: ReturnType<typeof chainContinuation>,
+  events: GameEvent[],
+  id: 'player' | 'rival',
+) {
+  const stage = continuation?.stage ?? getAttackStage(0, kind, false);
+  const spec = ATTACK_SPECS[kind];
+
+  attacker.action = kind;
+  attacker.attackStage = stage;
+  attacker.actionTime = getAttackDuration(stage);
+  attacker.cooldown = spec.cooldown;
+  attacker.attackElapsed = 0;
+  attacker.hitRegistered = false;
+  attacker.attackFacing = attacker.facing;
+  attacker.bufferedAttack = null;
+  attacker.bufferedAttackTimer = 0;
+  attacker.comboChain = continuation ? continuation.chain : null;
+  attacker.comboStep = getChainStepAfterStage(stage, attacker.comboChain);
+  attacker.comboWindow = continuation || attacker.comboStep !== 0 ? COMBO_WINDOW_SECONDS : 0;
+  if (!continuation) attacker.comboHits = 0;
+
+  events.push({ type: 'attack-stage', fighter: id, kind, stage });
+}
+
+function consumeBufferedAttack(
+  fighter: FighterState,
+  events: GameEvent[],
+  id: 'player' | 'rival',
+) {
+  const kind = fighter.bufferedAttack;
+  if (!kind || fighter.bufferedAttackTimer <= 0) {
+    fighter.bufferedAttack = null;
+    fighter.bufferedAttackTimer = 0;
+    return;
+  }
+  fighter.bufferedAttack = null;
+  fighter.bufferedAttackTimer = 0;
+  attack(fighter, kind, events, id);
+}
+
+/* --------------------------------------------------------------- timers */
+
+function updateFighterTimers(
+  fighter: FighterState,
+  events: GameEvent[],
+  id: 'player' | 'rival',
+) {
+  fighter.anim += FIXED_TIMESTEP * (Math.abs(fighter.vx) > 0 ? 8 : 2.2);
+  advanceHitReaction(fighter);
+  fighter.cooldown = Math.max(0, fighter.cooldown - FIXED_TIMESTEP);
+  fighter.stun = Math.max(0, fighter.stun - FIXED_TIMESTEP);
+  fighter.walkAroundCooldown = Math.max(0, fighter.walkAroundCooldown - FIXED_TIMESTEP);
+  fighter.comboWindow = Math.max(0, fighter.comboWindow - FIXED_TIMESTEP);
+  fighter.comboFeedbackTime = Math.max(0, fighter.comboFeedbackTime - FIXED_TIMESTEP);
+  fighter.bufferedAttackTimer = Math.max(0, fighter.bufferedAttackTimer - FIXED_TIMESTEP);
+
+  if (fighter.bufferedAttackTimer === 0) fighter.bufferedAttack = null;
+  if (fighter.comboFeedbackTime === 0) fighter.comboFeedback = '';
+  if (fighter.comboWindow === 0 && fighter.comboStep !== 0) clearChain(fighter);
+
+  if (fighter.knockdown) return;
+
+  fighter.actionTime = Math.max(0, fighter.actionTime - FIXED_TIMESTEP);
+  if (isAttackAction(fighter.action)) fighter.attackElapsed += FIXED_TIMESTEP;
+
+  if (fighter.actionTime === 0 && fighter.action !== 'idle') {
+    const attackFinished = isAttackAction(fighter.action);
+    if (attackFinished && !fighter.hitRegistered) fighter.comboHits = 0;
+    fighter.action = fighter.blocking ? 'block' : 'idle';
+    if (attackFinished && fighter.bufferedAttack) {
+      consumeBufferedAttack(fighter, events, id);
     }
   }
 
-  if (f.stun <= 0 && f.action === 'hit') f.action = 'idle';
+  if (fighter.stun <= 0 && fighter.action === 'hit') fighter.action = 'idle';
+
+  // Wake-up / recovery buffer: an attack pressed during hitstun fires as soon
+  // as the fighter can act again, within the buffer window.
+  if (
+    fighter.stun <= 0 &&
+    !fighter.blocking &&
+    !fighter.knockdown &&
+    fighter.action !== 'hit' &&
+    fighter.action !== 'down' &&
+    !isAttackAction(fighter.action) &&
+    fighter.bufferedAttack
+  ) {
+    consumeBufferedAttack(fighter, events, id);
+  }
 }
 
-function moveFighter(f: FighterState) {
-  if (f.stun > 0) f.vx *= Math.exp(-6 * FIXED_TIMESTEP);
-  // Math.max/min to clamp
-  f.x = Math.max(LEFT_BOUND, Math.min(RIGHT_BOUND, f.x + f.vx * FIXED_TIMESTEP));
+function advanceHitReaction(fighter: FighterState) {
+  if (!fighter.hitReaction) return;
+  fighter.hitReaction.age += 1;
+  if (fighter.hitReaction.age >= ATTACK_SPECS[fighter.hitReaction.kind].hitReactionTicks) {
+    fighter.hitReaction = null;
+  }
+}
 
-  if (!f.grounded) {
-    f.vy += 1580 * FIXED_TIMESTEP;
-    f.y += f.vy * FIXED_TIMESTEP;
-    if (f.y >= 0) {
-      f.y = 0;
-      f.vy = 0;
-      f.grounded = true;
+function clearChain(fighter: FighterState) {
+  fighter.comboStep = 0;
+  fighter.comboChain = null;
+  fighter.comboWindow = 0;
+  fighter.comboHits = 0;
+  fighter.bufferedAttack = null;
+  fighter.bufferedAttackTimer = 0;
+}
+
+/* ------------------------------------------------------------ locomotion */
+
+function moveFighter(fighter: FighterState) {
+  if (fighter.stun > 0) fighter.vx *= Math.exp(-6 * FIXED_TIMESTEP);
+  fighter.x = Math.max(
+    LEFT_BOUND,
+    Math.min(RIGHT_BOUND, fighter.x + fighter.vx * FIXED_TIMESTEP),
+  );
+
+  if (!fighter.grounded) {
+    fighter.vy += MOVEMENT.gravity * FIXED_TIMESTEP;
+    fighter.y += fighter.vy * FIXED_TIMESTEP;
+    if (fighter.y >= 0) {
+      fighter.y = 0;
+      fighter.vy = 0;
+      fighter.grounded = true;
     }
   }
 }
 
 function separateFighters(player: FighterState, rival: FighterState) {
   if (player.knockdown || rival.knockdown) return;
-  if (Math.abs(player.y - rival.y) > AIR_PASS_CLEARANCE) return;
+  if (Math.abs(player.y - rival.y) > MOVEMENT.airPassClearance) return;
 
   const gap = Math.abs(rival.x - player.x);
-  if (gap < MIN_FIGHTER_GAP) {
+  if (gap < MOVEMENT.minFighterGap) {
     const midpoint = Math.max(
-      LEFT_BOUND + MIN_FIGHTER_GAP / 2,
-      Math.min(RIGHT_BOUND - MIN_FIGHTER_GAP / 2, (player.x + rival.x) / 2)
+      LEFT_BOUND + MOVEMENT.minFighterGap / 2,
+      Math.min(RIGHT_BOUND - MOVEMENT.minFighterGap / 2, (player.x + rival.x) / 2),
     );
     const relativeDirection =
       Math.sign(rival.x - player.x) ||
       -Math.sign(player.vx - rival.vx) ||
       player.facing ||
       1;
-    player.x = midpoint - relativeDirection * MIN_FIGHTER_GAP / 2;
-    rival.x = midpoint + relativeDirection * MIN_FIGHTER_GAP / 2;
+    player.x = midpoint - (relativeDirection * MOVEMENT.minFighterGap) / 2;
+    rival.x = midpoint + (relativeDirection * MOVEMENT.minFighterGap) / 2;
   }
 }
 
@@ -376,213 +607,280 @@ function tryWalkAround(player: FighterState, rival: FighterState, events: GameEv
 
   if (
     !movingTowardRival ||
-    Math.abs(rival.x - player.x) > WALK_AROUND_RANGE ||
+    Math.abs(rival.x - player.x) > MOVEMENT.minFighterGap + 8 ||
     !player.grounded ||
     player.blocking ||
     player.stun > 0 ||
     player.walkAroundCooldown > 0 ||
     isAttacking
-  ) return;
-
-  player.vy = WALK_AROUND_JUMP;
-  player.grounded = false;
-  player.walkAroundCooldown = 0.9;
-  events.push({ type: 'sound', kind: 'jump' });
-}
-
-function attack(attacker: FighterState, kind: AttackKind, events: GameEvent[], id: 'player' | 'rival') {
-  if (attacker.stun > 0 || attacker.blocking || attacker.knockdown) return;
-  const attackInProgress = isAttackAction(attacker.action);
-
-  if (attackInProgress) {
-    const pieceBuffer = attacker.attackElapsed >= COMBO_BUFFER_OPEN_AT &&
-      attacker.threePieceWindow > 0 && ((kind === 'heavy' && attacker.threePieceStep === 1) ||
-      (kind === 'upper' && (attacker.threePieceStep === 2 || (attacker.threePieceStep === 1 && attacker.action === 'heavy'))));
-    if (!attacker.bufferedAttack && (pieceBuffer || canBufferComboInput(
-      attacker.comboStep,
-      kind,
-      attacker.attackElapsed,
-      attacker.comboWindow,
-    ))) {
-      attacker.bufferedAttack = kind;
-    }
+  ) {
     return;
   }
 
-  if (attacker.action === 'hit' && attacker.actionTime > 0) return;
-
-  const pieceChain = attacker.threePieceWindow > 0 && ((kind === 'heavy' && attacker.threePieceStep === 1) || (kind === 'upper' && attacker.threePieceStep === 2));
-  const chained = pieceChain || isComboFollowup(attacker.comboStep, kind, attacker.comboWindow > 0);
-  if (attacker.cooldown > 0 && !chained) return;
-
-  if (!pieceChain) clearThreePiece(attacker);
-  const stage = getAttackStage(attacker.comboStep, kind, chained);
-  if (!chained) attacker.comboHits = 0;
-
-  attacker.action = kind;
-  attacker.attackStage = stage;
-  attacker.actionTime = getAttackDuration(stage);
-  attacker.cooldown = kind === 'light' ? 0.38 : 0.72;
-  attacker.attackElapsed = 0;
-  attacker.hitRegistered = false;
-  attacker.attackFacing = attacker.facing;
-  attacker.comboStep = getComboStepAfterAttack(stage);
-  attacker.comboWindow = stage === 'power' ? 0 : COMBO_WINDOW_SECONDS;
-
-  events.push({ type: 'attack-stage', fighter: id, kind, stage });
+  player.vy = MOVEMENT.walkAroundJump;
+  player.grounded = false;
+  player.walkAroundCooldown = MOVEMENT.walkAroundCooldown;
+  events.push({ type: 'sound', kind: 'jump' });
 }
 
-function getFighterPose(f: FighterState) {
-  const baseY = FLOOR + 2 + f.y;
-  const moving = Math.abs(f.vx) > 8 && f.grounded;
-  const bob = f.grounded ? Math.sin(f.anim) * (moving ? 5 : 2) : 0;
-  const crouch = f.blocking ? 19 : 0;
-  const hipY = baseY - 68 - crouch + bob;
-  const shoulderY = hipY - 42;
-  return { baseY, moving, bob, crouch, hipY, shoulderY, headY: shoulderY - 30 };
-}
+/* --------------------------------------------------------------- combat */
 
-function resolveCombat(player: FighterState, rival: FighterState, events: GameEvent[]) {
-  const fighters = [player, rival];
+type HitCandidate = {
+  attacker: FighterState;
+  defender: FighterState;
+  impact: { x: number; y: number };
+  region: 'head' | 'body';
+  blocked: boolean;
+  counter: boolean;
+  damage: number;
+  hitstop: number;
+  hitstun: number;
+  reactionTime: number;
+  knockback: number;
+  stage: AttackStage;
+  kind: AttackKind;
+  direction: number;
+  comboHitsBefore: number;
+  comboChainBefore: ComboChainId | null;
+};
 
-  for (const attacker of fighters) {
-    const defender = attacker === player ? rival : player;
-    if (!isAttackAction(attacker.action) || attacker.knockdown || defender.knockdown) continue;
+function buildCandidate(
+  attacker: FighterState,
+  defender: FighterState,
+): HitCandidate | null {
+  if (!isAttackAction(attacker.action) || attacker.knockdown || defender.knockdown) return null;
 
-    const attackerPose = getFighterPose(attacker);
-    const defenderPose = getFighterPose(defender);
+  const attackerPose = getFighterPose(attacker);
+  const defenderPose = getFighterPose(defender);
+  const kind = attacker.action;
 
-    const fist = getStrikePose(
-      attacker.action,
+  const impact = findPunchContact(
+    {
+      centerX: attacker.x,
+      attackFacing: attacker.attackFacing,
+      attackElapsed: attacker.attackElapsed,
+      hitRegistered: attacker.hitRegistered,
+      kind,
+      stage: attacker.attackStage,
+    },
+    getStrikePose(
+      kind,
       attacker.x,
       attackerPose.shoulderY,
       attacker.attackFacing,
       attacker.attackStage,
       attacker.attackElapsed,
-    );
+    ),
+    getHurtbox(defender, defenderPose),
+  );
+  if (!impact) return null;
 
-    const impact = findPunchContact({
-      centerX: attacker.x,
-      attackFacing: attacker.attackFacing,
-      attackElapsed: attacker.attackElapsed,
-      hitRegistered: attacker.hitRegistered,
-      kind: attacker.action,
-      stage: attacker.attackStage,
-    }, fist, {
-      centerX: defender.x,
-      body: {
-        left: defender.x + TORSO_LEFT,
-        right: defender.x + TORSO_RIGHT,
-        top: defenderPose.shoulderY,
-        bottom: defenderPose.shoulderY + TORSO_HEIGHT + (defender.blocking ? 19 : 0),
-      },
-      head: {
-        x: defender.x + defender.facing * HEAD_OFFSET,
-        y: defenderPose.headY,
-        radius: HEAD_RADIUS,
-      },
-    });
+  // Everything below is derived from the pre-hit snapshot, so applying the
+  // candidate can never change what the other candidate sees.
+  const blocked = isBlockingHit(attacker.x, {
+    x: defender.x,
+    facing: defender.facing,
+    blocking: defender.blocking,
+    grounded: defender.grounded,
+    action: defender.action,
+  });
+  const counter = !blocked && isCounterHit(defender);
+  const spec = ATTACK_SPECS[kind];
 
-    if (!impact) continue;
+  return {
+    attacker,
+    defender,
+    impact,
+    region: impact.y < defenderPose.shoulderY ? 'head' : 'body',
+    blocked,
+    counter,
+    damage: blocked
+      ? attackDamage(kind, true)
+      : counter
+        ? getCounterDamage(kind)
+        : attackDamage(kind, false),
+    hitstop: getHitstopTicks(kind, blocked, counter),
+    hitstun: getHitstun(kind, blocked, counter),
+    reactionTime: getReactionTime(kind, blocked, counter),
+    knockback: blocked ? spec.blockedKnockback : spec.knockback,
+    stage: attacker.attackStage,
+    kind,
+    direction: attacker.attackFacing,
+    comboHitsBefore: attacker.comboHits,
+    comboChainBefore: attacker.comboChain,
+  };
+}
 
-    attacker.hitRegistered = true;
-    const blocked = isBlockingHit(attacker.x, {
-      x: defender.x,
-      facing: defender.facing,
-      blocking: defender.blocking,
-      grounded: defender.grounded,
-    });
+/**
+ * Resolve both attacks from pre-hit snapshots in two passes: first every
+ * defender reaction, then every attacker's combo bookkeeping. Because no
+ * candidate reads state written by another, the outcome is independent of
+ * evaluation order and genuine trades are possible.
+ */
+function resolveCombat(player: FighterState, rival: FighterState, state: GameState) {
+  const candidates: HitCandidate[] = [];
+  for (const attacker of [player, rival]) {
+    const defender = attacker === player ? rival : player;
+    const candidate = buildCandidate(attacker, defender);
+    if (candidate) candidates.push(candidate);
+  }
+  if (candidates.length === 0) return;
 
-    const region = impact.y < defenderPose.shoulderY ? 'head' : 'body';
-    const heavyBody = !blocked && attacker.action === 'heavy' && region === 'body';
-    if (!blocked) events.push({
+  const hitThisTick = new Set<FighterState>();
+  for (const candidate of candidates) hitThisTick.add(candidate.defender);
+
+  let hitstop = 0;
+  for (const candidate of candidates) {
+    hitstop = Math.max(hitstop, applyDefenderHit(candidate, state));
+  }
+  for (const candidate of candidates) {
+    applyAttackerEffects(candidate, state, hitThisTick);
+  }
+  state.hitstop = hitstop;
+}
+
+function applyDefenderHit(candidate: HitCandidate, state: GameState): number {
+  const events = state.events;
+  const { attacker, defender, kind } = candidate;
+  const spec = ATTACK_SPECS[kind];
+
+  attacker.hitRegistered = true;
+
+  defender.health = Math.max(0, defender.health - candidate.damage);
+  defender.stun = candidate.hitstun;
+  defender.action = candidate.blocked ? 'block' : 'hit';
+  defender.actionTime = candidate.reactionTime;
+  const knockbackDirection = Math.sign(defender.x - attacker.x) || candidate.direction;
+  defender.vx = knockbackDirection * candidate.knockback;
+  clearChain(defender);
+
+  const defenderId = defender === state.player ? 'player' : 'rival';
+  if (!candidate.blocked) {
+    defender.hitReaction = {
+      kind,
+      region: candidate.region,
+      direction: candidate.direction,
+      age: 0,
+      ...(candidate.counter ? { counter: true as const } : {}),
+    };
+    events.push({
       type: 'hit-reaction',
-      fighter: defender === player ? 'player' : 'rival',
-      kind: attacker.action,
-      region,
-      direction: attacker.attackFacing,
+      fighter: defenderId,
+      kind,
+      region: candidate.region,
+      direction: candidate.direction,
+      ...(candidate.counter ? { counter: true as const } : {}),
     });
+  } else {
+    defender.hitReaction = null;
+  }
 
-    const threePiece = !blocked && attacker.action === 'upper' && attacker.threePieceStep === 2 && attacker.threePieceWindow > 0;
-    if (blocked) clearThreePiece(attacker);
-    else if (attacker.action === 'light' && attacker.attackStage === 'jab1') {
-      attacker.threePieceStep = 1;
-      attacker.threePieceWindow = COMBO_WINDOW_SECONDS;
-    } else if (attacker.action === 'heavy' && attacker.threePieceStep === 1 && attacker.threePieceWindow > 0) {
-      attacker.threePieceStep = 2;
-      attacker.threePieceWindow = COMBO_WINDOW_SECONDS;
-    } else clearThreePiece(attacker);
-    clearThreePiece(defender);
-    const damage = attackDamage(attacker.action, blocked);
-    defender.health = Math.max(0, defender.health - damage);
-    defender.stun = blocked ? 0.12 : attacker.action === 'upper' ? 0.34 : 0.28;
-    defender.action = blocked ? 'block' : 'hit';
-    defender.actionTime = blocked ? 0.16 : attacker.action === 'upper' ? 0.35 : 0.29;
-    const knockback = blocked ? 145 : attacker.action === 'upper' ? 180 : attacker.action !== 'light' ? 420 : 60;
-    defender.vx = Math.sign(defender.x - attacker.x) * knockback;
-    defender.comboStep = 0;
-    defender.comboWindow = 0;
-    defender.bufferedAttack = null;
-    defender.comboHits = 0;
-    defender.comboFeedback = '';
-    defender.comboFeedbackTime = 0;
+  const shake = candidate.blocked ? spec.blockedShake : spec.shake;
+  events.push({
+    type: 'shake',
+    duration: shake.duration,
+    intensity: shake.intensity,
+    speed: shake.speed,
+  });
+  events.push({
+    type: 'spark',
+    x: candidate.impact.x,
+    y: candidate.impact.y,
+    color: candidate.blocked ? 0xf3cf67 : 0xffe7ad,
+    count: candidate.blocked ? spec.blockedSparks : spec.sparks,
+  });
+  events.push({ type: 'sound', kind: candidate.blocked ? 'block' : 'hit' });
 
-    if (blocked) {
+  return candidate.hitstop;
+}
+
+function applyAttackerEffects(
+  candidate: HitCandidate,
+  state: GameState,
+  hitThisTick: ReadonlySet<FighterState>,
+) {
+  const { attacker, defender, stage } = candidate;
+  const threePiece =
+    !candidate.blocked &&
+    candidate.comboChainBefore === 'three-piece' &&
+    stage === 'upper' &&
+    candidate.comboHitsBefore >= 2;
+  const lethal = defender.health <= 0;
+
+  // A fighter who was hit this tick loses the chain they were building; that is
+  // symmetric, so a trade never rewards only one side.
+  if (!hitThisTick.has(attacker)) {
+    if (candidate.blocked) {
       attacker.comboHits = 0;
+      attacker.comboChain = null;
     } else {
-      attacker.comboHits = Math.min(3, attacker.comboHits + 1);
-      if (attacker.comboHits >= 2) {
-        attacker.comboFeedback = attacker.attackStage === 'power'
-          ? `${attacker.comboHits}-HIT FINISH`
-          : `${attacker.comboHits}-HIT COMBO`;
-        attacker.comboFeedbackTime = 0.68;
+      attacker.comboHits = Math.min(3, candidate.comboHitsBefore + 1);
+      if (threePiece) {
+        attacker.comboFeedback = lethal
+          ? COMBO_FEEDBACK.threePieceKO
+          : COMBO_FEEDBACK.threePiece;
+        attacker.comboFeedbackTime = COMBO_FEEDBACK.threePieceDuration;
+      } else if (attacker.comboHits >= 2) {
+        attacker.comboFeedback =
+          stage === 'power'
+            ? COMBO_FEEDBACK.finisher(attacker.comboHits)
+            : COMBO_FEEDBACK.combo(attacker.comboHits);
+        attacker.comboFeedbackTime = COMBO_FEEDBACK.duration;
       }
     }
+  }
 
-    if (threePiece) {
-      attacker.comboFeedback = defender.health <= 0 ? 'HIM DUN!' : 'THREE PIECE!';
-      attacker.comboFeedbackTime = 1.2;
-      events.push({ type: 'three-piece', fighter: attacker === player ? 'player' : 'rival', ko: defender.health <= 0 });
-      if (defender.health > 0) {
-        defender.knockdown = { ticks: 0, x: defender.x, y: defender.y, direction: attacker.attackFacing };
-        defender.action = 'down';
-        defender.blocking = false;
-        defender.grounded = false;
-        defender.vx = 0;
-        defender.vy = 0;
-        defender.bufferedAttack = null;
-      }
+  if (threePiece) {
+    state.events.push({
+      type: 'three-piece',
+      fighter: attacker === state.player ? 'player' : 'rival',
+      ko: lethal,
+    });
+    if (!lethal) {
+      defender.knockdown = {
+        ticks: 0,
+        x: defender.x,
+        y: defender.y,
+        direction: candidate.direction,
+        heavy: true,
+      };
+      defender.action = 'down';
+      defender.grounded = false;
+      defender.blocking = false;
+      defender.vx = 0;
+      defender.vy = 0;
+      clearChain(defender);
     }
-
-    events.push({ type: 'shake', duration: blocked ? 0.07 : heavyBody ? 0.21 : 0.16, intensity: blocked ? 65 : heavyBody ? 160 : 110, speed: blocked ? 0.002 : heavyBody ? 0.006 : 0.004 });
-    events.push({ type: 'spark', x: impact.x, y: impact.y, color: blocked ? 0xf3cf67 : 0xffe7ad, count: blocked ? 8 : heavyBody ? 25 : 15 });
-    events.push({ type: 'sound', kind: blocked ? 'block' : 'hit' });
   }
 }
 
-function clearThreePiece(fighter: FighterState) {
-  fighter.threePieceStep = 0;
-  fighter.threePieceWindow = 0;
-}
+/* ------------------------------------------------------------ knockdown */
 
 function updateKnockdown(fighter: FighterState, events: GameEvent[]) {
   const down = fighter.knockdown!;
-  down.ticks++;
-  const progress = Math.min(1, down.ticks / KNOCKDOWN_TICKS);
-  fighter.x = Math.max(LEFT_BOUND, Math.min(RIGHT_BOUND, down.x + down.direction * 110 * (1 - Math.pow(1 - progress, 2))));
-  fighter.y = progress === 1 ? 0 : down.y * (1 - progress) - 85 * Math.sin(progress * Math.PI);
-  fighter.grounded = progress === 1;
-  fighter.vx = fighter.vy = 0;
+  down.ticks += 1;
+  const pose = getKnockdownPose(down.ticks, 0, KNOCKDOWN_TICKS, down.direction, down.heavy);
+
+  fighter.x = clamp(down.x + pose.x, LEFT_BOUND, RIGHT_BOUND);
+  fighter.y = pose.y;
+  fighter.grounded = pose.progress === 1;
+  fighter.vx = 0;
+  fighter.vy = 0;
   fighter.blocking = false;
   fighter.action = 'down';
   fighter.actionTime = 0;
+
   if (down.ticks === KNOCKDOWN_TICKS) {
     events.push({ type: 'spark', x: fighter.x, y: FLOOR, color: 0xc9b38c, count: 24 });
     events.push({ type: 'shake', duration: 0.13, intensity: 130, speed: 0.007 });
     events.push({ type: 'sound', kind: 'hit' });
   }
-  if (down.ticks >= KNOCKDOWN_TICKS + 12) {
+  if (down.ticks >= KNOCKDOWN_TICKS + KO_SEQUENCE.knockdownRecoveryTicks) {
     fighter.knockdown = null;
     fighter.action = 'idle';
   }
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }

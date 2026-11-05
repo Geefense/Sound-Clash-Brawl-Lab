@@ -280,3 +280,21 @@ button:focus-visible { outline: 3px solid #efbd45; outline-offset: 3px; }
   border-radius: 4px;
   margin-top: 10px;
 }
+
+.champion-banner {
+  display: inline-block;
+  margin: 0 auto 9px;
+  padding: 5px 13px;
+  color: #19343d;
+  background: #f0c64c;
+  border: 2px solid #19343d;
+  box-shadow: 3px 3px 0 #d36b43;
+  font: clamp(16px, 3vw, 22px)/1.05 'Archivo Black', sans-serif;
+  letter-spacing: -.015em;
+  animation: champion-pop .42s cubic-bezier(.2,.9,.2,1) both;
+}
+@keyframes champion-pop {
+  0% { transform: scale(.55) rotate(-4deg); opacity: 0; }
+  60% { transform: scale(1.07) rotate(1.5deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0); opacity: 1; }
+}

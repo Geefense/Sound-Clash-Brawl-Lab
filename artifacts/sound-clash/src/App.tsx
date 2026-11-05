@@ -160,6 +160,9 @@ function Home() {
             {snapshot.status === 'finished' && (
               <div className="result-screen" role="dialog" aria-modal="true" aria-labelledby="result-title">
                 <div className="result-card">
+                  {snapshot.matchWinner !== 'draw' && (
+                    <div className="champion-banner" data-testid="text-champion-sound">CHAMPION SOUND!</div>
+                  )}
                   <span className="result-kicker">The block party verdict</span>
                   <h2 id="result-title" className="result-title">{resultTitle}</h2>
                   <p className="result-detail">{resultDetail}</p>

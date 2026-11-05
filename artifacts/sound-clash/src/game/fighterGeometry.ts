@@ -80,6 +80,8 @@ export type KnockdownPose = {
   angle: number;
   progress: number;
   impact: number;
+  /** 1 on the landing frame, easing to 0; drives the landing squash. */
+  squash: number;
 };
 
 /**
@@ -99,16 +101,21 @@ export function getKnockdownPose(
   const progress = raw >= 1 ? 1 : raw;
   const launch = progress >= 1 ? 0 : Math.sin(Math.PI * progress);
   const impactAge = ticks - freezeTicks - fallTicks;
-  const rebound = impactAge > 0 && impactAge < 7 ? Math.sin((impactAge / 7) * Math.PI) * 7 : 0;
+  const rebound = impactAge > 0 && impactAge < 7 ? Math.sin((impactAge / 7) * Math.PI) * 6 : 0;
   const slide = heavy ? KO_SEQUENCE.knockdownSlide : KO_SEQUENCE.knockdownSlideLight;
   const height = heavy ? KO_SEQUENCE.knockdownLaunch : KO_SEQUENCE.knockdownLaunchLight;
+  // Fly first, then skid: almost no sideways drift while airborne, most of the
+  // distance covered on the floor. That kills the old floating slide.
+  const travel = Math.pow(progress, 2.4);
+  const squash = impactAge >= 0 && impactAge < 8 ? 1 - impactAge / 8 : 0;
   const y = -height * launch - rebound;
   return {
-    x: direction * slide * (1 - Math.pow(1 - progress, 3)),
+    x: direction * slide * travel,
     // Normalise negative zero so a resting body compares equal to 0.
     y: y === 0 ? 0 : y,
     angle: (direction * Math.PI * Math.pow(progress, 0.68)) / 2,
     progress,
     impact: impactAge >= 0 && impactAge < 10 ? 1 - impactAge / 10 : 0,
+    squash,
   };
 }

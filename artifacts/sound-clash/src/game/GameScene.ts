@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { getAttackArmPose, rotatePoint, type SwipeTrail } from './attackAnimation.ts';
 import { getHitReactionPose } from './visualReactions.ts';
 import { getKnockdownPose } from './fighterGeometry.ts';
 import { GAME_HEIGHT, GAME_WIDTH, type MatchSnapshot, type TouchAction } from './types.ts';
@@ -64,6 +65,38 @@ const TOUCH_ACTIONS: Record<TouchAction, DeviceAction> = {
 };
 
 const NEUTRAL_INPUT: FighterInput = NEUTRAL_DEVICE_INPUT;
+
+/** Wrist, palm and four fingers, drawn along the forearm direction. */
+function drawOpenHand(
+  g: Phaser.GameObjects.Graphics,
+  hand: { x: number; y: number },
+  angle: number,
+  skin: number,
+  accent: number,
+) {
+  g.save();
+  g.translateCanvas(hand.x, hand.y);
+  g.rotateCanvas(angle);
+  g.fillStyle(skin, 1);
+  g.fillRoundedRect(-9, -6, 18, 15, 5);
+  g.lineStyle(3.4, skin, 1);
+  for (let finger = 0; finger < 4; finger++) {
+    const x = -6.2 + finger * 4.2;
+    g.lineBetween(x, -4, x - 0.5, -15 - (finger === 1 || finger === 2 ? 2.4 : 0));
+  }
+  g.lineBetween(8, 2, 13.5, -6);
+  g.fillStyle(accent, 1);
+  g.fillRect(-8, 6, 16, 4);
+  g.restore();
+}
+
+/** Motion smear behind a swing; purely decorative. */
+function drawSwipeTrail(g: Phaser.GameObjects.Graphics, trail: SwipeTrail, color: number) {
+  g.lineStyle(6, color, trail.alpha);
+  g.beginPath();
+  g.arc(trail.cx, trail.cy, trail.radius, trail.from, trail.to, trail.anticlockwise);
+  g.strokePath();
+}
 
 /** Deterministic spark RNG, deliberately separate from the combat RNG. */
 let sparkSeed = 0x9e3779b9;
@@ -426,6 +459,12 @@ export class GameScene extends Phaser.Scene {
     }
     g.save();
     if (knockedDown) {
+      if (fall.squash > 0) {
+        // Squash on the landing frame instead of sliding in at full height.
+        g.translateCanvas(f.x, FLOOR + 2);
+        g.scaleCanvas(1 + 0.06 * fall.squash, 1 - 0.12 * fall.squash);
+        g.translateCanvas(-f.x, -(FLOOR + 2));
+      }
       // Position already includes the launch: rotate in place, never re-add it.
       g.translateCanvas(f.x, FLOOR + 2 + f.y);
       g.rotateCanvas(fall.angle);
@@ -434,12 +473,34 @@ export class GameScene extends Phaser.Scene {
     const renderFighter = knockedDown
       ? { ...f, vx: 0, anim: 0, blocking: false, action: 'idle' as const }
       : f;
-    const { baseY, moving, hipY, shoulderY, headY } = getFighterPose(renderFighter);
+    const pose = getFighterPose(renderFighter);
+    // An uppercut pops the defender off the floor by a few pixels, visually only.
+    const lift = knockedDown ? 0 : reaction.lift;
+    const baseY = pose.baseY - lift;
+    const moving = pose.moving;
+    const hipY = pose.hipY - lift;
+    const shoulderY = pose.shoulderY - lift;
+    const headY = pose.headY - lift;
     const centerX = f.x;
     const action = renderFighter.action;
     const swing = isAttackAction(action);
     const facing = f.facing;
     const strikeFacing = swing ? f.attackFacing : facing;
+    // The two hand strikes are posed as real limbs (shoulder -> elbow -> hand)
+    // with one arm length, and the torso coils into the swing.
+    const armPose =
+      !knockedDown && (action === 'head' || action === 'upper')
+        ? getAttackArmPose({
+            action,
+            centerX,
+            shoulderY,
+            hipY,
+            facing: strikeFacing,
+            elapsed: f.attackElapsed,
+            finisher: f.comboChain === 'three-piece' && f.attackStage === 'upper',
+          })
+        : null;
+    const torsoTwist = armPose?.twist ?? (f.action === 'hit' && !knockedDown ? reaction.torsoTwist : 0);
     // Ground shadow and planted shoes.
     if (!knockedDown) { g.fillStyle(0x14292c, 0.35); g.fillEllipse(centerX, FLOOR + 9, f.grounded ? 89 : 60, 20); }
     const legKick = moving ? Math.sin(f.anim) * 13 : f.action === 'hit' && !knockedDown ? reaction.stumble : 0;
@@ -458,6 +519,15 @@ export class GameScene extends Phaser.Scene {
       g.scaleCanvas(1 + reaction.compression * 0.25, 1 - reaction.compression);
       g.translateCanvas(-centerX, -hipY);
     }
+    // Torso, sash and far arm rotate into the swing around the hip. The
+    // striking arm is drawn outside this transform, so the visible hand still
+    // lands exactly on its collision pose.
+    g.save();
+    if (torsoTwist !== 0) {
+      g.translateCanvas(centerX, hipY);
+      g.rotateCanvas(torsoTwist);
+      g.translateCanvas(-centerX, -hipY);
+    }
     // Torso silhouette, bandana sash, jacket.
     g.fillStyle(f.color, 1); g.fillRoundedRect(centerX + TORSO_LEFT, shoulderY, TORSO_RIGHT - TORSO_LEFT, TORSO_HEIGHT + (renderFighter.blocking ? 19 : 0), 13);
     g.fillStyle(f.accent, 1); g.fillRect(centerX + TORSO_LEFT, shoulderY + 43, TORSO_RIGHT - TORSO_LEFT, 9);
@@ -465,39 +535,40 @@ export class GameScene extends Phaser.Scene {
     // Far arm.
     g.lineStyle(16, f.skin, 1); g.lineBetween(centerX - facing * 19, shoulderY + 10, centerX - facing * 37, shoulderY + 34);
     g.fillStyle(f.accent, 1); g.fillCircle(centerX - facing * 38, shoulderY + 36, 10);
-    // Near arm with a clear extended punch, using the exact collision pose.
+    g.restore();
+    // Near arm. The two hand strikes are a real shoulder/elbow/hand chain, so
+    // the slap and the uppercut share one anatomical arm; the fists keep the
+    // straight punch line.
     const strike = swing ? getStrikePose(action, centerX, shoulderY, strikeFacing, f.attackStage, f.attackElapsed) : null;
-    const armX = strike?.x ?? centerX + facing * 28;
-    const armY = strike?.y ?? shoulderY + 29 + (renderFighter.blocking ? -9 : 0);
-    g.lineStyle(swing && action !== 'light' ? 21 : 17, f.skin, 1);
-    if (action === 'light') {
-      // A bent guard opens into a straight arm; the fist uses the collision pose above.
-      const shoulderX = centerX + strikeFacing * 18;
-      const shoulderArmY = shoulderY + 9;
-      const peak = getStrikePose('light', centerX, shoulderY, strikeFacing, f.attackStage);
-      const extension = Math.max(0, Math.min(1, (armY - (shoulderY + 29)) / (peak.y - (shoulderY + 29))));
-      const elbowX = (shoulderX + armX) / 2 - strikeFacing * 8 * (1 - extension);
-      const elbowY = (shoulderArmY + armY) / 2 + 17 * (1 - extension);
-      g.lineBetween(shoulderX, shoulderArmY, elbowX, elbowY);
-      g.fillStyle(f.skin, 1); g.fillCircle(elbowX, elbowY, 8.5);
-      g.lineBetween(elbowX, elbowY, armX, armY);
+    const armX = armPose?.hand.x ?? strike?.x ?? centerX + facing * 28;
+    const armY = armPose?.hand.y ?? strike?.y ?? shoulderY + 29 + (renderFighter.blocking ? -9 : 0);
+    if (armPose) {
+      if (armPose.trail) drawSwipeTrail(g, armPose.trail, f.accent);
+      g.lineStyle(19, f.skin, 1);
+      g.lineBetween(armPose.shoulder.x, armPose.shoulder.y, armPose.elbow.x, armPose.elbow.y);
+      g.lineStyle(16, f.skin, 1);
+      g.lineBetween(armPose.elbow.x, armPose.elbow.y, armPose.hand.x, armPose.hand.y);
+      g.fillStyle(f.skin, 1); g.fillCircle(armPose.elbow.x, armPose.elbow.y, 8.5);
+      drawOpenHand(g, armPose.hand, armPose.handAngle, f.skin, f.accent);
     } else {
-      g.lineBetween(centerX + strikeFacing * 18, shoulderY + 9, armX, armY);
+      g.lineStyle(swing && action !== 'light' ? 21 : 17, f.skin, 1);
+      if (action === 'light') {
+        // A bent guard opens into a straight arm; the fist uses the collision pose above.
+        const shoulderX = centerX + strikeFacing * 18;
+        const shoulderArmY = shoulderY + 9;
+        const peak = getStrikePose('light', centerX, shoulderY, strikeFacing, f.attackStage);
+        const extension = Math.max(0, Math.min(1, (armY - (shoulderY + 29)) / (peak.y - (shoulderY + 29))));
+        const elbowX = (shoulderX + armX) / 2 - strikeFacing * 8 * (1 - extension);
+        const elbowY = (shoulderArmY + armY) / 2 + 17 * (1 - extension);
+        g.lineBetween(shoulderX, shoulderArmY, elbowX, elbowY);
+        g.fillStyle(f.skin, 1); g.fillCircle(elbowX, elbowY, 8.5);
+        g.lineBetween(elbowX, elbowY, armX, armY);
+      } else {
+        g.lineBetween(centerX + strikeFacing * 18, shoulderY + 9, armX, armY);
+      }
+      g.fillStyle(f.accent, 1);
+      g.fillCircle(armX, armY, strike?.radius ?? 11);
     }
-    g.fillStyle(f.accent, 1);
-    if (action === 'upper') {
-      // An open palm and four extended fingers sweep upward, rather than a fist uppercut.
-      const elapsed = Math.min(1, f.attackElapsed / 0.24);
-      g.save();
-      g.translateCanvas(armX, armY);
-      g.rotateCanvas(strikeFacing * (-0.8 + elapsed * 1.3));
-      g.fillStyle(f.skin, 1); g.fillRoundedRect(-10, -7, 20, 16, 5);
-      g.lineStyle(4, f.skin, 1);
-      for (let finger = 0; finger < 4; finger++) g.lineBetween(-7 + finger * 5, -5, -8 + finger * 5, -19 - (finger === 1 || finger === 2 ? 3 : 0));
-      g.lineBetween(8, 3, 16, -3);
-      g.fillStyle(f.accent, 1); g.fillRect(-9, 7, 18, 5);
-      g.restore();
-    } else g.fillCircle(armX, armY, strike?.radius ?? 11);
     if (renderFighter.blocking) {
       g.lineStyle(8, f.accent, .88); g.lineBetween(centerX + facing * 26, shoulderY + 3, centerX + facing * 52, shoulderY - 22);
       g.lineBetween(centerX + facing * 52, shoulderY - 22, centerX + facing * 53, shoulderY + 10);
@@ -508,7 +579,11 @@ export class GameScene extends Phaser.Scene {
       g.fillStyle(0xffe4a8, 0.65);
       g.fillEllipse(centerX, shoulderY + 32, 44, 38);
     }
+    // Keep the head attached to shoulders that are rotating into a swing.
+    const headPivot = { x: centerX + facing * HEAD_OFFSET, y: headY };
+    const headDrift = rotatePoint(headPivot, { x: centerX, y: hipY }, torsoTwist);
     g.save();
+    if (torsoTwist !== 0) g.translateCanvas(headDrift.x - headPivot.x, headDrift.y - headPivot.y);
     if (!knockedDown && f.action === 'hit') {
       g.translateCanvas(centerX + reaction.headX, headY);
       g.rotateCanvas(reaction.headTilt);
@@ -522,7 +597,9 @@ export class GameScene extends Phaser.Scene {
     g.lineStyle(2, 0x553a30, 1); g.lineBetween(centerX + facing * 7, headY + 10, centerX + facing * 15, headY + 10);
 
     if (swing) {
-      g.lineStyle(3, f.accent, .32); g.strokeCircle(armX, armY, action !== 'light' ? 22 : 17);
+      // A heavier BOX reads as a bigger impact ring than a jab.
+      const ring = action === 'upper' ? 26 : action === 'head' ? 24 : action === 'light' ? 17 : 22;
+      g.lineStyle(3, f.accent, .32); g.strokeCircle(armX, armY, ring);
     }
     if (!knockedDown && f.action === 'hit' && f.hitReaction?.region === 'head') {
       g.fillStyle(0xffe4a8, 0.7); g.fillCircle(centerX - facing * 4, headY - 2, 25);

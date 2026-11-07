@@ -1,0 +1,8 @@
+{
+  "type": "character",
+  "characterName": "feedback",
+  "sourceUploadId": "<UPLOAD_ID from POST /api/v1/uploads>",
+  "candidatePromptPreset": "preserve-reference-v1",
+  "direction": "e",
+  "actions": []
+}

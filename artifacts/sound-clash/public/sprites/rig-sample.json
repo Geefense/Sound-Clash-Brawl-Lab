@@ -1,0 +1,268 @@
+{
+  "schema": 1,
+  "kind": "pipeline-sample",
+  "character": "NOT Feedback — placeholder rig from src/game/GameScene.ts",
+  "note": "No Feedback reference artwork exists in this repository. This sheet proves the sprite pipeline, proportions and animation timing only. Do not ship it as Feedback.",
+  "generatedBy": "tools/sprite-lab/generate.mjs",
+  "palette": "sidewinder",
+  "paletteLabel": "Sidewinder (existing in-game palette)",
+  "colors": {
+    "label": "Sidewinder (existing in-game palette)",
+    "jacket": 2391154,
+    "accent": 15779404,
+    "skin": 10315077,
+    "skinShade": 8671802,
+    "shoeBack": 15196105,
+    "sole": 13615523,
+    "hatBrim": 1584434,
+    "hatCrown": 15779404,
+    "hair": 1779497,
+    "detail": 5585456,
+    "eye": 1779497,
+    "flash": 16770216
+  },
+  "scale": 2,
+  "logical": {
+    "width": 220,
+    "height": 200,
+    "groundY": 188
+  },
+  "anchor": {
+    "x": 220,
+    "y": 376
+  },
+  "image": "rig-sample.png",
+  "frameWidth": 440,
+  "frameHeight": 400,
+  "columns": 4,
+  "rows": 4,
+  "soleRow": 375,
+  "clips": [
+    {
+      "name": "idle-skank",
+      "label": "Idle — skanking, one-foot bounce",
+      "frameMs": 130,
+      "loop": true,
+      "frames": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "jab",
+      "label": "Jab — bent elbow, snaps straight",
+      "frameMs": 80,
+      "loop": false,
+      "frames": [
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "name": "tump",
+      "label": "BOOM — body shot (TUMP)",
+      "frameMs": 110,
+      "loop": false,
+      "frames": [
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "name": "box",
+      "label": "BOX — sweeping backhand to the head",
+      "frameMs": 110,
+      "loop": false,
+      "frames": [
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "name": "block",
+      "label": "Block — high guard",
+      "frameMs": 160,
+      "loop": false,
+      "frames": [
+        13
+      ]
+    },
+    {
+      "name": "hit",
+      "label": "Hit reactions",
+      "frameMs": 120,
+      "loop": false,
+      "frames": [
+        14,
+        15
+      ]
+    }
+  ],
+  "frames": [
+    {
+      "index": 0,
+      "clip": "idle-skank",
+      "clipFrame": 0,
+      "pose": "idle",
+      "x": 0,
+      "y": 0,
+      "w": 440,
+      "h": 400
+    },
+    {
+      "index": 1,
+      "clip": "idle-skank",
+      "clipFrame": 1,
+      "pose": "idle",
+      "x": 440,
+      "y": 0,
+      "w": 440,
+      "h": 400
+    },
+    {
+      "index": 2,
+      "clip": "idle-skank",
+      "clipFrame": 2,
+      "pose": "idle",
+      "x": 880,
+      "y": 0,
+      "w": 440,
+      "h": 400
+    },
+    {
+      "index": 3,
+      "clip": "idle-skank",
+      "clipFrame": 3,
+      "pose": "idle",
+      "x": 1320,
+      "y": 0,
+      "w": 440,
+      "h": 400
+    },
+    {
+      "index": 4,
+      "clip": "jab",
+      "clipFrame": 0,
+      "pose": "jab",
+      "x": 0,
+      "y": 400,
+      "w": 440,
+      "h": 400
+    },
+    {
+      "index": 5,
+      "clip": "jab",
+      "clipFrame": 1,
+      "pose": "jab",
+      "x": 440,
+      "y": 400,
+      "w": 440,
+      "h": 400
+    },
+    {
+      "index": 6,
+      "clip": "jab",
+      "clipFrame": 2,
+      "pose": "jab",
+      "x": 880,
+      "y": 400,
+      "w": 440,
+      "h": 400
+    },
+    {
+      "index": 7,
+      "clip": "tump",
+      "clipFrame": 0,
+      "pose": "tump",
+      "x": 1320,
+      "y": 400,
+      "w": 440,
+      "h": 400
+    },
+    {
+      "index": 8,
+      "clip": "tump",
+      "clipFrame": 1,
+      "pose": "tump",
+      "x": 0,
+      "y": 800,
+      "w": 440,
+      "h": 400
+    },
+    {
+      "index": 9,
+      "clip": "tump",
+      "clipFrame": 2,
+      "pose": "tump",
+      "x": 440,
+      "y": 800,
+      "w": 440,
+      "h": 400
+    },
+    {
+      "index": 10,
+      "clip": "box",
+      "clipFrame": 0,
+      "pose": "box",
+      "x": 880,
+      "y": 800,
+      "w": 440,
+      "h": 400
+    },
+    {
+      "index": 11,
+      "clip": "box",
+      "clipFrame": 1,
+      "pose": "box",
+      "x": 1320,
+      "y": 800,
+      "w": 440,
+      "h": 400
+    },
+    {
+      "index": 12,
+      "clip": "box",
+      "clipFrame": 2,
+      "pose": "box",
+      "x": 0,
+      "y": 1200,
+      "w": 440,
+      "h": 400
+    },
+    {
+      "index": 13,
+      "clip": "block",
+      "clipFrame": 0,
+      "pose": "block",
+      "x": 440,
+      "y": 1200,
+      "w": 440,
+      "h": 400
+    },
+    {
+      "index": 14,
+      "clip": "hit",
+      "clipFrame": 0,
+      "pose": "hit",
+      "x": 880,
+      "y": 1200,
+      "w": 440,
+      "h": 400
+    },
+    {
+      "index": 15,
+      "clip": "hit",
+      "clipFrame": 1,
+      "pose": "hit",
+      "x": 1320,
+      "y": 1200,
+      "w": 440,
+      "h": 400
+    }
+  ]
+}

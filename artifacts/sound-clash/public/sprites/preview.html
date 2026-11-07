@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sound Clash — sprite lab preview</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --ink: #eaf1ee;
+    --muted: #8fa6a0;
+    --panel: #16262a;
+    --line: #274042;
+    --gold: #f0c64c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: radial-gradient(1200px 600px at 20% -10%, #24413f, #101b1e 60%);
+    color: var(--ink);
+    min-height: 100vh;
+    padding: 28px;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: .01em; }
+  .warn {
+    margin: 0 0 20px;
+    padding: 10px 14px;
+    border-left: 3px solid var(--gold);
+    background: rgba(240, 198, 76, .08);
+    color: #f4e3b4;
+    border-radius: 6px;
+    max-width: 980px;
+  }
+  .stage {
+    display: grid;
+    grid-template-columns: minmax(320px, 1fr) 320px;
+    gap: 20px;
+    align-items: start;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .viewport {
+    position: relative;
+    display: grid;
+    place-items: center;
+    min-height: 460px;
+    border-radius: 10px;
+    overflow: hidden;
+    background-color: #102023;
+    background-image:
+      linear-gradient(45deg, #16292c 25%, transparent 25%),
+      linear-gradient(-45deg, #16292c 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #16292c 75%),
+      linear-gradient(-45deg, transparent 75%, #16292c 75%);
+    background-size: 24px 24px;
+    background-position: 0 0, 0 12px, 12px -12px, -12px 0;
+  }
+  .viewport.floor { background-image: none; background: linear-gradient(#2b4644 0%, #3c5b52 62%, #213b3c 62%, #182f33 100%); }
+  .viewport.flat { background-image: none; background: #101b1e; }
+  canvas { image-rendering: auto; }
+  .frame-meta {
+    display: flex; justify-content: space-between; gap: 12px;
+    color: var(--muted); font-size: 12px; margin-top: 10px;
+  }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  button, select {
+    font: inherit; color: var(--ink);
+    background: #1d3236; border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 11px; cursor: pointer;
+  }
+  button:hover, select:hover { border-color: #3d6a68; }
+  button.on { background: var(--gold); color: #17272a; border-color: var(--gold); font-weight: 600; }
+  label.check { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); margin: 0 0 8px; }
+  .clips { display: flex; flex-direction: column; gap: 6px; }
+  .clip {
+    text-align: left; display: flex; justify-content: space-between; gap: 10px;
+    background: #16292c;
+  }
+  .clip small { color: var(--muted); }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 20px; }
+  .cell {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px; text-align: center; cursor: pointer;
+  }
+  .cell.active { border-color: var(--gold); }
+  .cell img { width: 100%; display: block; }
+  .cell span { font-size: 11px; color: var(--muted); }
+  .legend { color: var(--muted); font-size: 12px; margin-top: 12px; }
+  code { background: #0d1a1d; padding: 1px 5px; border-radius: 4px; }
+  @media (max-width: 900px) { .stage { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+  <h1>Sprite lab — Feedback asset pipeline</h1>
+  <p class="warn">
+    <strong>This is a pipeline sample, not Feedback.</strong> No Feedback reference artwork exists in
+    this repository, so this sheet is rendered from the existing in-game fighter rig. Use it to judge
+    proportions, foot alignment and animation timing; do not ship it as Feedback.
+  </p>
+
+  <div class="stage">
+    <div class="panel">
+      <div class="viewport" id="viewport">
+        <canvas id="stage" width="660" height="620"></canvas>
+      </div>
+      <div class="frame-meta">
+        <span id="clipLabel">—</span>
+        <span id="frameLabel">—</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Clips</h2>
+      <div class="clips" id="clips"></div>
+
+      <h2 style="margin-top:18px">Palette</h2>
+      <div class="row">
+        <button id="paletteBtn" type="button">Alternate colour</button>
+      </div>
+
+      <h2>Display</h2>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="ground" checked /> Ground + anchor</label>
+        <label class="check"><input type="checkbox" id="onion" /> Onion skin</label>
+        <label class="check"><input type="checkbox" id="checker" checked /> Checkerboard</label>
+      </div>
+      <div class="row">
+        <button id="playBtn" type="button" class="on">Pause</button>
+        <button id="stepBtn" type="button">Step →</button>
+      </div>
+      <p class="legend">
+        Sprites face right. Every frame shares one sole line, so the fighter never
+        floats or sinks. <code>soleRow</code> comes from the generated JSON and is
+        asserted during generation.
+      </p>
+    </div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+<script>
+const FRAME_W = 440;
+const FRAME_H = 400;
+
+const state = {
+  alt: false,
+  playing: true,
+  clipIndex: 0,
+  frameIndex: 0,
+  elapsed: 0,
+  showGround: true,
+  onion: false,
+};
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const clipLabel = document.getElementById('clipLabel');
+const frameLabel = document.getElementById('frameLabel');
+const clipsEl = document.getElementById('clips');
+const gridEl = document.getElementById('grid');
+
+let sheet = null;
+let images = {};
+
+const loadImage = (src) => new Promise((resolve, reject) => {
+  const img = new Image();
+  img.onload = () => resolve(img);
+  img.onerror = reject;
+  img.src = src;
+});
+
+async function boot() {
+  const [base, alt] = await Promise.all([
+    loadImage('rig-sample.png'),
+    loadImage('rig-sample-alt.png'),
+  ]);
+  images = { base, alt };
+  sheet = await (await fetch('rig-sample.json')).json();
+  buildClips();
+  buildGrid();
+  requestAnimationFrame(tick);
+}
+
+function currentSheet() {
+  return state.alt ? { ...sheet, image: 'rig-sample-alt.png' } : sheet;
+}
+
+function clip() {
+  return sheet.clips[state.clipIndex];
+}
+
+function buildClips() {
+  clipsEl.innerHTML = '';
+  sheet.clips.forEach((c, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'clip' + (i === state.clipIndex ? ' on' : '');
+    b.innerHTML = `<span>${c.name}</span><small>${c.frames.length}f</small>`;
+    b.title = c.label;
+    b.onclick = () => {
+      state.clipIndex = i;
+      state.frameIndex = 0;
+      state.elapsed = 0;
+      buildClips();
+      draw();
+    };
+    clipsEl.appendChild(b);
+  });
+}
+
+function buildGrid() {
+  gridEl.innerHTML = '';
+  sheet.frames.forEach((f) => {
+    const cell = document.createElement('button');
+    cell.type = 'button';
+    cell.className = 'cell';
+    cell.title = `${f.clip} #${f.clipFrame}`;
+    // Crop one atlas cell with background-position so the zoom is exact.
+    const view = document.createElement('div');
+    view.style.width = '100%';
+    view.style.aspectRatio = `${FRAME_W} / ${FRAME_H}`;
+    view.style.backgroundImage = `url(${state.alt ? 'rig-sample-alt.png' : 'rig-sample.png'})`;
+    view.style.backgroundSize = `${sheet.columns * 100}% ${sheet.rows * 100}%`;
+    view.style.backgroundPosition =
+      `${(f.index % sheet.columns) * (100 / (sheet.columns - 1))}% ` +
+      `${Math.floor(f.index / sheet.columns) * (100 / (sheet.rows - 1))}%`;
+    view.style.backgroundRepeat = 'no-repeat';
+    view.style.imageRendering = 'auto';
+    cell.appendChild(view);
+    const label = document.createElement('span');
+    label.textContent = `${f.clip} · ${f.clipFrame}`;
+    cell.appendChild(label);
+    cell.onclick = () => {
+      state.clipIndex = sheet.clips.findIndex((c) => c.name === f.clip);
+      state.frameIndex = f.clipFrame;
+      state.elapsed = 0;
+      buildClips();
+      draw();
+    };
+    gridEl.appendChild(cell);
+  });
+}
+
+function frameAt(clipDef, index) {
+  return sheet.frames[clipDef.frames[index]];
+}
+
+function tick(now) {
+  if (!sheet) return;
+  if (!tick.last) tick.last = now;
+  const dt = Math.min(now - tick.last, 120);
+  tick.last = now;
+
+  if (state.playing) {
+    state.elapsed += dt;
+    const c = clip();
+    while (state.elapsed >= c.frameMs) {
+      state.elapsed -= c.frameMs;
+      if (state.frameIndex + 1 < c.frames.length) state.frameIndex += 1;
+      else state.frameIndex = c.loop ? 0 : c.frames.length - 1;
+      if (!c.loop && state.frameIndex === c.frames.length - 1) {
+        state.playing = false;
+        document.getElementById('playBtn').textContent = 'Play';
+        document.getElementById('playBtn').classList.remove('on');
+      }
+    }
+  }
+  draw();
+  requestAnimationFrame(tick);
+}
+
+function drawFrame(index, alpha) {
+  const f = sheet.frames[index];
+  const img = images[state.alt ? 'alt' : 'base'];
+  const scale = 1.5;
+  const w = FRAME_W * scale;
+  const h = FRAME_H * scale;
+  const x = (canvas.width - w) / 2;
+  const y = 10;
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(img, f.x, f.y, f.w, f.h, x, y, w, h);
+  ctx.globalAlpha = 1;
+  return { x, y, w, h };
+}
+
+function draw() {
+  const viewport = document.getElementById('viewport');
+  viewport.classList.toggle('flat', !document.getElementById('checker').checked);
+  viewport.classList.toggle('floor', document.getElementById('checker').checked);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const c = clip();
+  const f = frameAt(c, state.frameIndex);
+
+  if (state.onion && state.frameIndex > 0) {
+    drawFrame(c.frames[state.frameIndex - 1], 0.28);
+  }
+  const box = drawFrame(c.frames[state.frameIndex], 1);
+
+  if (document.getElementById('ground').checked) {
+    const gx = box.x + (sheet.anchor.x / FRAME_W) * box.w;
+    const gy = box.y + (sheet.anchor.y / FRAME_H) * box.h;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(240,198,76,.75)';
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.moveTo(box.x - 10, gy);
+    ctx.lineTo(box.x + box.w + 10, gy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = 'rgba(240,198,76,.9)';
+    ctx.beginPath();
+    ctx.moveTo(gx, gy - 10);
+    ctx.lineTo(gx, gy + 10);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(240,198,76,.9)';
+    ctx.font = '12px ui-monospace, monospace';
+    ctx.fillText(`anchor ${gx.toFixed(0)},${gy.toFixed(0)}`, box.x + 4, gy + 20);
+    ctx.restore();
+  }
+
+  clipLabel.textContent = `${c.label} · ${c.frameMs} ms/frame`;
+  frameLabel.textContent = `frame ${state.frameIndex + 1}/${c.frames.length} · atlas #${f.index}`;
+}
+
+document.getElementById('playBtn').onclick = (e) => {
+  state.playing = !state.playing;
+  e.currentTarget.textContent = state.playing ? 'Pause' : 'Play';
+  e.currentTarget.classList.toggle('on', state.playing);
+};
+
+document.getElementById('stepBtn').onclick = () => {
+  const c = clip();
+  state.playing = false;
+  document.getElementById('playBtn').textContent = 'Play';
+  document.getElementById('playBtn').classList.remove('on');
+  state.frameIndex = (state.frameIndex + 1) % c.frames.length;
+};
+
+document.getElementById('paletteBtn').onclick = (e) => {
+  state.alt = !state.alt;
+  e.currentTarget.textContent = state.alt ? 'Alternate colour' : 'Alternate colour';
+  e.currentTarget.textContent = state.alt ? 'Base palette' : 'Alternate colour';
+  e.currentTarget.classList.toggle('on', state.alt);
+  buildGrid();
+  draw();
+};
+
+document.getElementById('onion').onchange = (e) => { state.onion = e.target.checked; };
+
+boot();
+</script>
+</body>
+</html>

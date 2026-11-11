@@ -1,0 +1,576 @@
+{
+  "version": 1,
+  "canvas": [
+    1536,
+    1024
+  ],
+  "groundBaselineY": 900,
+  "poses": {
+    "01_idle": {
+      "file": "aligned/01_idle.png",
+      "rawFile": "raw/01_idle.png",
+      "canvas": [
+        1536,
+        1024
+      ],
+      "anchorPx": [
+        768,
+        900
+      ],
+      "origin": [
+        0.5,
+        0.87890625
+      ],
+      "placement": "feet",
+      "sourceAnchorPx": [
+        542,
+        1577
+      ],
+      "uniformScale": 0.31348,
+      "alphaBounds": [
+        613,
+        411,
+        902,
+        901
+      ],
+      "airborne": false,
+      "anchorStatus": "visually estimated; tune during gameplay",
+      "facing": "right",
+      "effectsRemoved": true
+    },
+    "02_knockout": {
+      "file": "aligned/02_knockout.png",
+      "rawFile": "raw/02_knockout.png",
+      "canvas": [
+        1536,
+        1024
+      ],
+      "anchorPx": [
+        768,
+        900
+      ],
+      "origin": [
+        0.5,
+        0.87890625
+      ],
+      "placement": "ground_contact",
+      "sourceAnchorPx": [
+        922,
+        781
+      ],
+      "uniformScale": 0.360767,
+      "alphaBounds": [
+        441,
+        626,
+        1069,
+        938
+      ],
+      "airborne": false,
+      "anchorStatus": "visually estimated; tune during gameplay",
+      "facing": "right",
+      "effectsRemoved": true
+    },
+    "03_c_recoil": {
+      "file": "aligned/03_c_recoil.png",
+      "rawFile": "raw/03_c_recoil.png",
+      "canvas": [
+        1536,
+        1024
+      ],
+      "anchorPx": [
+        768,
+        610
+      ],
+      "origin": [
+        0.5,
+        0.595703125
+      ],
+      "placement": "pelvis",
+      "sourceAnchorPx": [
+        418,
+        649
+      ],
+      "uniformScale": 0.467588,
+      "alphaBounds": [
+        585,
+        313,
+        1320,
+        740
+      ],
+      "airborne": true,
+      "anchorStatus": "visually estimated; tune during gameplay",
+      "facing": "right",
+      "effectsRemoved": true
+    },
+    "04_inverted_c": {
+      "file": "aligned/04_inverted_c.png",
+      "rawFile": "raw/04_inverted_c.png",
+      "canvas": [
+        1536,
+        1024
+      ],
+      "anchorPx": [
+        768,
+        610
+      ],
+      "origin": [
+        0.5,
+        0.595703125
+      ],
+      "placement": "pelvis",
+      "sourceAnchorPx": [
+        1219,
+        254
+      ],
+      "uniformScale": 0.467588,
+      "alphaBounds": [
+        198,
+        491,
+        955,
+        919
+      ],
+      "airborne": true,
+      "anchorStatus": "visually estimated; tune during gameplay",
+      "facing": "right",
+      "effectsRemoved": true
+    },
+    "05_dizzy_bogle": {
+      "file": "aligned/05_dizzy_bogle.png",
+      "rawFile": "raw/05_dizzy_bogle.png",
+      "canvas": [
+        1536,
+        1024
+      ],
+      "anchorPx": [
+        768,
+        900
+      ],
+      "origin": [
+        0.5,
+        0.87890625
+      ],
+      "placement": "feet",
+      "sourceAnchorPx": [
+        744,
+        1202
+      ],
+      "uniformScale": 0.373444,
+      "alphaBounds": [
+        490,
+        451,
+        972,
+        901
+      ],
+      "airborne": false,
+      "anchorStatus": "visually estimated; tune during gameplay",
+      "facing": "right",
+      "effectsRemoved": true
+    },
+    "06_rear_salute": {
+      "file": "aligned/06_rear_salute.png",
+      "rawFile": "raw/06_rear_salute.png",
+      "canvas": [
+        1536,
+        1024
+      ],
+      "anchorPx": [
+        768,
+        610
+      ],
+      "origin": [
+        0.5,
+        0.595703125
+      ],
+      "placement": "pelvis",
+      "sourceAnchorPx": [
+        458,
+        841
+      ],
+      "uniformScale": 0.406504,
+      "alphaBounds": [
+        602,
+        268,
+        1004,
+        868
+      ],
+      "airborne": true,
+      "anchorStatus": "visually estimated; tune during gameplay",
+      "facing": "away",
+      "effectsRemoved": true
+    },
+    "07_crouch": {
+      "file": "aligned/07_crouch.png",
+      "rawFile": "raw/07_crouch.png",
+      "canvas": [
+        1536,
+        1024
+      ],
+      "anchorPx": [
+        768,
+        900
+      ],
+      "origin": [
+        0.5,
+        0.87890625
+      ],
+      "placement": "feet",
+      "sourceAnchorPx": [
+        703,
+        990
+      ],
+      "uniformScale": 0.397219,
+      "alphaBounds": [
+        502,
+        507,
+        1090,
+        907
+      ],
+      "airborne": false,
+      "anchorStatus": "visually estimated; tune during gameplay",
+      "facing": "right",
+      "effectsRemoved": true
+    },
+    "08_block": {
+      "file": "aligned/08_block.png",
+      "rawFile": "raw/08_block.png",
+      "canvas": [
+        1536,
+        1024
+      ],
+      "anchorPx": [
+        768,
+        900
+      ],
+      "origin": [
+        0.5,
+        0.87890625
+      ],
+      "placement": "feet",
+      "sourceAnchorPx": [
+        538,
+        1490
+      ],
+      "uniformScale": 0.335345,
+      "alphaBounds": [
+        587,
+        403,
+        928,
+        900
+      ],
+      "airborne": false,
+      "anchorStatus": "visually estimated; tune during gameplay",
+      "facing": "right",
+      "effectsRemoved": true
+    },
+    "09_point": {
+      "file": "aligned/09_point.png",
+      "rawFile": "raw/09_point.png",
+      "canvas": [
+        1536,
+        1024
+      ],
+      "anchorPx": [
+        768,
+        900
+      ],
+      "origin": [
+        0.5,
+        0.87890625
+      ],
+      "placement": "feet",
+      "sourceAnchorPx": [
+        625,
+        1056
+      ],
+      "uniformScale": 0.473037,
+      "alphaBounds": [
+        507,
+        400,
+        1157,
+        900
+      ],
+      "airborne": false,
+      "anchorStatus": "visually estimated; tune during gameplay",
+      "facing": "right",
+      "effectsRemoved": true
+    },
+    "10_fire_airborne": {
+      "file": "aligned/10_fire_airborne.png",
+      "rawFile": "raw/10_fire_airborne.png",
+      "canvas": [
+        1536,
+        1024
+      ],
+      "anchorPx": [
+        768,
+        610
+      ],
+      "origin": [
+        0.5,
+        0.595703125
+      ],
+      "placement": "pelvis",
+      "sourceAnchorPx": [
+        695,
+        588
+      ],
+      "uniformScale": 0.400334,
+      "alphaBounds": [
+        490,
+        375,
+        1010,
+        855
+      ],
+      "airborne": true,
+      "anchorStatus": "visually estimated; tune during gameplay",
+      "facing": "right",
+      "effectsRemoved": true
+    },
+    "11_fire_grounded": {
+      "file": "aligned/11_fire_grounded.png",
+      "rawFile": "raw/11_fire_grounded.png",
+      "canvas": [
+        1536,
+        1024
+      ],
+      "anchorPx": [
+        768,
+        900
+      ],
+      "origin": [
+        0.5,
+        0.87890625
+      ],
+      "placement": "feet",
+      "sourceAnchorPx": [
+        719,
+        1044
+      ],
+      "uniformScale": 0.428571,
+      "alphaBounds": [
+        470,
+        453,
+        1086,
+        903
+      ],
+      "airborne": false,
+      "anchorStatus": "visually estimated; tune during gameplay",
+      "facing": "right",
+      "effectsRemoved": true
+    },
+    "12_backhand_windup": {
+      "file": "aligned/12_backhand_windup.png",
+      "rawFile": "raw/12_backhand_windup.png",
+      "canvas": [
+        1536,
+        1024
+      ],
+      "anchorPx": [
+        768,
+        900
+      ],
+      "origin": [
+        0.5,
+        0.87890625
+      ],
+      "placement": "feet",
+      "sourceAnchorPx": [
+        719,
+        931
+      ],
+      "uniformScale": 0.53135,
+      "alphaBounds": [
+        443,
+        405,
+        1249,
+        905
+      ],
+      "airborne": false,
+      "anchorStatus": "visually estimated; tune during gameplay",
+      "facing": "right",
+      "effectsRemoved": true
+    },
+    "13_box_palm": {
+      "file": "aligned/13_box_palm.png",
+      "rawFile": "raw/13_box_palm.png",
+      "canvas": [
+        1536,
+        1024
+      ],
+      "anchorPx": [
+        768,
+        900
+      ],
+      "origin": [
+        0.5,
+        0.87890625
+      ],
+      "placement": "feet",
+      "sourceAnchorPx": [
+        552,
+        933
+      ],
+      "uniformScale": 0.53135,
+      "alphaBounds": [
+        496,
+        410,
+        1336,
+        904
+      ],
+      "airborne": false,
+      "anchorStatus": "visually estimated; tune during gameplay",
+      "facing": "right",
+      "effectsRemoved": true
+    },
+    "14_followthrough": {
+      "file": "aligned/14_followthrough.png",
+      "rawFile": "raw/14_followthrough.png",
+      "canvas": [
+        1536,
+        1024
+      ],
+      "anchorPx": [
+        768,
+        900
+      ],
+      "origin": [
+        0.5,
+        0.87890625
+      ],
+      "placement": "feet",
+      "sourceAnchorPx": [
+        719,
+        926
+      ],
+      "uniformScale": 0.53135,
+      "alphaBounds": [
+        419,
+        411,
+        1246,
+        902
+      ],
+      "airborne": false,
+      "anchorStatus": "visually estimated; tune during gameplay",
+      "facing": "right",
+      "effectsRemoved": true
+    },
+    "15_skank": {
+      "file": "aligned/15_skank.png",
+      "rawFile": "raw/15_skank.png",
+      "canvas": [
+        1536,
+        1024
+      ],
+      "anchorPx": [
+        768,
+        610
+      ],
+      "origin": [
+        0.5,
+        0.595703125
+      ],
+      "placement": "pelvis",
+      "sourceAnchorPx": [
+        622,
+        604
+      ],
+      "uniformScale": 0.395738,
+      "alphaBounds": [
+        522,
+        371,
+        986,
+        891
+      ],
+      "airborne": true,
+      "anchorStatus": "visually estimated; tune during gameplay",
+      "facing": "right",
+      "effectsRemoved": true
+    },
+    "16_gut_punch": {
+      "file": "aligned/16_gut_punch.png",
+      "rawFile": "raw/16_gut_punch.png",
+      "canvas": [
+        1536,
+        1024
+      ],
+      "anchorPx": [
+        768,
+        610
+      ],
+      "origin": [
+        0.5,
+        0.595703125
+      ],
+      "placement": "pelvis",
+      "sourceAnchorPx": [
+        817,
+        606
+      ],
+      "uniformScale": 0.371287,
+      "alphaBounds": [
+        476,
+        385,
+        936,
+        835
+      ],
+      "airborne": true,
+      "anchorStatus": "visually estimated; tune during gameplay",
+      "facing": "left",
+      "effectsRemoved": true
+    },
+    "17_seated_landing": {
+      "file": "aligned/17_seated_landing.png",
+      "rawFile": "raw/17_seated_landing.png",
+      "canvas": [
+        1536,
+        1024
+      ],
+      "anchorPx": [
+        768,
+        900
+      ],
+      "origin": [
+        0.5,
+        0.87890625
+      ],
+      "placement": "ground_contact",
+      "sourceAnchorPx": [
+        835,
+        881
+      ],
+      "uniformScale": 0.44586,
+      "alphaBounds": [
+        396,
+        507,
+        1125,
+        911
+      ],
+      "airborne": false,
+      "anchorStatus": "visually estimated; tune during gameplay",
+      "facing": "right",
+      "effectsRemoved": true
+    }
+  },
+  "states": {
+    "idle": "01_idle",
+    "guard": "08_block",
+    "lowAttack": "07_crouch",
+    "poke": "09_point",
+    "boxWindup": "12_backhand_windup",
+    "boxContact": "13_box_palm",
+    "boxRecovery": "14_followthrough",
+    "hurt": "16_gut_punch",
+    "launched": "03_c_recoil",
+    "tumble": "04_inverted_c",
+    "land": "17_seated_landing",
+    "ko": "02_knockout"
+  },
+  "notes": [
+    "Pose illustrations, not interpolated frame animations.",
+    "Origins are render placements, not collision hitboxes. Keep simulation body independent.",
+    "Grounded anchors use support-foot baseline; air poses use pelvis.",
+    "Procedural shadows/effects are not baked into fighter PNGs.",
+    "Mirroring changes visible mic handedness. Use provisional flip for self-match; later supply directional art if needed.",
+    "Generative cutouts may contain minor edge/detail drift; source references retained separately."
+  ]
+}

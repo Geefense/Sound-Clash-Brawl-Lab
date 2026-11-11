@@ -2,6 +2,15 @@ import Phaser from 'phaser';
 import { getAttackArmPose, rotatePoint, type SwipeTrail } from './attackAnimation.ts';
 import { getHitReactionPose } from './visualReactions.ts';
 import { getKnockdownPose } from './fighterGeometry.ts';
+import {
+  FEEDBACK_POSES,
+  FEEDBACK_POSE_IDS,
+  FEEDBACK_SCALE,
+  feedbackAssetUrl,
+  feedbackTextureKey,
+  selectFeedbackPose,
+  shouldMirrorPose,
+} from './feedbackArt.ts';
 import { GAME_HEIGHT, GAME_WIDTH, type MatchSnapshot, type TouchAction } from './types.ts';
 import { getStrikePose, isAttackAction } from './combatRules.ts';
 import {
@@ -114,6 +123,10 @@ export class GameScene extends Phaser.Scene {
   private accumulator = 0;
   private graphics!: Phaser.GameObjects.Graphics;
   private background!: Phaser.GameObjects.Graphics;
+  private feedbackPlayer?: Phaser.GameObjects.Image;
+  private feedbackRival?: Phaser.GameObjects.Image;
+  /** False when the painted pack is unavailable, so the vector fighter still plays. */
+  private feedbackReady = false;
   private playerComboLabel!: Phaser.GameObjects.Text;
   private rivalComboLabel!: Phaser.GameObjects.Text;
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
@@ -141,10 +154,24 @@ export class GameScene extends Phaser.Scene {
     this.onSnapshot = onSnapshot;
   }
 
+  preload() {
+    // Only rendering assets: if they fail to load the vector fighter is used.
+    for (const pose of FEEDBACK_POSE_IDS) {
+      this.load.image(feedbackTextureKey(pose), feedbackAssetUrl(pose));
+    }
+  }
+
   create() {
     this.background = this.add.graphics();
     this.drawArena();
     this.graphics = this.add.graphics();
+    this.background.setDepth(0);
+    this.graphics.setDepth(3);
+    this.feedbackReady = this.textures.exists(feedbackTextureKey('01_idle'));
+    if (this.feedbackReady) {
+      this.feedbackPlayer = this.add.image(0, 0, feedbackTextureKey('01_idle')).setDepth(2).setVisible(false);
+      this.feedbackRival = this.add.image(0, 0, feedbackTextureKey('01_idle')).setDepth(2).setVisible(false);
+    }
     this.playerComboLabel = this.add.text(0, 0, '', {
       fontFamily: 'Arial, sans-serif',
       fontSize: '19px',
@@ -449,6 +476,11 @@ export class GameScene extends Phaser.Scene {
       f.knockdown?.heavy ?? this.state.ko?.[id]?.heavy ?? f.hitReaction?.kind !== 'light';
     const fall = getKnockdownPose(downTicks, freezeTicks, KNOCKDOWN_TICKS, direction, heavy);
 
+    if (this.feedbackReady) {
+      this.drawFeedbackFighter(f, id, knockedDown, fall);
+      return;
+    }
+
     if (knockedDown) {
       g.fillStyle(0x14292c, 0.35);
       g.fillEllipse(f.x, FLOOR + 9, 89 + 90 * fall.progress, 20);
@@ -609,6 +641,61 @@ export class GameScene extends Phaser.Scene {
     g.restore(); // Head recoil.
     g.restore(); // Upper-body compression.
     g.restore(); // Knockdown transform.
+  }
+
+  /**
+   * Painted-sprite path. Reads the simulation state, never writes it: the
+   * chosen picture follows `action` / `attackElapsed`, and the manifest origin
+   * places it at the same foot or pelvis point the vector fighter uses.
+   */
+  private drawFeedbackFighter(
+    f: FighterState,
+    id: 'player' | 'rival',
+    knockedDown: boolean,
+    fall: ReturnType<typeof getKnockdownPose>,
+  ) {
+    const g = this.graphics;
+    if (!knockedDown) {
+      g.fillStyle(0x14292c, 0.35);
+      g.fillEllipse(f.x, FLOOR + 9, f.grounded ? 89 : 60, 20);
+    } else {
+      g.fillStyle(0x14292c, 0.35);
+      g.fillEllipse(f.x, FLOOR + 9, 89 + 90 * fall.progress, 20);
+      if (fall.impact > 0) {
+        g.lineStyle(4 * fall.impact, 0xe4d2a2, fall.impact * 0.65);
+        g.strokeEllipse(f.x, FLOOR + 5, 160 + (1 - fall.impact) * 110, 20 + (1 - fall.impact) * 20);
+      }
+    }
+
+    const koResting = knockedDown && f.health <= 0 && fall.progress >= 0.999;
+    const poseId = selectFeedbackPose(f, {
+      knockedDown,
+      fallProgress: fall.progress,
+      koResting,
+    });
+    const meta = FEEDBACK_POSES[poseId];
+    const sprite = id === 'player' ? this.feedbackPlayer : this.feedbackRival;
+    if (!sprite) return;
+
+    const pose = getFighterPose(
+      knockedDown ? { ...f, blocking: false, vx: 0, anim: 0, action: 'idle' as const } : f,
+    );
+    // Grounded poses anchor at the support foot, air/knockdown poses at the
+    // pelvis; `getFighterPose` already folds in the fighter's own y offset.
+    const anchorY = meta.placement === 'pelvis' ? pose.hipY : pose.baseY;
+
+    sprite
+      .setTexture(feedbackTextureKey(poseId))
+      .setOrigin(meta.origin[0], meta.origin[1])
+      .setScale(FEEDBACK_SCALE)
+      .setFlipX(shouldMirrorPose(meta.facing, f.facing))
+      .setPosition(f.x, anchorY)
+      .setTint(id === 'rival' ? 0xffc9b4 : 0xffffff)
+      .setVisible(true);
+
+    // A small accent chevron keeps the two Feedback fighters tellable apart.
+    g.fillStyle(f.accent, 1);
+    g.fillTriangle(f.x - 7, pose.baseY - 196, f.x + 7, pose.baseY - 196, f.x, pose.baseY - 206);
   }
 
   shutdown() {

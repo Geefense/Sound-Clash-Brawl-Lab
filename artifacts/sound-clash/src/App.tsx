@@ -82,7 +82,7 @@ function Home() {
   const time = `0:${String(snapshot.timeLeft).padStart(2, '0')}`;
   const resultTitle = snapshot.matchWinner === 'draw'
     ? 'SPLIT THE SOUND'
-    : snapshot.matchWinner === 'player' ? 'SIDEWINDER TAKES IT' : 'BASSLINE TAKES IT';
+    : snapshot.matchWinner === 'player' ? 'FEEDBACK P1 TAKES IT' : 'FEEDBACK CPU TAKES IT';
   const resultDetail = snapshot.matchWinner === 'draw'
     ? 'Even stevens. Run it back?'
     : snapshot.matchWinner === 'player' ? 'Your set, your victory.' : 'The rival took the set.';
@@ -110,11 +110,11 @@ function Home() {
           <div className="scorebar">
             <div className="fighter-info">
               <div className="fighter-heading">
-                <span className="fighter-name">SIDEWINDER</span>
+                <span className="fighter-name">FEEDBACK P1</span>
                 <span className="fighter-chip">YOU</span>
               </div>
               <span className="fighter-origin">Kingston · Selector</span>
-              <div className="health-track" aria-label={`Sidewinder health ${snapshot.playerHealth}%`}>
+              <div className="health-track" aria-label={`Feedback P1 health ${snapshot.playerHealth}%`}>
                 <div className="win-indicators">
                   {[0, 1].map(i => <div key={i} className={`win-dot ${snapshot.playerWins > i ? 'won' : ''}`} />)}
                 </div>
@@ -128,10 +128,10 @@ function Home() {
             <div className="fighter-info right">
               <div className="fighter-heading">
                 <span className="fighter-chip cpu">CPU</span>
-                <span className="fighter-name">BASSLINE</span>
+                <span className="fighter-name">FEEDBACK CPU</span>
               </div>
               <span className="fighter-origin">Toronto · Soundboy</span>
-              <div className="health-track" aria-label={`Bassline health ${snapshot.rivalHealth}%`}>
+              <div className="health-track" aria-label={`Feedback CPU health ${snapshot.rivalHealth}%`}>
                 <div className="win-indicators rival">
                   {[0, 1].map(i => <div key={i} className={`win-dot ${snapshot.rivalWins > i ? 'won' : ''}`} />)}
                 </div>
@@ -153,7 +153,7 @@ function Home() {
               <div className="overlay-screen">
                 <h2 className="overlay-title ko-text">{snapshot.status === 'ko-announcement' ? (snapshot.threePieceKO ? 'HIM DUN!' : 'KO!') : snapshot.roundEndReason === 'timeout' ? 'TIME!' : 'ROUND OVER'}</h2>
                 <div className="overlay-subtitle">
-                  {snapshot.roundWinner === 'player' ? 'SIDEWINDER WINS' : snapshot.roundWinner === 'rival' ? 'BASSLINE WINS' : 'DRAW'}
+                  {snapshot.roundWinner === 'player' ? 'FEEDBACK P1 WINS' : snapshot.roundWinner === 'rival' ? 'FEEDBACK CPU WINS' : 'DRAW'}
                 </div>
               </div>
             )}

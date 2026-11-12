@@ -1,0 +1,32 @@
+{
+  "character": "Feedback",
+  "pose": "approved idle stance - crossed arms",
+  "asset": "feedback-idle-1600x1280.png",
+  "derivedFrom": {
+    "file": "feedback-crossed-arms-approved.jpeg",
+    "sha256": "87ad79e132713f77c2cd5d4cc2a3371302c8edfa3f10661e837a5929432e1ef8",
+    "size": [1024, 1536],
+    "importedBy": "Feedback_Crossed_Arms_Import.py @ main 34be859"
+  },
+  "canvas": [1600, 1280],
+  "frameSpec": {
+    "figureHeightPx": 1100,
+    "bboxTop": 70,
+    "bboxBottom": 1169,
+    "soleBaselineY": 1169,
+    "bboxCenterX": 800,
+    "background": "fully transparent (alpha 0)"
+  },
+  "prepared": {
+    "sourceFigureBbox": [266, 20, 818, 1481],
+    "sourceFigureHeightPx": 1464,
+    "scale": 0.7514,
+    "placedBbox": [592, 70, 1008, 1169]
+  },
+  "design": {
+    "kept": ["bucket hat", "dreadlocks", "maroon track jacket with sleeve stripes", "fitted dark trousers", "Clarks", "crossed arms", "coiled cord on forearm", "mic in right hand"],
+    "cable": "coiled on the forearm; no trailing cable added or present",
+    "retouching": "none - background keyed only"
+  },
+  "matchesPack": "01_point_swagger .. 06_come_here_swagger (figure height 1100, top 70, sole baseline 1169, centre ~800)"
+}

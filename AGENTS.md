@@ -179,6 +179,11 @@ Six additional imported studies under `art-source/feedback/imported-poses/`: `01
 
 All 17 aligned PNGs on `assets/feedback-transparent-poses` were retrieved, decoded and inspected in a comparison sheet; idle, block, BOX startup/contact/recovery and KO received enlarged inspection. Multiple stored poses have floor-trailing cables that conflict with the owner’s jacket-origin requirement. This is not only a walk issue. No original PNGs or runtime files changed. See `artifacts/sound-clash/art-source/feedback/APPEARANCE-CONSISTENCY-AUDIT-2026-11-13.md` for evidence, open checks and Freebuff’s next task. Build the appearance comparison before further broad generation or integration. The stored idle is a proposed working appearance reference; owner approval remains required for any replacement art.
 
+
+### Approved walk reference delivery — November 13, 2026
+
+Owner explicitly authorized transfer of the prepared walk package to this review branch. The exact approved four-pose swing–bop movement reference (approximately 132 BPM), source keys and timing manifest are now available via `artifacts/sound-clash/art-source/feedback/chat-movement-transfer-2026-11-13/README.md`. Importer saved at `e11aa456`; all four parts and importer read back byte-for-byte. Local validation/restore/repeat/conflict-protection checks passed. Freebuff has not yet run the importer or updated its preview. Movement approval is separate from pending appearance/cable repairs. Do not substitute the older four-key study. Next: restore locally and update the review comparison; then correct idle cable only, preserving originals.
+
 ### Interference and audio inventory gaps
 
 The owner identifies bottles, chairs, fire extinguishers and Flow sprite/audio exports as migration inventory. No matching bottle/chair/extinguisher directories or finished soundtrack/voice asset tree was found on inspected Lab `main`, pose, animation-refinement, sprite-pipeline or combat-hardening snapshots. **[TODO] Freebuff locates any local/unmerged files and records exact paths, filenames, status and source before copying.** Do not claim missing files exist or replace them with silently invented assets.

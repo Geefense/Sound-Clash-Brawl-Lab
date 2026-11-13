@@ -28,6 +28,18 @@ The fighters must feel like personalities at a dance, not interchangeable boxers
 
 **Other concepts:** Lickshot is retained; Sky Juice is a tall-fighter concept. Lickshot / Disc Jock Lickshot / Booyaka Lickshot are recorded name options, with final naming [TODO]. Do not build Fighter #2 before the Godot migration gate.
 
+### Owner clarification — cross-animation consistency (2026-11-13)
+
+Garfield is the visual lead and final visual approver. The same slim Feedback, fitted trousers, Clarks Wallabee construction/size, hat/hair, face concealment, one gold tooth, microphone and cable setup must carry through idle, walking, attacks, defence, hit reactions, falling and KO. Approving a movement rhythm does not approve appearance drift or automatically approve other frames.
+
+**Cable origin: inside the jacket.** This owner instruction supersedes earlier pocket-origin concept descriptions for the current continuity pass. Maintain a connected route from the microphone, through any established forearm wrap, into the jacket; an entry can be occluded by clothing, but it must be spatially plausible. No dangling disconnected plug, unexplained endpoint, duplicated cable, hand switch, disappearing mic, or topology change when walking transitions into attacks/guard/falling. Retraction and slack must follow the same setup. Do not treat the current dangling-connector walking candidate as final. Cross-set anatomical mic handedness still needs reconciliation against the approved source pack; do not solve this by silently mirroring art.
+
+**Clarks: match approved artwork, not a new shoe design.** Tan suede Wallabees must retain their approved moccasin/apron seam, toe shape, lacing, crepe sole, size and proportions through all poses. An isolated improved shoe redraw is only a candidate until compared with the existing pack. Do not bulk-regenerate the approved pose pack or replace files to match an unapproved new candidate.
+
+**Preserve work and audit before replacement.** The existing 17-pose asset pack was re-located on `assets/feedback-transparent-poses`; manifest and README inspected, not a fresh full pixel audit. Its README explicitly says the cable is baked into poses and acknowledges detail drift. Imported assets are recoverable/versioned, but this does not make correction automatic or free of rework. Keep originals and anchors, make a comparison inventory by pose, and apply only necessary local repairs. Recheck idle → walk → BOX windup/contact/recovery → guard → hurt/landing/KO as transitions, not only isolated illustrations.
+
+**Current walk approval:** owner approved the four-pose swing–bop movement reference at approximately 132 BPM with the rear free-arm swing. Added neutral-arm return pose was rejected for limp-looking arm and rushed timing. Appearance consistency remains open: cable origin/continuity, unified slim proportions, Wallabee matching and exactly one gold tooth. Recent generated tooth edits still show excess gold and are not approved. Review videos/candidates created in this chat have not been transferred into this repository by this update. No runtime or asset correction is claimed.
+
 ## 2. Target Milestone & Production Roadmap (Goal: April 21, 2027 Launch / May Jamaica Trip)
 
 ### Commitment and release target

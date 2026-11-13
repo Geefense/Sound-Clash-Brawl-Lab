@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Feedback appearance review — 17-pose pack</title>
+    <link rel="stylesheet" href="/review/appearance/appearance.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <div class="titles">
+        <h1>Feedback — appearance consistency review</h1>
+        <p class="sub">
+          Review only. Original pack files untouched. <strong>Not approved</strong> — Garfield
+          is the final visual approver.
+        </p>
+      </div>
+      <div class="meta" id="meta">loading manifest…</div>
+    </header>
+
+    <p class="warn" id="warn">
+      Every pose fails the jacket-origin cable requirement: the cord leaves the forearm wrap and
+      ends as a bare strand or loop on the floor. Treat all 17 frames as candidates.
+    </p>
+
+    <main>
+      <section class="stage-wrap">
+        <div class="pane">
+          <div class="pane-head">
+            <span class="tag">Sequence</span>
+            <span id="paneLabel">—</span>
+          </div>
+          <canvas id="seq" width="680" height="520" aria-label="Current sequence pose"></canvas>
+          <div class="pane-foot">
+            <span id="poseMeta">—</span>
+            <span class="badge" id="badge">—</span>
+          </div>
+        </div>
+
+        <div class="pane">
+          <div class="pane-head">
+            <span class="tag">Reference</span>
+            <span>01_idle — same origin, same scale, same floor line</span>
+          </div>
+          <canvas id="ref" width="680" height="520" aria-label="Idle reference pose"></canvas>
+          <div class="pane-foot">
+            <span id="refMeta">—</span>
+            <span class="badge pass">comparison baseline</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="controls" aria-label="Playback controls">
+        <button id="play" class="primary" type="button">❚❚ Pause</button>
+        <button id="prev" type="button">◀ Prev</button>
+        <button id="next" type="button">Next ▶</button>
+        <label class="field">
+          Hold
+          <select id="hold">
+            <option value="500">0.5 s</option>
+            <option value="800">0.8 s</option>
+            <option value="1200" selected>1.2 s</option>
+            <option value="2000">2 s</option>
+          </select>
+        </label>
+        <label class="field">
+          Scale
+          <input id="scale" type="range" min="14" max="52" value="42" />
+          <output id="scaleOut">0.42</output>
+        </label>
+        <label class="field check"><input id="anchors" type="checkbox" /> Anchors</label>
+        <label class="field check"><input id="ghost" type="checkbox" /> Idle ghost</label>
+        <label class="field check"><input id="lines" type="checkbox" checked /> Floor / pelvis lines</label>
+        <a id="original" class="link" href="#" target="_blank" rel="noreferrer">Open full-size PNG ↗</a>
+      </section>
+
+      <section class="strip" id="strip" aria-label="Pose steps"></section>
+
+      <section class="checks" id="checks" aria-live="polite">
+        <h2>Checks for the current pose</h2>
+        <div id="checkList"></div>
+        <p class="hint" id="poseNote"></p>
+      </section>
+
+      <section class="legend">
+        <p>
+          <strong>How this is drawn.</strong> One scale for every pose, no per-figure fitting. The
+          manifest <code>origin</code> is the pivot: feet and ground-contact poses pin
+          <code>[768, 900]</code> to the floor line, pelvis poses pin <code>[768, 610]</code> to a
+          pelvis line held 290 canvas px above it, so the body sits where the simulation puts it
+          rather than where the drawing happens to crop. Nothing here feeds combat or collision.
+        </p>
+        <p>
+          <strong>Walk block.</strong> These are the repository's four-key walk study (CONTACT A,
+          PASS A, CONTACT B, PASS B) — its own note calls it an unapproved movement test. It is a
+          different canvas (460 × 620, support sole at y = 566) and carries one alignment scale
+          shared by all four keys. It is <em>not</em> the owner-approved 132 BPM swing–bop
+          reference: those generated files are not in this repository, so nothing here should be
+          read as that approval.
+        </p>
+        <p class="keys">Keys: <kbd>←</kbd>/<kbd>→</kbd> step · <kbd>space</kbd> play/pause · <kbd>a</kbd> anchors · <kbd>g</kbd> ghost</p>
+      </section>
+    </main>
+
+    <script src="/review/appearance/review-data.js"></script>
+    <script src="/review/appearance/appearance.js"></script>
+  </body>
+</html>

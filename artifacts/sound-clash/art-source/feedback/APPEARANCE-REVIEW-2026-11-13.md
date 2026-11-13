@@ -15,7 +15,7 @@ poses, and the exact list of media that is still missing from the repository.
 | Item | Value |
 | --- | --- |
 | Repository | `Geefense/Sound-Clash-Brawl-Lab` |
-| Branch | `review/feedback-appearance-consistency` (branched from `feat/combat-animation-refinement` @ `6d09175`, so the pack and its renderer are present) |
+| Branch | `review/feedback-appearance-consistency`, fast-forwarded to the owner's `1f33780` (which delivered the approved walk transfer package); started from `feat/combat-animation-refinement` @ `6d09175` so the pack and its renderer are present |
 | Blueprint and audit source | Lab `main` @ `be7367dd84981b520e63192c190446de7b437c5c`, restored into the worktree with `git restore --source=be7367d --worktree -- AGENTS.md artifacts/sound-clash/art-source/feedback`. No branch switch, no reset, nothing local overwritten. |
 | Uncommitted work preserved | `artifacts/integration-plan.md`, `artifacts/lab-patches/`, `artifacts/playtest-*.png`, `artifacts/feedback-final.png` — left untouched and out of the commit |
 
@@ -50,6 +50,10 @@ What it does:
 - Anchor overlay toggle, floor line (`y900`) and pelvis line (`y610`) guides.
 - Per-pose verdict panel with one check row each for mic hand, cable route, hat/locks,
   face/tooth, build/trousers, Wallabees and alpha edges, each with the specific observation.
+- A separate **“Approved movement reference — appearance pending”** block: the restored four-pose
+  132 BPM keys played on the manifest's own hold counts (27/28/27/27 at 60 fps) with its own
+  pause/step controls, plus the recorded MP4. The older four-key study stays in the main sequence,
+  relabelled **OLDER STUDY**, so the two can never be mistaken for each other.
 
 Anchors are respected, not invented: the page fetches `feedback.poses.json` and pivots every image
 on that pose's own `origin`/`anchorPx`. Feet and ground-contact poses pin `[768, 900]` to the floor
@@ -132,8 +136,11 @@ Tallies: **16 fail, 1 uncertain, 0 pass.**
 
 ## 6. Missing assets — exact status
 
-Present in this repository (all unapproved movement material, none of it the approved reference):
+Present in this repository:
 
+- `art-source/feedback/chat-movement-transfer-2026-11-13/movement-reference/` — **the owner-approved
+  four-pose 132 BPM movement reference**, restored 2026-11-13 from the transfer package (section 10).
+  Movement approved; appearance still pending.
 - `art-source/feedback/feedback-walk-flow-test.mp4` — earlier Flow idle→walk test;
   `walk-video-review/` holds its contact sheets and inspection report.
 - `art-source/feedback/walk-cycle-preview/` — 35 extracted frames + loop player + unapproved
@@ -144,9 +151,8 @@ Present in this repository (all unapproved movement material, none of it the app
 
 **Not in the repository at any ref** (checked with `git log --all --name-only`):
 
-- the owner-approved **four-pose swing–bop movement reference at ~132 BPM with the rear
-  free-arm swing** (any image or video of it);
-- the **rejected neutral-arm return pose** — the rejection cannot be evidenced from a file;
+- the **rejected neutral-arm return pose** — deliberately excluded from the delivered reference, so
+  the rejection cannot be evidenced from a file; that is by design, not a gap;
 - the newer **ChatGPT-generated walk and correction images** from the 2026-11-13 chat;
 - the **gold-tooth correction** images (and any note establishing exactly one tooth);
 - the **moccasin / Wallabee correction** candidate;
@@ -188,8 +194,53 @@ hat/shoe/build work is per-frame and should follow the approved reference.
 - `vite build` after the review files were added (public assets ship unchanged).
 - Existing test suite and typecheck were not re-run for this change: no `src/` file, test or
   config was modified. That is a deliberate scope limit, not a skipped result.
+- Movement-reference import and page checks are recorded in section 10.
 
-## 9. What this review does not claim
+## 9. Approved movement reference — restored and wired in (2026-11-13, second pass)
+
+Branch fast-forwarded from `8b2b359` to the owner's `1f33780`; local untracked work preserved, no
+reset, no unrelated branch merged. The transfer directory
+`art-source/feedback/chat-movement-transfer-2026-11-13/` was read, then its importer run from the
+repository root:
+
+```bash
+python3 artifacts/sound-clash/art-source/feedback/chat-movement-transfer-2026-11-13/restore_movement_reference.py --check-only
+python3 artifacts/sound-clash/art-source/feedback/chat-movement-transfer-2026-11-13/restore_movement_reference.py
+```
+
+| Step | Result |
+| --- | --- |
+| `--check-only` | `CHECK PASSED: archive + 5 media hashes; 6 safe entries. No files written.` (exit 0) |
+| restore | `RESTORED …/movement-reference` · `6 files verified` (exit 0) |
+| Archive SHA-256 | `88a55337…7447`, matches the value in the README |
+| Re-hashed on disk | all five media digests match `reference-manifest.json` exactly |
+| Side effects | source poses, `public/assets/feedback/`, runtime and gameplay untouched |
+
+Restored content: `01_contact_a.webp`, `02_pass_a.webp`, `03_contact_b.webp`,
+`04_pass_b_rear_arm.png`, `Feedback_Walk_132BPM_Preferred.mp4`, `reference-manifest.json`.
+Timing from the manifest: 109 frames/cycle at 60 fps, holds 27 / 28 / 27 / 27, **132.11 BPM**.
+
+Two factual notes recorded while wiring it up, neither corrected:
+
+1. **Sole height under the recorded placement.** Measured support soles in the 460 × 620 panel are
+   571 / 572 / 571 px for keys 1–3. Key 4 is a 1080 × 1456 image placed at (9, 1) at 455 × 613 as
+   the manifest directs, which puts its sole at ≈566 — about 5 px high relative to the others. The
+   manifest says to follow the recorded placement rather than a guessed per-pose fit, so that is
+   what the page does, and the 5 px is left visible rather than hidden.
+2. **Inline video playback works, but metadata is slow to arrive.** The clip is a valid MP4
+   (`ftyp isom`, `moov` + `mdat` present, 346,253 bytes, 10.9 s = six 109-frame cycles) served with
+   `206 Partial Content` range support. In the cloud preview the element took longer than 2.5 s to
+   reach metadata, which made an early timeout report a false failure; it then loaded and played.
+   Verified: `readyState 4`, duration 10.900 s, 460 × 620, and `currentTime` advanced 0.90 s over
+   0.90 s of wall clock while playing. The page now waits 8 s before showing its “did not load
+   inline” fallback and clears that message as soon as metadata arrives, so a slow first load cannot
+   masquerade as a broken clip.
+
+Not treated as approval: the movement reference is owner-approved **as movement**. Cable, one gold
+tooth, Wallabee construction and slim proportions remain open, and the rejected neutral-arm return
+pose is absent by design.
+
+## 10. What this review does not claim
 
 - It does not approve appearance, and it does not approve the four-key movement test (its own
   note records unapproved timing, no arm counter-swing and a non-closing loop).

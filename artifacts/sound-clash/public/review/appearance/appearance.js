@@ -15,10 +15,10 @@
   // Four-key movement reference. Different canvas (460x620), support sole pinned
   // at y = 566, torso centred at x = 230 — one alignment for all four keys.
   const WALK = [
-    { title: 'WALK · CONTACT A', file: '01_contact_a.png' },
-    { title: 'WALK · PASS A', file: '02_pass_a.png' },
-    { title: 'WALK · CONTACT B', file: '03_contact_b.png' },
-    { title: 'WALK · PASS B', file: '04_pass_b.png' },
+    { title: 'OLDER STUDY · CONTACT A', file: '01_contact_a.png' },
+    { title: 'OLDER STUDY · PASS A', file: '02_pass_a.png' },
+    { title: 'OLDER STUDY · CONTACT B', file: '03_contact_b.png' },
+    { title: 'OLDER STUDY · PASS B', file: '04_pass_b.png' },
   ];
   const WALK_BOX = { w: 460, h: 620, ax: 230, ay: 566 };
 
@@ -324,10 +324,10 @@
       row.className = 'check-row';
       row.innerHTML = `<span class="name">walk key</span>
         <span class="badge uncertain">outside pack</span>
-        <span class="ev">${key.title} is one of the repository's four walk keys (right-hand mic, one mic, one cable). Its own note calls it an unapproved movement test, and it is not the owner-approved 132 BPM swing–bop reference — that generated material is missing from this repository. These keys are outside the 17-pose audit and still carry a floor-bound cable terminal.</span>`;
+        <span class="ev">Earlier four-key study (right-hand mic, one mic, one cable), kept for comparison only. Its own note calls it an unapproved movement test; it is <em>not</em> the approved 132 BPM reference, which is the separate block above. Outside the 17-pose audit, and it still carries a floor-bound cable terminal.</span>`;
       els.checkList.appendChild(row);
       els.poseNote.textContent =
-        'Different canvas and alignment from the pack. Shown so the sequence can be stepped idle → walk → BOX without implying the two sets are interchangeable.';
+        'Different canvas and alignment from the pack. Shown so the sequence can be stepped idle → walk → BOX without implying the two sets are interchangeable. The approved four-pose 132 BPM reference is reviewed in its own block, not here.';
     }
   }
 
@@ -434,6 +434,132 @@
     });
   }
 
+  /* ---- Approved movement reference, restored from the 2026-11-13 transfer package ---- */
+  const MV_BASE = '/review/appearance/movement/';
+  const MV_FLOOR = 571; // measured support-sole line inside the 460 x 620 panel
+  const mv = { manifest: null, imgs: [], idx: 0, playing: true, timer: null };
+
+  function mvName(file) {
+    return file
+      .replace(/\.(webp|png)$/i, '')
+      .replace(/^\d+_/, '')
+      .replace(/_/g, ' ')
+      .toUpperCase();
+  }
+
+  function mvDraw() {
+    const canvas = document.getElementById('mv');
+    if (!canvas || !mv.manifest) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(126, 166, 255, 0.5)';
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    ctx.moveTo(0, MV_FLOOR + 0.5);
+    ctx.lineTo(canvas.width, MV_FLOOR + 0.5);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = '11px ui-monospace, monospace';
+    ctx.fillStyle = 'rgba(126, 166, 255, 0.8)';
+    ctx.fillText('panel sole line  y571', 8, MV_FLOOR - 6);
+
+    const key = mv.manifest.keys[mv.idx];
+    const img = mv.imgs[mv.idx];
+    if (img && img.naturalWidth) {
+      ctx.drawImage(img, key.preview.x, key.preview.y, key.preview.width, key.preview.height);
+    } else {
+      ctx.fillStyle = '#ff7f7f';
+      ctx.font = '13px ui-sans-serif, system-ui, sans-serif';
+      ctx.fillText(img && img.dataset.failed ? `missing: ${key.file}` : 'loading…', 12, 46);
+    }
+
+    ctx.font = 'bold 15px ui-monospace, monospace';
+    ctx.fillStyle = '#ffd899';
+    ctx.fillText(`${mv.idx + 1}/4 · ${mvName(key.file)}`, 12, 26);
+    ctx.restore();
+
+    const info = document.getElementById('mvInfo');
+    if (info) {
+      info.textContent = `key ${mv.idx + 1} / 4 · ${key.preview.width}×${key.preview.height} at ${key.preview.x},${key.preview.y} · ${mv.manifest.poseFrames[mv.idx]} frames`;
+    }
+  }
+
+  function mvTick() {
+    if (mv.timer) clearTimeout(mv.timer);
+    if (!mv.playing || !mv.manifest) return;
+    const hold = (mv.manifest.poseFrames[mv.idx] / mv.manifest.fps) * 1000;
+    mv.timer = setTimeout(() => {
+      mv.idx = (mv.idx + 1) % mv.manifest.keys.length;
+      mvDraw();
+      mvTick();
+    }, hold);
+  }
+
+  async function initMovement() {
+    const canvas = document.getElementById('mv');
+    if (!canvas) return;
+    const res = await fetch(`${MV_BASE}reference-manifest.json`, { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`movement manifest ${res.status}`);
+    mv.manifest = await res.json();
+
+    mv.imgs = mv.manifest.keys.map((k) => {
+      const img = new Image();
+      img.onload = mvDraw;
+      img.onerror = () => {
+        img.dataset.failed = '1';
+        mvDraw();
+      };
+      img.src = `${MV_BASE}${k.file}`;
+      return img;
+    });
+
+    const meta = document.getElementById('mvMeta');
+    if (meta) {
+      meta.textContent = `${mv.manifest.effectiveBpm.toFixed(2)} BPM · ${mv.manifest.cycleFrames} frames / cycle @ ${mv.manifest.fps} fps · holds ${mv.manifest.poseFrames.join(' / ')}`;
+    }
+
+    const playBtn = document.getElementById('mvPlay');
+    playBtn.addEventListener('click', () => {
+      mv.playing = !mv.playing;
+      playBtn.textContent = mv.playing ? '❚❚ Pause loop' : '▶ Play loop';
+      if (mv.playing) mvTick();
+      else if (mv.timer) clearTimeout(mv.timer);
+    });
+
+    document.getElementById('mvStep').addEventListener('click', () => {
+      mv.playing = false;
+      playBtn.textContent = '▶ Play loop';
+      if (mv.timer) clearTimeout(mv.timer);
+      mv.idx = (mv.idx + 1) % mv.manifest.keys.length;
+      mvDraw();
+    });
+
+    // The cloud preview browser does not always issue a media request; say so instead of
+    // showing a dead player. The file itself is served with range support.
+    const video = document.getElementById('mvVideo');
+    const note = document.getElementById('mvVideoNote');
+    const reportVideoFailure = () => {
+      if (!note) return;
+      note.hidden = false;
+      note.innerHTML = `The clip did not load inline in this browser (no media request was issued). <a class="link" style="margin-left:0" href="/review/appearance/movement/Feedback_Walk_132BPM_Preferred.mp4" target="_blank" rel="noreferrer">Open it directly ↗</a> — the file serves normally with byte-range support.`;
+    };
+    if (video) {
+      video.addEventListener('error', reportVideoFailure);
+      video.addEventListener('loadedmetadata', () => {
+        if (note) note.hidden = true;
+      });
+      // Generous, because metadata over the preview proxy can take several seconds.
+      setTimeout(() => {
+        if (video.readyState === 0) reportVideoFailure();
+      }, 8000);
+    }
+
+    mvDraw();
+    mvTick();
+  }
+
   async function main() {
     seqCanvas = setupCanvas(els.seq);
     refCanvas = setupCanvas(els.ref);
@@ -465,6 +591,11 @@
     } catch (err) {
       els.meta.textContent = `manifest failed: ${err.message}`;
     }
+
+    initMovement().catch((err) => {
+      const meta = document.getElementById('mvMeta');
+      if (meta) meta.textContent = `movement reference failed: ${err.message}`;
+    });
   }
 
   main();

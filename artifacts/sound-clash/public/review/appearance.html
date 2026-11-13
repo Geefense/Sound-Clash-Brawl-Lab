@@ -20,7 +20,8 @@
 
     <p class="warn" id="warn">
       Every pose fails the jacket-origin cable requirement: the cord leaves the forearm wrap and
-      ends as a bare strand or loop on the floor. Treat all 17 frames as candidates.
+      ends as a bare strand or loop on the floor. Treat all 17 frames as candidates. The walk
+      reference below is <strong>movement approval only</strong> — its appearance is still pending.
     </p>
 
     <main>
@@ -46,6 +47,56 @@
           <div class="pane-foot">
             <span id="refMeta">—</span>
             <span class="badge pass">comparison baseline</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="movement" id="movement">
+        <div class="mv-head">
+          <span class="tag approved">Approved movement reference — appearance pending</span>
+          <span class="muted" id="mvMeta">132.11 BPM · 109 frames / cycle @ 60 fps · holds 27 / 28 / 27 / 27</span>
+        </div>
+        <div class="mv-body">
+          <div class="mv-loop">
+            <canvas id="mv" width="460" height="620" aria-label="Approved four-pose walk loop"></canvas>
+            <div class="mv-ctl">
+              <button id="mvPlay" type="button">❚❚ Pause loop</button>
+              <button id="mvStep" type="button">Step key ▸</button>
+              <span class="muted" id="mvInfo">key 1 / 4</span>
+            </div>
+          </div>
+          <div class="mv-side">
+            <video
+              id="mvVideo"
+              controls
+              loop
+              muted
+              playsinline
+              preload="metadata"
+              src="/review/appearance/movement/Feedback_Walk_132BPM_Preferred.mp4"
+            ></video>
+            <p class="hint">
+              The recorded clip the owner approved, restored from the transfer package: 109 frames
+              at 60 fps, ≈1.82 s per cycle. The loop on the left plays the same four keys on the
+              manifest's own hold counts.
+            </p>
+            <p class="hint" id="mvVideoNote" hidden></p>
+            <p class="hint">
+              <a
+                class="link"
+                style="margin-left: 0"
+                href="/review/appearance/movement/Feedback_Walk_132BPM_Preferred.mp4"
+                target="_blank"
+                rel="noreferrer"
+                >Open the MP4 directly ↗</a
+              >
+            </p>
+            <ul class="mv-notes">
+              <li><strong>Movement approved.</strong> Rear free-arm swing included; the rejected neutral-arm return pose is deliberately absent.</li>
+              <li><strong>Appearance not approved.</strong> Jacket-connected cord, exactly one gold tooth, approved Wallabee construction and slim proportions stay open.</li>
+              <li>Keys 1–3 are the original preview images; key 4 is the generated rear-arm PASS B, placed at the manifest's recorded offset (9, 1) at 455 × 613.</li>
+              <li>Measured soles sit at 571 / 572 / 571 px in the 460 × 620 panel; under the recorded placement key 4's sole lands ≈566, about 5 px high. Recorded here, not corrected.</li>
+            </ul>
           </div>
         </div>
       </section>
@@ -91,12 +142,13 @@
           rather than where the drawing happens to crop. Nothing here feeds combat or collision.
         </p>
         <p>
-          <strong>Walk block.</strong> These are the repository's four-key walk study (CONTACT A,
-          PASS A, CONTACT B, PASS B) — its own note calls it an unapproved movement test. It is a
-          different canvas (460 × 620, support sole at y = 566) and carries one alignment scale
-          shared by all four keys. It is <em>not</em> the owner-approved 132 BPM swing–bop
-          reference: those generated files are not in this repository, so nothing here should be
-          read as that approval.
+          <strong>Older walk study (in the sequence above).</strong> The four steps marked
+          <em>WALK</em> are the repository's earlier four-key study (CONTACT A, PASS A, CONTACT B,
+          PASS B) — its own note calls it an unapproved movement test. They use a different canvas
+          (460 × 620, support sole at y = 566) and one alignment scale shared by all four keys.
+          They are <em>not</em> the approved reference and must not be read as it. The approved
+          four-pose 132 BPM reference is the separate block above, restored from the transfer
+          package on 2026-11-13.
         </p>
         <p class="keys">Keys: <kbd>←</kbd>/<kbd>→</kbd> step · <kbd>space</kbd> play/pause · <kbd>a</kbd> anchors · <kbd>g</kbd> ghost</p>
       </section>

@@ -1,0 +1,66 @@
+{
+  "status": "owner-approved movement reference; appearance NOT final",
+  "date": "2026-11-13",
+  "fps": 60,
+  "cycleFrames": 109,
+  "poseFrames": [
+    27,
+    28,
+    27,
+    27
+  ],
+  "targetBpm": 132,
+  "effectiveBpm": 132.11009174311926,
+  "keys": [
+    {
+      "file": "01_contact_a.webp",
+      "preview": {
+        "width": 460,
+        "height": 620,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "file": "02_pass_a.webp",
+      "preview": {
+        "width": 460,
+        "height": 620,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "file": "03_contact_b.webp",
+      "preview": {
+        "width": 460,
+        "height": 620,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "file": "04_pass_b_rear_arm.png",
+      "preview": {
+        "width": 455,
+        "height": 613,
+        "x": 9,
+        "y": 1
+      }
+    }
+  ],
+  "notes": [
+    "Original keys 01-03 preserved; only PASS B replaced.",
+    "New rear-arm pose is approved as movement direction only.",
+    "Cable, proportions, Wallabees and one-tooth consistency remain pending.",
+    "Do not use rejected neutral-arm return in this loop.",
+    "Do not treat playback as proof of grounded foot lock or resolved near/far leg anatomy."
+  ],
+  "sha256": {
+    "01_contact_a.webp": "4762f5717b96d831e630fa74ab1ea8b8951aec774d4cac3501611a8c90bfb4dd",
+    "02_pass_a.webp": "93a27e55c214c5bc5c2d4a4279485d0953589e2adac4f951959d65fb8f4a3d1e",
+    "03_contact_b.webp": "d0712be3096c7858a0238da0be398711f08da7b35510ee6b1a51076a2f855621",
+    "04_pass_b_rear_arm.png": "732bebcbca0ab89d39e4d7fb83711e926f8002589c08e4564ec450d1d4f0aeb1",
+    "Feedback_Walk_132BPM_Preferred.mp4": "b4eb8faa88a7435bc7904d6ea0238bb49531be93aed07e6a9d540a13fb2e9d29"
+  }
+}

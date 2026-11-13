@@ -69,8 +69,8 @@ Nothing on the page feeds combat: it is static files under `public/review/` plus
   three-loop wrist coil, no trailing tail) was used as the comparison baseline, not as proof that
   every pack pose matches it.
 - Objective alpha/edge measurements per file: connected components above 50 px, stray pixels,
-  and the share of soft-alpha edge. Every pose is a single component with 0–17 stray pixels, so
-  there is no broken transparency, no trapped background and no detached prop layer. Soft edges
+  and the share of soft-alpha edge. Every pose is a single component with 0–17 stray pixels, which alone cannot prove the absence of trapped background or a connected duplicate detail.
+  Visual inspection is also required. Soft edges
   sit at 3.8–5.4%.
 - Limits: the review is visual and per-frame. It cannot prove anatomy under occlusion, and a
   concealed face means the tooth is unverifiable rather than passing.
@@ -78,8 +78,8 @@ Nothing on the page feeds combat: it is static files under `public/review/` plus
 ## 4. Per-pose verdicts
 
 `pass` = the named requirement holds; `fail` = a specific, visible violation; `uncertain` = the
-evidence does not settle it. The cable requirement fails in **all 17** poses, so the pack is not
-approved as a set.
+evidence does not settle it. The per-pose cable review records **16 failures and one uncertain
+case (04_inverted_c)**, so the pack is not approved as a set.
 
 | # | Pose | Verdict | Failed checks (evidence) |
 | --- | --- | --- | --- |
@@ -105,8 +105,8 @@ Tallies: **16 fail, 1 uncertain, 0 pass.**
 
 ## 5. Cross-pose failures, consolidated
 
-1. **Cable origin — 17/17 fail.** No frame routes the cord into the jacket. Every one ends in a
-   bare strand, a floor loop, or a floating end; several are physically impossible (02, 06, 17).
+1. **Cable origin — 16 fail, 1 uncertain.** Sixteen frames show an unconnected/floor-trailing
+   route; 04_inverted_c hides its terminal, so jacket continuity is unverified, not disproven.
    The forearm wrap is present and consistent in 01, 08, 09, 13, 14, 15 — the break is always
    *after* the wrap. This is the single largest defect and it is systemic, not per-pose drift.
 2. **Mic hand — 13 pass, 3 uncertain, 1 contradicted by its neighbours.** One mic in every frame,
@@ -127,7 +127,8 @@ Tallies: **16 fail, 1 uncertain, 0 pass.**
    moccasin with the pale crepe sole (heel counter, orange bulbous toe, rounded thin sole, heavy
    midsole line respectively).
 7. **Alpha and edges — pass in all 17.** Single connected figure per file, 0–17 stray pixels,
-   no trapped background, no duplicated prop layer. Transparency is not the problem.
+   no obvious trapped background or duplicate prop reported in this inspection. Component counts
+   alone do not certify those details; targeted visual QA remains required.
 
 ## 6. Missing assets — exact status
 
@@ -196,3 +197,7 @@ hat/shoe/build work is per-frame and should follow the approved reference.
   microphone handedness; nothing was mirrored.
 - It does not claim the missing generated material exists. Those files must be delivered before
   the approved movement reference and any appearance correction can be reviewed against it.
+
+## Follow-up clarification — November 13, 2026
+
+ChatGPT verified this saved handoff and corrected the cable summary to preserve pose 04's uncertain status. The 132 BPM approved movement reference and its exact four source keys exist in the chat workspace; delivery to this branch is pending explicit owner authorization after automatic upload review blocked the media transfer. Do not substitute the older four keys or mark the newer appearance approved. The added neutral-arm return pose remains rejected. Latest main AGENTS.md also includes the owner's requested Spriteriffic team/asset/grid rules; these are documentation updates, not proof of completed animation generation.

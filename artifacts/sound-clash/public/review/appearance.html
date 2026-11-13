@@ -101,6 +101,46 @@
         </div>
       </section>
 
+      <section class="cable" id="cable">
+        <div class="mv-head">
+          <span class="tag cable">Cable correction candidate v1 — 01_idle · awaiting owner approval</span>
+          <span class="muted" id="cabStats">loading…</span>
+        </div>
+        <div class="cable-body">
+          <div class="pane">
+            <div class="pane-head">
+              <span class="tag">Original</span>
+              <span>aligned/01_idle.png — untouched</span>
+            </div>
+            <canvas id="cabOriginal" width="680" height="520"></canvas>
+          </div>
+          <div class="pane">
+            <div class="pane-head">
+              <span class="tag">Candidate v1</span>
+              <span>01_idle-jacket-entry-v1.png</span>
+            </div>
+            <canvas id="cabCandidate" width="680" height="520"></canvas>
+          </div>
+        </div>
+        <div class="controls">
+          <label class="field check"><input id="cabDiffOn" type="checkbox" /> Difference view</label>
+          <span class="muted">magenta = cable removed · green = jacket entry added · both panes share one anchor and scale</span>
+        </div>
+        <div class="pane cable-diff" id="cabDiffPane" hidden>
+          <div class="pane-head">
+            <span class="tag">Difference</span>
+            <span>every changed pixel, same anchor and scale</span>
+          </div>
+          <canvas id="cabDiff" width="680" height="520"></canvas>
+        </div>
+        <div class="regions" id="cabRegions"></div>
+        <ul class="mv-notes">
+          <li><strong>What changed:</strong> the cable tail and its floor loop below the forearm wrap, plus the short run into the jacket. Mic, hand, wrist coil, hat, face, trousers and Clarks are byte-identical to the original.</li>
+          <li><strong>What did not:</strong> no plug, no pocket route, no glow, no added background, and no other pose is touched.</li>
+          <li>The tip passes behind the ribbed hem, above the untouched cream waistband. The five-pixel walk alignment issue is a separate recorded item and is not rescaled here.</li>
+        </ul>
+      </section>
+
       <section class="controls" aria-label="Playback controls">
         <button id="play" class="primary" type="button">❚❚ Pause</button>
         <button id="prev" type="button">◀ Prev</button>

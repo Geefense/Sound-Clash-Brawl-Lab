@@ -398,10 +398,12 @@
       state.scale = Number(els.scale.value) / 100;
       els.scaleOut.value = state.scale.toFixed(2);
       draw();
+      cabDraw();
     });
     els.anchors.addEventListener('change', () => {
       state.anchors = els.anchors.checked;
       draw();
+      cabDraw();
     });
     els.ghost.addEventListener('change', () => {
       state.ghost = els.ghost.checked;
@@ -560,6 +562,138 @@
     mvTick();
   }
 
+  // ---- Cable correction candidate (01_idle only) --------------------------
+  // Original and candidate are drawn through the same drawPose call with the
+  // manifest's own origin and anchor, so any apparent shift would be real.
+  const CABLE_DIR = '/review/appearance/cable/';
+  const CABLE_ORIGINAL = '/assets/feedback/aligned/01_idle.png';
+  const CABLE_CANDIDATE = `${CABLE_DIR}01_idle-jacket-entry-v1.png`;
+  const cable = { orig: null, cand: null, diff: null, canvases: new Map() };
+
+  function cableRec(src, key) {
+    const rec = { img: new Image(), ok: false, error: null, src };
+    rec.img.onload = () => {
+      rec.ok = true;
+      cabDraw();
+    };
+    rec.img.onerror = () => {
+      rec.error = 'missing';
+      cabDraw();
+    };
+    rec.img.src = src;
+    cable[key] = rec;
+    return rec;
+  }
+
+  function cableEntry(rec, src) {
+    const pose = manifest.poses['01_idle'];
+    return {
+      kind: 'pack',
+      id: '01_idle',
+      pose,
+      rec,
+      src,
+      w: manifest.canvas[0],
+      h: manifest.canvas[1],
+      ax: pose.anchorPx[0],
+      ay: pose.anchorPx[1],
+      placement: pose.placement,
+      facing: pose.facing,
+      bounds: null,
+    };
+  }
+
+  function cabCanvas(id, key) {
+    if (!cable.canvases.has(key)) cable.canvases.set(key, setupCanvas($(id)));
+    return cable.canvases.get(key);
+  }
+
+  function cabDraw() {
+    if (!manifest) return;
+    const S = state.scale;
+    const panes = [
+      ['cabOriginal', 'cab:orig', 'orig', CABLE_ORIGINAL],
+      ['cabCandidate', 'cab:cand', 'cand', CABLE_CANDIDATE],
+    ];
+    for (const [id, key, slot, src] of panes) {
+      const c = cabCanvas(id, key);
+      c.ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      c.ctx.clearRect(0, 0, c.w, c.h);
+      const rec = cable[slot];
+      if (!rec) continue;
+      drawPose(c.ctx, cableEntry(rec, src), S, c.w, c.h, { lines: true, anchors: state.anchors });
+    }
+
+    const d = cabCanvas('cabDiff', 'cab:diff');
+    d.ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    d.ctx.clearRect(0, 0, d.w, d.h);
+    const pose = manifest.poses['01_idle'];
+    const floorY = d.h - FLOOR_PAD;
+    const dx = d.w / 2 - pose.anchorPx[0] * S;
+    const dy = floorY - pose.anchorPx[1] * S;
+    if (cable.diff && cable.diff.ok) {
+      d.ctx.imageSmoothingQuality = 'high';
+      d.ctx.drawImage(cable.diff.img, dx, dy, manifest.canvas[0] * S, manifest.canvas[1] * S);
+      d.ctx.save();
+      d.ctx.strokeStyle = 'rgba(126, 166, 255, 0.55)';
+      d.ctx.setLineDash([6, 5]);
+      d.ctx.beginPath();
+      d.ctx.moveTo(0, floorY + 0.5);
+      d.ctx.lineTo(d.w, floorY + 0.5);
+      d.ctx.stroke();
+      d.ctx.restore();
+    } else if (cable.diff && cable.diff.error) {
+      d.ctx.fillStyle = '#ff7f7f';
+      d.ctx.font = '13px ui-sans-serif, system-ui, sans-serif';
+      d.ctx.fillText(`missing diff image: ${CABLE_DIR}diff-original-vs-v1.png`, 12, 24);
+    }
+  }
+
+  function cabRenderRegions(data) {
+    const host = $('cabRegions');
+    const stats = $('cabStats');
+    if (!host) return;
+    const regions = data.regions || [];
+    const rows = regions
+      .map(
+        (r) =>
+          `<tr><td>${r.id}</td><td>${r.pixels}</td><td>[${(r.bbox || []).join(', ')}]</td></tr>`,
+      )
+      .join('');
+    host.innerHTML =
+      `<b>${data.changed_pixels}</b> changed pixels in <b>${regions.length}</b> contiguous region${regions.length === 1 ? '' : 's'} · <span class="mono">bbox [${(data.changed_bbox || []).join(', ')}]</span> · canvas ${data.canvas.join('×')} · origin ${data.origin.map((n) => n.toFixed(3)).join(', ')} · anchor [${data.anchor.join(', ')}]` +
+      `<table><thead><tr><th>region</th><th>pixels</th><th>bbox x0, y0, x1, y1</th></tr></thead><tbody>${rows}</tbody></table>`;
+    if (stats) {
+      stats.textContent = `${data.changed_pixels} px changed · source ${data.source.split('/').pop()} untouched`;
+    }
+  }
+
+  async function initCable() {
+    if (!$('cabOriginal')) return;
+    cableRec(CABLE_ORIGINAL, 'orig');
+    cableRec(CABLE_CANDIDATE, 'cand');
+    cableRec(`${CABLE_DIR}diff-original-vs-v1.png`, 'diff');
+
+    const toggle = $('cabDiffOn');
+    const pane = $('cabDiffPane');
+    if (toggle && pane) {
+      toggle.addEventListener('change', () => {
+        pane.hidden = !toggle.checked;
+        if (toggle.checked) cabDraw();
+      });
+    }
+
+    try {
+      const res = await fetch(`${CABLE_DIR}diff-regions.json`, { cache: 'no-cache' });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      cabRenderRegions(await res.json());
+    } catch (err) {
+      const stats = $('cabStats');
+      if (stats) stats.textContent = `region data failed: ${err.message}`;
+    }
+    cabDraw();
+  }
+
   async function main() {
     seqCanvas = setupCanvas(els.seq);
     refCanvas = setupCanvas(els.ref);
@@ -595,6 +729,11 @@
     initMovement().catch((err) => {
       const meta = document.getElementById('mvMeta');
       if (meta) meta.textContent = `movement reference failed: ${err.message}`;
+    });
+
+    initCable().catch((err) => {
+      const stats = document.getElementById('cabStats');
+      if (stats) stats.textContent = `candidate section failed: ${err.message}`;
     });
   }
 

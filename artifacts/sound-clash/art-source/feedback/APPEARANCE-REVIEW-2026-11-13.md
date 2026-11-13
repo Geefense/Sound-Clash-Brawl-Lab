@@ -249,6 +249,52 @@ pose is absent by design.
 - It does not claim the missing generated material exists. Those files must be delivered before
   the approved movement reference and any appearance correction can be reviewed against it.
 
+## 11. Cable correction candidate — `01_idle` (awaiting Garfield's visual approval)
+
+One candidate, one pose. Nothing here is applied to the pack, the other sixteen poses, the
+simulation, collision data or the Godot project.
+
+| | |
+| --- | --- |
+| Original (never written) | `public/assets/feedback/aligned/01_idle.png` — sha256 `d2e47bb7…3dbdf2` |
+| Candidate v1 | `public/review/appearance/cable/01_idle-jacket-entry-v1.png` — sha256 `5390f116…4a9ad9` |
+| Sanitised source copy | `art-source/feedback/cable-candidates/01_idle-jacket-entry-v1.png` |
+| Diff view | `art-source/feedback/cable-candidates/diff-original-vs-v1.png` |
+| Changed-region data | `art-source/feedback/cable-candidates/diff-regions.json` |
+| Repeatable builder | `art-source/feedback/cable-candidates/build_idle_cable_candidate.py` |
+
+**What was done.** Below the forearm wrap the mic cable hangs free of the garment, so it could be
+removed as *silhouette runs* rather than by colour: every row from `y 632` down keeps only the
+figure's own runs, and the floor loop is found as the thin structure a 13 px opening of the boot
+cannot explain. That leaves the cord's cut end at the wrap, and a short anti-aliased stroke
+(4-bit supersampled, cord colour sampled from the removed cable) carries it across the jacket and
+under the ribbed hem's bottom edge at `y ≈ 648`, above the cream waistband. The original hem
+pixels are pasted back over the stroke's tip, so it reads as passing behind the fabric instead of
+stopping on it.
+
+**Checks actually run**
+
+- `python3 build_idle_cable_candidate.py` → `changed pixels: 2226 in 1 regions`, bbox
+  `[622, 619, 732, 892]`; the builder aborts if anything above `y 610` changes.
+- Independent comparison of original vs candidate: `changed px 2226`, bbox
+  `[622, 619, 732, 892]`, **0** changed pixels above `y 610`, **0** right of `x 745`; every
+  opaque pixel outside that region is identical.
+- `node --check public/review/appearance/appearance.js` → clean; `vite build` → exit 0.
+- Original's sha256 is recorded above and its file is unmodified (`git status` clean for the path).
+
+**Deliberately unchanged:** mic, hand, wrist coil, hat, face, dreads, jacket body, cream
+waistband, trousers, Clarks and the whole right half of the canvas. No plug body, no pocket route,
+no glow, no background was added. Pose `04_knockout`'s uncertain status and the rejected modern
+neutral-arm pose are unaffected; the sixteen other poses were not touched.
+
+**How Garfield reviews it:** the preview page's section *Cable correction candidate v1 — 01_idle*
+draws original and candidate through the same anchor and origin (`[768, 900]`, `0.5, 0.87890625`)
+at one shared scale, with a difference view and the changed-region table. The five-pixel walk
+alignment issue stays a separate recorded item (§9) and is **not** concealed by any rescale here.
+
+Not approval. Candidate v1 awaits the owner's verdict; if rejected, the next candidate gets a new
+version suffix rather than overwriting this one.
+
 ## Follow-up clarification — November 13, 2026
 
 ChatGPT verified this saved handoff and corrected the cable summary to preserve pose 04's uncertain status. The 132 BPM approved movement reference and its exact four source keys exist in the chat workspace; delivery to this branch is pending explicit owner authorization after automatic upload review blocked the media transfer. Do not substitute the older four keys or mark the newer appearance approved. The added neutral-arm return pose remains rejected. Latest main AGENTS.md also includes the owner's requested Spriteriffic team/asset/grid rules; these are documentation updates, not proof of completed animation generation.

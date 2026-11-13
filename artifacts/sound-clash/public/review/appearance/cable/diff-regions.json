@@ -1,0 +1,56 @@
+{
+  "source": "artifacts/sound-clash/public/assets/feedback/aligned/01_idle.png",
+  "candidate": "01_idle-jacket-entry-v1.png",
+  "canvas": [
+    1536,
+    1024
+  ],
+  "anchor": [
+    768,
+    900
+  ],
+  "origin": [
+    0.5,
+    0.87890625
+  ],
+  "cut_y": 632,
+  "changed_pixels": 2226,
+  "changed_bbox": [
+    622,
+    619,
+    732,
+    892
+  ],
+  "regions": [
+    {
+      "id": 1,
+      "pixels": 2222,
+      "bbox": [
+        622,
+        619,
+        732,
+        892
+      ]
+    }
+  ],
+  "entry_curve": [
+    [
+      704,
+      624
+    ],
+    [
+      716,
+      637
+    ],
+    [
+      731,
+      649
+    ]
+  ],
+  "entry_width_px": 4.6,
+  "entry_colour": [
+    25,
+    24,
+    24
+  ]
+}

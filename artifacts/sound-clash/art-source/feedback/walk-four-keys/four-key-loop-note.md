@@ -145,10 +145,11 @@ One mic, one cable, right hand in all four keys; details in `four-key-note.md`.
    leads in each should be confirmed by the artist: the masks cannot resolve key
    03, and the two keys share a foot plot by construction.
 
-## Prepared correction — `04_pass_b_corrected.png`
+## Prepared correction — `comparison/pass-b-prepared.png`
 
-Built by `build_corrected_pass_b.py` for the side-by-side in `compare.html`. It
-is a **review proxy, not finished art**: PASS B's jacket, mic arm and free-arm
+Built by `build_corrected_pass_b.py` for the side-by-side in `compare.html`, and
+kept outside `poses/` deliberately. It is a **comparison image, not a walk key
+and not a candidate asset**: PASS B's jacket, mic arm and free-arm
 swagger stay exactly as drawn, and the trousers below the waistband come from
 PASS A, joined at each pose's own waistband line. PASS A's free hand is removed
 and refilled from the surrounding cloth before B's own hand is laid back on top,
@@ -178,6 +179,12 @@ near in the fourth key is exactly the question the redraw has to answer. The
 free arm is also left leading, as instructed, so the comparison isolates the
 pass phase rather than mixing two corrections.
 
+**Status: stops here.** No further splicing or warping. PASS B needs a real
+redraw at the matching phase of the opposite step — same proportions, same
+swagger, mic in the right hand, one continuous cable — and that is drawing
+work, not image work. The four original keys in `poses/` are untouched by any
+of this and remain the only keys in the folder.
+
 ## Playback
 
 Four poses and nothing else: each key is held (6 frames at 24 fps by default =
@@ -191,7 +198,7 @@ opacity, and the key step and strip highlight follow.
 ```bash
 python3 extract_keys.py             # poses/, keys-aligned.png, loop-check.json
 python3 trace_legs.py               # leg-trace.png, leg-trace.json
-python3 build_corrected_pass_b.py   # poses/04_pass_b_corrected.png, corrected-pass-b.json
+python3 build_corrected_pass_b.py   # comparison/pass-b-prepared.png, corrected-pass-b.json
 ```
 
 Requires Pillow, numpy and scipy. `index.html` and `compare.html` read `poses/`

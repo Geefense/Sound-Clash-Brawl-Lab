@@ -19,7 +19,9 @@ So this is a splice instead, and it is a review proxy, not finished art:
 Leg identity is still PASS B's slot, i.e. the near leg is PASS A's. Only a
 redraw can change that.
 
-Writes poses/04_pass_b_corrected.png and corrected-pass-b.json.
+Writes comparison/pass-b-prepared.png and corrected-pass-b.json. It is a
+comparison image only: it is not a walk key, it does not belong in poses/, and
+it must never be wired into the loop as if it were the redrawn PASS B.
 """
 
 from __future__ import annotations
@@ -33,7 +35,8 @@ from scipy import ndimage
 
 HERE = Path(__file__).resolve().parent
 POSES = HERE / "poses"
-OUT = POSES / "04_pass_b_corrected.png"
+COMPARISON = HERE / "comparison"
+OUT = COMPARISON / "pass-b-prepared.png"
 REPORT = HERE / "corrected-pass-b.json"
 
 FLOOR_Y = 566
@@ -148,13 +151,15 @@ def main() -> int:
         out[hand] = filled[hand]
     out[hand_zone & (b[:, :, 3] > 0)] = b[hand_zone & (b[:, :, 3] > 0)]
 
+    COMPARISON.mkdir(exist_ok=True)
     img = Image.fromarray(out, "RGBA")
     img.save(OUT)
     print(f"wrote {OUT.name}")
 
     m = hip_and_boots(out)
     report = {
-        "file": "poses/04_pass_b_corrected.png",
+        "file": "comparison/pass-b-prepared.png",
+        "role": "comparison only - not a walk key, not a candidate asset",
         "method": "waistband splice: PASS B above the join, PASS A's trousers below",
         "notDone": "leg identity is PASS A's, so which leg is near still needs a redraw",
         "hip": {"x": m["hipX"]},

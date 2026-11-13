@@ -1,5 +1,6 @@
 {
-  "file": "poses/04_pass_b_corrected.png",
+  "file": "comparison/pass-b-prepared.png",
+  "role": "comparison only - not a walk key, not a candidate asset",
   "method": "waistband splice: PASS B above the join, PASS A's trousers below",
   "notDone": "leg identity is PASS A's, so which leg is near still needs a redraw",
   "hip": {

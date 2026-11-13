@@ -112,7 +112,7 @@ Both loops run off one clock so they can be compared frame for frame.</p>
 
   <section class="card">
     <header>
-      <h2>Corrected</h2><span class="tag corr">prepared pass B</span>
+      <h2>Corrected</h2><span class="tag corr">prepared pass B · comparison only</span>
       <span class="note" id="ro-corr">01 CONTACT A</span>
     </header>
     <div class="stage" id="stage-corr">
@@ -150,7 +150,7 @@ wired into gameplay.</p>
 const KEYS = ["01 CONTACT A", "02 PASS A", "03 CONTACT B", "04 PASS B"];
 const SRC = {
   orig: ["poses/01_contact_a.png", "poses/02_pass_a.png", "poses/03_contact_b.png", "poses/04_pass_b.png"],
-  corr: ["poses/01_contact_a.png", "poses/02_pass_a.png", "poses/03_contact_b.png", "poses/04_pass_b_corrected.png"]
+  corr: ["poses/01_contact_a.png", "poses/02_pass_a.png", "poses/03_contact_b.png", "comparison/pass-b-prepared.png"]
 };
 const frame = { orig: document.getElementById("frame-orig"), corr: document.getElementById("frame-corr") };
 const ghost = { orig: document.getElementById("ghost-orig"), corr: document.getElementById("ghost-corr") };

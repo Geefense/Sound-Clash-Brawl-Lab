@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Feedback — PASS B redraw v1 against the drawn cycle (unapproved)</title>
+<style>
+  :root { --bg:#15121a; --panel:#1e1a24; --line:#332c3c; --ink:#efe9f3; --dim:#9d93a8;
+          --hi:#f0b429; --ok:#6fcf97; --bad:#eb6f6f; --warn:#e8b45a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); padding:24px 24px 60px;
+         font:15px/1.55 "Inter", system-ui, -apple-system, sans-serif; }
+  h1 { font-size:20px; margin:0 0 6px; letter-spacing:-0.01em; }
+  .banner { display:inline-block; margin:0 0 6px; padding:3px 10px; border-radius:999px;
+            background:#2a1614; border:1px solid #5a2a26; color:#f0a79e;
+            font-size:11px; letter-spacing:.06em; text-transform:uppercase; }
+  .sub { color:var(--dim); margin:0 0 18px; max-width:82ch; }
+  .sub strong { color:var(--ink); }
+  .bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; background:var(--panel);
+         border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:16px; }
+  button { background:#2a2433; color:var(--ink); border:1px solid var(--line); border-radius:7px;
+           padding:7px 12px; font:inherit; font-size:13px; cursor:pointer; }
+  button:hover { border-color:#554966; }
+  button[aria-pressed="true"] { background:var(--hi); color:#1a1620; border-color:var(--hi); font-weight:600; }
+  .sep { width:1px; height:22px; background:var(--line); margin:0 4px; }
+  .clock { margin-left:auto; color:var(--dim); font:12px/1 ui-monospace, monospace; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  @media (max-width:900px) { .grid { grid-template-columns:1fr; } }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .card header { display:flex; align-items:baseline; gap:10px; padding:10px 14px;
+                 border-bottom:1px solid var(--line); }
+  .card h2 { font-size:12px; margin:0; letter-spacing:.05em; text-transform:uppercase; }
+  .tag { font-size:11px; padding:2px 7px; border-radius:99px; }
+  .tag.drawn { background:#2b3a30; color:#9fe0b6; }
+  .tag.cand { background:#3a2b2b; color:#e8a5a5; }
+  .card .note { margin-left:auto; font:11px/1 ui-monospace, monospace; color:var(--dim); }
+  .stage { position:relative; background:#100d15; }
+  .stage img { display:block; width:100%; height:auto; }
+  .ghost { position:absolute; inset:0; opacity:0; transition:opacity .18s; }
+  .ghost img { position:absolute; inset:0; }
+  .stage.onion .ghost { opacity:.34; }
+  .cutline { position:absolute; left:0; right:0; top:56.45%; bottom:0;
+             background:repeating-linear-gradient(45deg, rgba(235,111,111,.10) 0 8px,
+             rgba(235,111,111,.02) 8px 16px); border-top:1px dashed rgba(235,111,111,.7);
+             display:flex; align-items:flex-start; justify-content:center; }
+  .cutline span { margin-top:8px; background:#241a1d; border:1px solid #5a2a26; color:#f0a79e;
+                  font:11px/1.4 ui-monospace, monospace; padding:4px 8px; border-radius:6px; }
+  .strip { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; padding:8px; }
+  .thumb { position:relative; border:1px solid transparent; border-radius:6px; background:#100d15;
+           cursor:pointer; padding:0; overflow:hidden; }
+  .thumb img { display:block; width:100%; height:auto; opacity:.55; }
+  .thumb.on { border-color:var(--hi); } .thumb.on img { opacity:1; }
+  .thumb span { position:absolute; left:5px; bottom:3px; font:10px/1 ui-monospace,monospace; color:var(--dim); }
+  .thumb.on span { color:var(--hi); }
+  table { border-collapse:collapse; width:100%; margin-top:22px; font-size:13px; }
+  th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--dim); font-weight:500; font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+  td.num { font:12px/1.4 ui-monospace, monospace; }
+  .bad { color:var(--bad); } .warn { color:var(--warn); } .ok { color:var(--ok); }
+  .foot { color:var(--dim); font-size:13px; margin-top:18px; max-width:86ch; }
+  .foot code { background:#241e2c; padding:1px 5px; border-radius:4px; font-size:12px; }
+</style>
+</head>
+<body>
+
+<span class="banner">Unapproved · review only · not in gameplay</span>
+<h1>PASS B redraw v1 vs the drawn cycle</h1>
+<p class="sub">A separate test loop, as asked: the four drawn keys on the left, the drawn keys with the
+candidate in the fourth slot on the right, one clock driving both. The repaired file now decodes
+completely (1457 of 1457 rows, <code>IEND</code> present, decompressed size exact), so this is the whole
+drawing. It is placed by its support sole on the floor line and scaled to the drawn PASS B's height;
+at the microphone's own scale it would be 29% taller than any drawn key and would not fit the panel.</p>
+
+<div class="bar">
+  <button id="play" aria-pressed="false">Play</button>
+  <button id="prev">◀ key</button>
+  <button id="next">key ▶</button>
+  <div class="sep"></div>
+  <button class="spd" data-ms="500">0.5×</button>
+  <button class="spd" data-ms="250" aria-pressed="true">1×</button>
+  <button class="spd" data-ms="125">2×</button>
+  <div class="sep"></div>
+  <button id="onion" aria-pressed="false">Onion skin</button>
+  <span class="clock" id="clock">01 CONTACT A · 250 ms/key</span>
+</div>
+
+<div class="grid">
+  <section class="card">
+    <header><h2>Drawn cycle</h2><span class="tag drawn">as extracted</span>
+      <span class="note" id="ro-drawn">01 CONTACT A</span></header>
+    <div class="stage" id="stage-drawn">
+      <div class="ghost"><img id="ghost-drawn" alt=""></div>
+      <img id="frame-drawn" alt="Drawn cycle frame">
+    </div>
+    <div class="strip" id="strip-drawn"></div>
+  </section>
+
+  <section class="card">
+    <header><h2>With candidate v1</h2><span class="tag cand">unapproved</span>
+      <span class="note" id="ro-cand">01 CONTACT A</span></header>
+    <div class="stage" id="stage-cand">
+      <div class="ghost"><img id="ghost-cand" alt=""></div>
+      <img id="frame-cand" alt="Candidate test frame">
+    </div>
+    <div class="strip" id="strip-cand"></div>
+  </section>
+</div>
+
+<table>
+  <tr><th>Check</th><th>Result</th><th>How it was measured</th></tr>
+  <tr><td>File integrity</td><td class="ok">pass</td>
+      <td class="num">1457 of 1457 rows decode, IEND present, decompressed length exact (6,289,869 bytes)</td></tr>
+  <tr><td>Legs and floor contact</td><td class="ok">pass</td>
+      <td>two boots, one flat on the sole line; support boot 243 px ahead of the hip in the source,
+          81 px at panel scale</td></tr>
+  <tr><td>Phase vs PASS A</td><td class="bad">too long a stride</td>
+      <td class="num">support +81 px vs PASS A's +24 px (drawn contact is +147); swing −180 px vs −81 px;
+          lift 56 px vs 46 px — it reads as a mid-stride, not a pass</td></tr>
+  <tr><td>Opposite-leg identity</td><td class="bad">repeats PASS A's step</td>
+      <td>the lifted leg is the one drawn over the planted leg (near leg, screen-left), which is PASS A's
+          arrangement; the far leg is the planted one, as in PASS A. Read at 2× on the thigh crossing, so
+          ask the artist to confirm</td></tr>
+  <tr><td>One mic</td><td class="ok">pass</td>
+      <td>one neutral-metal blob, 72.5 px diagonal, x 471–534, y 348–381</td></tr>
+  <tr><td>Right-hand mic</td><td class="ok">pass</td>
+      <td>mic arm carries the three cream stripes on its outer surface and is drawn over the jacket;
+          the free hand is now visible and carries none — the same grip evidence the four-key check uses</td></tr>
+  <tr><td>Cable</td><td class="ok">pass</td>
+      <td>one cord from the mic base, coiled at the wrist, hanging to a single plug at hip height; no break visible</td></tr>
+  <tr><td>Proportions</td><td class="bad">body 27% too large for the mic</td>
+      <td>height 18.8 mic-units vs 14.6–15.1 drawn; chest 6.29 vs 4.76–5.29. At the mic's scale it would be
+          585 px tall in a 460 px key; fitted to height, the mic reads 24 px against the drawn 31 px</td></tr>
+  <tr><td>View angle</td><td class="warn">still 3/4</td>
+      <td>both shoulders and the chest front are visible; the drawn keys are strict side views</td></tr>
+</table>
+
+<p class="foot"><strong>What this means.</strong> The drawing is complete and the character work holds up:
+one mic, right hand, one continuous cable to a plug, two boots on a readable sole line. What it does not
+do is sit at PASS A's point in the opposite step. Its stride is roughly three times PASS A's, and the
+lifted leg is the near leg — the same arrangement as the first half — so dropped into slot 4 it repeats
+step A instead of answering it, and the cycle would rock rather than walk.
+
+Two smaller things to fix on the next pass: the body is 27% too long for the microphone (or the mic 22%
+too small for the body), and the figure is still a three-quarter view where the keys are side profiles.
+Both are measurable and both are the artist's call to trade off.
+
+The drawn keys are untouched: <code>../poses/</code> still holds exactly the four extracted keys, and the
+candidate is read from its repaired original — no splicing, warping or repainting anywhere in this loop.</p>
+
+<script>
+const KEYS = ["01 CONTACT A", "02 PASS A", "03 CONTACT B", "04 PASS B"];
+const DRAWN = ["../poses/01_contact_a.png", "../poses/02_pass_a.png",
+               "../poses/03_contact_b.png", "../poses/04_pass_b.png"];
+const CAND = ["../poses/01_contact_a.png", "../poses/02_pass_a.png",
+              "../poses/03_contact_b.png", "pass-b-redraw-v1-aligned.png"];
+const SRC = { drawn: DRAWN, cand: CAND };
+const frame = { drawn: document.getElementById("frame-drawn"), cand: document.getElementById("frame-cand") };
+const ghost = { drawn: document.getElementById("ghost-drawn"), cand: document.getElementById("ghost-cand") };
+const readout = { drawn: document.getElementById("ro-drawn"), cand: document.getElementById("ro-cand") };
+const stripEl = { drawn: document.getElementById("strip-drawn"), cand: document.getElementById("strip-cand") };
+const stageEl = { drawn: document.getElementById("stage-drawn"), cand: document.getElementById("stage-cand") };
+
+let i = 0, ms = 250, playing = false, timer = null;
+
+for (const loop of ["drawn", "cand"]) {
+  SRC[loop].forEach((src, k) => {
+    const b = document.createElement("button");
+    b.className = "thumb";
+    b.innerHTML = `<img src="${src}" alt="${KEYS[k]}"><span>${KEYS[k].slice(0, 2)}</span>`;
+    b.onclick = () => { stop(); i = k; render(); };
+    stripEl[loop].append(b);
+  });
+}
+
+function render() {
+  for (const loop of ["drawn", "cand"]) {
+    frame[loop].src = SRC[loop][i];
+    ghost[loop].src = SRC[loop][(i + 3) % 4];
+    readout[loop].textContent = KEYS[i];
+    [...stripEl[loop].children].forEach((el, k) => el.classList.toggle("on", k === i));
+  }
+  document.getElementById("clock").textContent = `${KEYS[i]} · ${ms} ms/key`;
+}
+const tick = () => { i = (i + 1) % 4; render(); };
+function start() { playing = true; timer = setInterval(tick, ms); sync(); }
+function stop() { playing = false; clearInterval(timer); timer = null; sync(); }
+function sync() {
+  const p = document.getElementById("play");
+  p.setAttribute("aria-pressed", String(playing));
+  p.textContent = playing ? "Pause" : "Play";
+  if (playing) { clearInterval(timer); timer = setInterval(tick, ms); }
+}
+document.getElementById("play").onclick = () => (playing ? stop() : start());
+document.getElementById("prev").onclick = () => { stop(); i = (i + 3) % 4; render(); };
+document.getElementById("next").onclick = () => { stop(); i = (i + 1) % 4; render(); };
+document.getElementById("onion").onclick = (e) => {
+  const on = e.currentTarget.getAttribute("aria-pressed") !== "true";
+  e.currentTarget.setAttribute("aria-pressed", String(on));
+  for (const loop of ["drawn", "cand"]) stageEl[loop].classList.toggle("onion", on);
+};
+document.querySelectorAll(".spd").forEach((b) => {
+  b.onclick = () => {
+    ms = Number(b.dataset.ms);
+    document.querySelectorAll(".spd").forEach((o) => o.setAttribute("aria-pressed", String(o === b)));
+    if (playing) { clearInterval(timer); timer = setInterval(tick, ms); }
+    render();
+  };
+});
+render();
+</script>
+</body>
+</html>

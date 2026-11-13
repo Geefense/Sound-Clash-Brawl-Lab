@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feedback — four-key walk loop (unapproved)</title>
+<style>
+  :root {
+    --bg: #0d0b11;
+    --panel: #17131c;
+    --panel-2: #1e1925;
+    --ink: #efe9f2;
+    --muted: #a79dae;
+    --line: #322a3c;
+    --bad: #d4574a;
+    --warn: #d99a3c;
+    --ok: #5aa06a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: radial-gradient(1200px 700px at 50% -10%, #241d2d 0%, var(--bg) 60%);
+    color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 28px 22px 56px;
+  }
+  main { max-width: 1080px; margin: 0 auto; }
+  .eyebrow {
+    margin: 0 0 6px; font-size: 12px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  h1 { margin: 0 0 10px; font-size: 30px; letter-spacing: -.01em; }
+  .badge {
+    display: inline-block; margin: 0 0 20px; padding: 4px 10px;
+    border: 1px solid #5a2a26; border-radius: 999px; background: #2a1614;
+    color: #f0a79e; font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+  }
+  .link-out { margin: -10px 0 22px; font-size: 13px; color: var(--dim, #9d93a8); }
+  .link-out a { color: #f0b429; }
+  .flags { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 22px; }
+  .flag {
+    margin: 0; padding: 12px 14px; background: var(--panel);
+    border: 1px solid var(--line); border-left: 3px solid var(--warn);
+    border-radius: 10px; font-size: 13.5px; color: #d8d0dd;
+  }
+  .flag.is-bad { border-left-color: var(--bad); }
+  .flag.is-ok  { border-left-color: var(--ok); }
+  .flag strong { color: var(--ink); }
+  .flag a { color: #c9a7e6; }
+  .stage-wrap { display: grid; grid-template-columns: 460px 1fr; gap: 22px; align-items: start; }
+  .stage {
+    position: relative; width: 460px; height: 620px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    overflow: hidden;
+  }
+  .stage img {
+    position: absolute; inset: 0; width: 460px; height: 620px;
+    image-rendering: auto;
+  }
+  #ghost { opacity: 0; transition: opacity .12s linear; }
+  #ghost.on { opacity: .34; }
+  .floor {
+    position: absolute; left: 18px; right: 18px; top: 566px; height: 1px;
+    background: linear-gradient(90deg, transparent, #6b6276 12%, #6b6276 88%, transparent);
+  }
+  .floor span {
+    position: absolute; right: 0; top: -18px; font-size: 10px; letter-spacing: .1em;
+    color: #6b6276; text-transform: uppercase;
+  }
+  .readout {
+    position: absolute; left: 14px; top: 12px; font-size: 12px; letter-spacing: .08em;
+    text-transform: uppercase; color: #b9aec4;
+  }
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    margin: 12px 0 0; padding: 10px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 10px;
+  }
+  button {
+    font: inherit; font-size: 13px; color: var(--ink); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; cursor: pointer;
+  }
+  button:hover { border-color: #57496a; }
+  button[aria-pressed="true"] { background: #3a2c48; border-color: #6b5580; }
+  .spacer { flex: 1; }
+  .label { font-size: 12px; color: var(--muted); letter-spacing: .04em; }
+  .strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
+  .key {
+    padding: 0; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; overflow: hidden; cursor: pointer; text-align: left;
+  }
+  .key.is-current { border-color: #8d6bab; box-shadow: 0 0 0 1px #8d6bab inset; }
+  .key img { display: block; width: 100%; height: auto; background: #100d15; }
+  .key b {
+    display: block; padding: 6px 8px; font-size: 11px; letter-spacing: .08em;
+    text-transform: uppercase; color: #cfc4da; font-weight: 600;
+  }
+  h2 { font-size: 17px; margin: 30px 0 10px; }
+  .notes { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; }
+  .notes ul { margin: 0; padding-left: 18px; }
+  .notes li { margin: 7px 0; color: #d5ccdd; }
+  .notes code { font-size: 12.5px; color: #e6d8f2; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0 4px; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #2a2333; }
+  th { color: var(--muted); font-weight: 600; letter-spacing: .04em; font-size: 11.5px; text-transform: uppercase; }
+  td.num { font-variant-numeric: tabular-nums; }
+  footer { margin-top: 26px; color: #7d7387; font-size: 12.5px; }
+  @media (max-width: 900px) {
+    .stage-wrap { grid-template-columns: 1fr; }
+    .flags { grid-template-columns: 1fr; }
+    .stage { width: 100%; max-width: 460px; }
+    .stage img { width: 100%; height: auto; }
+  }
+  @media (prefers-reduced-motion: reduce) { #ghost { transition: none; } }
+</style>
+</head>
+<body>
+<main>
+
+  <p class="eyebrow">Sound Clash · Feedback · art-source</p>
+  <h1>Four-key walk loop</h1>
+  <p class="badge">Movement test — not approved · not in gameplay</p>
+
+  <p class="link-out">See also <a href="compare.html">original vs corrected pass, side by side</a>
+    — the prepared fourth key next to the drawn one, on one clock.</p>
+
+  <div class="flags">
+    <p class="flag is-ok"><strong>A/B legs — they alternate.</strong> The boots sit in the same
+      places in both contact keys, which is what an alternating stride looks like from the side: the
+      <em>near</em> leg swaps sides (screen-left in A, screen-right in B) while the leading side stays
+      right. Earlier review called this “not evidenced” from foot positions alone — that test cannot
+      answer the question, and the call is retracted.</p>
+    <p class="flag"><strong>Pass keys are out of phase — needs correcting.</strong> The support foot
+      sits 24 px ahead of the hip in PASS A but 30 px behind it in PASS B. Stance travel is therefore
+      117 px in the first half and 185 px in the second — a 68 px (37%) diagnostic gap. That gap is
+      a measure of disagreement between the halves, not of sliding: how much a foot skates depends
+      on cadence and world speed.</p>
+    <p class="flag is-bad"><strong>Arm swing — needs correcting.</strong> The free arm leads in all
+      four keys. With the legs alternating it must trail in whichever key has the left leg forward,
+      so at least one key carries the wrong swing.</p>
+    <p class="flag is-ok"><strong>Mic hand — right.</strong> One mic, one cable, right hand in all
+      four keys. See <a href="four-key-note.md">four-key-note.md</a>.</p>
+  </div>
+
+  <div class="stage-wrap">
+    <div>
+      <div class="stage" aria-label="Walk key playback">
+        <img id="ghost" src="poses/01_contact_a.png" alt="" aria-hidden="true">
+        <img id="frame" src="poses/01_contact_a.png" alt="Current walk key">
+        <div class="floor"><span>floor y 566</span></div>
+        <div class="readout" id="readout">01 CONTACT A</div>
+      </div>
+
+      <div class="controls" role="group" aria-label="Playback controls">
+        <button id="play" aria-label="Play loop">Play</button>
+        <button id="prev" aria-label="Previous key">◀ Key</button>
+        <button id="next" aria-label="Next key">Key ▶</button>
+        <span class="spacer"></span>
+        <span class="label">hold</span>
+        <button class="hold" data-hold="4">4f</button>
+        <button class="hold" data-hold="6" aria-pressed="true">6f</button>
+        <button class="hold" data-hold="10">10f</button>
+        <span class="label">speed</span>
+        <button class="speed" data-speed="0.5">0.5×</button>
+        <button class="speed" data-speed="1" aria-pressed="true">1×</button>
+        <button class="speed" data-speed="2">2×</button>
+        <button id="onion" aria-pressed="false">Onion</button>
+      </div>
+    </div>
+
+    <div class="strip" id="strip" aria-label="The four keys"></div>
+  </div>
+
+  <h2>What was measured</h2>
+  <div class="notes">
+    <table>
+      <tr><th>Key</th><th>Drawn → panel</th><th>Head top</th><th>Front boot</th><th>Rear boot</th></tr>
+      <tr><td>01 CONTACT A</td><td class="num">510 → 460</td><td class="num">y 112</td><td class="num">x 361 · floor</td><td class="num">x 116 · floor</td></tr>
+      <tr><td>02 PASS A</td><td class="num">502 → 453</td><td class="num">y 120</td><td class="num">x 245 · floor</td><td class="num">x 165 · lifted 43</td></tr>
+      <tr><td>03 CONTACT B</td><td class="num">521 → 470</td><td class="num">y 102</td><td class="num">x 372 · floor</td><td class="num">x 109 · floor</td></tr>
+      <tr><td>04 PASS B</td><td class="num">510 → 460</td><td class="num">y 111</td><td class="num">x 189 · floor</td><td class="num">x 230 · lifted 44</td></tr>
+    </table>
+    <ul>
+      <li><strong>Scale:</strong> one uniform 0.902 for every key. The drawn heights span 3.7%
+        (502–521 px), which is inside the 5% noise of the only rigid ruler (the flat boot), so the
+        difference reads as the walk's rise and dip rather than as different scales.</li>
+      <li><strong>Floor and bob:</strong> support soles pinned to y = 566; head top then lands at
+        y 112 / 120 / 102 / 111, an 18 px rise and dip that is kept, not normalised away.</li>
+      <li><strong>Duplicates:</strong> no pair is a copy — closest is CONTACT A vs CONTACT B at mean
+        diff 37.9 (next 56.3 for PASS A vs PASS B); the other pairs sit at 58–64.</li>
+      <li><strong>Alternation:</strong> the legs do alternate. The near leg swaps sides between the
+        contact keys while the leading side stays right; the legs were traced hip → knee → boot
+        (<code>leg-trace.png</code>) and read at 6× over the crossing.</li>
+      <li><strong>Travel, not sliding:</strong> a planted foot moving back through the frame is
+        forward travel. The stance foot travels 117 px in the first half and 185 px in the second,
+        so the halves disagree by 68 px (37%). That number is a diagnostic, not a slide amount —
+        the mismatch between the halves, not the movement itself, is the defect.</li>
+      <li><strong>Mic:</strong> one mic, one cable, right hand in every key — no redraw needed.</li>
+    </ul>
+  </div>
+
+  <h2>Why the loop looks stepped</h2>
+  <div class="notes">
+    <ul>
+      <li>Only four poses exist. Playback holds each key (6 frames at 24 fps by default, 1.0 s per
+        cycle) and cuts hard; nothing is interpolated or crossfaded, so the pops are the sheet's.</li>
+      <li>The wrap from 04 PASS B back to 01 CONTACT A is a hard cut like any other.</li>
+              <li>No ground shadow and no planted-foot lock exist in the source, so the floor line here is an
+        alignment aid, not evidence of contact.</li>
+      <li>At 460 px ≈ 1.8 m, the 245–263 px step is ≈0.96–1.03 m; the 1 s cycle above implies
+        ≈2.0 m/s, brisker than the art reads. A 2 s cycle (12 fps holds) lands nearer 1.0 m/s.</li>
+      <li><strong>Before a redraw:</strong> re-cut PASS B to PASS A's sub-phase (support ~24 px ahead
+        of the hip, not 30 behind) — a prepared key and its side-by-side are in
+        <a href="compare.html">compare.html</a> — and add the missing arm counter-swing. CONTACT A /
+        CONTACT B need no redraw for alternation, but which leg leads in each is worth one line of
+        confirmation from the artist.</li>
+    </ul>
+  </div>
+
+  <footer>
+    Built from <code>source-sheet.jpeg</code> by <code>extract_keys.py</code>; measurements live in
+    <code>loop-check.json</code>. Not approved, not wired into gameplay, no world or combat code touched.
+  </footer>
+</main>
+
+<script>
+(function () {
+  var keys = [
+    { file: "poses/01_contact_a.png", label: "01 CONTACT A" },
+    { file: "poses/02_pass_a.png",    label: "02 PASS A" },
+    { file: "poses/03_contact_b.png", label: "03 CONTACT B" },
+    { file: "poses/04_pass_b.png",    label: "04 PASS B" }
+  ];
+  var frame = document.getElementById("frame");
+  var ghost = document.getElementById("ghost");
+  var readout = document.getElementById("readout");
+  var strip = document.getElementById("strip");
+  var playBtn = document.getElementById("play");
+  var FPS = 24;
+  var hold = 6, speed = 1, playing = false, index = 0, acc = 0, prevT = 0;
+
+  keys.forEach(function (k, i) {
+    var b = document.createElement("button");
+    b.className = "key" + (i === 0 ? " is-current" : "");
+    b.type = "button";
+    b.innerHTML = '<img src="' + k.file + '" alt=""><b>' + k.label + "</b>";
+    b.addEventListener("click", function () { stop(); setKey(i); });
+    strip.appendChild(b);
+  });
+  var cards = Array.prototype.slice.call(strip.children);
+
+  function setKey(i, fromGhost) {
+    index = (i + keys.length) % keys.length;
+    if (!fromGhost) ghost.src = keys[(index + keys.length - 1) % keys.length].file;
+    frame.src = keys[index].file;
+    readout.textContent = keys[index].label;
+    cards.forEach(function (c, n) { c.classList.toggle("is-current", n === index); });
+  }
+
+  function tick(t) {
+    if (!playing) return;
+    if (!prevT) prevT = t;
+    acc += (t - prevT) * speed;
+    prevT = t;
+    var frameMs = 1000 / FPS;
+    while (acc >= frameMs) {
+      acc -= frameMs;
+      if (++step % hold === 0) setKey(index + 1);
+    }
+    requestAnimationFrame(tick);
+  }
+  var step = 0;
+
+  function play() {
+    if (playing) return;
+    playing = true; prevT = 0; acc = 0; step = 0;
+    playBtn.textContent = "Pause";
+    requestAnimationFrame(tick);
+  }
+  function stop() {
+    playing = false; playBtn.textContent = "Play";
+  }
+  playBtn.addEventListener("click", function () { playing ? stop() : play(); });
+  document.getElementById("prev").addEventListener("click", function () { stop(); setKey(index - 1); });
+  document.getElementById("next").addEventListener("click", function () { stop(); setKey(index + 1); });
+
+  Array.prototype.forEach.call(document.querySelectorAll(".hold"), function (b) {
+    b.addEventListener("click", function () {
+      hold = +b.dataset.hold;
+      document.querySelectorAll(".hold").forEach(function (o) {
+        o.setAttribute("aria-pressed", o === b ? "true" : "false");
+      });
+    });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll(".speed"), function (b) {
+    b.addEventListener("click", function () {
+      speed = +b.dataset.speed;
+      document.querySelectorAll(".speed").forEach(function (o) {
+        o.setAttribute("aria-pressed", o === b ? "true" : "false");
+      });
+    });
+  });
+  document.getElementById("onion").addEventListener("click", function () {
+    var on = ghost.classList.toggle("on");
+    this.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "ArrowRight") { stop(); setKey(index + 1); }
+    if (e.key === "ArrowLeft") { stop(); setKey(index - 1); }
+    if (e.key === " ") { e.preventDefault(); playing ? stop() : play(); }
+  });
+
+  keys.forEach(function (k) { new Image().src = k.file; });
+  setKey(0);
+})();
+</script>
+</body>
+</html>

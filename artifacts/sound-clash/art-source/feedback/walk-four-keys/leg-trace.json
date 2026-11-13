@@ -1,0 +1,300 @@
+{
+  "keys": [
+    {
+      "key": "01 CONTACT A",
+      "hipX": 215.5,
+      "left": {
+        "leg": "L (screen-left)",
+        "points": 85,
+        "hip": [
+          215.5,
+          333
+        ],
+        "knee": [
+          236.5,
+          392
+        ],
+        "ankle": [
+          314.5,
+          534
+        ],
+        "largestGapRows": 47,
+        "firstRow": 390,
+        "lastRow": 534
+      },
+      "right": {
+        "leg": "R (screen-right)",
+        "points": 187,
+        "hip": [
+          215.5,
+          333
+        ],
+        "knee": [
+          310.0,
+          502
+        ],
+        "ankle": [
+          316.5,
+          545
+        ],
+        "largestGapRows": 20,
+        "firstRow": 333,
+        "lastRow": 545
+      },
+      "mergedRows": 0,
+      "boots": [
+        {
+          "cx": 115.8,
+          "lowestY": 569,
+          "onFloor": true,
+          "width": 98
+        },
+        {
+          "cx": 362.2,
+          "lowestY": 566,
+          "onFloor": true,
+          "width": 92
+        }
+      ],
+      "supportBootCx": 362.2,
+      "supportOffsetFromHip": 146.7
+    },
+    {
+      "key": "02 PASS A",
+      "hipX": 221.5,
+      "left": {
+        "leg": "L (screen-left)",
+        "points": 89,
+        "hip": [
+          221.5,
+          345
+        ],
+        "knee": [
+          286.0,
+          419
+        ],
+        "ankle": [
+          212.5,
+          532
+        ],
+        "largestGapRows": 62,
+        "firstRow": 346,
+        "lastRow": 532
+      },
+      "right": {
+        "leg": "R (screen-right)",
+        "points": 155,
+        "hip": [
+          221.5,
+          345
+        ],
+        "knee": [
+          266.0,
+          487
+        ],
+        "ankle": [
+          215.0,
+          531
+        ],
+        "largestGapRows": 24,
+        "firstRow": 345,
+        "lastRow": 531
+      },
+      "mergedRows": 26,
+      "boots": [
+        {
+          "cx": 164.6,
+          "lowestY": 523,
+          "onFloor": false,
+          "width": 48
+        },
+        {
+          "cx": 245.3,
+          "lowestY": 569,
+          "onFloor": true,
+          "width": 102
+        }
+      ],
+      "supportBootCx": 245.3,
+      "supportOffsetFromHip": 23.8
+    },
+    {
+      "key": "03 CONTACT B",
+      "hipX": 209.8,
+      "left": {
+        "leg": "L (screen-left)",
+        "points": 180,
+        "hip": [
+          209.8,
+          324
+        ],
+        "knee": [
+          94.0,
+          534
+        ],
+        "ankle": [
+          94.0,
+          534
+        ],
+        "largestGapRows": 1,
+        "firstRow": 355,
+        "lastRow": 534
+      },
+      "right": {
+        "leg": "R (screen-right)",
+        "points": 220,
+        "hip": [
+          209.8,
+          324
+        ],
+        "knee": [
+          346.0,
+          497
+        ],
+        "ankle": [
+          330.0,
+          543
+        ],
+        "largestGapRows": 1,
+        "firstRow": 324,
+        "lastRow": 543
+      },
+      "mergedRows": 0,
+      "boots": [
+        {
+          "cx": 109.5,
+          "lowestY": 567,
+          "onFloor": true,
+          "width": 101
+        },
+        {
+          "cx": 373.3,
+          "lowestY": 566,
+          "onFloor": true,
+          "width": 87
+        }
+      ],
+      "supportBootCx": 373.3,
+      "supportOffsetFromHip": 163.5
+    },
+    {
+      "key": "04 PASS B",
+      "hipX": 219.2,
+      "left": {
+        "leg": "L (screen-left)",
+        "points": 142,
+        "hip": [
+          219.2,
+          334
+        ],
+        "knee": [
+          249.0,
+          386
+        ],
+        "ankle": [
+          154.5,
+          539
+        ],
+        "largestGapRows": 38,
+        "firstRow": 335,
+        "lastRow": 539
+      },
+      "right": {
+        "leg": "R (screen-right)",
+        "points": 107,
+        "hip": [
+          219.2,
+          334
+        ],
+        "knee": [
+          220.0,
+          450
+        ],
+        "ankle": [
+          169.5,
+          529
+        ],
+        "largestGapRows": 49,
+        "firstRow": 334,
+        "lastRow": 529
+      },
+      "mergedRows": 36,
+      "boots": [
+        {
+          "cx": 188.7,
+          "lowestY": 569,
+          "onFloor": true,
+          "width": 97
+        },
+        {
+          "cx": 229.9,
+          "lowestY": 522,
+          "onFloor": false,
+          "width": 74
+        }
+      ],
+      "supportBootCx": 188.7,
+      "supportOffsetFromHip": -30.5
+    }
+  ],
+  "note": "travel measured relative to the hip",
+  "alternation": [
+    {
+      "key": "01 CONTACT A",
+      "near": "R",
+      "forward": "R",
+      "gaps": {
+        "L": 47,
+        "R": 20
+      }
+    },
+    {
+      "key": "02 PASS A",
+      "near": "R",
+      "forward": "R",
+      "gaps": {
+        "L": 62,
+        "R": 24
+      }
+    },
+    {
+      "key": "03 CONTACT B",
+      "near": "L",
+      "forward": "R",
+      "gaps": {
+        "L": 1,
+        "R": 1
+      }
+    },
+    {
+      "key": "04 PASS B",
+      "near": "L",
+      "forward": "R",
+      "gaps": {
+        "L": 38,
+        "R": 49
+      }
+    }
+  ],
+  "resolvableKeys": [
+    "01 CONTACT A",
+    "02 PASS A",
+    "04 PASS B"
+  ],
+  "unresolvableKeys": [
+    "03 CONTACT B"
+  ],
+  "alternationVerdict": "near leg in the A half ['R'], in the B half ['L']; the leading leg is ['R'] throughout. The near leg swaps sides while the leading side stays the same, i.e. the near leg is forward in one contact key and trailing in the other: the legs DO alternate.",
+  "stanceTravel": [
+    {
+      "interval": "01 CONTACT A -> 02 PASS A",
+      "px": -116.9
+    },
+    {
+      "interval": "03 CONTACT B -> 04 PASS B",
+      "px": -184.6
+    }
+  ],
+  "travelMismatchPx": 67.7,
+  "travelMismatchPct": 36.7
+}

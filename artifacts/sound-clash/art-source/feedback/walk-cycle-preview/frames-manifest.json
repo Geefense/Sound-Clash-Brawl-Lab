@@ -1,0 +1,353 @@
+{
+  "asset": "feedback-walk-flow-test.mp4",
+  "sha256": "7c644df616db66b7a3bd7747ddf27f65479e156cf2a869bd11598f74e8794011",
+  "sourceFrameRange": [
+    153,
+    195
+  ],
+  "sourceFrames": 43,
+  "duplicatesRemoved": 8,
+  "duplicateSourceFrames": [
+    157,
+    162,
+    167,
+    172,
+    177,
+    182,
+    187,
+    192
+  ],
+  "dedupeThresholdMeanAbsDiff": 0.25,
+  "frames": 35,
+  "sourceFps": 30,
+  "outputFps": 24,
+  "strideSeconds": 1.458,
+  "medianSourceFigureHeight": 467.0,
+  "uniformScale": 0.985,
+  "seam": {
+    "meanAbsDiffAllPixels": 5.98,
+    "meanAbsDiffChangedPixels": 69.43,
+    "changedPixelPct": 7.19,
+    "maxChannelDiff": 255,
+    "medianConsecutiveChangedPct": 4.52,
+    "maxConsecutiveChangedPct": 8.1,
+    "seamVsMedianStepRatio": 1.59
+  },
+  "entries": [
+    {
+      "file": "cycle-00.png",
+      "srcFrame": 153,
+      "srcHeight": 466,
+      "scaledHeight": 459.0,
+      "soleY": 566,
+      "bodyCx": 429.0,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-01.png",
+      "srcFrame": 154,
+      "srcHeight": 467,
+      "scaledHeight": 460.0,
+      "soleY": 566,
+      "bodyCx": 429.0,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-02.png",
+      "srcFrame": 155,
+      "srcHeight": 469,
+      "scaledHeight": 462.0,
+      "soleY": 566,
+      "bodyCx": 425.0,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-03.png",
+      "srcFrame": 156,
+      "srcHeight": 469,
+      "scaledHeight": 462.0,
+      "soleY": 566,
+      "bodyCx": 425.0,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-04.png",
+      "srcFrame": 158,
+      "srcHeight": 470,
+      "scaledHeight": 463.0,
+      "soleY": 566,
+      "bodyCx": 426.5,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-05.png",
+      "srcFrame": 159,
+      "srcHeight": 471,
+      "scaledHeight": 463.9,
+      "soleY": 566,
+      "bodyCx": 426.0,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-06.png",
+      "srcFrame": 160,
+      "srcHeight": 473,
+      "scaledHeight": 465.9,
+      "soleY": 566,
+      "bodyCx": 431.5,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-07.png",
+      "srcFrame": 161,
+      "srcHeight": 472,
+      "scaledHeight": 464.9,
+      "soleY": 566,
+      "bodyCx": 431.5,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-08.png",
+      "srcFrame": 163,
+      "srcHeight": 472,
+      "scaledHeight": 464.9,
+      "soleY": 566,
+      "bodyCx": 435.5,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-09.png",
+      "srcFrame": 164,
+      "srcHeight": 472,
+      "scaledHeight": 464.9,
+      "soleY": 566,
+      "bodyCx": 435.5,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-10.png",
+      "srcFrame": 165,
+      "srcHeight": 471,
+      "scaledHeight": 463.9,
+      "soleY": 566,
+      "bodyCx": 440.0,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-11.png",
+      "srcFrame": 166,
+      "srcHeight": 470,
+      "scaledHeight": 463.0,
+      "soleY": 566,
+      "bodyCx": 441.0,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-12.png",
+      "srcFrame": 168,
+      "srcHeight": 467,
+      "scaledHeight": 460.0,
+      "soleY": 566,
+      "bodyCx": 438.5,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-13.png",
+      "srcFrame": 169,
+      "srcHeight": 467,
+      "scaledHeight": 460.0,
+      "soleY": 566,
+      "bodyCx": 438.0,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-14.png",
+      "srcFrame": 170,
+      "srcHeight": 464,
+      "scaledHeight": 457.0,
+      "soleY": 566,
+      "bodyCx": 435.5,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-15.png",
+      "srcFrame": 171,
+      "srcHeight": 464,
+      "scaledHeight": 457.0,
+      "soleY": 566,
+      "bodyCx": 434.5,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-16.png",
+      "srcFrame": 173,
+      "srcHeight": 464,
+      "scaledHeight": 457.0,
+      "soleY": 566,
+      "bodyCx": 437.0,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-17.png",
+      "srcFrame": 174,
+      "srcHeight": 465,
+      "scaledHeight": 458.0,
+      "soleY": 566,
+      "bodyCx": 436.5,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-18.png",
+      "srcFrame": 175,
+      "srcHeight": 464,
+      "scaledHeight": 457.0,
+      "soleY": 566,
+      "bodyCx": 434.5,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-19.png",
+      "srcFrame": 176,
+      "srcHeight": 464,
+      "scaledHeight": 457.0,
+      "soleY": 566,
+      "bodyCx": 433.5,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-20.png",
+      "srcFrame": 178,
+      "srcHeight": 464,
+      "scaledHeight": 457.0,
+      "soleY": 566,
+      "bodyCx": 431.5,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-21.png",
+      "srcFrame": 179,
+      "srcHeight": 465,
+      "scaledHeight": 458.0,
+      "soleY": 566,
+      "bodyCx": 431.5,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-22.png",
+      "srcFrame": 180,
+      "srcHeight": 467,
+      "scaledHeight": 460.0,
+      "soleY": 566,
+      "bodyCx": 427.0,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-23.png",
+      "srcFrame": 181,
+      "srcHeight": 468,
+      "scaledHeight": 461.0,
+      "soleY": 566,
+      "bodyCx": 427.5,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-24.png",
+      "srcFrame": 183,
+      "srcHeight": 468,
+      "scaledHeight": 461.0,
+      "soleY": 566,
+      "bodyCx": 424.0,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-25.png",
+      "srcFrame": 184,
+      "srcHeight": 468,
+      "scaledHeight": 461.0,
+      "soleY": 566,
+      "bodyCx": 423.0,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-26.png",
+      "srcFrame": 185,
+      "srcHeight": 467,
+      "scaledHeight": 460.0,
+      "soleY": 566,
+      "bodyCx": 423.5,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-27.png",
+      "srcFrame": 186,
+      "srcHeight": 466,
+      "scaledHeight": 459.0,
+      "soleY": 566,
+      "bodyCx": 424.0,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-28.png",
+      "srcFrame": 188,
+      "srcHeight": 464,
+      "scaledHeight": 457.0,
+      "soleY": 566,
+      "bodyCx": 429.0,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-29.png",
+      "srcFrame": 189,
+      "srcHeight": 463,
+      "scaledHeight": 456.1,
+      "soleY": 566,
+      "bodyCx": 429.0,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-30.png",
+      "srcFrame": 190,
+      "srcHeight": 464,
+      "scaledHeight": 457.0,
+      "soleY": 566,
+      "bodyCx": 429.0,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-31.png",
+      "srcFrame": 191,
+      "srcHeight": 462,
+      "scaledHeight": 455.1,
+      "soleY": 566,
+      "bodyCx": 428.5,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-32.png",
+      "srcFrame": 193,
+      "srcHeight": 463,
+      "scaledHeight": 456.1,
+      "soleY": 566,
+      "bodyCx": 427.0,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-33.png",
+      "srcFrame": 194,
+      "srcHeight": 463,
+      "scaledHeight": 456.1,
+      "soleY": 566,
+      "bodyCx": 427.5,
+      "durationMs": 41.67
+    },
+    {
+      "file": "cycle-34.png",
+      "srcFrame": 195,
+      "srcHeight": 466,
+      "scaledHeight": 459.0,
+      "soleY": 566,
+      "bodyCx": 431.5,
+      "durationMs": 41.67
+    }
+  ]
+}

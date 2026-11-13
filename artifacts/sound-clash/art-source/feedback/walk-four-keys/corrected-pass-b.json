@@ -1,0 +1,39 @@
+{
+  "file": "comparison/pass-b-prepared.png",
+  "role": "comparison only - not a walk key, not a candidate asset",
+  "method": "waistband splice: PASS B above the join, PASS A's trousers below",
+  "notDone": "leg identity is PASS A's, so which leg is near still needs a redraw",
+  "hip": {
+    "x": 220.0
+  },
+  "measured": {
+    "hipX": 220.0,
+    "boots": [
+      {
+        "cx": 162.7,
+        "lowestY": 523
+      },
+      {
+        "cx": 243.3,
+        "lowestY": 569
+      }
+    ],
+    "support": {
+      "cx": 243.3,
+      "lowestY": 569
+    },
+    "swing": {
+      "cx": 162.7,
+      "lowestY": 523
+    }
+  },
+  "supportOffsetFromHip": 23.3,
+  "swingBehindSupport": 80.6,
+  "swingLiftPx": 43,
+  "travel": {
+    "CONTACT A -> PASS A": -116.9,
+    "CONTACT B -> corrected PASS B": -130.0,
+    "original mismatch": 67.7,
+    "remaining difference": 13.1
+  }
+}

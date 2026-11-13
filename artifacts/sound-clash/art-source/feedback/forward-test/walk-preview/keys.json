@@ -1,0 +1,122 @@
+{
+  "source": "feedback-walk-flow-test.mp4 (commit a2cd256), frames 153-195",
+  "sourceFps": 30,
+  "outputFps": 24,
+  "uniquePoses": 35,
+  "duplicatesDropped": 8,
+  "medianFigureHeight": 468.0,
+  "uniformScale": 1.1111,
+  "figureHeight": 520,
+  "floorY": 560,
+  "strideSeconds": 1.458,
+  "holds": [
+    4,
+    5,
+    4,
+    5,
+    4,
+    4,
+    5,
+    4
+  ],
+  "seam": {
+    "changedPct": 19.48,
+    "meanChanged": 106.7,
+    "maxChannel": 252,
+    "medianStepPct": 20.2,
+    "maxStepPct": 21.74,
+    "minStepPct": 17.07,
+    "seamVsMedian": 0.96
+  },
+  "keys": [
+    {
+      "key": 1,
+      "index": 0,
+      "srcFrame": 153,
+      "phase": "contact",
+      "foot": "near foot plants",
+      "step": 1,
+      "footGap": 18,
+      "headTop": 22,
+      "alphaFile": "key-01-alpha.png"
+    },
+    {
+      "key": 2,
+      "index": 4,
+      "srcFrame": 158,
+      "phase": "down",
+      "foot": "weight transfer",
+      "step": 1,
+      "footGap": 0,
+      "headTop": 18,
+      "alphaFile": "key-02-alpha.png"
+    },
+    {
+      "key": 3,
+      "index": 9,
+      "srcFrame": 164,
+      "phase": "pass",
+      "foot": "legs pass",
+      "step": 1,
+      "footGap": 0,
+      "headTop": 16,
+      "alphaFile": "key-03-alpha.png"
+    },
+    {
+      "key": 4,
+      "index": 13,
+      "srcFrame": 169,
+      "phase": "up",
+      "foot": "push-off",
+      "step": 1,
+      "footGap": 40,
+      "headTop": 21,
+      "alphaFile": "key-04-alpha.png"
+    },
+    {
+      "key": 5,
+      "index": 18,
+      "srcFrame": 175,
+      "phase": "contact",
+      "foot": "near foot plants",
+      "step": 2,
+      "footGap": 46,
+      "headTop": 23,
+      "alphaFile": "key-05-alpha.png"
+    },
+    {
+      "key": 6,
+      "index": 22,
+      "srcFrame": 180,
+      "phase": "down",
+      "foot": "weight transfer",
+      "step": 2,
+      "footGap": 0,
+      "headTop": 18,
+      "alphaFile": "key-06-alpha.png"
+    },
+    {
+      "key": 7,
+      "index": 26,
+      "srcFrame": 185,
+      "phase": "pass",
+      "foot": "legs pass",
+      "step": 2,
+      "footGap": 0,
+      "headTop": 18,
+      "alphaFile": "key-07-alpha.png"
+    },
+    {
+      "key": 8,
+      "index": 31,
+      "srcFrame": 191,
+      "phase": "up",
+      "foot": "push-off",
+      "step": 2,
+      "footGap": 23,
+      "headTop": 25,
+      "alphaFile": "key-08-alpha.png"
+    }
+  ],
+  "note": "taunt/action poses (01-06 imported swagger set) are NOT part of this cycle"
+}

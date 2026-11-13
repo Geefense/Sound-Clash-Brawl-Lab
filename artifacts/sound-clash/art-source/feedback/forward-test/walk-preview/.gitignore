@@ -1,0 +1,5 @@
+# Working copies of already-committed source material; rebuilt by build_walk_keys.py.
+ref/
+source/
+work/
+__pycache__/

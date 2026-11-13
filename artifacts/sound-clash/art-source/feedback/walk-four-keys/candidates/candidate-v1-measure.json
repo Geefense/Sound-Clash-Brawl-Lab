@@ -1,0 +1,162 @@
+{
+  "candidate": "pass-b-redraw-v1.png",
+  "truncated": {
+    "declaredHeight": 1457,
+    "decodedRows": 555,
+    "decodedFraction": 0.381,
+    "missingRows": 902,
+    "hasIEND": false,
+    "effect": "everything below the last decoded row is absent from the file, not absent from the drawing"
+  },
+  "artBoxInReadablePart": [
+    219,
+    13,
+    794,
+    554
+  ],
+  "mic": {
+    "area": 1388,
+    "box": [
+      471,
+      348,
+      534,
+      381
+    ],
+    "cx": 502.5,
+    "cy": 362.1
+  },
+  "micPickCount": 8,
+  "micHeightPx": 72.47068372797375,
+  "drawnMicHeightSheetPx": 34.5,
+  "drawnMicHeightPanelPx": 31.1,
+  "scaleApplied": 0.4296,
+  "scaleRuler": "microphone diagonal, median of the four drawn keys, times the panel scale",
+  "proportions": {
+    "candidateChestWidthPx": 363.5,
+    "drawnPassBChestWidthPx": 107.5,
+    "impliedScaleFromChestWidth": 0.296,
+    "agreesWithMicScale": false,
+    "caveat": "the candidate is drawn nearer a three-quarter view than the side-view keys, so chest width is view-dependent and cannot grade proportion"
+  },
+  "plugsFound": [
+    [
+      614,
+      419,
+      616,
+      437
+    ],
+    [
+      401,
+      460,
+      407,
+      465
+    ],
+    [
+      386,
+      467,
+      393,
+      473
+    ]
+  ],
+  "cordSegments": [
+    [
+      468,
+      320,
+      537,
+      394
+    ],
+    [
+      375,
+      460,
+      455,
+      551
+    ],
+    [
+      575,
+      256,
+      617,
+      491
+    ],
+    [
+      447,
+      476,
+      501,
+      551
+    ]
+  ],
+  "creamStripeBlobs": 7,
+  "creamBoxes": [
+    [
+      301,
+      278,
+      491,
+      474
+    ],
+    [
+      280,
+      274,
+      473,
+      494
+    ],
+    [
+      264,
+      493,
+      361,
+      527
+    ]
+  ],
+  "skinBlobs": [
+    {
+      "box": [
+        255,
+        273,
+        611,
+        547
+      ],
+      "cx": 440.0,
+      "cy": 396.1
+    },
+    {
+      "box": [
+        417,
+        394,
+        533,
+        507
+      ],
+      "cx": 475.1,
+      "cy": 446.4
+    },
+    {
+      "box": [
+        435,
+        120,
+        608,
+        188
+      ],
+      "cx": 526.4,
+      "cy": 157.5
+    }
+  ],
+  "panel": {
+    "size": [
+      460,
+      620
+    ],
+    "floorY": 566,
+    "artTopInPanel": 118,
+    "artBottomInPanel": 350,
+    "artReachesFloor": false
+  },
+  "handNearMic": {
+    "handBox": [
+      255,
+      273,
+      611,
+      547
+    ],
+    "handCx": 440.0,
+    "micCx": 502.5,
+    "handOnScreenLeftOfMic": true
+  },
+  "stripesWithin160pxOfMicArm": 4
+}

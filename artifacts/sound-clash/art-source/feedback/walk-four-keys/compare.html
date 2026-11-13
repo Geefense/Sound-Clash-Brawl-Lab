@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Feedback — original vs corrected pass, side by side</title>
+<style>
+  :root {
+    --bg: #15121a; --panel: #1e1a24; --line: #332c3c; --ink: #efe9f3;
+    --dim: #9d93a8; --hi: #f0b429; --ok: #6fcf97; --bad: #eb6f6f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 "Inter", system-ui, -apple-system, sans-serif;
+    padding: 26px 24px 60px;
+  }
+  h1 { font-size: 21px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--dim); margin: 0 0 20px; max-width: 78ch; }
+  .bar {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 12px; margin-bottom: 18px;
+  }
+  button {
+    background: #2a2433; color: var(--ink); border: 1px solid var(--line);
+    border-radius: 7px; padding: 7px 12px; font: inherit; font-size: 13px;
+    cursor: pointer;
+  }
+  button:hover { border-color: #554966; }
+  button[aria-pressed="true"] { background: var(--hi); color: #1a1620; border-color: var(--hi); font-weight: 600; }
+  .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+  .clock { margin-left: auto; color: var(--dim); font: 12px/1 ui-monospace, monospace; }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 880px) { .grid { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; overflow: hidden;
+  }
+  .card header {
+    display: flex; align-items: baseline; gap: 10px;
+    padding: 10px 14px; border-bottom: 1px solid var(--line);
+  }
+  .card h2 { font-size: 13px; margin: 0; letter-spacing: 0.04em; text-transform: uppercase; }
+  .card .tag { font-size: 11px; padding: 2px 7px; border-radius: 99px; }
+  .tag.orig { background: #3a2b2b; color: #e8a5a5; }
+  .tag.corr { background: #2b3a30; color: #9fe0b6; }
+  .card .note { margin-left: auto; font-size: 11px; color: var(--dim); font: 11px/1 ui-monospace, monospace; }
+
+  .stage { position: relative; background: #100d15; }
+  .stage img { display: block; width: 100%; height: auto; }
+  .ghost { position: absolute; inset: 0; opacity: 0; transition: opacity .18s; }
+  .ghost img { position: absolute; inset: 0; }
+  .stage.onion .ghost { opacity: 0.34; }
+
+  .strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 8px; }
+  .thumb {
+    position: relative; border: 1px solid transparent; border-radius: 6px;
+    background: #100d15; cursor: pointer; padding: 0; overflow: hidden;
+  }
+  .thumb img { display: block; width: 100%; height: auto; opacity: .55; }
+  .thumb.on { border-color: var(--hi); }
+  .thumb.on img { opacity: 1; }
+  .thumb span {
+    position: absolute; left: 5px; bottom: 3px;
+    font: 10px/1 ui-monospace, monospace; color: var(--dim);
+  }
+  .thumb.on span { color: var(--hi); }
+
+  table { border-collapse: collapse; width: 100%; margin-top: 22px; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--dim); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  td.num { font: 12px/1.4 ui-monospace, monospace; }
+  .good { color: var(--ok); } .warn { color: var(--hi); } .bad { color: var(--bad); }
+  .foot { color: var(--dim); font-size: 13px; margin-top: 18px; max-width: 84ch; }
+  .foot code { background: #241e2c; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<h1>Original vs corrected pass — side by side</h1>
+<p class="sub">Same four keys, same cadence, same scale and the same natural bob. Only the fourth key
+changes: PASS B is replaced by a preparation that puts it at PASS A's point in the step — the support
+foot 23 px ahead of the hip and the swing leg 81 px behind it, instead of 30 px behind and 41 px ahead.
+Both loops run off one clock so they can be compared frame for frame.</p>
+
+<div class="bar">
+  <button id="play" aria-pressed="false">Play</button>
+  <button id="prev">◀ key</button>
+  <button id="next">key ▶</button>
+  <div class="sep"></div>
+  <button class="spd" data-ms="500">0.5×</button>
+  <button class="spd" data-ms="250" aria-pressed="true">1×</button>
+  <button class="spd" data-ms="125">2×</button>
+  <div class="sep"></div>
+  <button id="onion" aria-pressed="false">Onion skin</button>
+  <span class="clock" id="clock">01 CONTACT A · 250 ms/key</span>
+</div>
+
+<div class="grid">
+  <section class="card">
+    <header>
+      <h2>Original</h2><span class="tag orig">as drawn</span>
+      <span class="note" id="ro-orig">01 CONTACT A</span>
+    </header>
+    <div class="stage" id="stage-orig">
+      <div class="ghost"><img id="ghost-orig" alt=""></div>
+      <img id="frame-orig" alt="Original loop frame">
+    </div>
+    <div class="strip" id="strip-orig"></div>
+  </section>
+
+  <section class="card">
+    <header>
+      <h2>Corrected</h2><span class="tag corr">prepared pass B</span>
+      <span class="note" id="ro-corr">01 CONTACT A</span>
+    </header>
+    <div class="stage" id="stage-corr">
+      <div class="ghost"><img id="ghost-corr" alt=""></div>
+      <img id="frame-corr" alt="Corrected loop frame">
+    </div>
+    <div class="strip" id="strip-corr"></div>
+  </section>
+</div>
+
+<table>
+  <tr><th>Measure</th><th>Original</th><th>Corrected</th><th>Read</th></tr>
+  <tr><td>Support foot vs hip, PASS</td><td class="num">−30 px behind</td><td class="num">+23 px ahead</td><td class="good">matches PASS A</td></tr>
+  <tr><td>Swing foot vs support</td><td class="num">+41 px ahead</td><td class="num">−81 px behind</td><td class="good">matches PASS A</td></tr>
+  <tr><td>Stance travel, first half</td><td class="num">117 px</td><td class="num">117 px</td><td>unchanged</td></tr>
+  <tr><td>Stance travel, second half</td><td class="num">185 px</td><td class="num">130 px</td><td class="warn">117 vs 130</td></tr>
+  <tr><td>Half-to-half difference</td><td class="num">68 px</td><td class="num">13 px</td><td class="good">diagnostic only</td></tr>
+  <tr><td>Foot separation at the pass</td><td class="num">41 px</td><td class="num">81 px</td><td class="good">PASS A: 81 px</td></tr>
+  <tr><td>Head top, four keys</td><td class="num">112 / 120 / 102 / 111</td><td class="num">112 / 120 / 102 / 120</td><td>18 px bob kept</td></tr>
+</table>
+
+<p class="foot"><strong>The 68 px is a diagnostic, not a slide measurement.</strong> It is the difference
+between how far the planted foot travels through the frame in each half of the cycle at one uniform
+scale. How much a foot actually appears to skate depends on the cadence and on the forward speed the
+game drives the character at — a slow cycle over a fast world speed skates more, whatever these numbers
+are. Read it as "the two halves disagree by about this much", not "the foot slides 68 px".
+
+<strong>What this comparison does not fix:</strong> the corrected key's trousers are PASS A's, so the
+near leg is still PASS A's; swapping which leg is near needs a redraw, as does the free arm, which
+leads in all four keys here — its swing is deliberately left as drawn so the comparison isolates the
+pass phase. The microphone is in the right hand in every key, corrected one included. Nothing here is
+wired into gameplay.</p>
+
+<script>
+const KEYS = ["01 CONTACT A", "02 PASS A", "03 CONTACT B", "04 PASS B"];
+const SRC = {
+  orig: ["poses/01_contact_a.png", "poses/02_pass_a.png", "poses/03_contact_b.png", "poses/04_pass_b.png"],
+  corr: ["poses/01_contact_a.png", "poses/02_pass_a.png", "poses/03_contact_b.png", "poses/04_pass_b_corrected.png"]
+};
+const frame = { orig: document.getElementById("frame-orig"), corr: document.getElementById("frame-corr") };
+const ghost = { orig: document.getElementById("ghost-orig"), corr: document.getElementById("ghost-corr") };
+const readout = { orig: document.getElementById("ro-orig"), corr: document.getElementById("ro-corr") };
+const stripEl = { orig: document.getElementById("strip-orig"), corr: document.getElementById("strip-corr") };
+const stageEl = { orig: document.getElementById("stage-orig"), corr: document.getElementById("stage-corr") };
+
+let i = 0, ms = 250, playing = false, timer = null;
+
+for (const loop of ["orig", "corr"]) {
+  SRC[loop].forEach((src, k) => {
+    const b = document.createElement("button");
+    b.className = "thumb";
+    b.innerHTML = `<img src="${src}" alt="${KEYS[k]}"><span>${KEYS[k].slice(0, 2)}</span>`;
+    b.onclick = () => { stop(); i = k; render(); };
+    stripEl[loop].append(b);
+  });
+}
+
+function render() {
+  for (const loop of ["orig", "corr"]) {
+    frame[loop].src = SRC[loop][i];
+    ghost[loop].src = SRC[loop][(i + 3) % 4];
+    readout[loop].textContent = KEYS[i];
+    [...stripEl[loop].children].forEach((el, k) => el.classList.toggle("on", k === i));
+  }
+  document.getElementById("clock").textContent = `${KEYS[i]} · ${ms} ms/key`;
+}
+
+function tick() { i = (i + 1) % 4; render(); }
+function start() { playing = true; timer = setInterval(tick, ms); sync(); }
+function stop() { playing = false; clearInterval(timer); timer = null; sync(); }
+function sync() {
+  document.getElementById("play").setAttribute("aria-pressed", String(playing));
+  document.getElementById("play").textContent = playing ? "Pause" : "Play";
+  if (playing) { clearInterval(timer); timer = setInterval(tick, ms); }
+}
+
+document.getElementById("play").onclick = () => (playing ? stop() : start());
+document.getElementById("prev").onclick = () => { stop(); i = (i + 3) % 4; render(); };
+document.getElementById("next").onclick = () => { stop(); i = (i + 1) % 4; render(); };
+document.getElementById("onion").onclick = (e) => {
+  const on = e.currentTarget.getAttribute("aria-pressed") !== "true";
+  e.currentTarget.setAttribute("aria-pressed", String(on));
+  for (const loop of ["orig", "corr"]) stageEl[loop].classList.toggle("onion", on);
+};
+document.querySelectorAll(".spd").forEach((b) => {
+  b.onclick = () => {
+    ms = Number(b.dataset.ms);
+    document.querySelectorAll(".spd").forEach((o) => o.setAttribute("aria-pressed", String(o === b)));
+    if (playing) { clearInterval(timer); timer = setInterval(tick, ms); }
+    render();
+  };
+});
+
+render();
+</script>
+</body>
+</html>

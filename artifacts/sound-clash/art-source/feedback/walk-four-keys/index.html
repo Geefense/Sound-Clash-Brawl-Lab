@@ -35,6 +35,8 @@
     border: 1px solid #5a2a26; border-radius: 999px; background: #2a1614;
     color: #f0a79e; font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
   }
+  .link-out { margin: -10px 0 22px; font-size: 13px; color: var(--dim, #9d93a8); }
+  .link-out a { color: #f0b429; }
   .flags { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 22px; }
   .flag {
     margin: 0; padding: 12px 14px; background: var(--panel);
@@ -119,6 +121,9 @@
   <h1>Four-key walk loop</h1>
   <p class="badge">Movement test — not approved · not in gameplay</p>
 
+  <p class="link-out">See also <a href="compare.html">original vs corrected pass, side by side</a>
+    — the prepared fourth key next to the drawn one, on one clock.</p>
+
   <div class="flags">
     <p class="flag is-ok"><strong>A/B legs — they alternate.</strong> The boots sit in the same
       places in both contact keys, which is what an alternating stride looks like from the side: the
@@ -127,7 +132,9 @@
       answer the question, and the call is retracted.</p>
     <p class="flag"><strong>Pass keys are out of phase — needs correcting.</strong> The support foot
       sits 24 px ahead of the hip in PASS A but 30 px behind it in PASS B. Stance travel is therefore
-      117 px in the first half and 185 px in the second: a 68 px (37%) mismatch that will limp.</p>
+      117 px in the first half and 185 px in the second — a 68 px (37%) diagnostic gap. That gap is
+      a measure of disagreement between the halves, not of sliding: how much a foot skates depends
+      on cadence and world speed.</p>
     <p class="flag is-bad"><strong>Arm swing — needs correcting.</strong> The free arm leads in all
       four keys. With the legs alternating it must trail in whichever key has the left leg forward,
       so at least one key carries the wrong swing.</p>
@@ -186,7 +193,8 @@
         (<code>leg-trace.png</code>) and read at 6× over the crossing.</li>
       <li><strong>Travel, not sliding:</strong> a planted foot moving back through the frame is
         forward travel. The stance foot travels 117 px in the first half and 185 px in the second,
-        so the halves disagree by 68 px (37%) — that mismatch, not the movement itself, is the defect.</li>
+        so the halves disagree by 68 px (37%). That number is a diagnostic, not a slide amount —
+        the mismatch between the halves, not the movement itself, is the defect.</li>
       <li><strong>Mic:</strong> one mic, one cable, right hand in every key — no redraw needed.</li>
     </ul>
   </div>
@@ -202,9 +210,10 @@
       <li>At 460 px ≈ 1.8 m, the 245–263 px step is ≈0.96–1.03 m; the 1 s cycle above implies
         ≈2.0 m/s, brisker than the art reads. A 2 s cycle (12 fps holds) lands nearer 1.0 m/s.</li>
       <li><strong>Before a redraw:</strong> re-cut PASS B to PASS A's sub-phase (support ~24 px ahead
-        of the hip, not 30 behind) — that also equalises the halves' travel at ~150 px each — and add
-        the missing arm counter-swing. CONTACT A / CONTACT B need no redraw for alternation, but which
-        leg leads in each is worth one line of confirmation from the artist.</li>
+        of the hip, not 30 behind) — a prepared key and its side-by-side are in
+        <a href="compare.html">compare.html</a> — and add the missing arm counter-swing. CONTACT A /
+        CONTACT B need no redraw for alternation, but which leg leads in each is worth one line of
+        confirmation from the artist.</li>
     </ul>
   </div>
 

@@ -101,9 +101,18 @@ it** in PASS B — a 54 px phase difference between the two halves of the cycle.
 A planted foot moving backwards through the frame is **forward travel, not
 sliding**: in body-centred coordinates that is exactly how far the body has to
 move in the interval. What is wrong is that the two halves disagree by **68 px
-(37%)**. At any single root-motion speed the longer half will slide by that
-much, and the loop will limp. Fixing PASS B to match PASS A's sub-phase fixes
-both problems at once.
+(37%)**.
+
+**Read that 68 px as a diagnostic, not as a slide amount.** It says the two
+halves of the cycle cover different ground at one uniform scale. How much a foot
+actually appears to skate depends on the cadence the loop is played at and on
+the forward speed the game drives the character at, neither of which these four
+still frames contain. At a slow cycle over a fast world speed the skate is
+larger; over a matched speed it is zero whatever the numbers say. The honest
+claim is "the halves disagree by about this much", not "the foot slides 68 px".
+
+Fixing PASS B to PASS A's sub-phase removes the disagreement itself, which is
+the part the art owns.
 
 ### Arms do not counter-swing — needs correcting
 
@@ -127,13 +136,47 @@ One mic, one cable, right hand in all four keys; details in `four-key-note.md`.
 ## What needs correcting before a redraw
 
 1. **PASS B** — re-cut to PASS A's sub-phase (support foot ~24 px ahead of the
-   hip, not 30 px behind). This also equalises the two halves' travel
-   (117 → ~150 px each).
+   hip, not 30 px behind, swing leg ~81 px behind the support, same lift). A
+   prepared key and a side-by-side comparison are in `compare.html`; see
+   *Prepared correction* below for what it does and does not settle.
 2. **Arm swing** — add counter-swing so the free arm trails in the key where the
    left leg leads; currently it leads in all four.
 3. **CONTACT A / CONTACT B** — no redraw needed for alternation, but which leg
    leads in each should be confirmed by the artist: the masks cannot resolve key
    03, and the two keys share a foot plot by construction.
+
+## Prepared correction — `04_pass_b_corrected.png`
+
+Built by `build_corrected_pass_b.py` for the side-by-side in `compare.html`. It
+is a **review proxy, not finished art**: PASS B's jacket, mic arm and free-arm
+swagger stay exactly as drawn, and the trousers below the waistband come from
+PASS A, joined at each pose's own waistband line. PASS A's free hand is removed
+and refilled from the surrounding cloth before B's own hand is laid back on top,
+because A's hand overlaps its own thigh.
+
+Measured after the join, against a hip at x 220:
+
+| | original PASS B | prepared | PASS A |
+| --- | --- | --- | --- |
+| support foot vs hip | −31 px | **+23 px** | +24 px |
+| swing foot vs support | +41 px | **−81 px** | −81 px |
+| swing lift | 47 px | 43 px | 43 px |
+| stance travel from the contact key | 185 px | **130 px** | 117 px |
+
+The half-to-half difference falls from 68 px to 13 px. The remaining 13 px is
+not a pose error that this technique can fix: PASS A's pass has the feet 81 px
+apart and PASS B's has them 41 px apart, so the stride length itself differs.
+
+A warp was tried first and rejected: pulling the boots ~40 px further apart than
+the sheet draws them folds one smooth displacement field into itself and the
+legs collapse into a single column (`git log` on this file's first version).
+Two rigidly rotated leg layers tear at the crotch instead. Both are recorded
+here so the redraw is not attempted as an image trick.
+
+**Not settled by the proxy:** the near leg is still PASS A's, so which leg is
+near in the fourth key is exactly the question the redraw has to answer. The
+free arm is also left leading, as instructed, so the comparison isolates the
+pass phase rather than mixing two corrections.
 
 ## Playback
 
@@ -146,11 +189,13 @@ opacity, and the key step and strip highlight follow.
 ## Reproduce
 
 ```bash
-python3 extract_keys.py     # poses/, keys-aligned.png, loop-check.json
-python3 trace_legs.py       # leg-trace.png, leg-trace.json
+python3 extract_keys.py             # poses/, keys-aligned.png, loop-check.json
+python3 trace_legs.py               # leg-trace.png, leg-trace.json
+python3 build_corrected_pass_b.py   # poses/04_pass_b_corrected.png, corrected-pass-b.json
 ```
 
-Requires Pillow, numpy and scipy. `index.html` reads `poses/` directly.
+Requires Pillow, numpy and scipy. `index.html` and `compare.html` read `poses/`
+directly.
 
 ## Limitations
 
@@ -162,4 +207,8 @@ Requires Pillow, numpy and scipy. `index.html` reads `poses/` directly.
 - Boot identification is by colour and floor proximity; the mic hand is the same
   tan and is excluded by height, not shape.
 - Sliding is not claimed anywhere: only body-relative travel is measured, and
-  the defect reported is the mismatch between the two halves.
+  the defect reported is the mismatch between the two halves. The 68 px is a
+  timing diagnostic and depends on cadence and world speed.
+- The prepared PASS B is a splice, so a seam exists under the waistband and the
+  trousers are A's rather than newly drawn. It is fit for judging pass phase and
+  timing, not for shipping or for judging cloth detail.

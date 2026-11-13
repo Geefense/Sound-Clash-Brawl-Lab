@@ -1,0 +1,38 @@
+{
+  "pose": "13_box_palm",
+  "source": "artifacts/sound-clash/public/assets/feedback/aligned/13_box_palm.png",
+  "candidate": "13_box_palm-cable-v1.png",
+  "canvas": [
+    1536,
+    1024
+  ],
+  "cut_y": 642,
+  "corridor_x": [
+    488,
+    736
+  ],
+  "occluder": "jacket hem / left thigh",
+  "changed_pixels": 2223,
+  "changed_bbox": [
+    498,
+    642,
+    683,
+    886
+  ],
+  "regions": [
+    {
+      "id": 1,
+      "pixels": 2223,
+      "bbox": [
+        498,
+        642,
+        683,
+        886
+      ]
+    }
+  ],
+  "anchor": [
+    768,
+    900
+  ]
+}

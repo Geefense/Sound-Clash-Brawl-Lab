@@ -199,6 +199,47 @@
         </ul>
       </section>
 
+      <section class="cable" id="cable-batch">
+        <div class="mv-head">
+          <span class="tag cable">Cable batch — 08_block · 12 box · 13 box · 14 followthrough · awaiting approval</span>
+          <span class="muted">cable only · every other pixel identical · anchors unchanged</span>
+        </div>
+        <div class="compare-strip">
+          <figure>
+            <img src="/review/appearance/cable/batch/box-sequence-gameplay.gif" alt="BOX startup, contact and recovery at gameplay size, original left and cable candidate right" />
+            <figcaption>BOX startup → contact → recovery at gameplay size (0.44) · original left, candidate right · <a class="link" href="/review/appearance/cable/batch/box-sequence-gameplay.gif" target="_blank" rel="noreferrer">open the GIF ↗</a></figcaption>
+          </figure>
+        </div>
+        <div class="cable-body">
+          <div class="pane">
+            <div class="pane-head"><span class="tag">08_block</span><span>1 863 px removed · cut at the jacket hem, y 634</span></div>
+            <img class="batch-img" src="/review/appearance/cable/batch/compare-08_block.png" alt="08_block original and cable candidate" />
+            <details class="batch-diff"><summary>Difference view · bbox [592, 634, 700, 895]</summary><img class="batch-img" src="/review/appearance/cable/batch/diff-08_block-vs-v1.png" alt="08_block difference map" /></details>
+          </div>
+          <div class="pane">
+            <div class="pane-head"><span class="tag">12_backhand_windup</span><span>2 035 px removed · cut beside the right thigh, y 660</span></div>
+            <img class="batch-img" src="/review/appearance/cable/batch/compare-12_backhand_windup.png" alt="12_backhand_windup original and cable candidate" />
+            <details class="batch-diff"><summary>Difference view · bbox [855, 660, 1013, 898]</summary><img class="batch-img" src="/review/appearance/cable/batch/diff-12_backhand_windup-vs-v1.png" alt="12_backhand_windup difference map" /></details>
+          </div>
+          <div class="pane">
+            <div class="pane-head"><span class="tag">13_box_palm</span><span>2 223 px removed · cut under the hem, y 642</span></div>
+            <img class="batch-img" src="/review/appearance/cable/batch/compare-13_box_palm.png" alt="13_box_palm original and cable candidate" />
+            <details class="batch-diff"><summary>Difference view · bbox [498, 642, 683, 886]</summary><img class="batch-img" src="/review/appearance/cable/batch/diff-13_box_palm-vs-v1.png" alt="13_box_palm difference map" /></details>
+          </div>
+          <div class="pane">
+            <div class="pane-head"><span class="tag">14_followthrough</span><span>2 419 px removed · cut past the wrist wrap, y 667</span></div>
+            <img class="batch-img" src="/review/appearance/cable/batch/compare-14_followthrough.png" alt="14_followthrough original and cable candidate" />
+            <details class="batch-diff"><summary>Difference view · bbox [479, 667, 619, 892]</summary><img class="batch-img" src="/review/appearance/cable/batch/diff-14_followthrough-vs-v1.png" alt="14_followthrough difference map" /></details>
+          </div>
+        </div>
+        <ul class="mv-notes">
+          <li><strong>What changed:</strong> each candidate loses only the trailing cable below its cut line, in the idle-v1 style — nothing is drawn, no connector, plug or route is added.</li>
+          <li><strong>What did not:</strong> the microphone, connector and forearm wraps, body, hands, hat, face, trousers, Clarks and every pixel outside the listed bbox are identical to the original; all four keep the manifest anchor [768, 900] and the 1536×1024 canvas.</li>
+          <li><strong>Recorded, not repaired here:</strong> the mic hand and other appearance differences between these keys are unchanged by this pass, and in 12 and 14 the remaining cord end sits in open air because those poses have no garment at that point.</li>
+          <li>The five-pixel walk alignment item stays separate and nothing was rescaled.</li>
+        </ul>
+      </section>
+
       <section class="controls" aria-label="Playback controls">
         <button id="play" class="primary" type="button">❚❚ Pause</button>
         <button id="prev" type="button">◀ Prev</button>

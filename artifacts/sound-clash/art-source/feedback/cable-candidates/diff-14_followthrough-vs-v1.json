@@ -1,0 +1,38 @@
+{
+  "pose": "14_followthrough",
+  "source": "artifacts/sound-clash/public/assets/feedback/aligned/14_followthrough.png",
+  "candidate": "14_followthrough-cable-v1.png",
+  "canvas": [
+    1536,
+    1024
+  ],
+  "cut_y": 574,
+  "corridor_x": [
+    476,
+    660
+  ],
+  "occluder": "jacket hem / left thigh",
+  "changed_pixels": 2419,
+  "changed_bbox": [
+    479,
+    667,
+    619,
+    892
+  ],
+  "regions": [
+    {
+      "id": 1,
+      "pixels": 2419,
+      "bbox": [
+        479,
+        667,
+        619,
+        892
+      ]
+    }
+  ],
+  "anchor": [
+    768,
+    900
+  ]
+}

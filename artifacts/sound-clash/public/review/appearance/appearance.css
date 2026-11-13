@@ -452,6 +452,25 @@ button.primary {
   height: auto;
 }
 
+.batch-img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.batch-diff summary {
+  cursor: pointer;
+  padding: 8px 12px;
+  font-size: 11.5px;
+  color: var(--muted);
+  background: var(--panel-2);
+  border-top: 1px solid var(--line);
+}
+
+.batch-diff summary:hover {
+  color: #e9c8dd;
+}
+
 .compare-strip figcaption {
   padding: 6px 10px;
   font-size: 11.5px;

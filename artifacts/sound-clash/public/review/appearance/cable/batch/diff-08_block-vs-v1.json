@@ -1,0 +1,48 @@
+{
+  "pose": "08_block",
+  "source": "artifacts/sound-clash/public/assets/feedback/aligned/08_block.png",
+  "candidate": "08_block-cable-v1.png",
+  "canvas": [
+    1536,
+    1024
+  ],
+  "cut_y": 634,
+  "corridor_x": [
+    554,
+    736
+  ],
+  "occluder": "jacket hem / left hip",
+  "changed_pixels": 1863,
+  "changed_bbox": [
+    592,
+    634,
+    700,
+    895
+  ],
+  "regions": [
+    {
+      "id": 1,
+      "pixels": 1827,
+      "bbox": [
+        592,
+        655,
+        699,
+        895
+      ]
+    },
+    {
+      "id": 2,
+      "pixels": 36,
+      "bbox": [
+        695,
+        634,
+        700,
+        643
+      ]
+    }
+  ],
+  "anchor": [
+    768,
+    900
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "pose": "12_backhand_windup",
+  "source": "artifacts/sound-clash/public/assets/feedback/aligned/12_backhand_windup.png",
+  "candidate": "12_backhand_windup-cable-v1.png",
+  "canvas": [
+    1536,
+    1024
+  ],
+  "cut_y": 660,
+  "corridor_x": [
+    814,
+    1046
+  ],
+  "occluder": "right thigh / boot",
+  "changed_pixels": 2035,
+  "changed_bbox": [
+    855,
+    660,
+    1013,
+    898
+  ],
+  "regions": [
+    {
+      "id": 1,
+      "pixels": 2035,
+      "bbox": [
+        855,
+        660,
+        1013,
+        898
+      ]
+    }
+  ],
+  "anchor": [
+    768,
+    900
+  ]
+}

@@ -331,6 +331,46 @@ occludes it instead of the stroke stopping on the fabric.
 *Cable correction candidate v2 — 01_idle entry refined*. Not applied to any other pose, and not
 to the pack, runtime or gameplay.
 
+## 13. Cable batch — `08_block`, `12_backhand_windup`, `13_box_palm`, `14_followthrough`
+
+The approved idle-v1 treatment, applied one pose at a time. Each candidate loses only its trailing
+cable; nothing is drawn, no connector or route is added, and the cord simply stops where a
+jacket, trouser leg or wrist wrap is in the way.
+
+| pose | original (sha256 prefix) | candidate | removed | bbox | cut |
+| --- | --- | --- | --- | --- | --- |
+| `08_block` | `50856507…` | `08_block-cable-v1.png` | 1 863 px | `[592, 634, 700, 895]` | hem, y 634 |
+| `12_backhand_windup` | `6532d778…` | `12_backhand_windup-cable-v1.png` | 2 035 px | `[855, 660, 1013, 898]` | right thigh, y 660 |
+| `13_box_palm` | `40fd81c2…` | `13_box_palm-cable-v1.png` | 2 223 px | `[498, 642, 683, 886]` | hem, y 642 |
+| `14_followthrough` | `83345247…` | `14_followthrough-cable-v1.png` | 2 419 px | `[479, 667, 619, 892]` | past the wrist wrap, y 667 |
+
+Files: candidates, per-pose difference maps and region JSON under
+`public/review/appearance/cable/batch/`, with the untracked working copies in
+`art-source/feedback/cable-candidates/`. One builder, `build_cable_batch.py`, produces all four
+from the untouched originals.
+
+**Method.** In the corridor below each pose's cut line, the cable is whatever the figure's own
+solid mass and thin rims (garment outlines, wrap rings, laces) do not explain. The builder aborts
+if anything changes above the cut or outside the corridor, which is how the body, hands, hat,
+face, trousers and Clarks keep their exact pixels. Anchors are untouched: all four keep the
+manifest's `[768, 900]` on the 1536×1024 canvas.
+
+**Checks actually run**
+
+- `python3 build_cable_batch.py` → the four counts and bboxes above, every guard passing.
+- Pack untouched: `git status` clean for `public/assets/feedback/`, and the four originals' hashes
+  are recorded above.
+- `node --check public/review/appearance/appearance.js` → clean; `vite build` → exit 0.
+- Page: all four comparison images and the BOX GIF load, difference views open, no console errors.
+
+**Recorded separately, not repaired here:** the mic hand and other appearance differences between
+these keys are unchanged by this pass; cross-set handedness is still the open item in §5. In `12`
+and `14` the remaining cord end sits in open air near the connector, because those poses have no
+garment at that point — that is a limit of the concealed treatment in these two keys, not an
+occlusion, and it is the main thing to judge in review.
+
+Not applied to the other twelve poses. No gameplay, collision, manifest or Godot change.
+
 ## Follow-up clarification — November 13, 2026
 
 ChatGPT verified this saved handoff and corrected the cable summary to preserve pose 04's uncertain status. The 132 BPM approved movement reference and its exact four source keys exist in the chat workspace; delivery to this branch is pending explicit owner authorization after automatic upload review blocked the media transfer. Do not substitute the older four keys or mark the newer appearance approved. The added neutral-arm return pose remains rejected. Latest main AGENTS.md also includes the owner's requested Spriteriffic team/asset/grid rules; these are documentation updates, not proof of completed animation generation.

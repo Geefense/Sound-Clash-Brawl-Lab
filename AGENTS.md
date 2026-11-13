@@ -290,13 +290,17 @@ Keep crowd visuals, navigation, hype calculation, throw scheduling and hazard re
 
 **Music interruption gag:** Lickshot steals the playing record and the tune stops. [TODO] Define beat-clock pause/rebase/new-track policy before making this affect rhythm judgement; continue deliberate combat/SFX behavior during the gap. A gag must not accidentally desynchronize input timing.
 
+### Additional owner-requested interference objects — November 13, 2026
+
+The owner added a **crate of records** and a **big pot of `Cawn soup` (corn soup)** as objects thrown for crowd interference. These are distinct additions to the interference backlog; they are not implemented assets or new mandatory work in the initial bottle/chair/extinguisher slice. Keep the April 21 target unchanged. The throwable crate is separate from Lickshot's existing record/crate-stealing gag, although they may share an eventual prop design. [TODO] Define visual design, trajectory, impact, contents/reaction, cleanup and gameplay effects with the owner; do not invent damage, stun or spill/slip rules as settled decisions.
+
 ### Crowd Hype / Dubplate meters — planned two-fighter demo scope
 
 Use shared match/fighter data and HUD bindings; no per-fighter copies of meter code. Crowd Hype represents crowd response and can influence taunt rewards and interference scheduling, while preserving independent biased hostility. The Dubplate meter is a requested mechanic whose gameplay meaning is not yet specified. **[TODO]** Define whether it is per-fighter or shared, gain/spend rules, maximum, persistence across rounds, special-move relationship, HUD feedback and reset behavior. Do not invent a super-move economy as settled design. Wire and document both meters for the Dec 25–Jan 14 demo gate.
 
 ## 8. Authentic Patois & Comedy Lexicon
 
-**STRICT RULE FOR ALL AGENTS: Preserve all Patois spellings, slang, capitalization variants and comedic phrasing verbatim. Never rewrite or “correct” them into standard English.** English glosses belong in a separate field. These spellings encode pronunciation and comic timing. Do not silently merge variants, substitute a dictionary spelling, invent a translation, or turn an assistant suggestion into an owner-approved line.
+**STRICT RULE FOR ALL AGENTS: Preserve all Patois spellings, slang, capitalization variants and comedic phrasing verbatim. Never rewrite or “correct” them into standard English.** English glosses belong in a separate field. These spellings encode pronunciation and comic timing. The owner reiterated that phonetic spelling is pronunciation help; keep the English meaning separate rather than correcting the spoken spelling. Do not silently merge variants, substitute a dictionary spelling, invent a translation, or turn an assistant suggestion into an owner-approved line.
 
 This register includes all phrases recoverable from the visible conversation, supplied project history and retrieved project notes. [TODO] Audit older unavailable conversations/voice notes for additional entries; completeness beyond accessible records is not certified. `[TODO]` means the owner's exact gloss or intended usage still needs recovery.
 
@@ -306,6 +310,7 @@ This register includes all phrases recoverable from the visible conversation, su
 | --- | --- |
 | `Yuh too Bod Mine!!` | Owner's gloss: “You're to Bad Mind”; intended meaning: “you're evil.” Preserve the phonetic spelling. Trigger/performance not yet specified. |
 | `Yuh Betta stop-pit` | You better stop it. Owner-supplied wording; preserve exact spelling and capitalization. |
+| `Cawn soup` | Corn soup. Owner's spelling guides pronunciation; retain it in performance notes/dialogue. A big pot is also a proposed crowd-interference throwable. |
 | `Outta Awduh` | Out of Order. |
 | `Klawk ah Strike` | Clock is striking. [TODO] Exact game trigger. |
 | `Wah mi seh` | What did I say? |

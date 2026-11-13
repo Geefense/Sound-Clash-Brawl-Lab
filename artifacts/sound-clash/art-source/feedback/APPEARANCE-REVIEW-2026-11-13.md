@@ -295,6 +295,42 @@ alignment issue stays a separate recorded item (§9) and is **not** concealed by
 Not approval. Candidate v1 awaits the owner's verdict; if rejected, the next candidate gets a new
 version suffix rather than overwriting this one.
 
+## 12. Cable correction candidate v2 — entry refined, removal preserved
+
+v1's cable-tail and floor-loop removal stays exactly as it was. v2 rebuilds only the drawn
+wrap-to-jacket segment, which read as a flat dark strip next to the pack's rounded cord.
+
+| | |
+| --- | --- |
+| Candidate v2 | `art-source/feedback/cable-candidates/01_idle-jacket-entry-v2.png` (served from `public/review/appearance/cable/`) |
+| v1 (kept, untouched) | `01_idle-jacket-entry-v1.png` |
+| v1 vs v2 diff | `diff-v1-vs-v2.png` · `diff-v1-vs-v2.json` |
+| Builder | `build_idle_cable_v2.py` — reads the original and v1, never writes either |
+
+**What changed.** The stroke now follows the cord's measured section: a 1 px dark outline, a
+3 px mid body and a one-pixel highlight on the lit side, sampled from the original cable at
+`y 700` where the free cord crosses its own outline (values ≈ 1 / 35-69 / 30 / 1 across five
+pixels). The path leaves the wrap vertically, as the original cord does, then curves under the
+hem's lower corner; the hem's own edge and shadow are pasted back over the tip, so the jacket
+occludes it instead of the stroke stopping on the fabric.
+
+**Checks actually run**
+
+- `python3 build_idle_cable_v2.py` → `v1 vs v2 changed pixels: 388 in 1 regions`, bbox
+  `[698, 617, 732, 654]`: 387 px in the listed region plus one pixel at `(725, 654)` that v1 left
+  with alpha 1 and v2 with alpha 1 at a different channel value — invisible, and below the
+  4-pixel region threshold. The builder aborts unless its rebuilt removal base matches v1 exactly
+  outside the entry box, and unless v2 changes nothing outside that box; an independent check
+  confirms 0 differing pixels anywhere outside it.
+- v1's file, the original, the floor-loop removal, the jacket, waistband, trousers and Clarks
+  therefore carry identical bytes in both candidates.
+- `node --check public/review/appearance/appearance.js` → clean; `vite build` → exit 0.
+
+**Shown for approval:** v1 against v2 at source resolution (1:1), enlarged, and gameplay size
+(0.44), plus the v1-vs-v2 difference map and its region list, in the new preview section
+*Cable correction candidate v2 — 01_idle entry refined*. Not applied to any other pose, and not
+to the pack, runtime or gameplay.
+
 ## Follow-up clarification — November 13, 2026
 
 ChatGPT verified this saved handoff and corrected the cable summary to preserve pose 04's uncertain status. The 132 BPM approved movement reference and its exact four source keys exist in the chat workspace; delivery to this branch is pending explicit owner authorization after automatic upload review blocked the media transfer. Do not substitute the older four keys or mark the newer appearance approved. The added neutral-arm return pose remains rejected. Latest main AGENTS.md also includes the owner's requested Spriteriffic team/asset/grid rules; these are documentation updates, not proof of completed animation generation.

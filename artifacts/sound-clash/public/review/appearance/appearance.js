@@ -399,11 +399,13 @@
       els.scaleOut.value = state.scale.toFixed(2);
       draw();
       cabDraw();
+      cab2Draw();
     });
     els.anchors.addEventListener('change', () => {
       state.anchors = els.anchors.checked;
       draw();
       cabDraw();
+      cab2Draw();
     });
     els.ghost.addEventListener('change', () => {
       state.ghost = els.ghost.checked;
@@ -694,6 +696,116 @@
     cabDraw();
   }
 
+  // ---- v2: refined entry, compared against the untouched v1 --------------
+  const CABLE_V2_A = `${CABLE_DIR}01_idle-jacket-entry-v1.png`;
+  const CABLE_V2_B = `${CABLE_DIR}01_idle-jacket-entry-v2.png`;
+  const cable2 = { a: null, b: null, diff: null, canvases: new Map() };
+
+  function cable2Rec(src, slot) {
+    const rec = { img: new Image(), ok: false, error: null, src };
+    rec.img.onload = () => {
+      rec.ok = true;
+      cab2Draw();
+    };
+    rec.img.onerror = () => {
+      rec.error = 'missing';
+      cab2Draw();
+    };
+    rec.img.src = src;
+    cable2[slot] = rec;
+    return rec;
+  }
+
+  function cab2Canvas(id, key) {
+    if (!cable2.canvases.has(key)) cable2.canvases.set(key, setupCanvas($(id)));
+    return cable2.canvases.get(key);
+  }
+
+  function cab2Draw() {
+    if (!manifest) return;
+    const S = state.scale;
+    const panes = [
+      ['cabV2A', 'cab2:a', 'a', CABLE_V2_A],
+      ['cabV2B', 'cab2:b', 'b', CABLE_V2_B],
+    ];
+    for (const [id, key, slot, src] of panes) {
+      const c = cab2Canvas(id, key);
+      c.ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      c.ctx.clearRect(0, 0, c.w, c.h);
+      const rec = cable2[slot];
+      if (!rec) continue;
+      drawPose(c.ctx, cableEntry(rec, src), S, c.w, c.h, { lines: true, anchors: state.anchors });
+    }
+
+    const d = cab2Canvas('cabV2Diff', 'cab2:diff');
+    d.ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    d.ctx.clearRect(0, 0, d.w, d.h);
+    const pose = manifest.poses['01_idle'];
+    const floorY = d.h - FLOOR_PAD;
+    if (cable2.diff && cable2.diff.ok) {
+      d.ctx.imageSmoothingQuality = 'high';
+      d.ctx.drawImage(
+        cable2.diff.img,
+        d.w / 2 - pose.anchorPx[0] * S,
+        floorY - pose.anchorPx[1] * S,
+        manifest.canvas[0] * S,
+        manifest.canvas[1] * S,
+      );
+      d.ctx.save();
+      d.ctx.strokeStyle = 'rgba(126, 166, 255, 0.55)';
+      d.ctx.setLineDash([6, 5]);
+      d.ctx.beginPath();
+      d.ctx.moveTo(0, floorY + 0.5);
+      d.ctx.lineTo(d.w, floorY + 0.5);
+      d.ctx.stroke();
+      d.ctx.restore();
+    } else if (cable2.diff && cable2.diff.error) {
+      d.ctx.fillStyle = '#ff7f7f';
+      d.ctx.font = '13px ui-sans-serif, system-ui, sans-serif';
+      d.ctx.fillText(`missing diff image: ${CABLE_DIR}diff-v1-vs-v2.png`, 12, 24);
+    }
+  }
+
+  function cab2RenderRegions(data) {
+    const host = $('cabV2Regions');
+    const stats = $('cabV2Stats');
+    if (!host) return;
+    const regions = data.regions || [];
+    const rows = regions
+      .map((r) => `<tr><td>${r.id}</td><td>${r.pixels}</td><td>[${(r.bbox || []).join(', ')}]</td></tr>`)
+      .join('');
+    host.innerHTML =
+      `<b>${data.changed_pixels}</b> changed pixels in <b>${regions.length}</b> region${regions.length === 1 ? '' : 's'} · <span class="mono">bbox [${(data.changed_bbox || []).join(', ')}]</span> · removal identical to v1: <b>${data.removal_identical_to_v1 ? 'yes' : 'no'}</b>` +
+      `<table><thead><tr><th>region</th><th>pixels</th><th>bbox x0, y0, x1, y1</th></tr></thead><tbody>${rows}</tbody></table>`;
+    if (stats) stats.textContent = `${data.changed_pixels} px differ from v1 · v1 and the original both untouched`;
+  }
+
+  async function initCable2() {
+    if (!$('cabV2A')) return;
+    cable2Rec(CABLE_V2_A, 'a');
+    cable2Rec(CABLE_V2_B, 'b');
+    cable2Rec(`${CABLE_DIR}diff-v1-vs-v2.png`, 'diff');
+
+    const toggle = $('cabV2On');
+    const pane = $('cabV2Pane');
+    if (toggle && pane) {
+      toggle.addEventListener('change', () => {
+        pane.hidden = !toggle.checked;
+        if (toggle.checked) cab2Draw();
+      });
+    }
+
+    try {
+      const res = await fetch(`${CABLE_DIR}diff-v1-vs-v2.json`, { cache: 'no-cache' });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      cab2RenderRegions(await res.json());
+    } catch (err) {
+      const stats = $('cabV2Stats');
+      if (stats) stats.textContent = `region data failed: ${err.message}`;
+    }
+    cab2Draw();
+  }
+
   async function main() {
     seqCanvas = setupCanvas(els.seq);
     refCanvas = setupCanvas(els.ref);
@@ -734,6 +846,11 @@
     initCable().catch((err) => {
       const stats = document.getElementById('cabStats');
       if (stats) stats.textContent = `candidate section failed: ${err.message}`;
+    });
+
+    initCable2().catch((err) => {
+      const stats = document.getElementById('cabV2Stats');
+      if (stats) stats.textContent = `v2 section failed: ${err.message}`;
     });
   }
 

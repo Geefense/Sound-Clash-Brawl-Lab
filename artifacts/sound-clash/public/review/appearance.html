@@ -141,6 +141,64 @@
         </ul>
       </section>
 
+      <section class="cable" id="cable-v2">
+        <div class="mv-head">
+          <span class="tag cable">Cable correction candidate v2 — 01_idle entry refined · awaiting owner approval</span>
+          <span class="muted" id="cabV2Stats">loading…</span>
+        </div>
+        <div class="cable-body">
+          <div class="pane">
+            <div class="pane-head">
+              <span class="tag">v1</span>
+              <span>flat 4.6 px stroke — cable removal unchanged</span>
+            </div>
+            <canvas id="cabV2A" width="680" height="520"></canvas>
+          </div>
+          <div class="pane">
+            <div class="pane-head">
+              <span class="tag">v2</span>
+              <span>outline, body and lit-side highlight</span>
+            </div>
+            <canvas id="cabV2B" width="680" height="520"></canvas>
+          </div>
+        </div>
+        <div class="controls">
+          <label class="field check"><input id="cabV2On" type="checkbox" /> Difference view (v1 vs v2)</label>
+          <span class="muted">raise the scale slider above to enlarge · only the wrap-to-jacket segment differs</span>
+        </div>
+        <div class="pane cable-diff" id="cabV2Pane" hidden>
+          <div class="pane-head">
+            <span class="tag">Difference</span>
+            <span>v1 against v2, same anchor and scale</span>
+          </div>
+          <canvas id="cabV2Diff" width="680" height="520"></canvas>
+        </div>
+        <div class="compare-strip">
+          <figure>
+            <img src="/review/appearance/cable/compare/v1-v2-gameplay.png" alt="v1 and v2 at gameplay size 0.44" />
+            <figcaption>gameplay size · 0.44 · <a class="link" href="/review/appearance/cable/compare/v1-v2-gameplay.png" target="_blank" rel="noreferrer">full size ↗</a></figcaption>
+          </figure>
+          <figure>
+            <img src="/review/appearance/cable/compare/v1-v2-1to1.png" alt="v1 and v2 at source resolution" />
+            <figcaption>source resolution · 1:1 · <a class="link" href="/review/appearance/cable/compare/v1-v2-1to1.png" target="_blank" rel="noreferrer">full size ↗</a></figcaption>
+          </figure>
+          <figure>
+            <img src="/review/appearance/cable/compare/v1-v2-enlarged.png" alt="v1 and v2 enlarged at the wrap and hem" />
+            <figcaption>enlarged · 5.6× · <a class="link" href="/review/appearance/cable/compare/v1-v2-enlarged.png" target="_blank" rel="noreferrer">full size ↗</a></figcaption>
+          </figure>
+          <figure>
+            <img src="/review/appearance/cable/compare/v1-v2-entry-9x.png" alt="v1 and v2 entry close-up" />
+            <figcaption>entry close-up · 9× · <a class="link" href="/review/appearance/cable/compare/v1-v2-entry-9x.png" target="_blank" rel="noreferrer">full size ↗</a></figcaption>
+          </figure>
+        </div>
+        <div class="regions" id="cabV2Regions"></div>
+        <ul class="mv-notes">
+          <li><strong>Unchanged from v1:</strong> the cable-tail and floor-loop removal is byte-identical, so the jacket, waistband, trousers, Clarks and every pixel outside the drawn segment keep v1's values.</li>
+          <li><strong>Changed:</strong> only the drawn wrap-to-jacket segment — the same route, rebuilt at the original cord's 5 px section with its dark outline, mid body and lit-side highlight, leaving the wrap vertically and occluded by the hem's lower corner.</li>
+          <li>No plug or extra hardware, no added background, no other pose, and the five-pixel walk alignment item stays recorded separately.</li>
+        </ul>
+      </section>
+
       <section class="controls" aria-label="Playback controls">
         <button id="play" class="primary" type="button">❚❚ Pause</button>
         <button id="prev" type="button">◀ Prev</button>

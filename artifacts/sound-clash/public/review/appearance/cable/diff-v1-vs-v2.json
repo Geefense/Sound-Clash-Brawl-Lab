@@ -1,0 +1,79 @@
+{
+  "pair": [
+    "01_idle \u2014 cable candidate v1 vs v2 (entry only)"
+  ],
+  "canvas": [
+    1536,
+    1024
+  ],
+  "changed_pixels": 388,
+  "changed_bbox": [
+    698,
+    617,
+    732,
+    654
+  ],
+  "regions": [
+    {
+      "id": 1,
+      "pixels": 387,
+      "bbox": [
+        698,
+        617,
+        732,
+        651
+      ]
+    }
+  ],
+  "source_original": "artifacts/sound-clash/public/assets/feedback/aligned/01_idle.png",
+  "candidate_v1": "01_idle-jacket-entry-v1.png",
+  "candidate_v2": "01_idle-jacket-entry-v2.png",
+  "entry_box": [
+    690,
+    606,
+    744,
+    666
+  ],
+  "entry_curve": [
+    [
+      703.5,
+      622.0
+    ],
+    [
+      710.0,
+      633.0
+    ],
+    [
+      720.0,
+      645.5
+    ],
+    [
+      728.5,
+      650.5
+    ]
+  ],
+  "cord_widths_px": {
+    "outline": 5.4,
+    "body": 3.6,
+    "highlight": 1.2
+  },
+  "cord_colours": {
+    "outline": [
+      8,
+      8,
+      9
+    ],
+    "body": [
+      42,
+      42,
+      43
+    ],
+    "highlight": [
+      74,
+      74,
+      75
+    ]
+  },
+  "preserved_outside_entry_box": true,
+  "removal_identical_to_v1": true
+}

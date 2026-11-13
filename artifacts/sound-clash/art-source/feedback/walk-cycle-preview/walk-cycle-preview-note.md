@@ -66,10 +66,13 @@ difference map.
 
 ## Remaining issues in the source (not fixed here)
 
-1. **Mic is in the wrong hand.** The carry matches the approved crossed-arms
-   idle, which `feedback-idle-spec.json` records as **"mic in right hand"**. The
-   mic belongs in Feedback's **left** hand. The clip has not been mirrored or
-   flipped, and neither reference panel has been altered.
+1. **Mic hand — correct, no longer a defect.** The carry is Feedback's
+   anatomical **right** hand, which is the authoritative rule for every pose and
+   for the whole walk. The clip has not been mirrored or flipped, and neither
+   reference panel has been altered. Earlier review called this a wrong-hand
+   carry against an instruction that put the mic in the left hand; that
+   instruction is superseded. Anatomy and evidence: `../walk-four-keys/four-key-note.md`
+   and `../walk-four-keys/grip-thumb-side-5x.png`.
 2. **Cable terminal is inconsistent.** The run from mic to forearm coil to leg is
    continuous in every frame, but the free end is drawn as a plug at mid-thigh in
    some poses and as a bare strand at the shin in others.

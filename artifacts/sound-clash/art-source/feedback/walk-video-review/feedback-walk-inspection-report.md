@@ -64,7 +64,7 @@ encoded into a 30 fps stream. Played back naively at 30 fps the walk carries
 
 ## 4. Findings
 
-### 4.1 Mic hand — does not meet the stated left-hand rule (blocking)
+### 4.1 Mic hand — meets the right-hand rule (cleared)
 
 The microphone is held in the same hand for the whole clip, including through
 the idle → walk transition: **238/238 frames**, no swap.
@@ -75,16 +75,19 @@ approved crossed-arms idle in `feedback-crossed-arms-approved.jpeg`. The
 repository's own `feedback-idle-spec.json` records that approved pose as
 **"mic in right hand"**.
 
-The six imported gameplay poses are drawn the other way: in
+The six imported gameplay poses read the same way. In
 `feedback-gameplay-comparison.png` the mic sits on the screen-left of the torso
-while the free hand gestures to the screen-right. So the project's references
-already disagree about which hand owns the mic.
+while the free hand gestures to the screen-right, but that is a screen position,
+not a hand. On a figure facing screen-right the near arm crosses the chest to
+reach that point, and the near arm is the one carrying the three sleeve stripes
+and the forearm coil. The pose pack is therefore right-handed like the idle and
+the walk, not opposed to them.
 
-Consequence: under the rule that the mic belongs in **Feedback's left hand**,
-this walk test does not comply — it matches the approved idle carry, which the
-repo labels right-hand. Before this movement test can be approved, one
-authoritative answer is needed for: approved idle, six-pose pack, and walk. The
-walk cannot be signed off while the references disagree.
+Consequence: the walk complies with the authoritative rule — the mic belongs in
+**Feedback's right hand**, in every pose and throughout the walk. The earlier
+left-hand instruction is superseded; the sheet and the grip evidence are in
+`../walk-four-keys/four-key-note.md`. No mirroring or regeneration of the carry
+is needed, and this finding no longer blocks the movement test.
 
 Evidence: `contact-sheet-01-frames-001-118.png`,
 `contact-sheet-02-frames-120-237.png`,
@@ -134,17 +137,17 @@ Measured across all 238 frames:
 ## 5. Verdict
 
 - Reconstruction: **complete and byte-exact.**
-- Movement test: **not approved.** The mic-hand rule is unresolved and the clip
-  follows the pose that the repo records as right-handed; the cable's terminal
-  end drifts; the arms are static through the walk; the clip does not loop.
+- Movement test: **not approved.** The mic hand is settled — right, and the clip
+  complies — but the cable's terminal end drifts, the arms are static through
+  the walk, and the clip does not loop.
 - Gameplay integration: **none performed**, per instruction, and none should be
   attempted from this asset until the mic hand is settled.
 
 ## 6. Recommended next steps (not started)
 
-1. Decide the single authoritative mic hand (left, per instruction) and update
-   `feedback-idle-spec.json` plus the six-pose pack accordingly, then mirror or
-   regenerate the walk carry.
+1. ~~Decide the single authoritative mic hand.~~ Settled: **right**, in every
+   pose and throughout the walk (`../walk-four-keys/four-key-note.md`). No mirror
+   or regeneration of the carry is required.
 2. Fix the cable terminal so the plug is drawn consistently at a stable height.
 3. Add arm counter-swing to the walk; keep the mic arm's carry subtle but alive.
 4. Re-shoot or re-time the next test at 24 fps with a ground/shadow reference so
@@ -156,8 +159,8 @@ Measured across all 238 frames:
 - Visual review sampled every 3rd frame in the contact sheets, with ~30 frames
   at native/high zoom; the remaining frames were covered by the numeric checks
   only.
-- Left/right hand naming relies on the repository's own spec label
-  ("mic in right hand" for the approved idle) because a 2D 3/4 drawing cannot be
-  resolved anatomically with certainty; the observable fact — same hand as the
-  approved idle, opposite side to the six-pose pack — is independent of that
-  label.
+- Hand naming is now read off the grip rather than the screen: facing direction,
+  which sleeve shows its outer striped surface, and which side the thumb wraps
+  on. On a screen-right profile that resolves the carry as the right hand. The
+  observable facts — one mic, and the same hand carrying it in all 238 frames —
+  are independent of that reading.

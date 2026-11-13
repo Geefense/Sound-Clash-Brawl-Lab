@@ -1,0 +1,165 @@
+{
+  "sheet": "source-sheet.jpeg",
+  "sha256": "fb5194830d77bfa89aacbd914da6bb2ad4b994d9dffd6823513768a6a06ec0d5",
+  "size": [
+    1199,
+    1312
+  ],
+  "rule": {
+    "micHand": "right",
+    "oneMic": true,
+    "cable": "one cable from mic to plug; continuous in the art"
+  },
+  "method": {
+    "mic": "neutral-metal blob >= 180 px (HSV saturation < 0.22, value 0.22-0.80)",
+    "plug": "neutral-metal blob of 20-180 px below the mic",
+    "cord": "neutral stroke, saturation < 0.20, value > 0.25; segments are occlusion diagnostics only"
+  },
+  "keys": [
+    {
+      "key": "01 CONTACT A",
+      "micCount": 1,
+      "micBox": [
+        285,
+        181,
+        305,
+        207
+      ],
+      "plugBox": [
+        222,
+        362,
+        225,
+        373
+      ],
+      "cordSegments": [
+        [
+          221,
+          240,
+          292,
+          381
+        ],
+        [
+          284,
+          180,
+          306,
+          208
+        ]
+      ]
+    },
+    {
+      "key": "02 PASS A",
+      "micCount": 1,
+      "micBox": [
+        261,
+        207,
+        283,
+        222
+      ],
+      "plugBox": [
+        191,
+        375,
+        193,
+        381
+      ],
+      "cordSegments": [
+        [
+          221,
+          247,
+          269,
+          298
+        ],
+        [
+          260,
+          195,
+          284,
+          223
+        ],
+        [
+          189,
+          319,
+          203,
+          390
+        ]
+      ]
+    },
+    {
+      "key": "03 CONTACT B",
+      "micCount": 1,
+      "micBox": [
+        294,
+        128,
+        315,
+        154
+      ],
+      "plugBox": [
+        240,
+        308,
+        243,
+        319
+      ],
+      "cordSegments": [
+        [
+          233,
+          243,
+          258,
+          328
+        ],
+        [
+          294,
+          127,
+          316,
+          155
+        ],
+        [
+          269,
+          187,
+          302,
+          232
+        ],
+        [
+          255,
+          184,
+          266,
+          210
+        ]
+      ]
+    },
+    {
+      "key": "04 PASS B",
+      "micCount": 1,
+      "micBox": [
+        261,
+        142,
+        283,
+        168
+      ],
+      "plugBox": [
+        191,
+        320,
+        193,
+        327
+      ],
+      "cordSegments": [
+        [
+          220,
+          199,
+          268,
+          237
+        ],
+        [
+          189,
+          242,
+          231,
+          335
+        ],
+        [
+          260,
+          142,
+          284,
+          169
+        ]
+      ]
+    }
+  ],
+  "allChecksPass": true
+}

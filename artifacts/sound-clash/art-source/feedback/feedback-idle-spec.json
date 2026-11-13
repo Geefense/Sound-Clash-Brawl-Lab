@@ -1,5 +1,7 @@
 {
   "character": "Feedback",
+  "micHand": "right",
+  "micHandSource": "artifacts/sound-clash/art-source/feedback/walk-four-keys/four-key-note.md",
   "pose": "approved idle stance - crossed arms",
   "asset": "feedback-idle-1600x1280.png",
   "derivedFrom": {

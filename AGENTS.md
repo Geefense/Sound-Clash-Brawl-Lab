@@ -167,6 +167,11 @@ Six additional imported studies under `art-source/feedback/imported-poses/`: `01
 - **Status: unapproved movement test.** Upload approval was permission to save it, not animation approval. Next: step through the full loop with Freebuff, trace anatomical near/far legs across contacts and passes, check phase/bop/arm counter-swing/mic/cable/floor contact. Correct only failed details, then seek creative approval and test at gameplay scale.
 - Align by support sole, use one justified scale, preserve natural bob; never normalize each pose's total height to hide phase errors. Similar screen-space boot positions do not prove the same anatomical leg is leading. Report uncertainty rather than guessing.
 
+
+### Appearance audit checkpoint — November 13, 2026
+
+All 17 aligned PNGs on `assets/feedback-transparent-poses` were retrieved, decoded and inspected in a comparison sheet; idle, block, BOX startup/contact/recovery and KO received enlarged inspection. Multiple stored poses have floor-trailing cables that conflict with the owner’s jacket-origin requirement. This is not only a walk issue. No original PNGs or runtime files changed. See `artifacts/sound-clash/art-source/feedback/APPEARANCE-CONSISTENCY-AUDIT-2026-11-13.md` for evidence, open checks and Freebuff’s next task. Build the appearance comparison before further broad generation or integration. The stored idle is a proposed working appearance reference; owner approval remains required for any replacement art.
+
 ### Interference and audio inventory gaps
 
 The owner identifies bottles, chairs, fire extinguishers and Flow sprite/audio exports as migration inventory. No matching bottle/chair/extinguisher directories or finished soundtrack/voice asset tree was found on inspected Lab `main`, pose, animation-refinement, sprite-pipeline or combat-hardening snapshots. **[TODO] Freebuff locates any local/unmerged files and records exact paths, filenames, status and source before copying.** Do not claim missing files exist or replace them with silently invented assets.

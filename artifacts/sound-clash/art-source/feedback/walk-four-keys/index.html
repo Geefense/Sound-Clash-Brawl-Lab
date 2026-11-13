@@ -35,7 +35,7 @@
     border: 1px solid #5a2a26; border-radius: 999px; background: #2a1614;
     color: #f0a79e; font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
   }
-  .flags { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 22px; }
+  .flags { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 22px; }
   .flag {
     margin: 0; padding: 12px 14px; background: var(--panel);
     border: 1px solid var(--line); border-left: 3px solid var(--warn);
@@ -120,14 +120,17 @@
   <p class="badge">Movement test — not approved · not in gameplay</p>
 
   <div class="flags">
-    <p class="flag is-bad"><strong>A/B legs — flagged.</strong> Both contact keys put the boots in
-      the same places (front 367 vs 377 px, rear 122 vs 120, same sole tilts), so the drawing never
-      swaps the legs. Alternation is <em>not</em> evidenced, and the two pass keys do not mirror each
-      other either (support foot 218 vs 168 px against a body centre of 230).</p>
-    <p class="flag"><strong>Foot sliding — inherent to 4 keys.</strong> Between keys the stance foot
-      jumps 149 px (A→PASS A) and 209 px (B→PASS B) with nothing in between. The step itself is
-      245–257 px — the distance between the feet at contact — so that is the root motion a game
-      needs to cancel the slide.</p>
+    <p class="flag is-ok"><strong>A/B legs — they alternate.</strong> The boots sit in the same
+      places in both contact keys, which is what an alternating stride looks like from the side: the
+      <em>near</em> leg swaps sides (screen-left in A, screen-right in B) while the leading side stays
+      right. Earlier review called this “not evidenced” from foot positions alone — that test cannot
+      answer the question, and the call is retracted.</p>
+    <p class="flag"><strong>Pass keys are out of phase — needs correcting.</strong> The support foot
+      sits 24 px ahead of the hip in PASS A but 30 px behind it in PASS B. Stance travel is therefore
+      117 px in the first half and 185 px in the second: a 68 px (37%) mismatch that will limp.</p>
+    <p class="flag is-bad"><strong>Arm swing — needs correcting.</strong> The free arm leads in all
+      four keys. With the legs alternating it must trail in whichever key has the left leg forward,
+      so at least one key carries the wrong swing.</p>
     <p class="flag is-ok"><strong>Mic hand — right.</strong> One mic, one cable, right hand in all
       four keys. See <a href="four-key-note.md">four-key-note.md</a>.</p>
   </div>
@@ -164,26 +167,26 @@
   <h2>What was measured</h2>
   <div class="notes">
     <table>
-      <tr><th>Key</th><th>Drawn height</th><th>Scale</th><th>Front boot</th><th>Rear boot</th></tr>
-      <tr><td>01 CONTACT A</td><td class="num">510 px</td><td class="num">0.902</td><td class="num">x 367 · tilt −0.49 · floor</td><td class="num">x 122 · tilt +0.08 · floor</td></tr>
-      <tr><td>02 PASS A</td><td class="num">502 px</td><td class="num">0.916</td><td class="num">x 218 · tilt +0.01 · floor</td><td class="num">x 137 · lifted 51 px</td></tr>
-      <tr><td>03 CONTACT B</td><td class="num">521 px</td><td class="num">0.883</td><td class="num">x 377 · tilt −0.59 · floor</td><td class="num">x 120 · tilt +0.05 · floor</td></tr>
-      <tr><td>04 PASS B</td><td class="num">510 px</td><td class="num">0.902</td><td class="num">x 209 · lifted 49 px</td><td class="num">x 168 · tilt +0.08 · floor</td></tr>
+      <tr><th>Key</th><th>Drawn → panel</th><th>Head top</th><th>Front boot</th><th>Rear boot</th></tr>
+      <tr><td>01 CONTACT A</td><td class="num">510 → 460</td><td class="num">y 112</td><td class="num">x 361 · floor</td><td class="num">x 116 · floor</td></tr>
+      <tr><td>02 PASS A</td><td class="num">502 → 453</td><td class="num">y 120</td><td class="num">x 245 · floor</td><td class="num">x 165 · lifted 43</td></tr>
+      <tr><td>03 CONTACT B</td><td class="num">521 → 470</td><td class="num">y 102</td><td class="num">x 372 · floor</td><td class="num">x 109 · floor</td></tr>
+      <tr><td>04 PASS B</td><td class="num">510 → 460</td><td class="num">y 111</td><td class="num">x 189 · floor</td><td class="num">x 230 · lifted 44</td></tr>
     </table>
     <ul>
-      <li><strong>Scale:</strong> the sheet's figures are drawn 502–521 px tall, so each key is
-        normalised to a 460 px figure before comparison; the raw sheet is not one scale.</li>
-      <li><strong>Floor:</strong> soles pinned to y = 566 in a 460 × 620 panel; the lifted feet in the
-        pass keys sit 49–51 px clear, which is the only real vertical information in the sheet.</li>
-      <li><strong>Duplicates:</strong> no pair is a copy — the closest is CONTACT A vs CONTACT B at
-        mean diff 30.9 (next 46.8 for PASS A vs PASS B); the other pairs sit at 61–64.</li>
-      <li><strong>Alternation:</strong> not evidenced. A and B hold the same boots within 10 px with
-        the same sole tilts, so both contact keys read as the same leg forward. The pass keys do not
-        mirror either: PASS A supports under the body (x 218), PASS B supports 62 px behind (x 168).</li>
-      <li><strong>Foot sliding:</strong> the stance foot travels −149 px (A→PASS A) and −209 px
-        (B→PASS B) — a 60 px mismatch between the two halves — while the step (feet apart at contact)
-        is 245–257 px. Played in place with no root motion and no in-betweens, the planted foot snaps
-        backwards once per key.</li>
+      <li><strong>Scale:</strong> one uniform 0.902 for every key. The drawn heights span 3.7%
+        (502–521 px), which is inside the 5% noise of the only rigid ruler (the flat boot), so the
+        difference reads as the walk's rise and dip rather than as different scales.</li>
+      <li><strong>Floor and bob:</strong> support soles pinned to y = 566; head top then lands at
+        y 112 / 120 / 102 / 111, an 18 px rise and dip that is kept, not normalised away.</li>
+      <li><strong>Duplicates:</strong> no pair is a copy — closest is CONTACT A vs CONTACT B at mean
+        diff 37.9 (next 56.3 for PASS A vs PASS B); the other pairs sit at 58–64.</li>
+      <li><strong>Alternation:</strong> the legs do alternate. The near leg swaps sides between the
+        contact keys while the leading side stays right; the legs were traced hip → knee → boot
+        (<code>leg-trace.png</code>) and read at 6× over the crossing.</li>
+      <li><strong>Travel, not sliding:</strong> a planted foot moving back through the frame is
+        forward travel. The stance foot travels 117 px in the first half and 185 px in the second,
+        so the halves disagree by 68 px (37%) — that mismatch, not the movement itself, is the defect.</li>
       <li><strong>Mic:</strong> one mic, one cable, right hand in every key — no redraw needed.</li>
     </ul>
   </div>
@@ -196,8 +199,12 @@
       <li>The wrap from 04 PASS B back to 01 CONTACT A is a hard cut like any other.</li>
               <li>No ground shadow and no planted-foot lock exist in the source, so the floor line here is an
         alignment aid, not evidence of contact.</li>
-      <li>At 460 px ≈ 1.8 m, a 251 px step is ≈0.98 m; the 1 s cycle above implies ≈2.0 m/s, which is
-        brisker than the art reads. A 2 s cycle (12 fps holds) lands nearer 1.0 m/s.</li>
+      <li>At 460 px ≈ 1.8 m, the 245–263 px step is ≈0.96–1.03 m; the 1 s cycle above implies
+        ≈2.0 m/s, brisker than the art reads. A 2 s cycle (12 fps holds) lands nearer 1.0 m/s.</li>
+      <li><strong>Before a redraw:</strong> re-cut PASS B to PASS A's sub-phase (support ~24 px ahead
+        of the hip, not 30 behind) — that also equalises the halves' travel at ~150 px each — and add
+        the missing arm counter-swing. CONTACT A / CONTACT B need no redraw for alternation, but which
+        leg leads in each is worth one line of confirmation from the artist.</li>
     </ul>
   </div>
 

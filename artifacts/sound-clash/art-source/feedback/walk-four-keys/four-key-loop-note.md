@@ -1,8 +1,8 @@
-# Feedback four-key walk loop — extraction, alignment, checks
+# Feedback four-key walk loop — extraction, alignment, leg trace, checks
 
 **Status: movement test — not approved. Not integrated into gameplay.** No world,
-combat or simulation code touched, no experimental branch merged. The sheet is
-untouched; everything below is derived from it.
+combat or simulation code touched. The sheet is untouched; everything below is
+derived from it.
 
 Built from `source-sheet.jpeg` (SHA-256
 `fb5194830d77bfa89aacbd914da6bb2ad4b994d9dffd6823513768a6a06ec0d5`, 1,199 ×
@@ -12,125 +12,154 @@ Built from `source-sheet.jpeg` (SHA-256
 
 | Path | What it is |
 | --- | --- |
-| `poses/01_contact_a.png` … `04_pass_b.png` | the four keys, 460 × 620 RGBA, transparent, one shared figure height, soles on y = 566 |
+| `poses/01_contact_a.png` … `04_pass_b.png` | the four keys, 460 × 620 RGBA, one uniform scale, support sole on y = 566 |
 | `index.html` | looping preview player: play/pause, key step, 4/6/10-frame holds, 0.5×/1×/2× speed, onion skin, clickable key strip |
-| `keys-aligned.png` | the four aligned keys side by side with boot markers on the floor line |
-| `extract_keys.py` | does the cut-out, alignment, contact sheet and every measurement below |
-| `loop-check.json` | the numbers |
+| `keys-aligned.png` | the four aligned keys with boot markers on the floor line |
+| `leg-trace.png` | hip → knee → ankle traced on every key |
+| `crossing-6x.png` | the crotch/crossing at 6× for the two contact keys |
+| `extract_keys.py`, `trace_legs.py` | cut-out, alignment, contact sheet; leg trace and gait numbers |
+| `loop-check.json`, `leg-trace.json` | the numbers |
 
-## How the poses were cut and aligned
+## Alignment
 
-1. **Background keyed at a tolerance of 8.** The field is flat near-black (JPEG
-   noise std 0.6, max distance 3.6) and the bucket hat is drawn almost as dark.
-   A looser threshold eats the crown: at 26 the top-row figures lost ~45 px of
-   hat and every height and scale came out wrong. This was caught by looking at
-   the cut-out, not by trusting the numbers.
-2. The **largest connected component** is kept, so the key labels are dropped,
-   and thin horizontal strokes are stripped afterwards — the white ground line
-   survives beside the soles as a stub that otherwise bridges the two boots.
-3. **Scale.** The sheet's figures are drawn **502, 510, 521 and 510 px** tall, so
-   each key is normalised to a 460 px figure (scales 0.902, 0.916, 0.883, 0.902).
-   One shared scale would have left the keys up to 4% out of step.
-4. **Floor contact.** Each key's soles are pinned to y = 566 in a 460 × 620 panel
-   and horizontally centred on the mean body centre of the four keys, so the
-   per-key weight shift survives instead of being flattened.
-5. Resampling premultiplies alpha before LANCZOS, so no dark fringes.
+**One uniform scale for all four keys.** As drawn the figures measure 510, 502,
+521 and 510 px tall — a 3.7% spread. The only rigid ruler available is the flat
+boot, and its own measurement noise is 5% (bbox width) to 25% (area), so the
+sheet cannot be shown to use different scales. Per-key normalisation was
+therefore wrong: it would have flattened the walk's rise and dip to hide a
+difference that is inside the noise.
 
-## Playback
+**Vertical: the support sole is pinned, the pose height is not normalised.**
+Pinning the planted foot to the floor lets the body rise and dip naturally. The
+result keeps the bob:
 
-Four poses and nothing else: each key is held (default 6 frames at 24 fps =
-1.0 s per cycle) and the cuts are hard. Nothing is interpolated or crossfaded —
-the pops are the sheet's, and hiding them would misrepresent the asset. The wrap
-from 04 PASS B back to 01 CONTACT A is one more hard cut.
+| Key | Drawn | In panel | Head top |
+| --- | --- | --- | --- |
+| 01 CONTACT A | 510 px | 460 px | y 112 |
+| 02 PASS A | 502 px | 453 px | y 120 |
+| 03 CONTACT B | 521 px | 470 px | y 102 |
+| 04 PASS B | 510 px | 460 px | y 111 |
+
+That is an 18 px rise and dip across the four keys, preserved rather than
+cancelled.
+
+**Horizontal: the torso is centred, not the bounding box.** Bounding-box
+centring shifts a key by however far the arms and legs stick out, inventing
+lateral drift; centring the torso puts all four at x 229.6–230.4.
+
+Cut-out notes: background keyed at a tolerance of 8 (the near-black hat sits
+inside a looser threshold and lost its crown), labels dropped by keeping the
+largest component, and the ground line stripped as a thin-run stroke so it does
+not bridge the boots.
+
+## Leg trace — hip → knee → boot
+
+`leg-trace.png` draws each leg's centreline, its knee (strongest change of
+direction between hip and ankle) and its ankle, per key.
+
+| Key | Hip | Left leg: knee → ankle | Right leg: knee → ankle |
+| --- | --- | --- | --- |
+| 01 CONTACT A | x 215.5, y 333 | (236, 392) → (315, 534) | (310, 502) → (317, 545) |
+| 02 PASS A | x 221.5, y 345 | (286, 419) → (213, 532) | (266, 487) → (215, 531) |
+| 03 CONTACT B | x 209.8, y 324 | unresolved (far leg drawn near-black) | (346, 497) → (330, 543) |
+| 04 PASS B | x 219.2, y 334 | (249, 386) → (155, 539) | (220, 450) → (170, 529) |
 
 ## Checks
 
-| Key | Drawn height | Scale | Front boot | Rear boot |
-| --- | --- | --- | --- | --- |
-| 01 CONTACT A | 510 px | 0.902 | x 367, tilt −0.49, on floor | x 122, tilt +0.08, on floor |
-| 02 PASS A | 502 px | 0.916 | x 218, tilt +0.01, on floor | x 137, lifted 51 px |
-| 03 CONTACT B | 521 px | 0.883 | x 377, tilt −0.59, on floor | x 120, tilt +0.05, on floor |
-| 04 PASS B | 510 px | 0.902 | x 209, lifted 49 px | x 168, tilt +0.08, on floor |
+### A/B leg alternation — they do alternate (earlier verdict retracted)
 
-Body centre in the panel is x ≈ 230.
+An earlier version of this note said alternation was "not evidenced". That
+verdict compared **foot plots**, which cannot answer the question: in a side
+view an alternating stride puts the boots in *the same screen places* — only the
+leg identity swaps. The evidence that does answer it:
 
-### A/B leg alternation — flagged, not evidenced
+1. **Near/far at the crossing.** The leg whose hip/seat fabric runs unbroken
+   into the leg is the near one; the far leg's top disappears behind it. At 6×
+   (`crossing-6x.png`) the near leg is the **screen-left** leg in CONTACT A and
+   the **screen-right** leg in CONTACT B. The near leg swaps sides.
+2. **Occlusion gaps.** Tracing where each leg's fabric is interrupted gives the
+   same swap in three of the four keys: near **R** in the A half (01, 02), near
+   **L** in the B half (04). Key 03's far leg is drawn almost black and produces
+   no usable gap, so it is excluded rather than guessed.
+3. **The leading leg never changes.** The front boot is on the right in all four
+   keys (front x 361 / 245 / 372 / 189 against hip x 216 / 222 / 210 / 219), so
+   the near leg is forward in one contact and trailing in the other.
 
-CONTACT A and CONTACT B put the boots in the same places at the same angles:
-front boot **x 367 vs 377** (10 px apart), rear boot **x 122 vs 120** (2 px),
-front sole tilt **−0.49 vs −0.59**, rear sole tilt **+0.08 vs +0.05**. Both keys
-plant both feet. That is the same foot plot twice.
+Conclusion: **the legs alternate**, and the contact keys do not need redrawing
+for that.
 
-A two-step cycle needs the legs swapped between contact keys — near leg forward
-in one, trailing in the other. Nothing in the drawing does that, and the pair is
-also the closest of the six (mean diff **30.9**, against 46.8–63.9 for every
-other pair), with the differences sitting in the torso, arms and head rather
-than the legs.
+### The two pass keys are at different sub-phases — needs correcting
 
-The pass keys do not rescue it. They are not the same sub-phase mirrored:
-PASS A supports **under** the body (x 218, centre 230) with the swing foot 81 px
-behind, while PASS B supports **62 px behind** the body (x 168) with the swing
-foot passing 41 px ahead of the support (x 209). So the cycle has one contact
-pose twice and two pass poses at different phases.
+The support foot sits **24 px in front of the hip** in PASS A and **30 px behind
+it** in PASS B — a 54 px phase difference between the two halves of the cycle.
 
-**Consequence:** as supplied, the four keys read as one step repeated, not a
-stride. One contact key needs redrawing with the opposite leg forward, and the
-pass keys need to be cut to the same sub-phase, before this can be called a
-two-step cycle.
+| Interval | Stance foot travel (body-relative) |
+| --- | --- |
+| CONTACT A → PASS A | −117 px |
+| CONTACT B → PASS B | −185 px |
+
+A planted foot moving backwards through the frame is **forward travel, not
+sliding**: in body-centred coordinates that is exactly how far the body has to
+move in the interval. What is wrong is that the two halves disagree by **68 px
+(37%)**. At any single root-motion speed the longer half will slide by that
+much, and the loop will limp. Fixing PASS B to match PASS A's sub-phase fixes
+both problems at once.
+
+### Arms do not counter-swing — needs correcting
+
+The free (left) arm is forward in all four keys. With the legs alternating, the
+free arm must be back in whichever key has the left leg forward, so at least one
+key has the wrong arm swing. This is the same stiffness the Flow-test review
+measured, and it will read as a carry rather than a walk even after the legs and
+pass phase are fixed.
 
 ### Duplicates — none
 
-No two keys are copies. Pairwise mean RGB difference over the union of the
-figures: A/PASS A 63.2, A/B **30.9**, A/PASS B 60.9, PASS A/B 63.9, PASS A/PASS B
-46.8, B/PASS B 61.9. Even the closest pair differs across the upper body, so
-these are distinct drawings, not reuses.
-
-### Foot sliding — inherent to a four-key loop
-
-Between a contact key and the pass that follows it the stance foot travels
-**−149 px** (A→PASS A) and **−209 px** (B→PASS B). The two halves disagree by
-60 px, so the cycle also limps.
-
-The step itself — the distance between the feet at contact — is **245 px**
-(CONTACT A) and **257 px** (CONTACT B). Two separate things are needed before
-this reads as a walk:
-
-- the character must travel one step (≈250 px) per step so the stance foot holds
-  its ground, and
-- in-betweens, so the stance foot does not teleport between keys.
-
-At 460 px ≈ 1.8 m, a 251 px step is ≈0.98 m. At the preview's 1.0 s cycle that
-is ≈2.0 m/s — brisker than the art reads; a 2 s cycle lands near 1.0 m/s.
+Pairwise mean RGB difference over the union: A/PASS A 62.1, A/B **37.9**,
+A/PASS B 57.9, PASS A/B 64.0, PASS A/PASS B 56.3, B/PASS B 59.7. The contact
+pair is the closest, and its difference map is concentrated on the boots, the
+head and the leg seams — it is a redraw, not a copy.
 
 ### Mic hand — passes
 
-One mic, one cable, right hand in all four keys; details and evidence in
-`four-key-note.md`.
+One mic, one cable, right hand in all four keys; details in `four-key-note.md`.
 
-## What would make this approvable
+## What needs correcting before a redraw
 
-1. Redraw CONTACT B (or CONTACT A) with the opposite leg forward so the two-step
-   cycle actually alternates, and cut both pass keys to the same sub-phase.
-2. Decide the cadence and the root-motion distance (≈250 px per step is what the
-   art implies) and add in-betweens, at least one per quarter cycle.
-3. Add a ground contact shadow so planted feet can be judged.
+1. **PASS B** — re-cut to PASS A's sub-phase (support foot ~24 px ahead of the
+   hip, not 30 px behind). This also equalises the two halves' travel
+   (117 → ~150 px each).
+2. **Arm swing** — add counter-swing so the free arm trails in the key where the
+   left leg leads; currently it leads in all four.
+3. **CONTACT A / CONTACT B** — no redraw needed for alternation, but which leg
+   leads in each should be confirmed by the artist: the masks cannot resolve key
+   03, and the two keys share a foot plot by construction.
+
+## Playback
+
+Four poses and nothing else: each key is held (6 frames at 24 fps by default =
+1.0 s per cycle) and the cuts are hard. Nothing is interpolated or crossfaded.
+Verified in the browser: 1× advances a key every 250 ms, 2× every ~117 ms, 0.5×
+every 500 ms, pause holds the frame, onion shows the previous key at 0.34
+opacity, and the key step and strip highlight follow.
 
 ## Reproduce
 
 ```bash
-python3 extract_keys.py     # rewrites poses/, keys-aligned.png and loop-check.json
+python3 extract_keys.py     # poses/, keys-aligned.png, loop-check.json
+python3 trace_legs.py       # leg-trace.png, leg-trace.json
 ```
 
-Requires Pillow, numpy and scipy. `index.html` is the static player and reads
-`poses/` directly.
+Requires Pillow, numpy and scipy. `index.html` reads `poses/` directly.
 
 ## Limitations
 
-- The sheet is four static drawings: no timing, no in-betweens, no shadow, so
-  cadence and contact quality are inferred, not measured.
+- Four static drawings: no timing, no in-betweens, no shadow, so cadence and
+  contact quality are inferred, not measured.
+- The near/far reading at the crossing is a visual judgement made at 6×; the
+  automated gap test agrees on the swap in three keys and cannot resolve the
+  fourth, so the alternation conclusion rests on both together.
 - Boot identification is by colour and floor proximity; the mic hand is the same
-  tan as the boots and is excluded by its height, not its shape.
-- Alternation cannot be proven from screen positions in a 2D side view; the
-  verdict rests on the boots landing in identical places with identical sole
-  angles and on the pass keys supporting at different points, which is the
-  observable evidence available.
+  tan and is excluded by height, not shape.
+- Sliding is not claimed anywhere: only body-relative travel is measured, and
+  the defect reported is the mismatch between the two halves.

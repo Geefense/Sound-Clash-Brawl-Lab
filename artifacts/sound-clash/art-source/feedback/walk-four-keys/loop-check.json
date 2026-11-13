@@ -5,171 +5,116 @@
   ],
   "figureHeight": 460,
   "floorY": 566,
-  "normalisation": "per-key scale to a common figure height, then soles pinned to the floor line",
+  "scale": 0.902,
+  "normalisation": "one uniform scale; support sole pinned to the floor; torso centred; pose height NOT normalised",
   "keys": [
     {
       "key": "01 CONTACT A",
       "slug": "01_contact_a",
       "file": "poses/01_contact_a.png",
       "drawnHeightPx": 510,
-      "scale": 0.902,
+      "panelHeightPx": 460,
+      "headTopY": 112,
+      "torsoX": 230.4,
       "boots": [
         {
           "area": 2702,
-          "cx": 121.7,
-          "lowestY": 560,
-          "soleSlope": 0.078,
-          "onFloor": true,
-          "width": 97
+          "cx": 115.7,
+          "lowestY": 566,
+          "width": 98,
+          "onFloor": true
         },
         {
           "area": 2626,
-          "cx": 366.7,
-          "lowestY": 559,
-          "soleSlope": -0.495,
-          "onFloor": true,
-          "width": 88
+          "cx": 360.7,
+          "lowestY": 565,
+          "width": 89,
+          "onFloor": true
         }
       ],
-      "frontBoot": {
-        "area": 2626,
-        "cx": 366.7,
-        "lowestY": 559,
-        "soleSlope": -0.495,
-        "onFloor": true,
-        "width": 88
-      },
-      "rearBoot": {
-        "area": 2702,
-        "cx": 121.7,
-        "lowestY": 560,
-        "soleSlope": 0.078,
-        "onFloor": true,
-        "width": 97
-      }
+      "frontBootCx": 360.7,
+      "rearBootCx": 115.7
     },
     {
       "key": "02 PASS A",
       "slug": "02_pass_a",
       "file": "poses/02_pass_a.png",
       "drawnHeightPx": 502,
-      "scale": 0.9163,
+      "panelHeightPx": 453,
+      "headTopY": 120,
+      "torsoX": 229.6,
       "boots": [
         {
-          "area": 2309,
-          "cx": 136.8,
-          "lowestY": 515,
-          "soleSlope": 1.603,
-          "onFloor": false,
-          "width": 44
+          "area": 2244,
+          "cx": 165.3,
+          "lowestY": 523,
+          "width": 44,
+          "onFloor": false
         },
         {
-          "area": 2937,
-          "cx": 217.6,
-          "lowestY": 559,
-          "soleSlope": 0.012,
-          "onFloor": true,
-          "width": 102
+          "area": 2884,
+          "cx": 245.0,
+          "lowestY": 566,
+          "width": 101,
+          "onFloor": true
         }
       ],
-      "frontBoot": {
-        "area": 2937,
-        "cx": 217.6,
-        "lowestY": 559,
-        "soleSlope": 0.012,
-        "onFloor": true,
-        "width": 102
-      },
-      "rearBoot": {
-        "area": 2309,
-        "cx": 136.8,
-        "lowestY": 515,
-        "soleSlope": 1.603,
-        "onFloor": false,
-        "width": 44
-      }
+      "frontBootCx": 245.0,
+      "rearBootCx": 165.3
     },
     {
       "key": "03 CONTACT B",
       "slug": "03_contact_b",
       "file": "poses/03_contact_b.png",
       "drawnHeightPx": 521,
-      "scale": 0.8829,
+      "panelHeightPx": 470,
+      "headTopY": 102,
+      "torsoX": 229.6,
       "boots": [
         {
-          "area": 2380,
-          "cx": 119.9,
-          "lowestY": 560,
-          "soleSlope": 0.054,
-          "onFloor": true,
-          "width": 97
+          "area": 2507,
+          "cx": 108.9,
+          "lowestY": 566,
+          "width": 100,
+          "onFloor": true
         },
         {
-          "area": 2429,
-          "cx": 377.1,
-          "lowestY": 558,
-          "soleSlope": -0.593,
-          "onFloor": true,
-          "width": 81
+          "area": 2591,
+          "cx": 372.4,
+          "lowestY": 564,
+          "width": 85,
+          "onFloor": true
         }
       ],
-      "frontBoot": {
-        "area": 2429,
-        "cx": 377.1,
-        "lowestY": 558,
-        "soleSlope": -0.593,
-        "onFloor": true,
-        "width": 81
-      },
-      "rearBoot": {
-        "area": 2380,
-        "cx": 119.9,
-        "lowestY": 560,
-        "soleSlope": 0.054,
-        "onFloor": true,
-        "width": 97
-      }
+      "frontBootCx": 372.4,
+      "rearBootCx": 108.9
     },
     {
       "key": "04 PASS B",
       "slug": "04_pass_b",
       "file": "poses/04_pass_b.png",
       "drawnHeightPx": 510,
-      "scale": 0.902,
+      "panelHeightPx": 460,
+      "headTopY": 111,
+      "torsoX": 229.8,
       "boots": [
         {
           "area": 2262,
-          "cx": 168.0,
-          "lowestY": 561,
-          "soleSlope": 0.083,
-          "onFloor": true,
-          "width": 96
+          "cx": 189.0,
+          "lowestY": 566,
+          "width": 97,
+          "onFloor": true
         },
         {
           "area": 2464,
-          "cx": 209.1,
-          "lowestY": 517,
-          "soleSlope": 0.834,
-          "onFloor": false,
-          "width": 72
+          "cx": 230.1,
+          "lowestY": 522,
+          "width": 73,
+          "onFloor": false
         }
       ],
-      "frontBoot": {
-        "area": 2464,
-        "cx": 209.1,
-        "lowestY": 517,
-        "soleSlope": 0.834,
-        "onFloor": false,
-        "width": 72
-      },
-      "rearBoot": {
-        "area": 2262,
-        "cx": 168.0,
-        "lowestY": 561,
-        "soleSlope": 0.083,
-        "onFloor": true,
-        "width": 96
-      }
+      "frontBootCx": 230.1,
+      "rearBootCx": 189.0
     }
   ],
   "pairwiseDiff": [
@@ -178,80 +123,42 @@
         "01 CONTACT A",
         "02 PASS A"
       ],
-      "meanDiff": 63.2
+      "meanDiff": 62.1
     },
     {
       "pair": [
         "01 CONTACT A",
         "03 CONTACT B"
       ],
-      "meanDiff": 30.9
+      "meanDiff": 37.9
     },
     {
       "pair": [
         "01 CONTACT A",
         "04 PASS B"
       ],
-      "meanDiff": 60.9
+      "meanDiff": 57.9
     },
     {
       "pair": [
         "02 PASS A",
         "03 CONTACT B"
       ],
-      "meanDiff": 63.9
+      "meanDiff": 64.0
     },
     {
       "pair": [
         "02 PASS A",
         "04 PASS B"
       ],
-      "meanDiff": 46.8
+      "meanDiff": 56.3
     },
     {
       "pair": [
         "03 CONTACT B",
         "04 PASS B"
       ],
-      "meanDiff": 61.9
+      "meanDiff": 59.7
     }
-  ],
-  "alternation": {
-    "frontBootCx": [
-      366.7,
-      377.1
-    ],
-    "rearBootCx": [
-      121.7,
-      119.9
-    ],
-    "frontSoleSlope": [
-      -0.495,
-      -0.593
-    ],
-    "rearSoleSlope": [
-      0.078,
-      0.054
-    ],
-    "frontOnFloor": [
-      true,
-      true
-    ],
-    "deltaFrontCx": 10.4,
-    "deltaRearCx": 1.8,
-    "verdict": "A and B share the same foot plot (front boot within 10 px, same sole tilts): the drawing does not show the legs swapping, so alternation is NOT evidenced."
-  },
-  "stanceTravel": [
-    {
-      "step": "01 CONTACT A -> 02 PASS A",
-      "px": -149.1,
-      "plantedInPassKey": "front"
-    },
-    {
-      "step": "03 CONTACT B -> 04 PASS B",
-      "px": -209.1,
-      "plantedInPassKey": "rear"
-    }
-  ],
-  "meanStridePx": 179.1
+  ]
 }

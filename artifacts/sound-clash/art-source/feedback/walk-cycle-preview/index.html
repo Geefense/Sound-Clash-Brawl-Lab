@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>Feedback walk cycle — movement test (not approved)</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #07090c;
+    --panel: #12151b;
+    --ink: #f2f4f8;
+    --muted: #9aa3b2;
+    --line: #262c37;
+    --warn: #ffb347;
+    --bad: #ff6b6b;
+    --good: #6ee7a8;
+    --card: #e8e4db;
+    --card-ink: #2a2721;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body {
+    font: 16px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-text-size-adjust: 100%;
+    padding: 18px 14px 40px;
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+  h1 { font-size: clamp(1.35rem, 4.2vw, 1.9rem); margin: 2px 0 10px; letter-spacing: -0.01em; }
+  h2 { font-size: 1.05rem; margin: 28px 0 10px; letter-spacing: 0.01em; }
+  p { margin: 0 0 10px; }
+  .eyebrow { color: var(--muted); font-size: 0.78rem; letter-spacing: 0.14em; text-transform: uppercase; margin: 0 0 6px; }
+  .badge {
+    display: inline-block; margin: 0 0 14px; padding: 7px 12px; border-radius: 999px;
+    background: rgba(255, 179, 71, 0.12); border: 1px solid rgba(255, 179, 71, 0.45);
+    color: var(--warn); font-weight: 700; font-size: 0.82rem; letter-spacing: 0.04em;
+  }
+  .flags {
+    display: grid; gap: 10px; margin: 0 0 18px;
+    grid-template-columns: 1fr;
+  }
+  .flag {
+    background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--bad);
+    border-radius: 10px; padding: 10px 12px; font-size: 0.92rem; color: #dfe4ec;
+  }
+  .flag strong { color: var(--ink); }
+  .flag em { color: var(--warn); font-style: normal; }
+  .stage { display: grid; gap: 12px; grid-template-columns: 1fr; }
+  .panel { margin: 0; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); background: var(--panel); }
+  .panel img { display: block; width: 100%; height: auto; }
+  .panel figcaption, .panel .caption {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px;
+    padding: 8px 10px; font-size: 0.8rem; color: var(--muted); border-top: 1px solid var(--line);
+  }
+  .panel--test { border-color: #333c4b; box-shadow: 0 12px 34px rgba(0,0,0,0.45); }
+  .panel--test figcaption { color: #c8d0dc; }
+  .panel--ref { background: var(--card); border-color: #cfc8ba; }
+  .panel--ref figcaption { color: var(--card-ink); background: #ded8cb; border-top-color: #cfc8ba; }
+  .refs { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; align-items: start; }
+  .pill { font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; border: 1px solid currentColor; }
+  .pill--bad { color: var(--bad); }
+  .pill--ok { color: #5d7a5f; }
+  .controls {
+    position: sticky; bottom: 0; z-index: 5;
+    margin: 14px -14px 0; padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+    background: rgba(7, 9, 12, 0.92); backdrop-filter: blur(10px);
+    border-top: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  }
+  button {
+    font: inherit; color: var(--ink); background: #1b212b; border: 1px solid #333c4b;
+    border-radius: 10px; min-height: 44px; padding: 0 14px; cursor: pointer;
+    touch-action: manipulation;
+  }
+  button:hover { background: #222a36; }
+  button:active { transform: translateY(1px); }
+  button:focus-visible { outline: 2px solid #7cc4ff; outline-offset: 2px; }
+  button[aria-pressed="true"] { background: #2a3442; border-color: #5f7488; color: #fff; }
+  #play { min-width: 96px; font-weight: 650; background: #24303f; border-color: #3d5168; }
+  .speedgroup { display: flex; gap: 6px; margin-left: auto; }
+  .speedgroup button { min-width: 56px; padding: 0 10px; font-variant-numeric: tabular-nums; }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 0.85rem; margin-top: 10px; }
+  .meta b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .seamgrid { display: grid; gap: 10px; grid-template-columns: repeat(3, 1fr); }
+  .seamgrid figure { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .seamgrid img { display: block; width: 100%; height: auto; }
+  .seamgrid figcaption { padding: 6px 8px; font-size: 0.74rem; color: var(--muted); border-top: 1px solid var(--line); }
+  .readout { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 0.82rem; color: var(--muted); }
+  .stat b { display: block; color: var(--ink); font-size: 1rem; font-variant-numeric: tabular-nums; }
+  .seam { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; background: #0c1015; }
+  .notes { color: #cfd6e2; font-size: 0.92rem; }
+  .notes ul { margin: 0 0 10px; padding-left: 20px; }
+  .notes li { margin: 0 0 7px; }
+  .notes code { background: #141a22; border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; font-size: 0.86em; }
+  footer { color: var(--muted); font-size: 0.8rem; border-top: 1px solid var(--line); margin-top: 26px; padding-top: 12px; }
+  .seamflash {
+    position: fixed; left: 50%; top: 14px; transform: translateX(-50%);
+    background: #2a1f10; color: var(--warn); border: 1px solid rgba(255,179,71,.5);
+    padding: 6px 12px; border-radius: 999px; font-size: 0.78rem; letter-spacing: 0.05em;
+    opacity: 0; pointer-events: none; transition: opacity 120ms linear; z-index: 9;
+  }
+  .seamflash.on { opacity: 1; }
+  @media (min-width: 760px) {
+    body { padding: 26px 22px 48px; }
+    .stage { grid-template-columns: 1.22fr 1fr 1fr; align-items: start; }
+    .refs { display: contents; }
+    .flags { grid-template-columns: 1fr 1fr; }
+    .controls { margin: 18px 0 0; padding: 12px 0; background: none; backdrop-filter: none; border-top: 0; position: static; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button:active { transform: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <p class="eyebrow">Sound Clash · Feedback</p>
+  <h1>Walk cycle preview</h1>
+  <p class="badge">Movement test — not approved</p>
+</header>
+
+<div class="flags">
+  <p class="flag"><strong>Mic hand — wrong hand.</strong> This carry uses the same hand as the approved idle, which the project spec records as the <em>right</em> hand. The mic belongs in Feedback’s <strong>left</strong> hand. The clip has <strong>not</strong> been mirrored or flipped, so the defect stays visible.</p>
+  <p class="flag"><strong>Cable — inconsistent terminal.</strong> The run from mic to forearm coil to leg is continuous, but the free end is drawn as a plug at mid‑thigh in some poses and as a bare strand at the shin in others.</p>
+</div>
+
+<main>
+  <section class="stage" aria-label="Walk cycle beside approved references">
+    <figure class="panel panel--test">
+      <img id="frame" src="frames/cycle-00.png" width="460" height="620"
+           alt="Feedback walk cycle frame, aligned on a floor line against a dark backdrop">
+      <figcaption>
+        <span>Walk cycle · unapproved</span>
+        <span class="pill pill--bad">not approved</span>
+        <span id="framePos">frame 1</span>
+        <span id="frameSrc">source —</span>
+      </figcaption>
+    </figure>
+
+    <div class="refs">
+      <figure class="panel panel--ref">
+        <img src="refs/approved-idle.png" width="460" height="620" alt="Approved idle pose, arms crossed with the microphone at the chest">
+        <figcaption><span>Approved idle</span> <span class="pill pill--ok">approved</span></figcaption>
+      </figure>
+      <figure class="panel panel--ref">
+        <img src="refs/approved-pose-point-swagger.png" width="460" height="620" alt="Approved pose: point swagger, pointing forward with the mic held at the waist">
+        <figcaption><span>Approved pose · point swagger</span> <span class="pill pill--ok">approved</span></figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <div class="controls" role="group" aria-label="Playback controls">
+    <button id="play" aria-label="Play walk cycle">Play</button>
+    <button data-step="-1" aria-label="Previous frame">◀ Frame</button>
+    <button data-step="1" aria-label="Next frame">Frame ▶</button>
+    <div class="speedgroup" role="group" aria-label="Playback speed">
+      <button data-speed="0.25" aria-pressed="false">0.25×</button>
+      <button data-speed="0.5" aria-pressed="false">0.5×</button>
+      <button data-speed="1" aria-pressed="true">1×</button>
+      <button data-speed="2" aria-pressed="false">2×</button>
+    </div>
+  </div>
+
+  <div class="meta">
+    <span>Cycle: <b id="metaRange">—</b> of the source</span>
+    <span>Length: <b id="metaLen">—</b></span>
+    <span>Playback: <b id="metaFps">24 fps</b></span>
+    <span>Duplicates removed: <b id="metaDup">—</b></span>
+  </div>
+
+  <section class="seam">
+    <h2>Loop seam — shown, not hidden</h2>
+    <div class="seamgrid">
+      <figure><img id="seamLastImg" src="frames/cycle-34.png" alt="Last frame of the cycle"><figcaption>Last frame <span id="seamLast">—</span></figcaption></figure>
+      <figure><img src="frames/cycle-00.png" alt="First frame of the cycle"><figcaption>First frame <span id="seamFirst">—</span></figcaption></figure>
+      <figure><img src="seam-diff.png" alt="Difference map between last and first frame, differences in red"><figcaption>Difference (red)</figcaption></figure>
+    </div>
+    <div class="readout">
+      <p class="stat">Changed pixels<b id="seamPct">—</b></p>
+      <p class="stat">Ordinary frame step<b id="seamMedian">—</b></p>
+      <p class="stat">Mean diff on changed px<b id="seamMean">—</b></p>
+    </div>
+    <p style="margin-top:10px;color:#cfd6e2;font-size:0.9rem">
+      Playback cuts straight from the last frame back to the first — <strong>no crossfade</strong>. This is a full two-step stride (two passing poses), and the best-closing one in the clip. The residual is a thin edge offset around the whole silhouette, heaviest at the feet, the swinging leg, the free hand and the cable loop — the source contains no frame pair that closes exactly, so a small hitch is visible at the cut.
+    </p>
+  </section>
+
+  <section class="notes">
+    <h2>What this is, and what is still wrong</h2>
+    <ul>
+      <li><strong>Source:</strong> <code>feedback-walk-flow-test.mp4</code> (SHA-256 <code>7c644df6…4011</code>), untouched. Frames <b id="noteRange">—</b> of the 238-frame clip, the best-closing complete stride found by scoring candidate spans after scale/floor alignment.</li>
+      <li><strong>Timing:</strong> the clip is 24 fps content in a 30 fps stream. <b id="noteDupCount">—</b> pulldown duplicates (source <span id="noteDupList">—</span>) were removed, leaving <b id="noteFrames">—</b> frames at 24 fps = <b id="noteLen">—</b>.</li>
+      <li><strong>Alignment:</strong> one uniform scale for every frame (<b id="noteScale">—</b>), sole pinned to the floor line, body centred on the stride mean. Per-frame height normalisation was deliberately <em>not</em> used, so the natural vertical bounce survives.</li>
+      <li><strong>Defects carried over, not fixed:</strong> mic in the wrong (right) hand; cable plug present/absent between poses; almost no arm counter-swing, so the walk reads as a carry; no ground or shadow in the source, so foot sliding cannot be judged.</li>
+      <li><strong>Not integrated:</strong> no gameplay, world, or combat code touched; no experimental branches merged; no new media generated.</li>
+    </ul>
+  </section>
+
+  <footer>
+    Built from commit a2cd256 deliverables. Frames and references are aligned to a shared 460 px figure height and sole baseline; approved art is shown unmodified on light cards.
+  </footer>
+</main>
+
+<div class="seamflash" id="seamflash" aria-live="polite">loop seam — hard cut</div>
+
+<script src="frames-data.js"></script>
+<script>
+(() => {
+  const data = window.WALK;
+  if (!data) return;
+  const img = document.getElementById('frame');
+  const playBtn = document.getElementById('play');
+  const pos = document.getElementById('framePos');
+  const src = document.getElementById('frameSrc');
+  const flash = document.getElementById('seamflash');
+  const FPS = data.fps;
+  let index = 0, playing = false, speed = 1, raf = null, last = 0, acc = 0, flashTimer = null;
+
+  document.getElementById('metaRange').textContent = 'f' + data.sourceRange[0] + '–f' + data.sourceRange[1];
+  document.getElementById('metaLen').textContent = data.strideSeconds.toFixed(3) + ' s';
+  document.getElementById('metaFps').textContent = FPS + ' fps';
+  document.getElementById('metaDup').textContent = data.duplicatesRemoved;
+  document.getElementById('seamPct').textContent = data.seam.changedPixelPct.toFixed(1) + '%';
+  document.getElementById('seamMean').textContent = data.seam.meanAbsDiffChangedPixels.toFixed(1);
+  document.getElementById('seamMedian').textContent = data.seam.medianConsecutiveChangedPct.toFixed(1) + '%';
+  document.getElementById('seamLast').textContent = '(f' + data.sources[data.sources.length - 1] + ')';
+  document.getElementById('seamFirst').textContent = '(f' + data.sources[0] + ')';
+  document.getElementById('seamLastImg').src = data.frames[data.frames.length - 1];
+  document.getElementById('noteRange').textContent = 'f' + data.sourceRange[0] + '–f' + data.sourceRange[1];
+  document.getElementById('noteDupCount').textContent = data.duplicatesRemoved;
+  document.getElementById('noteDupList').textContent = (data.duplicateFrames || []).map((n) => 'f' + n).join(', ');
+  document.getElementById('noteFrames').textContent = data.frames.length;
+  document.getElementById('noteLen').textContent = data.strideSeconds.toFixed(3) + ' s';
+  document.getElementById('noteScale').textContent = data.uniformScale !== undefined ? data.uniformScale.toFixed(4) : '—';
+
+  data.frames.forEach((f) => { const i = new Image(); i.src = f; });
+
+  function render() {
+    img.src = data.frames[index];
+    pos.textContent = 'frame ' + (index + 1) + ' / ' + data.frames.length;
+    src.textContent = 'source f' + data.sources[index];
+  }
+
+  function setPlaying(next) {
+    playing = next;
+    playBtn.textContent = playing ? 'Pause' : 'Play';
+    playBtn.setAttribute('aria-label', playing ? 'Pause walk cycle' : 'Play walk cycle');
+    if (playing) { last = 0; acc = 0; raf = requestAnimationFrame(tick); }
+    else if (raf) { cancelAnimationFrame(raf); raf = null; }
+  }
+
+  function tick(ts) {
+    if (!playing) return;
+    if (!last) last = ts;
+    acc += ts - last;
+    last = ts;
+    const step = 1000 / (FPS * speed);
+    while (acc >= step) {
+      acc -= step;
+      index = (index + 1) % data.frames.length;
+      if (index === 0) {
+        flash.classList.add('on');
+        clearTimeout(flashTimer);
+        flashTimer = setTimeout(() => flash.classList.remove('on'), 420);
+      }
+      render();
+    }
+    raf = requestAnimationFrame(tick);
+  }
+
+  playBtn.addEventListener('click', () => setPlaying(!playing));
+
+  document.querySelectorAll('[data-step]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (playing) setPlaying(false);
+      const d = Number(btn.dataset.step);
+      index = (index + d + data.frames.length) % data.frames.length;
+      render();
+    });
+  });
+
+  document.querySelectorAll('[data-speed]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      speed = Number(btn.dataset.speed);
+      document.querySelectorAll('[data-speed]').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+    });
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
+    if (e.key === ' ') { e.preventDefault(); setPlaying(!playing); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); if (playing) setPlaying(false); index = (index + 1) % data.frames.length; render(); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); if (playing) setPlaying(false); index = (index - 1 + data.frames.length) % data.frames.length; render(); }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

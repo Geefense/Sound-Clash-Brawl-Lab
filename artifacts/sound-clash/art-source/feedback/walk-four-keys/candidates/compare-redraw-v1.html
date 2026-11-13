@@ -65,10 +65,10 @@
 <span class="banner">Unapproved · review only · not in gameplay</span>
 <h1>PASS B redraw v1 vs the drawn cycle</h1>
 <p class="sub">A separate test loop, as asked: the four drawn keys on the left, the drawn keys with the
-candidate in the fourth slot on the right, one clock driving both. <strong>The candidate file is
-truncated</strong> — it declares 1079 × 1457 but only 555 rows (38.1%) decode, so everything below the
-dashed line is missing from the file, not missing from the drawing. What is shown below that line is
-nothing at all; nothing has been invented to fill it.</p>
+candidate in the fourth slot on the right, one clock driving both. The repaired file now decodes
+completely (1457 of 1457 rows, <code>IEND</code> present, decompressed size exact), so this is the whole
+drawing. It is placed by its support sole on the floor line and scaled to the drawn PASS B's height;
+at the microphone's own scale it would be 29% taller than any drawn key and would not fit the panel.</p>
 
 <div class="bar">
   <button id="play" aria-pressed="false">Play</button>
@@ -100,7 +100,6 @@ nothing at all; nothing has been invented to fill it.</p>
     <div class="stage" id="stage-cand">
       <div class="ghost"><img id="ghost-cand" alt=""></div>
       <img id="frame-cand" alt="Candidate test frame">
-      <div class="cutline"><span>file ends here — 902 rows missing</span></div>
     </div>
     <div class="strip" id="strip-cand"></div>
   </section>
@@ -108,39 +107,44 @@ nothing at all; nothing has been invented to fill it.</p>
 
 <table>
   <tr><th>Check</th><th>Result</th><th>How it was measured</th></tr>
-  <tr><td>File integrity</td><td class="bad">truncated — fails</td>
-      <td class="num">IDAT is 764,511 of 843,877 declared bytes; no IEND; 555 of 1457 rows decode (38.1%). A strict decoder refuses the file; Chrome loads it and renders the gap as empty</td></tr>
-  <tr><td>Legs, boots, floor contact</td><td class="bad">cannot be checked</td>
-      <td>the drawing stops at the chest in the readable rows; the rest of the file is absent</td></tr>
-  <tr><td>Opposite-leg phase</td><td class="bad">cannot be checked</td>
-      <td>no hip, knee, ankle or boot pixel exists to trace</td></tr>
-  <tr><td>One mic</td><td class="ok">1</td>
-      <td>single neutral-metal blob, 72.5 px diagonal, at x 471–534, y 348–381</td></tr>
-  <tr><td>Mic hand</td><td class="warn">reads as right, unconfirmed</td>
-      <td>mic arm carries the cream stripes on its outer surface (4 cream blobs within 160 px of the
-          arm) and is drawn over the jacket; the far side is cut off, so the far hand cannot be
-          compared</td></tr>
-  <tr><td>Cable continuity</td><td class="bad">cannot be checked</td>
-      <td>the cord leaves the mic, loops at the wrist and runs into the truncation edge; no plug
-          is inside the readable rows</td></tr>
-  <tr><td>Proportions</td><td class="warn">view mismatch</td>
-      <td>mic-diagonal scale is 0.43; chest width implies 0.30 — the candidate is nearer a
-          three-quarter view than the side-view keys, so width cannot grade proportion</td></tr>
-  <tr><td>Panel fit</td><td class="warn">no floor contact</td>
-      <td>scaled by the mic and aligned to the head top, the art runs y 118–350 in a 460 × 620 panel
-          whose floor is y 566</td></tr>
+  <tr><td>File integrity</td><td class="ok">pass</td>
+      <td class="num">1457 of 1457 rows decode, IEND present, decompressed length exact (6,289,869 bytes)</td></tr>
+  <tr><td>Legs and floor contact</td><td class="ok">pass</td>
+      <td>two boots, one flat on the sole line; support boot 243 px ahead of the hip in the source,
+          81 px at panel scale</td></tr>
+  <tr><td>Phase vs PASS A</td><td class="bad">too long a stride</td>
+      <td class="num">support +81 px vs PASS A's +24 px (drawn contact is +147); swing −180 px vs −81 px;
+          lift 56 px vs 46 px — it reads as a mid-stride, not a pass</td></tr>
+  <tr><td>Opposite-leg identity</td><td class="bad">repeats PASS A's step</td>
+      <td>the lifted leg is the one drawn over the planted leg (near leg, screen-left), which is PASS A's
+          arrangement; the far leg is the planted one, as in PASS A. Read at 2× on the thigh crossing, so
+          ask the artist to confirm</td></tr>
+  <tr><td>One mic</td><td class="ok">pass</td>
+      <td>one neutral-metal blob, 72.5 px diagonal, x 471–534, y 348–381</td></tr>
+  <tr><td>Right-hand mic</td><td class="ok">pass</td>
+      <td>mic arm carries the three cream stripes on its outer surface and is drawn over the jacket;
+          the free hand is now visible and carries none — the same grip evidence the four-key check uses</td></tr>
+  <tr><td>Cable</td><td class="ok">pass</td>
+      <td>one cord from the mic base, coiled at the wrist, hanging to a single plug at hip height; no break visible</td></tr>
+  <tr><td>Proportions</td><td class="bad">body 27% too large for the mic</td>
+      <td>height 18.8 mic-units vs 14.6–15.1 drawn; chest 6.29 vs 4.76–5.29. At the mic's scale it would be
+          585 px tall in a 460 px key; fitted to height, the mic reads 24 px against the drawn 31 px</td></tr>
+  <tr><td>View angle</td><td class="warn">still 3/4</td>
+      <td>both shoulders and the chest front are visible; the drawn keys are strict side views</td></tr>
 </table>
 
-<p class="foot"><strong>What this means.</strong> The candidate cannot be judged as a redrawn PASS B in
-the state it was delivered: the file is incomplete, so the half of the pose the review is actually
-about — the legs, the stance phase, the boots on the floor — is not in the repository. Nothing here
-says the drawing is wrong; it says the drawing is not all here. Re-export and re-commit the image and
-this page can grade it properly. Until then the cycle on the right is only useful for seeing how the
-bust sits against the other keys: it does not reach the floor, so it cannot stand in the loop.
+<p class="foot"><strong>What this means.</strong> The drawing is complete and the character work holds up:
+one mic, right hand, one continuous cable to a plug, two boots on a readable sole line. What it does not
+do is sit at PASS A's point in the opposite step. Its stride is roughly three times PASS A's, and the
+lifted leg is the near leg — the same arrangement as the first half — so dropped into slot 4 it repeats
+step A instead of answering it, and the cycle would rock rather than walk.
 
-The drawn keys are untouched: <code>../poses/</code> still holds exactly the four extracted keys. The
-candidate is shown from <code>pass-b-redraw-v1-salvaged.png</code>, cropped at the last complete decoded
-row — the only honest way to display a truncated file.</p>
+Two smaller things to fix on the next pass: the body is 27% too long for the microphone (or the mic 22%
+too small for the body), and the figure is still a three-quarter view where the keys are side profiles.
+Both are measurable and both are the artist's call to trade off.
+
+The drawn keys are untouched: <code>../poses/</code> still holds exactly the four extracted keys, and the
+candidate is read from its repaired original — no splicing, warping or repainting anywhere in this loop.</p>
 
 <script>
 const KEYS = ["01 CONTACT A", "02 PASS A", "03 CONTACT B", "04 PASS B"];

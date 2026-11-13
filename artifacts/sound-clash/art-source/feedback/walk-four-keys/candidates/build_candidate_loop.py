@@ -160,25 +160,43 @@ def main() -> int:
     d_hi = int(d_ys.min() + (d_ys.max() - d_ys.min()) * 0.75)
     drawn_chest_w = float(np.median(d_al[d_lo:d_hi].sum(1)))
 
-    panel = Image.new("RGBA", PANEL, (0, 0, 0, 0))
-    note_top = None
-    if scale:
-        small = readable.resize(
-            (max(1, int(readable.width * scale)), max(1, int(readable.height * scale))),
-            Image.LANCZOS,
-        )
-        # head top -> PASS B's head top; torso centre -> the panels' torso x
-        ox = int(round(PANEL_TORSO_X - torso_x * scale))
-        oy = int(round(DRAWN_PASS_B_HEAD_TOP - art_box[1] * scale))
-        panel.alpha_composite(small, (ox, oy))
-        note_top = oy + art_box[1]
-    panel.save(ALIGNED)
+    # Two alignments are computed and reported, because they disagree and the
+    # disagreement is the finding: the mic says one scale, fitting the drawn
+    # figure's height says another.
+    tan = content & (r > 128) & (r - b_ > 46) & (g > 51)
+    tan = ndimage.binary_closing(tan, np.ones((11, 11)))
+    sole_y = art_box[3]
+    for b in blobs(tan, 900):
+        if b["box"][3] > art_box[3] - (art_box[3] - art_box[1]) * 0.25:
+            sole_y = max(sole_y, b["box"][3])
+    figure_h = sole_y - art_box[1] + 1
+    target_h = FLOOR_Y - DRAWN_PASS_B_HEAD_TOP        # PASS B's own sole-to-crown
+    fit_scale = target_h / figure_h if figure_h else None
 
-    visible_bottom_in_panel = (note_top + (art_box[3] - art_box[1]) * scale) if scale else None
+    def place(sc: float | None) -> Image.Image:
+        p = Image.new("RGBA", PANEL, (0, 0, 0, 0))
+        if not sc:
+            return p
+        small = readable.resize(
+            (max(1, int(readable.width * sc)), max(1, int(readable.height * sc))), Image.LANCZOS
+        )
+        ox = int(round(PANEL_TORSO_X - torso_x * sc))
+        oy = int(round(FLOOR_Y - sole_y * sc))        # sole on the floor
+        p.alpha_composite(small, (ox, oy))
+        return p
+
+    panel = place(fit_scale)
+    panel.save(ALIGNED)
+    mic_scale_panel = place(scale)
+    mic_scale_panel.save(HERE / "pass-b-redraw-v1-aligned-micscale.png")
+
+    visible_bottom_in_panel = FLOOR_Y if fit_scale else None
 
     width_ratio = (drawn_chest_w / cand_chest_w) if (cand_chest_w and scale) else None
     report = {
         "candidate": CAND.name,
+        "placement": "aligned to the floor by the support sole, scaled so the figure "
+                     "is the drawn PASS B's height (454 px)",
         "truncated": {
             "declaredHeight": declared_h,
             "decodedRows": rows,
@@ -211,9 +229,13 @@ def main() -> int:
         "skinBlobs": [{"box": b["box"], "cx": b["cx"], "cy": b["cy"]} for b in skin_blobs[:3]],
         "panel": {
             "size": list(PANEL), "floorY": FLOOR_Y,
-            "artTopInPanel": note_top,
-            "artBottomInPanel": round(visible_bottom_in_panel) if visible_bottom_in_panel else None,
-            "artReachesFloor": bool(visible_bottom_in_panel and visible_bottom_in_panel >= FLOOR_Y - 10),
+            "scaleMic": round(scale, 4) if scale else None,
+            "scaleFitToHeight": round(fit_scale, 4) if fit_scale else None,
+            "figureHeightPx": int(figure_h),
+            "micReadsAtFitScalePx": round(cand_mic_h * fit_scale, 1) if (cand_mic_h and fit_scale) else None,
+            "drawnMicPanelPx": round(panel_mic_h, 1) if panel_mic_h else None,
+            "artBottomInPanel": visible_bottom_in_panel,
+            "artReachesFloor": True if fit_scale else False,
         },
     }
     if mic and skin_blobs:

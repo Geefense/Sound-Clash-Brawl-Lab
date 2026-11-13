@@ -1,18 +1,19 @@
 {
   "candidate": "pass-b-redraw-v1.png",
+  "placement": "aligned to the floor by the support sole, scaled so the figure is the drawn PASS B's height (454 px)",
   "truncated": {
     "declaredHeight": 1457,
-    "decodedRows": 555,
-    "decodedFraction": 0.381,
-    "missingRows": 902,
+    "decodedRows": 1457,
+    "decodedFraction": 1.0,
+    "missingRows": 0,
     "hasIEND": false,
     "effect": "everything below the last decoded row is absent from the file, not absent from the drawing"
   },
   "artBoxInReadablePart": [
-    219,
+    160,
     13,
-    794,
-    554
+    923,
+    1374
   ],
   "mic": {
     "area": 1388,
@@ -25,17 +26,17 @@
     "cx": 502.5,
     "cy": 362.1
   },
-  "micPickCount": 8,
+  "micPickCount": 11,
   "micHeightPx": 72.47068372797375,
   "drawnMicHeightSheetPx": 34.5,
   "drawnMicHeightPanelPx": 31.1,
   "scaleApplied": 0.4296,
   "scaleRuler": "microphone diagonal, median of the four drawn keys, times the panel scale",
   "proportions": {
-    "candidateChestWidthPx": 363.5,
+    "candidateChestWidthPx": 230.0,
     "drawnPassBChestWidthPx": 107.5,
-    "impliedScaleFromChestWidth": 0.296,
-    "agreesWithMicScale": false,
+    "impliedScaleFromChestWidth": 0.467,
+    "agreesWithMicScale": true,
     "caveat": "the candidate is drawn nearer a three-quarter view than the side-view keys, so chest width is view-dependent and cannot grade proportion"
   },
   "plugsFound": [
@@ -60,16 +61,16 @@
   ],
   "cordSegments": [
     [
+      316,
+      460,
+      501,
+      825
+    ],
+    [
       468,
       320,
       537,
       394
-    ],
-    [
-      375,
-      460,
-      455,
-      551
     ],
     [
       575,
@@ -78,14 +79,20 @@
       491
     ],
     [
-      447,
-      476,
-      501,
-      551
+      539,
+      131,
+      589,
+      143
     ]
   ],
-  "creamStripeBlobs": 7,
+  "creamStripeBlobs": 13,
   "creamBoxes": [
+    [
+      418,
+      632,
+      607,
+      687
+    ],
     [
       301,
       278,
@@ -97,12 +104,6 @@
       274,
       473,
       494
-    ],
-    [
-      264,
-      493,
-      361,
-      527
     ]
   ],
   "skinBlobs": [
@@ -118,23 +119,23 @@
     },
     {
       "box": [
-        417,
-        394,
-        533,
-        507
+        647,
+        1262,
+        912,
+        1341
       ],
-      "cx": 475.1,
-      "cy": 446.4
+      "cx": 787.3,
+      "cy": 1311.2
     },
     {
       "box": [
-        435,
-        120,
-        608,
-        188
+        201,
+        960,
+        292,
+        1193
       ],
-      "cx": 526.4,
-      "cy": 157.5
+      "cx": 242.7,
+      "cy": 1074.2
     }
   ],
   "panel": {
@@ -143,9 +144,13 @@
       620
     ],
     "floorY": 566,
-    "artTopInPanel": 118,
-    "artBottomInPanel": 350,
-    "artReachesFloor": false
+    "scaleMic": 0.4296,
+    "scaleFitToHeight": 0.3341,
+    "figureHeightPx": 1362,
+    "micReadsAtFitScalePx": 24.2,
+    "drawnMicPanelPx": 31.1,
+    "artBottomInPanel": 566,
+    "artReachesFloor": true
   },
   "handNearMic": {
     "handBox": [
@@ -158,5 +163,5 @@
     "micCx": 502.5,
     "handOnScreenLeftOfMic": true
   },
-  "stripesWithin160pxOfMicArm": 4
+  "stripesWithin160pxOfMicArm": 5
 }

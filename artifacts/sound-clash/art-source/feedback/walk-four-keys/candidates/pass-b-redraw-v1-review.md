@@ -1,60 +1,85 @@
 # PASS B redraw v1 — review (unapproved)
 
-Reviewed as delivered against `pass-b-redraw-v1.md`: opposite-leg anatomy,
-proportions, right-hand mic, cable. Evidence: `candidate-v1-measure.json`,
-`compare-redraw-v1.html`, `pass-b-redraw-v1-aligned.png`,
-`pass-b-redraw-v1-salvaged.png`.
+Reviewed against `pass-b-redraw-v1.md`: opposite-leg anatomy, phase, proportions,
+right-hand mic, cable. Evidence: `candidate-v1-trace.json`,
+`candidate-v1-measure.json`, `candidate-v1-trace.png`,
+`candidate-v1-crossing-4x.png`, `compare-redraw-v1.html`.
+Scripts: `build_candidate_loop.py`, `trace_candidate_v1.py`.
 
-## Headline: the delivered file is incomplete
+## File
 
-`pass-b-redraw-v1.png` declares 1079 × 1457, but its IDAT stream is **764,511
-bytes of 843,877 declared**, there is **no IEND chunk**, and only **555 rows
-(38.1%) decode**. The remaining 902 rows — 62% of the image — are not in the
-repository. A strict decoder (Pillow without `LOAD_TRUNCATED_IMAGES`) refuses the
-file outright. Chrome does not: it reports 1079 × 1457 as loaded and renders the
-missing rows as empty, so in a browser the fault looks like a bust that was
-drawn short rather than a file that arrived short. That is why the test loop
-marks the cut with a dashed line instead of letting the blank space read as art.
+Repaired and complete as of `0eb3816`: 1079 × 1457, **1457 of 1457 rows decode**,
+`IEND` present, decompressed length exact (6,289,869 bytes). The earlier
+truncation note no longer applies.
 
-`pass-b-redraw-v1-salvaged.png` is the decodable part, cropped at the last
-complete row. Nothing was invented to fill the gap.
-
-**This is a transport problem, not an art verdict.** Nothing here says the
-drawing is wrong; it says the drawing did not arrive.
-
-## What could be measured, on the readable rows only
+## Verdict: the character work passes, the pose does not
 
 | Check | Result |
 | --- | --- |
-| One mic | **pass** — a single neutral-metal blob, 72.5 px diagonal, x 471–534, y 348–381 |
-| Mic hand | **reads as right, unconfirmed** — the mic arm shows the cream sleeve stripes on its outer surface and is drawn over the jacket; the far arm is outside the readable rows, so the two hands cannot be compared |
-| Cable | **cannot be checked** — the cord leaves the mic, loops at the wrist and runs into the truncation edge; no plug lies inside the readable rows |
-| Legs, boots, floor | **cannot be checked** — the drawing stops at the chest |
-| Opposite-leg phase | **cannot be checked** — no hip, knee, ankle or boot pixel exists to trace |
-| Proportions | **view mismatch** — mic-diagonal scale 0.43, chest width implies 0.30; the candidate is nearer a three-quarter view than the side-view keys, so width cannot grade proportion |
+| One mic | **pass** — one neutral-metal blob, 72.5 px diagonal, x 471–534, y 348–381 |
+| Right-hand mic | **pass** — the mic arm carries the three cream stripes on its outer surface and is drawn over the jacket; the free hand is now visible and carries none. Same grip evidence `verify_four_keys.py` uses on the sheet |
+| Cable | **pass** — one cord from the mic base, coiled at the wrist, hanging to a single plug at hip height, no break visible |
+| Boots and floor | **pass** — two boots, one flat on the sole line, so the pose is legible as a stride |
+| Phase vs PASS A | **fail** — see below |
+| Opposite-leg identity | **fail (visual)** — see below |
+| Proportions | **fail** — body ~27% too long for the mic |
+| View angle | **warn** — three-quarter, where the keys are side profiles |
 
-Panel placement for the test loop: scaled 0.43 by the mic (the only rigid prop
-present in both), head top aligned to PASS B's y 111, torso centred on x 230.
-The art then runs y 118–350 in a 460 × 620 panel whose floor is y 566 — it does
-not reach the floor, so it cannot stand in the cycle.
+## Phase — the stride is roughly three times PASS A's
 
-## What the readable part does say
+Panel-scale distances, the candidate scaled to the drawn figure's height
+(454 px) with its support sole on the floor line:
 
-- The bust is **nearer three-quarter** than the strict side view of the four
-  keys: both shoulders are visible and the chest faces the viewer. A walk key
-  read from the side would need the torso turned back toward profile.
-- The hat, dreads, jaw, smile, jacket, zip and sleeve stripes read as the same
-  character; the mic is held in front of the chest rather than at the hip.
-- The mic arm's stripes are on its outer surface as in the drawn keys, which is
-  the same grip evidence the four-key check uses.
+| | candidate v1 | PASS A | drawn PASS B | drawn contact |
+| --- | --- | --- | --- | --- |
+| support foot from hip | **+81 px** | +24 px | −30 px | +147 px |
+| swing foot from support | **−180 px** | −81 px | +41 px | −247 px |
+| swing lift | **56 px** | 46 px | 47 px | 0 px |
+
+A pass pose has the support foot under or just ahead of the hip with the other
+foot close behind. The candidate has the planted foot well forward and the
+lifted foot far behind: it is a mid-stride frame, not the mid-stance PASS A is
+drawn at. Dropped into slot 4 it would not continue the cycle at PASS A's point.
+
+Measured in the source and divided by the mic diagonal, so no scale assumption
+enters: support 3.36 mic-units (PASS A 0.75), swing −7.45 mic-units (PASS A
+−2.60), lift 2.30 (PASS A 1.48).
+
+## Opposite-leg identity — it repeats PASS A's arrangement
+
+The lifted leg is the one drawn **over** the planted leg at the thigh crossing
+(near leg, screen-left, behind). That is exactly PASS A's arrangement: in
+`02_pass_a.png` the near leg is the lifted one and the far leg is planted. So the
+candidate reads as another pass on the same leg, not the opposite step.
+
+This is a 2× visual reading of the crossing, not a mask verdict — the drawn key
+03 already showed that colour thresholds cannot settle leg identity on their own.
+Ask the artist to confirm which leg is near before the next pass.
+
+## Proportions — the mic is small for the body
+
+Normalised by the mic diagonal (a rigid prop in every drawing):
+
+| | candidate v1 | drawn keys |
+| --- | --- | --- |
+| figure height | **18.8** mic-units | 14.6–15.1 |
+| chest width | **6.29** mic-units | 4.76–5.29 |
+
+At the mic's own scale the candidate would be 585 px tall in a 460 px key panel
+— 29% over, and taller than the panel itself once the sole is on the floor. Fitted
+to the drawn height instead, the mic reads 24.2 px against the drawn 31.1 px, so
+the prop is ~22% small relative to the body.
+
+The view differs too: the candidate shows both shoulders and the chest front,
+where the four keys are strict side views. That affects silhouettes and should be
+brought back toward profile before the figure is judged as a walk key.
 
 ## To continue
 
-Re-export and re-commit the image, then run
-`python3 candidates/build_candidate_loop.py` and reopen
-`candidates/compare-redraw-v1.html`. With the full 1457 rows present, the
-review can measure the hip/knee/boot trace, the support-foot phase against
-PASS A (+23 px ahead of the hip), the swing foot (−81 px behind the support,
-43 px lift) and cable continuity to the plug.
+Re-cut with the support foot back to ~+24 px of the hip (0.75 mic-units), the
+swing foot ~81 px behind it, and lift ~46 px; lift the far leg rather than the
+near one; bring the mic back up to the drawn size (or the body down); and turn the
+torso toward profile. Then run `build_candidate_loop.py` and
+`trace_candidate_v1.py` again and reopen `compare-redraw-v1.html`.
 
-The original sheet, `poses/`, and every drawn key are untouched by this review.
+The original sheet and `poses/` remain untouched, and nothing here is in gameplay.

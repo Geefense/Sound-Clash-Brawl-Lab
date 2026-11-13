@@ -1,0 +1,82 @@
+{
+  "candidate": {
+    "key": "candidate v1",
+    "artBox": [
+      161,
+      13,
+      922,
+      1373
+    ],
+    "figureHeightPx": 1361,
+    "micDiagPx": 72.5,
+    "micBox": [
+      471,
+      348,
+      534,
+      381
+    ],
+    "micCount": 3,
+    "soleY": 1373,
+    "boots": [
+      {
+        "area": 20801,
+        "box": [
+          164,
+          862,
+          520,
+          1206
+        ],
+        "cx": 244.3,
+        "lowestY": 1206,
+        "meanV": 0.75
+      },
+      {
+        "area": 20166,
+        "box": [
+          644,
+          1262,
+          919,
+          1373
+        ],
+        "cx": 784.3,
+        "lowestY": 1373,
+        "meanV": 0.79
+      }
+    ],
+    "hipX": 541.0,
+    "chestWidthPx": 455.5,
+    "supportBootCx": 784.3,
+    "supportOffsetFromHipPx": 243.3,
+    "supportOffsetInMicUnits": 3.357,
+    "swingBootCx": 244.3,
+    "swingVsSupportPx": -540.0,
+    "swingVsSupportInMicUnits": -7.451,
+    "swingLiftPx": 167,
+    "swingLiftInMicUnits": 2.304,
+    "heightInMicUnits": 18.78,
+    "chestWidthInMicUnits": 6.285
+  },
+  "drawnKeys": {
+    "01_contact_a": {
+      "figureHeightPx": 460,
+      "heightInMicUnits": 14.78,
+      "chestWidthInMicUnits": 5.286
+    },
+    "02_pass_a": {
+      "figureHeightPx": 453,
+      "heightInMicUnits": 14.56,
+      "chestWidthInMicUnits": 4.756
+    },
+    "03_contact_b": {
+      "figureHeightPx": 470,
+      "heightInMicUnits": 15.1,
+      "chestWidthInMicUnits": 4.917
+    },
+    "04_pass_b": {
+      "figureHeightPx": 460,
+      "heightInMicUnits": 14.78,
+      "chestWidthInMicUnits": 4.884
+    }
+  },
+  "micUnits": "distances divided by the mic diagonal, so scale cancels"
+}

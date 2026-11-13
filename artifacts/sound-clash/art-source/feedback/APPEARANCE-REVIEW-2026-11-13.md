@@ -50,7 +50,7 @@ What it does:
 - Anchor overlay toggle, floor line (`y900`) and pelvis line (`y610`) guides.
 - Per-pose verdict panel with one check row each for mic hand, cable route, hat/locks,
   face/tooth, build/trousers, Wallabees and alpha edges, each with the specific observation.
-- A separate **“Approved movement reference — appearance pending”** block: the restored four-pose
+- A separate **“Approved movement reference — appearance pending”** block (see section 9): the restored four-pose
   132 BPM keys played on the manifest's own hold counts (27/28/27/27 at 60 fps) with its own
   pause/step controls, plus the recorded MP4. The older four-key study stays in the main sequence,
   relabelled **OLDER STUDY**, so the two can never be mistaken for each other.
@@ -139,7 +139,7 @@ Tallies: **16 fail, 1 uncertain, 0 pass.**
 Present in this repository:
 
 - `art-source/feedback/chat-movement-transfer-2026-11-13/movement-reference/` — **the owner-approved
-  four-pose 132 BPM movement reference**, restored 2026-11-13 from the transfer package (section 10).
+  four-pose 132 BPM movement reference**, restored 2026-11-13 from the transfer package (section 9).
   Movement approved; appearance still pending.
 - `art-source/feedback/feedback-walk-flow-test.mp4` — earlier Flow idle→walk test;
   `walk-video-review/` holds its contact sheets and inspection report.
@@ -194,7 +194,7 @@ hat/shoe/build work is per-frame and should follow the approved reference.
 - `vite build` after the review files were added (public assets ship unchanged).
 - Existing test suite and typecheck were not re-run for this change: no `src/` file, test or
   config was modified. That is a deliberate scope limit, not a skipped result.
-- Movement-reference import and page checks are recorded in section 10.
+- Movement-reference import and page checks are recorded in section 9.
 
 ## 9. Approved movement reference — restored and wired in (2026-11-13, second pass)
 

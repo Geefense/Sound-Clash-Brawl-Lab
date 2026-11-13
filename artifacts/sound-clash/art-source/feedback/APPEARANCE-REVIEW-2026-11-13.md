@@ -371,6 +371,38 @@ occlusion, and it is the main thing to judge in review.
 
 Not applied to the other twelve poses. No gameplay, collision, manifest or Godot change.
 
+## 14. Cable batch v2 — BOX endpoints (`12_backhand_windup`, `14_followthrough`)
+
+v1 removed each pose's floor tail but left the cable ending in open air. v2 keeps v1 byte-for-byte
+except for one short connection per pose, drawn at the cable's own section and then covered by the
+occluder's own pixels at its tip, so the lead disappears behind something already in the drawing.
+
+| pose | connection | changed | removed | added | bbox |
+| --- | --- | --- | --- | --- | --- |
+| `12_backhand_windup` | plug mouth → under the sleeve cuff, 24 px | 372 px | 0 | 215 px | `[839, 630, 865, 669]` |
+| `14_followthrough` | last 46 px of hang deleted, loop back behind the forearm wrap | 1 370 px | 373 px | 763 px | `[603, 582, 661, 689]` |
+
+No route crosses the body. 12's cuff is 8 px from the plug's left edge; 14's wrap ring is 20 px
+from the hang. `08_block` (`f4f2b9fc…`) and `13_box_palm` (`116e1abf…`) candidates are unchanged,
+and all four originals still match the hashes in §13.
+
+**Guards.** The same builder invariant applies: relative to v1, nothing may change outside the
+connection box (and, for 14, the deleted hang). v1's floor-tail removal is carried over, never
+redrawn. Anchors stay `[768, 900]` on 1536×1024.
+
+**Checks actually run.** `python3 build_cable_v2_box.py` → the counts above, both guards passing;
+`make_v2_review_assets.py` → close-ups, gameplay comparisons, stacked BOX strip and
+`box-sequence-v2.gif`; pack `git status` clean and originals hash-identical; `node --check` and
+`vite build` clean; every asset on the review page loads.
+
+**Trade-offs to judge, not hidden.** 12's connection is a short visible stroke beside the sleeve;
+14's loop changes the wrist silhouette from a straight hang to a looped one. Neither is hidden
+behind the mic body or the trousers, and both were built only because the pack has no closer
+occluder in those two keys. Handedness and other appearance differences remain recorded, not
+repaired.
+
+Not applied to the other fourteen poses. No gameplay, collision, manifest or Godot change.
+
 ## Follow-up clarification — November 13, 2026
 
 ChatGPT verified this saved handoff and corrected the cable summary to preserve pose 04's uncertain status. The 132 BPM approved movement reference and its exact four source keys exist in the chat workspace; delivery to this branch is pending explicit owner authorization after automatic upload review blocked the media transfer. Do not substitute the older four keys or mark the newer appearance approved. The added neutral-arm return pose remains rejected. Latest main AGENTS.md also includes the owner's requested Spriteriffic team/asset/grid rules; these are documentation updates, not proof of completed animation generation.

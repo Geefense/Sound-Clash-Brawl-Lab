@@ -1,0 +1,52 @@
+{
+  "pose": "14_followthrough",
+  "base": "14_followthrough-cable-v1.png",
+  "candidate": "14_followthrough-cable-v2.png",
+  "canvas": [
+    1536,
+    1024
+  ],
+  "connection": [
+    [
+      610.0,
+      611.0
+    ],
+    [
+      604.0,
+      646.0
+    ],
+    [
+      640.0,
+      634.0
+    ],
+    [
+      657.0,
+      586.0
+    ]
+  ],
+  "occluder": "forearm wrap",
+  "changed_pixels": 1370,
+  "changed_bbox": [
+    603,
+    582,
+    661,
+    689
+  ],
+  "regions": [
+    {
+      "id": 1,
+      "pixels": 1370,
+      "bbox": [
+        603,
+        582,
+        661,
+        689
+      ]
+    }
+  ],
+  "anchor": [
+    768,
+    900
+  ],
+  "floor_tail_removal": "identical to v1"
+}

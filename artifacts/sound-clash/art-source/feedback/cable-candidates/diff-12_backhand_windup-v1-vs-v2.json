@@ -1,0 +1,52 @@
+{
+  "pose": "12_backhand_windup",
+  "base": "12_backhand_windup-cable-v1.png",
+  "candidate": "12_backhand_windup-cable-v2.png",
+  "canvas": [
+    1536,
+    1024
+  ],
+  "connection": [
+    [
+      860.0,
+      664.0
+    ],
+    [
+      857.0,
+      646.0
+    ],
+    [
+      845.0,
+      636.0
+    ],
+    [
+      845.0,
+      636.0
+    ]
+  ],
+  "occluder": "sleeve cuff",
+  "changed_pixels": 372,
+  "changed_bbox": [
+    839,
+    630,
+    865,
+    669
+  ],
+  "regions": [
+    {
+      "id": 1,
+      "pixels": 370,
+      "bbox": [
+        840,
+        633,
+        865,
+        669
+      ]
+    }
+  ],
+  "anchor": [
+    768,
+    900
+  ],
+  "floor_tail_removal": "identical to v1"
+}

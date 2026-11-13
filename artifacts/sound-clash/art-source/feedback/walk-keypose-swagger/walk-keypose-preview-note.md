@@ -27,9 +27,9 @@ says so on its face.
 ## 2. The cycle and the eight keys
 
 Measured from the clip, not assumed: a two-step cycle runs **f148 → f193**
-(46 frames, 1.533 s at 30 fps, ≈78 steps/min). f148 and f171 are the widest
-stances; f160 and f182 are the leg passes. Frame 193 closes on the next wide
-stance, so the sampled loop does not end mid-air.
+(46 frames, 1.533 s at 30 fps, ≈78 steps/min). The wide stances are f148, f165
+and f171 (widest, 234 px ankle span); f160 and f182 are the leg passes. Frame 193
+closes on the next wide stance (218 px), so the sampled loop does not end mid-air.
 
 | # | Phase (measured) | Src frame | Time | Ankle span | Height vs loop median | Shoulder−hip offset |
 | --- | --- | --- | --- | --- | --- | --- |

@@ -305,6 +305,7 @@ This register includes all phrases recoverable from the visible conversation, su
 | Exact phrase / recorded variant | Meaning / cultural note |
 | --- | --- |
 | `Yuh too Bod Mine!!` | Owner's gloss: “You're to Bad Mind”; intended meaning: “you're evil.” Preserve the phonetic spelling. Trigger/performance not yet specified. |
+| `Yuh Betta stop-pit` | You better stop it. Owner-supplied wording; preserve exact spelling and capitalization. |
 | `Outta Awduh` | Out of Order. |
 | `Klawk ah Strike` | Clock is striking. [TODO] Exact game trigger. |
 | `Wah mi seh` | What did I say? |

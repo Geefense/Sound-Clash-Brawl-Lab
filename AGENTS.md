@@ -80,6 +80,13 @@ Suggested content slots within the supplied eight-week roster block: #3 Jan 15�
 | **Freebuff (Local Repo Builder & Heavy Lifter)** | Work directly in the local GitHub folder; write scripts, wire up exported Flow animations, organize/verify files, run checks, and handle commits. | Inspect the actual branch and files first; preserve combat work and source art. Wiring exports is not permission to spend animation credits. |
 | **Claude (Lead Systems & Godot Architect)** | Join immediately after Fighter #1's basic TypeScript prototype is wrapped up. Lead the Godot migration, translate the TypeScript FSM behavior into GDScript, and architect the reusable `BaseFighter` template, multi-fighter systems and crowd interference. | Port the accepted reference behavior before expanding the game. This is the intended team assignment, not a claim that Claude is already connected or has completed work. |
 | **Flow** | Character animation testing, visual sequence ideation and batching sprite exports. | Outputs are candidates until checked. Flow does not define combat timing, collision truth, or final voice lines. |
+| **Spriteriffic (2D Sprite & Sheet Artist)** | Generates and formats game-ready character sprite sheets, Dancehall combat frames, background crowd animations, and hazard sprites—including bottles, chairs and fire extinguishers—with consistent grid framing for direct import into Godot’s `AnimatedSprite2D` nodes. Paired with **Flow** for motion testing. | Garfield approves visual consistency. Freebuff verifies sheet dimensions, transparency, frame order and import behavior before integration. Outputs remain candidates until reviewed. |
+
+### Spriterrific role clarification — November 13, 2026
+
+Spriterrific was omitted from the initial team table, not deliberately rejected. Retain it alongside manual keyframes and Flow as a candidate source of animation frames. Proposed workflow: approved Feedback appearance reference → one short animation test → visual consistency review → Freebuff preparation/testing → playable integration. This does not establish support for arbitrary in-between frames, per-part controls, rigging, blending or transparency.
+
+Finish the current appearance/cable review first. Then choose one bounded walk or attack test with the owner and verify current input/export capabilities before generation. Preserve the approved slim proportions, Wallabees, one gold tooth, mic hand and jacket-origin cable. No generation, purchases or credit spending are authorized by this documentation update. Spriterrific supplies candidate visuals; Freebuff implements/tests; Godot runs the game. Keep the April 21 target and existing work intact.
 
 ### Zero-cost operating rules
 
@@ -206,7 +213,7 @@ Pin one Godot 4.x version at project creation and use its matching documentation
 When creating a Godot project or adding `/godot` inside the existing GitHub repository, ask Freebuff to do all of the following:
 
 1. **Generate a standard Godot `.gitignore`**, preserving the existing web rules. Ignore the project's `.godot/` cache and imported `*.translation` outputs according to the pinned engine version. Generate `.gitattributes` for consistent text line endings. Never broadly ignore original PNG/audio files or required resource sidecars/UIDs.
-2. **Copy this `AGENTS.md` and the organized sprite/audio folders directly into the Godot project directory**, including located bottles, chairs, fire extinguishers and Flow exports, so Freebuff and Claude see them immediately. Preserve approved originals, filenames, anchors, licensing/source notes and manifests. Verify copies by count/hash. Missing assets remain `[TODO]`; do not copy broken candidate files as approved art.
+2. **Copy this `AGENTS.md` and the organized sprite/audio folders directly into the Godot project directory**, including **Spriteriffic sprite sheets**, located bottles, chairs, fire extinguishers and Flow exports, so Freebuff and Claude see them immediately. Preserve approved originals, filenames, anchors, licensing/source notes and manifests. Verify copies by count/hash. Missing assets remain `[TODO]`; do not copy broken candidate files as approved art.
 3. Keep repository-root `AGENTS.md` authoritative. The `/godot/AGENTS.md` copy must match it after milestones; do not create conflicting nested instructions.
 4. Commit `project.godot`, source scenes/scripts/resources and required Godot metadata; exclude generated cache, temporary renders and exported builds. Inspect `git status` before committing. No nested Git repository inside `/godot`.
 5. Retain the TypeScript prototype as a runnable reference throughout the port. This request creates the blueprint; it does **not** start the engine migration now.
@@ -401,6 +408,8 @@ Generated Flow speech such as `yo, check this out`, `I'm bringing it to the stag
 8. No paid dependencies/services or automatic credit spending. No speculative multiplayer/backend expansion before the local fighter and Godot parity gate. Keep large temporary exports/caches out of Git; avoid duplicate binary/base64 transfer packs when normal local Git can carry verified bytes.
 9. Use small commits with concrete messages. No force-push, destructive history rewrite, deletion of old prototypes, or broad branch merging as routine cleanup. Reconcile upstream changes before writing; preserve unrelated work.
 10. **Update `AGENTS.md` after every completed milestone.** Record date, commit/path, status, validation, creative decisions, resolved `[TODO]` items and next task; synchronize the Godot copy once it exists. Keep factual inventory current rather than accumulating contradictory “done” claims.
+
+11. **Keep Spriteriffic sprite sheet grid dimensions consistent across all fighters for fast Godot slicing.** Use a shared cell width/height, consistent margins and spacing, and documented row/column layouts. Preserve each fighter’s intended proportions and frame anchors within that grid. Record frame order and animation timing for import into `AnimatedSprite2D`/`SpriteFrames`; do not stretch characters to fit cells.
 
 ### Verification commands and acceptance evidence
 

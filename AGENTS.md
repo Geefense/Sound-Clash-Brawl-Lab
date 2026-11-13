@@ -28,14 +28,46 @@ The fighters must feel like personalities at a dance, not interchangeable boxers
 
 **Other concepts:** Lickshot is retained; Sky Juice is a tall-fighter concept. Lickshot / Disc Jock Lickshot / Booyaka Lickshot are recorded name options, with final naming [TODO]. Do not build Fighter #2 before the Godot migration gate.
 
-## 2. Multi-Agent Team & Zero-Cost Workflow
+## 2. Target Milestone & Production Roadmap (Goal: April 21, 2027 Launch / May Jamaica Trip)
+
+### Commitment and release target
+
+**Target launch: April 21, 2027 — Garfield's birthday launch, ahead of the May 2027 trip to Jamaica.** Minimum commitment: **10 hours/week**, planned as **~225+ total hours over ~22.5 weeks**. Deliver **6 playable DJ selectors**; **8 fighters is a stretch goal**, never a reason to destabilize the six-fighter build or move the target date. This commitment supersedes earlier weekly-hour/countdown assumptions.
+
+Calendar clarification: November 13, 2026 to April 21, 2027 is 159 days (~22.7 weeks), or roughly 227 hours at 10 hours/week. The owner's date ranges below are authoritative; the final “Weeks 21–22” block is actually 20 days and includes the closing partial week. Keep the requested phase labels, but schedule against the explicit dates. These are capacity estimates, not completed hours or a guaranteed effort estimate.
+
+| Phase | Dates | Planned work | Exit evidence |
+| --- | --- | --- | --- |
+| **Weeks 1–2** | **Nov 13 – Nov 26, 2026** | Lock `AGENTS.md`; finish Fighter #1's basic TypeScript 3-hit rhythm combo; install Godot, set up `.gitignore`, and port Fighter #1. Claude joins as soon as the TypeScript reference is wrapped, including during this phase. | Pinned web reference; Godot opens/imports cleanly; Feedback moves, jumps, guards and demonstrates the combo in the port. Record remaining parity gaps explicitly. |
+| **Weeks 3–6** | **Nov 27 – Dec 24, 2026** | Claude leads the GDScript FSM, visual hitboxes/hurtboxes, rhythm beat-sync window, risk/reward taunts, four-stage party crowd loop and crowd interference: bottles, folding chairs, fire extinguisher. | One small playable systems slice with working beat judgement, all four party phases, and minimal versions of all three hazards. Use simple crowd/art placeholders to keep scope feasible. |
+| **Weeks 7–9** | **Dec 25, 2026 – Jan 14, 2027** | Stabilize Fighter #1 as the reusable `BaseFighter`; build Fighter #2 from shared logic; add basic CPU AI and Crowd Hype / Dubplate meters. | Playable two-fighter demo; shared code confirmed; AI can complete rounds; meters have visible, documented rules. **Core mechanics lock: Jan 14.** |
+| **Weeks 10–17** | **Jan 15 – Mar 11, 2027** | Roster assembly line: ~two weeks each for Fighters #3–#6, using Flow animations/exports, unique Dancehall stances, special moves and Patois voice lines. | Four additional approved playable selectors, each integrated and checked through the same content pipeline. No copied movement/rhythm systems. |
+| **Weeks 18–20** | **Mar 12 – Apr 1, 2027** | Build 2–3 distinct Sound Clash venues, Character Select and Arcade mode. Add stretch Fighters #7–#8 only if genuinely ahead. | Six-fighter roster selectable; Arcade run completes and restarts; venues work with hazards/party transitions. Stretch scope cannot consume final QA time. |
+| **Weeks 21–22 / closing partial week** | **Apr 2 – Apr 21, 2027** | Final balance, audio mixing, input/beat responsiveness checks, regression fixes, clean export and birthday launch. | Versioned release build tested on the chosen target; no critical blocker; credits/controls included; reproducible export instructions. |
+
+Roster slots: #1 Feedback; #2–#6 **[TODO]** assign final names/order. Lickshot and Sky Juice remain candidate concepts; do not silently assign them slots or finalize their designs. #7–#8 remain optional.
+
+Suggested content slots within the supplied eight-week roster block: #3 Jan 15–28; #4 Jan 29–Feb 11; #5 Feb 12–25; #6 Feb 26–Mar 11. Each slot covers stance/move definition, approved exports, data/hitboxes, voices, integration and a playable check. Templates and placeholders should be prepared before the slot, not used to claim finished art.
+
+### Production rules that protect the date
+
+- Establish the `BaseFighter` skeleton **during the first port**; Weeks 7–9 harden it and validate reuse with Fighter #2. Do not build throwaway fighter-specific movement/rhythm code and refactor it only in January.
+- Freeze shared core mechanics by **January 14, 2027**. After that, fix defects and tune existing data; defer new universal systems unless essential to release. Content variation belongs in fighter resources and animations.
+- The Weeks 3–6 systems list is ambitious within ~40 minimum hours. Build the smallest complete versions, not production crowds/cinematics. Flag any slip promptly with remaining work and hours; the roadmap is a target, not proof that work fits.
+- At each session/milestone, record estimated versus observed time, completed exit criteria, remaining hours and the next date gate. Track useful debugging as development; distinguish avoidable tool/setup churn. Never subtract unverifiable hours or count the same session twice. Maintain the ledger without requiring manual data entry when activity is visible; ask only for missing session duration.
+- Protect April 2–21 for stabilization. If behind, remove #7–#8 first, target two venues within the 2–3 range, and defer elaborate cinematics/extra polish. If six complete fighters or another committed feature is still at risk, present the concrete tradeoff to Garfield; do not silently reduce the six-fighter target, mislabel unfinished content, or move the date.
+- **[TODO]** Pin launch platform(s), distribution location, minimum target hardware, export format and release acceptance checklist during Weeks 1–2. The Chromebook/phone workflow needs a verified zero-cost way to run and export Godot; do not assume desktop/mobile/web parity.
+- **[TODO]** Record exact May trip dates if they affect post-launch availability. No travel dates beyond May 2027 are established here.
+- **[TODO]** Define the minimum unique move/animation/voice set per selector and confirm free Flow allowance/export throughput before promising six fully animated rosters. Batch approved outputs; generation failure must not consume unbounded time or credits.
+
+## 3. Multi-Agent Team & Zero-Cost Workflow
 
 | Role/tool | Responsibility | Handoff boundary |
 | --- | --- | --- |
 | **ChatGPT (Creative Director & Reference Analyst)** | Organize design, analyze visual inspiration/references, maintain this blueprint and the Patois/comedy lexicon, review visual continuity. | Supply concrete references, acceptance criteria, and honest approval status. Garfield retains final creative approval. |
 | **Freebuff (Local Repo Builder & Heavy Lifter)** | Work directly in the local GitHub folder; write scripts, wire up exported Flow animations, organize/verify files, run checks, and handle commits. | Inspect the actual branch and files first; preserve combat work and source art. Wiring exports is not permission to spend animation credits. |
-| **Claude (Lead Systems & Godot Architect)** | Join immediately after Fighter #1's basic TypeScript prototype is wrapped up. Lead the Godot migration, translate the TypeScript FSM behavior into GDScript, and architect reusable multi-fighter systems and crowd interference. | Port the accepted reference behavior before expanding the game. This is the intended team assignment, not a claim that Claude is already connected or has completed work. |
-| **Flow** | Character animation tests and visual sequence ideation. | Outputs are candidates until checked. Flow does not define combat timing, collision truth, or final voice lines. |
+| **Claude (Lead Systems & Godot Architect)** | Join immediately after Fighter #1's basic TypeScript prototype is wrapped up. Lead the Godot migration, translate the TypeScript FSM behavior into GDScript, and architect the reusable `BaseFighter` template, multi-fighter systems and crowd interference. | Port the accepted reference behavior before expanding the game. This is the intended team assignment, not a claim that Claude is already connected or has completed work. |
+| **Flow** | Character animation testing, visual sequence ideation and batching sprite exports. | Outputs are candidates until checked. Flow does not define combat timing, collision truth, or final voice lines. |
 
 ### Zero-cost operating rules
 
@@ -46,7 +78,7 @@ The fighters must feel like personalities at a dance, not interchangeable boxers
 5. Log design, reference analysis, art preparation, animation review, coding, and testing as Sound Clash development time. [TODO] Maintain a consolidated session-hours ledger; do not invent totals or promise a fixed percentage reduction.
 6. Make narrow, reviewable changes. Preserve originals; keep rejected art and candidates distinguishable from approved production assets.
 
-## 3. Current TypeScript Prototype & Asset Inventory
+## 4. Current TypeScript Prototype & Asset Inventory
 
 ### Verified web baseline and branch boundaries
 
@@ -129,13 +161,13 @@ The owner identifies bottles, chairs, fire extinguishers and Flow sprite/audio e
 
 Historical reports include 98 and later 109 passing tests plus typecheck/build success. These apply to their historical branches/runs. [TODO] Run and record the current selected baseline checks; no fresh test run is certified by this documentation milestone.
 
-## 4. Godot Engine Migration & Repo Setup Strategy
+## 5. Godot Engine Migration & Repo Setup Strategy
 
 ### Why Godot
 
 Godot is 100% free/open-source under the MIT license, with no engine license fee or royalty. Its plain-text `.gd` scripts, `.tscn` scenes, `.tres` resources and `project.godot` work well with GitHub and local agent edits. Git works externally without an editor plugin; Git inside the editor uses a plugin.
 
-Reusable Fighter scenes, visual collision-shape placement over Flow-derived sprites, animation tools, Camera2D plus small shake/impact scripts, and scene composition should cut repetitive work versus a fully manual pipeline. **Beating the earlier 190-hour manual estimate is a goal, not a validated schedule or guarantee.** [TODO] Re-estimate after the first Godot parity slice. Godot does not repair bad source animation or synchronize gameplay to music automatically.
+Reusable `BaseFighter` scenes, visual collision-shape placement over Flow-derived sprites, animation tools, Camera2D plus small shake/impact scripts, and scene composition should cut repetitive work versus a fully manual pipeline. **Beating the earlier 190-hour manual estimate is a goal, not a validated schedule or guarantee.** [TODO] Re-estimate after the first Godot parity slice. Godot does not repair bad source animation or synchronize gameplay to music automatically.
 
 Official references:
 
@@ -162,9 +194,9 @@ When creating a Godot project or adding `/godot` inside the existing GitHub repo
 4. Commit `project.godot`, source scenes/scripts/resources and required Godot metadata; exclude generated cache, temporary renders and exported builds. Inspect `git status` before committing. No nested Git repository inside `/godot`.
 5. Retain the TypeScript prototype as a runnable reference throughout the port. This request creates the blueprint; it does **not** start the engine migration now.
 
-Proposed layout, **not yet created**: `godot/project.godot`; `godot/AGENTS.md`; `godot/scenes/fighters/Fighter.tscn`; `godot/scenes/match/`; `godot/scenes/hazards/ThrowableHazard.tscn`; `godot/scripts/{combat,fsm,rhythm,crowd}/`; `godot/data/{fighters,moves,hazards}/`; `godot/assets/{sprites,audio,flow_exports}/`. Under sprites, organize `feedback/`, `bottles/`, `chairs/`, `fire_extinguishers/`. [TODO] Final paths after inventory and actual engine setup.
+Proposed layout, **not yet created**: `godot/project.godot`; `godot/AGENTS.md`; `godot/scenes/fighters/BaseFighter.tscn`; `godot/scenes/match/`; `godot/scenes/hazards/ThrowableHazard.tscn`; `godot/scripts/{combat,fsm,rhythm,crowd}/`; `godot/data/{fighters,moves,hazards}/`; `godot/assets/{sprites,audio,flow_exports}/`. Under sprites, organize `feedback/`, `bottles/`, `chairs/`, `fire_extinguishers/`. [TODO] Final paths after inventory and actual engine setup.
 
-## 5. Finite State Machine (FSM) Architecture (TypeScript -> GDScript Blueprint)
+## 6. Finite State Machine (FSM) Architecture (TypeScript -> GDScript Blueprint)
 
 These explicit FSMs are the **target architecture**. Current TypeScript behavior is distributed across action fields, timers, flags and match statuses; it is not already a one-to-one implementation of every state below.
 
@@ -205,18 +237,18 @@ These phases sit above the preserved round lifecycle (`pre-round`, `playing`, `i
 | Fighter state/timers | Typed GDScript state model and fighter FSM; integer tick deadlines where practical. |
 | `simulateTick`, collision/combo rules | Engine-independent combat rules stepped at 60 Hz. Preserve snapshot simultaneous resolution where accepted. |
 | Attack profiles | Data-driven move resources: startup/active/recovery, damage, reach, hitstun, knockback, cancel windows, beat rules, hitbox tracks. |
-| `GameScene` / pose renderer | Reusable `Fighter.tscn` with Sprite2D/AnimatedSprite2D or AnimationPlayer, separate hurt/hit/push boxes and debug visualization. |
+| `GameScene` / pose renderer | Reusable `BaseFighter.tscn` with Sprite2D/AnimatedSprite2D or AnimationPlayer, separate hurt/hit/push boxes and debug visualization. |
 | Game events | Signals/event queue for UI, audio, sparks, camera shake and crowd reactions; presentation never changes collision outcomes. |
 | Match snapshot / React overlays | Match controller plus Control/CanvasLayer HUD and results UI. |
 | Web Audio tones | AudioStreamPlayer/SFX adapter; approved local audio assets later. |
 
-Use a common Fighter scene plus fighter-specific data/assets, not copied combat scripts for each character. Visual hitbox tools author data; the simulation owns when it is active. Do not let variable render FPS, animation callbacks, camera shake, or Godot physics callback order decide who hits first. Ordinary Godot physics is not automatically bit-for-bit deterministic across platforms.
+Use one common `BaseFighter` scene plus fighter-specific data/assets, not copied combat scripts for each character. Visual hitbox tools author data; the simulation owns when it is active. Do not let variable render FPS, animation callbacks, camera shake, or Godot physics callback order decide who hits first. Ordinary Godot physics is not automatically bit-for-bit deterministic across platforms.
 
 **Beat service:** provide BPM/offset, nearest-beat error, judgement window and latency calibration. Timestamp inputs against the audio clock and pass recorded judgement/input data into the combat tick; keep rendering separate. [TODO] Decide whether the beat window judges input time, active-frame contact, or both; define on-beat reward/off-beat behavior and hitstop/music behavior. No guessed BPM or invented timing windows. Do not drive a long song with a drifting visual timer.
 
 Replay parity must preserve seeded RNG explicitly; Godot's default RNG is not a drop-in replacement for the current seeded algorithm. [TODO] Port the algorithm with matching unsigned behavior or document a deliberate replay-version break. Test same inputs/seed and mirrored fighter-order scenarios.
 
-## 6. Crowd Interference & Party Mechanics
+## 7. Crowd Interference & Party Mechanics
 
 **Planned after Godot fighter parity.** Shared `ThrowableHazard` design: one reusable scene/controller with type-specific data, not three unrelated systems.
 
@@ -228,13 +260,17 @@ Replay parity must preserve seeded RNG explicitly; Godot's default RNG is not a 
 
 Proposed shared fields: hazard ID/type, source crowd member, target/aim, spawn tick, position/velocity/gravity, collision mask, hitbox, damage/knockback, lifetime, impact effect/audio, remaining hit count and spawned floor-effect data. States: queued/telegraphed → airborne → impact → spent; extinguisher may create a separate timed floor area. Keep arcs and contacts in the authoritative simulation if they affect combat; use scene visuals for presentation.
 
-Crowd hype or successful beat-synced taunts enqueue throws through a crowd director. Use seeded choices, bounded frequency, readable warnings and recorded events. The crowd can have funny, unpredictable preferences without making every throw unavoidable. [TODO] Hype thresholds, target bias, cooldowns, simultaneous hazard cap, player avoidance/blocking rules, and exact taunt risk/reward. No spawn during intro/transition/KO unless explicitly authored as harmless presentation.
+Crowd hype or successful beat-synced taunts enqueue throws through a crowd director. Use seeded choices, bounded frequency, readable warnings and recorded events. Crowd hostility may arise for no good or fair reason, independently of skill or performance; bias and unpredictable dislike are part of the intended feel. One bottle may trigger a cascade of more bottles. Do not require every throw to be earned by hype or a taunt. Telegraphing, frequency limits and avoidance rules are implementation proposals to tune in playtesting, not settled restrictions on the cultural concept. [TODO] Hype thresholds, target bias, cooldowns, simultaneous hazard cap, player avoidance/blocking rules, and exact taunt risk/reward. No spawn during intro/transition/KO unless explicitly authored as harmless presentation.
 
 Keep crowd visuals, navigation, hype calculation, throw scheduling and hazard resolution modular. Clean hazards/foam at round reset and stop new gameplay hits when the round ends. First prototype one bottle and one readable warning before adding the chair/extinguisher. Future bar/speaker/car interactions remain backlog.
 
 **Music interruption gag:** Lickshot steals the playing record and the tune stops. [TODO] Define beat-clock pause/rebase/new-track policy before making this affect rhythm judgement; continue deliberate combat/SFX behavior during the gap. A gag must not accidentally desynchronize input timing.
 
-## 7. Authentic Patois & Comedy Lexicon
+### Crowd Hype / Dubplate meters — planned two-fighter demo scope
+
+Use shared match/fighter data and HUD bindings; no per-fighter copies of meter code. Crowd Hype represents crowd response and can influence taunt rewards and interference scheduling, while preserving independent biased hostility. The Dubplate meter is a requested mechanic whose gameplay meaning is not yet specified. **[TODO]** Define whether it is per-fighter or shared, gain/spend rules, maximum, persistence across rounds, special-move relationship, HUD feedback and reset behavior. Do not invent a super-move economy as settled design. Wire and document both meters for the Dec 25–Jan 14 demo gate.
+
+## 8. Authentic Patois & Comedy Lexicon
 
 **STRICT RULE FOR ALL AGENTS: Preserve all Patois spellings, slang, capitalization variants and comedic phrasing verbatim. Never rewrite or “correct” them into standard English.** English glosses belong in a separate field. These spellings encode pronunciation and comic timing. Do not silently merge variants, substitute a dictionary spelling, invent a translation, or turn an assistant suggestion into an owner-approved line.
 
@@ -251,7 +287,7 @@ This register includes all phrases recoverable from the visible conversation, su
 | `Stop-pit!` | Stop it. |
 | `Yam dat` | Eat that. |
 | `Hole Lawn deh` | Hold on there. |
-| `Shut-Tup!` | Shut Up! |
+| `Shut-Tup!` | Shut Up! Owner's favourite phrase to sprinkle throughout: flexible recurring crowd/announcer/fighter interjection, without overusing it. |
 | `Shut-Tup Mon!` | Shut Up, Man; preserve exact wording. |
 | `Shut tup Mon!` | Separately recorded variant; do not normalize automatically. |
 | `Mon` | Man. |
@@ -275,20 +311,26 @@ This register includes all phrases recoverable from the visible conversation, su
 | `Likkle Heeeyaut` | Owner's comic combination. |
 | `Likkle heeeyaut sound!` | Exact recorded sound-clash jab. |
 | `Yuh likkle heeeyaut!` | Accepted taunt recovered from prior conversation. |
-| `Mash` | Owner's gloss: Mosh. [TODO] Recover full use/context. |
+| `Mash` | Written form with owner-directed spoken pronunciation `Mosh`; do not confuse spelling with performance. |
+| `Mash up him geometry!` | Perform as `Mosh up him geometry!`; exaggerated combat callout. |
+| `Mosh up him geometry!` | Owner's phonetic performance direction for the preceding line. |
+| `Stay one place!` | Stay in one place; owner specifies pronunciation `Stay wun place!`. |
+| `Stay wun place!` | Exact phonetic direction for `Stay one place!`; fighter taunt/callout. |
+| `Keep still!` | Owner-supplied taunt/callout; original message also records `keep Still!`. Preserve context-specific capitalization. |
+| `LEAD OUT!` | Take charge, step forward, dominate, act as leader; potential momentum callout. [TODO] Confirm pronunciation. |
 | `Cum mout ta mi vishaun` | Come out of my vision. |
 | `Gweh!` | Go away! |
 | `Tump` / `TUMP` | Hard fist punch/strike; heavy body-shot vocabulary. Preserve variants by context. |
-| `BOX` | Project move label for heavy backhand/open-hand head strike. [TODO] Owner's full cultural gloss. |
-| `Upper Box` | Rising open-hand strike; exact move name. |
+| `BOX` | Jamaican box/slap language; project heavy backhand/open-hand head strike, not a fist punch. |
+| `Upper Box` | Rising backhand/open-hand slap, not a fist uppercut. Standalone causes head snap/stumble without automatic knockdown; Three Piece finisher launches. |
 | `Butt weight` | But wait; surprise when something did not happen as expected. Owner's example: promised chocolate bar, returned with rotisserie chicken. |
 | `Cum Again` | Abbreviated from “wheel and cum again”: rewind/spin the tune back and start over. |
 | `wheel and cum again` | Recorded cultural explanation; preserve wording/case in its original context. |
-| `Beg You Won Stop Drivuh` | Saved phrase; [TODO] Recover exact translation/context. Do not guess it from spelling. |
+| `Beg You Won Stop Drivuh` | Next stop, driver, please. Comedic dizzy/disoriented reaction after a hit; candidate voice line, not implemented. |
 | `Beg You Won Stop` | Ground-hand/pleading gag variant; [TODO] Exact owner gloss. |
-| `See it Deh` | Saved phrase; [TODO] Exact owner gloss. |
-| `Woy!` | Saved exclamation; [TODO] Exact owner usage. |
-| `Give Tanks` | Saved phrase; [TODO] Exact owner gloss. |
+| `See it Deh` | See it there. Candidate fighter/announcer reaction. |
+| `Woy!` | Whoa! Exclamation of hurt, surprise or shock; preserve all meanings. |
+| `Give Tanks` | Give Thanks / You're lucky. Taunt or reaction according to context. |
 | `Mossive` | Saved crowd/announcer phrase; [TODO] Exact owner gloss. |
 | `Nuh Bodda wit Dot!` | Saved phrase; [TODO] Exact owner gloss. |
 | `CHAMPION SOUND!` | Saved announcer/crowd callout. [TODO] Trigger/recording. |
@@ -302,6 +344,10 @@ This register includes all phrases recoverable from the visible conversation, su
 
 ### Comedy, taunt and move register
 
+- `Rum Punch`: candidate fighter name, powerful move/hit name, or both; Caribbean punch/fighting wordplay. Keep options open, not finalized.
+- Later Three Piece polish: launched opponent lands comically on their head (stylized, non-graphic), with hard landing/dust/shake; defer until the working baseline is stable.
+- Mr. Bean versus Mike Tyson reference backlog: exaggerated recoil/stagger, humorous personality contrast and venue knockdowns such as stumbling into a speaker stack. Not immediate implementation.
+- UI feedback: avoid oversized `ROUND OVER` lettering; it was called out as too huge/weird. Preserve readable, restrained overlays.
 - Skanking fight-opening stance; lighter raised with `Lighter!`; two-finger forehead poke; skanking point/rear view; mic swing; mic-cord throw; “hand off and slap” using the mic cord; `Feedbackhand` pun.
 - Dizzy/Bogle reaction; gut-punch fold; seated bounce/landing; upside-down airborne, C-shape, upside-down J, E, Superman and slanted I silhouettes; shoe almost off; face-slide knockdown/slide mark; hat-cover KO variation. Availability varies: the manifest contains some illustrated poses, while others remain ideas. [TODO] Approve animation timing and missing sequences separately.
 - Ground-hand `Beg You Won Stop` idea. Do not replace the Patois with a generic pleading line.
@@ -324,12 +370,12 @@ This register includes all phrases recoverable from the visible conversation, su
 
 Generated Flow speech such as `yo, check this out`, `I'm bringing it to the stage`, and `You know how we do, ha ha ha` was rejected. Do not recycle it as approved dialogue. Visual animation tests should not invent voice performances; use controlled audio later.
 
-## 8. Coding & Project Guardrails
+## 9. Coding & Project Guardrails
 
 ### Mandatory behavior
 
 1. Read this file at task start; inspect repository/branch/current code before editing. Preserve the distinction between Lab and original development repo, and between `main`, combat-hardening and asset branches.
-2. Keep scripts modular: input, combat rules, FSM, fighter data, beat service, renderer, audio, crowd director, hazards and UI have clear ownership. Avoid a single all-purpose scene script or fighter-specific copies of shared combat.
+2. Build one reusable `BaseFighter` scene with shared movement, rhythm, input/combat rules and FSM code. Fighter-specific data/resources/animations provide variety; duplication means instancing/inheriting the template, never copying the systems. **Lock core mechanics by Jan 14, 2027** so Jan 15–Mar 11 is content assembly. Keep scripts modular: input, combat rules, FSM, fighter data, beat service, renderer, audio, crowd director, hazards and UI have clear ownership. Avoid a single all-purpose scene script or fighter-specific copies of shared combat.
 3. Never break core movement feel, input buffering, beat-sync responsiveness, directional guard, simultaneous contact rules or grounded KO presentation to simplify a port. Match behavior first; rebalance only as an explicit change.
 4. Do not confuse combat active windows with rhythm windows, pose origins with hitboxes, screen-left with anatomical left, imported poses with animation, or save approval with creative approval.
 5. Preserve verbatim Patois. Append new owner phrases with exact spelling, separate gloss/context, source and approval status. Keep rejected lines and assistant suggestions distinguishable.
@@ -364,8 +410,12 @@ For Godot, once created: [TODO] pin exact import/headless launch/test/export com
 | Feedback pose pack | Available on named asset branches; verify/import without replacing main blindly. |
 | Targeted PASS B comparison | Saved at `993d7bf`; unapproved. Leg identity/phase and full-loop continuity are next. |
 | Basic three-hit rhythm combo reference | Combat chain exists; authoritative music beat judgement/demo `[TODO]`. |
-| Master Godot blueprint | This root file, 2026-11-13. Documentation milestone only. |
+| Master Godot blueprint | Initial root document at `259833b`; expanded 2026-11-13 with nine sections, launch roadmap and recovered lexicon. Documentation milestone only. |
 | Godot setup and parity port | Planned after Fighter #1 reference gate; Claude leads, Freebuff builds locally. |
-| Fighter #2, stages, party FSM and full interference | Backlog after Godot parity. |
+| Party FSM, taunts, beat window and hazard slice | Scheduled Nov 27–Dec 24 after initial Godot port; prototype scope first. |
+| Reusable BaseFighter / two-fighter demo / meters | Due Jan 14, 2027; core mechanics lock. |
+| Fighters #3–#6 | Scheduled Jan 15–Mar 11; two weeks each. |
+| Venues, Character Select and Arcade | Scheduled Mar 12–Apr 1; stretch #7–#8 only if ahead. |
+| Birthday release / May Jamaica trip | Launch target Apr 21, 2027; final QA Apr 2–21; trip May 2027. |
 
-Next agent: finish the isolated walk review, reconcile asset/engine branches, close the minimal rhythm reference gap, and freeze the TypeScript baseline. Keep costs at zero and scope narrow. Do not start crowd systems or additional fighters ahead of that gate.
+Next agent: finish the isolated walk review, reconcile asset/engine branches, close the minimal rhythm reference gap, freeze the TypeScript baseline and complete the first Godot port inside Nov 13–26. Then follow Section 2 date gates. Keep costs at zero; preserve the April 21, 2027 target and six-selector commitment while reporting scope risks promptly.

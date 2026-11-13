@@ -1,0 +1,183 @@
+{
+  "asset": "feedback-walk-flow-test.mp4",
+  "sourceSha256": "7c644df616db66b7a3bd7747ddf27f65479e156cf2a869bd11598f74e8794011",
+  "sourceFrameRange": [
+    148,
+    193
+  ],
+  "cycleFrames": 46,
+  "sourceFps": 30,
+  "uniformScale": 0.9892,
+  "targetHeightPx": 460,
+  "floorY": 560,
+  "panel": [
+    460,
+    620
+  ],
+  "holdFrames": 5,
+  "outputFps": 30,
+  "cycles": 4,
+  "keys": [
+    {
+      "index": 0,
+      "file": "keys/key-00.png",
+      "phase": "wide stance",
+      "level": "below median",
+      "srcFrame": 148,
+      "srcTimeSec": 4.9,
+      "ankleSpanPx": 203,
+      "figureHeightPx": 463,
+      "heightVsLoopMedianPx": -2,
+      "bodyCxSrcPx": 449.0,
+      "shoulderHipOffsetPx": 26.4,
+      "cleanup": {
+        "opaquePx": 49855,
+        "lightNeutralInsideFigurePx": 413,
+        "removedSpecks": 2,
+        "spillPx": 552
+      }
+    },
+    {
+      "index": 1,
+      "file": "keys/key-01.png",
+      "phase": "mid-stride",
+      "level": "above median",
+      "srcFrame": 154,
+      "srcTimeSec": 5.1,
+      "ankleSpanPx": 161,
+      "figureHeightPx": 465,
+      "heightVsLoopMedianPx": 0,
+      "bodyCxSrcPx": 443.0,
+      "shoulderHipOffsetPx": 26.1,
+      "cleanup": {
+        "opaquePx": 48664,
+        "lightNeutralInsideFigurePx": 349,
+        "removedSpecks": 1,
+        "spillPx": 560
+      }
+    },
+    {
+      "index": 2,
+      "file": "keys/key-02.png",
+      "phase": "legs passing",
+      "level": "above median",
+      "srcFrame": 160,
+      "srcTimeSec": 5.3,
+      "ankleSpanPx": 111,
+      "figureHeightPx": 472,
+      "heightVsLoopMedianPx": 7,
+      "bodyCxSrcPx": 453.5,
+      "shoulderHipOffsetPx": 17.5,
+      "cleanup": {
+        "opaquePx": 50472,
+        "lightNeutralInsideFigurePx": 357,
+        "removedSpecks": 4,
+        "spillPx": 471
+      }
+    },
+    {
+      "index": 3,
+      "file": "keys/key-03.png",
+      "phase": "wide stance",
+      "level": "above median",
+      "srcFrame": 165,
+      "srcTimeSec": 5.467,
+      "ankleSpanPx": 205,
+      "figureHeightPx": 470,
+      "heightVsLoopMedianPx": 5,
+      "bodyCxSrcPx": 464.0,
+      "shoulderHipOffsetPx": 14.3,
+      "cleanup": {
+        "opaquePx": 51989,
+        "lightNeutralInsideFigurePx": 471,
+        "removedSpecks": 5,
+        "spillPx": 531
+      }
+    },
+    {
+      "index": 4,
+      "file": "keys/key-04.png",
+      "phase": "wide stance",
+      "level": "below median",
+      "srcFrame": 171,
+      "srcTimeSec": 5.667,
+      "ankleSpanPx": 234,
+      "figureHeightPx": 463,
+      "heightVsLoopMedianPx": -2,
+      "bodyCxSrcPx": 453.0,
+      "shoulderHipOffsetPx": 11.4,
+      "cleanup": {
+        "opaquePx": 51813,
+        "lightNeutralInsideFigurePx": 412,
+        "removedSpecks": 1,
+        "spillPx": 530
+      }
+    },
+    {
+      "index": 5,
+      "file": "keys/key-05.png",
+      "phase": "wide stance",
+      "level": "below median",
+      "srcFrame": 177,
+      "srcTimeSec": 5.867,
+      "ankleSpanPx": 194,
+      "figureHeightPx": 462,
+      "heightVsLoopMedianPx": -3,
+      "bodyCxSrcPx": 450.0,
+      "shoulderHipOffsetPx": 12.7,
+      "cleanup": {
+        "opaquePx": 51256,
+        "lightNeutralInsideFigurePx": 466,
+        "removedSpecks": 0,
+        "spillPx": 545
+      }
+    },
+    {
+      "index": 6,
+      "file": "keys/key-06.png",
+      "phase": "legs passing",
+      "level": "above median",
+      "srcFrame": 182,
+      "srcTimeSec": 6.033,
+      "ankleSpanPx": 126,
+      "figureHeightPx": 466,
+      "heightVsLoopMedianPx": 1,
+      "bodyCxSrcPx": 454.5,
+      "shoulderHipOffsetPx": 17.2,
+      "cleanup": {
+        "opaquePx": 47026,
+        "lightNeutralInsideFigurePx": 392,
+        "removedSpecks": 0,
+        "spillPx": 488
+      }
+    },
+    {
+      "index": 7,
+      "file": "keys/key-07.png",
+      "phase": "wide stance",
+      "level": "below median",
+      "srcFrame": 188,
+      "srcTimeSec": 6.233,
+      "ankleSpanPx": 195,
+      "figureHeightPx": 463,
+      "heightVsLoopMedianPx": -2,
+      "bodyCxSrcPx": 451.0,
+      "shoulderHipOffsetPx": 25.4,
+      "cleanup": {
+        "opaquePx": 49839,
+        "lightNeutralInsideFigurePx": 392,
+        "removedSpecks": 1,
+        "spillPx": 603
+      }
+    }
+  ],
+  "seam": {
+    "changedPixelPct": 10.86,
+    "meanDiffChangedPixels": 46.44,
+    "medianKeyStepChangedPct": 15.83,
+    "maxKeyStepChangedPct": 16.72,
+    "seamVsMedianKeyStep": 0.69
+  },
+  "mirrored": false,
+  "generated": false
+}

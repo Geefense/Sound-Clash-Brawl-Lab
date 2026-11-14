@@ -25,7 +25,7 @@ Keep the LEFT version of Feedback_BOX_Lean_Comparison.mp4: the slightly stronger
 
 ## Exact source references and delivery status
 
-The following files were recovered from ChatGPT file storage during this handoff attempt. Their binary bytes have NOT been committed to this repository: automatic upload review blocked the media transfer. Do not claim they exist locally or substitute older walk assets. These references identify the actual files for retrieval; the links may require Garfield's ChatGPT session and are not a promise of Freebuff access.
+The following files were recovered from ChatGPT file storage during this handoff attempt. Garfield explicitly approved the upload after the initial automatic review block. All ten recovered media files are now included in this handoff commit under `artifacts/sound-clash/art-source/feedback/box-handoff-2026-11-13/`. Use the repository files directly; the historical links below identify their provenance.
 
 | Source | Purpose | Reference |
 | --- | --- | --- |
@@ -42,4 +42,19 @@ Latest video recovered size: 249946 bytes. SHA-256: 7c365d9d7d11d87ef5521cc564b0
 
 ## What is actually complete
 
-Source identities recovered; selected motion and remaining correction criteria documented; Freebuff task ownership recorded. No artwork corrections, runtime integration, new animation generation or gameplay tests were performed by ChatGPT in this handoff. Binary delivery remains blocked. Freebuff should inspect any sources already in its workspace first and report which exact missing source is required before continuing.
+Source identities recovered; selected motion and remaining correction criteria documented; Freebuff task ownership recorded. No artwork corrections, runtime integration, new animation generation or gameplay tests were performed by ChatGPT in this handoff. Binary delivery is complete in this commit. Uploaded blob SHAs match the locally computed Git blob hashes for all ten files. Freebuff should fetch this review branch, read this brief and use the files below. Receipt or execution by Freebuff has not been observed; no running Freebuff session was contacted.
+
+## Repository media files
+
+All images are source/reference candidates, not blanket production-art approval. `Feedback_BOX_Two_Loose_Loops.mp4` remains **UNAPPROVED**. The lean comparison selects movement only.
+
+- `artifacts/sound-clash/art-source/feedback/box-handoff-2026-11-13/Feedback_BOX_Lean_Comparison.mp4` — 703743 bytes; Git blob `c237ac4da322b08f808414c7b55e49e2ab44e2bc`.
+- `artifacts/sound-clash/art-source/feedback/box-handoff-2026-11-13/Feedback_BOX_Two_Loose_Loops.mp4` — 249946 bytes; Git blob `e3fda1ba3c318a6584bb65d1a201d57d6805dd22`.
+- `artifacts/sound-clash/art-source/feedback/box-handoff-2026-11-13/Five-pose microphone and slap continuity sheet.png` — 1190296 bytes; Git blob `16b972f7851ce5fbf6e6449651912fb7c2159b3d`.
+- `artifacts/sound-clash/art-source/feedback/box-handoff-2026-11-13/Knee-Lift Pitcher with Coiled Mic Cable.png` — 1540434 bytes; Git blob `50dd0a501269dda635a995ddaf4f87c721b20d00`.
+- `artifacts/sound-clash/art-source/feedback/box-handoff-2026-11-13/Pitcher-inspired stride-out windup pose.png` — 1716595 bytes; Git blob `32995409bc1c4d6bfa718844a80a67ab24ec3e96`.
+- `artifacts/sound-clash/art-source/feedback/box-handoff-2026-11-13/Rear-view stride with looping mic cable.png` — 1717516 bytes; Git blob `4d6075d7ad5100f582e3df4c2c29c8a254ca684b`.
+- `artifacts/sound-clash/art-source/feedback/box-handoff-2026-11-13/Rear-view windup sprite with cable wraps.png` — 1380225 bytes; Git blob `fe4594237582cfa43fc8d2a1f22c5dc22bfeebdd`.
+- `artifacts/sound-clash/art-source/feedback/box-handoff-2026-11-13/Stride pose with two loose mic loops.png` — 2083776 bytes; Git blob `475751ca06a4b8c83053e03ea4c33e58fb0d5f63`.
+- `artifacts/sound-clash/art-source/feedback/box-handoff-2026-11-13/Subtle Lean Knee-Lift Windup.png` — 1552283 bytes; Git blob `e6550afef3a3a4cc01fca3712ed739790f170a50`.
+- `artifacts/sound-clash/art-source/feedback/box-handoff-2026-11-13/Subtle lean knee-lift sprite.png` — 1539275 bytes; Git blob `8630241cc3eab96bc05566764107a9e74b4e9061`.

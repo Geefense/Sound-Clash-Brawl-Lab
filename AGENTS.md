@@ -467,3 +467,8 @@ For Godot, once created: [TODO] pin exact import/headless launch/test/export com
 | Birthday release / May Jamaica trip | Launch target Apr 21, 2027; final QA Apr 2–21; trip May 2027. |
 
 Next agent: finish the isolated walk review, reconcile asset/engine branches, close the minimal rhythm reference gap, freeze the TypeScript baseline and complete the first Godot port inside Nov 13–26. Then follow Section 2 date gates. Keep costs at zero; preserve the April 21, 2027 target and six-selector commitment while reporting scope risks promptly.
+
+
+### Freebuff BOX handoff — November 13, 2026
+
+Owner explicitly requested Freebuff continue corrections and preparation. See root `FREEBUFF-HANDOFF.md`, added in `ebdd98d3f3a70058e6373a2ee954f1ace2f30e7a`, for exact knee-lift/stride source identities, selected lean reference, latest UNAPPROVED two-loop video, and first/last-frame appearance, mic-hand and cable corrections. Documentation handoff only: media was recovered from chat storage but automatic upload review blocked binary transfer. Freebuff owns the next correction/verification work. No artwork changes, runtime integration, generation or gameplay tests were performed for this handoff. Next blocker: obtain exact source bytes if missing from Freebuff's workspace; then correct and return a continuity preview for Garfield's approval.

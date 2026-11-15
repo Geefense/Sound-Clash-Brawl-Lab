@@ -42,9 +42,10 @@ class Command:
 ## true = hype is awarded only when the on-beat strike actually connects (owner default)
 @export var hype_requires_connect: bool = true
 
-@export var walk_speed: float = 220.0          # [TODO] port from TS
-@export var jump_velocity: float = -560.0      # [TODO] port from TS
-@export var gravity: float = 1700.0            # [TODO] port from TS
+@export var walk_speed: float = 220.0          # keep as playtested; do not touch with jump tuning
+# Playtest pass 1: crisper SF2-style arc. 2 x 1000 / 2800 = 0.71 s airtime, ~178 px apex.
+@export var jump_velocity: float = -1000.0     # [TODO] still to be ported from TS
+@export var gravity: float = 2800.0            # [TODO] still to be ported from TS
 @export var stand_size: Vector2 = Vector2(60, 160)
 @export var crouch_size: Vector2 = Vector2(60, 96)
 
@@ -80,8 +81,14 @@ const ANIM_OFFSET := {
 	&"ko": Vector2(0, -388), &"knockdown": Vector2(0, -388),
 	&"fire_ground": Vector2(0, -388),
 	&"launched": Vector2(0, -98), &"tumble": Vector2(0, -98), &"hitstun": Vector2(0, -98),
-	&"salute": Vector2(0, -98), &"fire_air": Vector2(0, -98), &"skank": Vector2(0, -98),
+	&"salute": Vector2(0, -98), &"fire_air": Vector2(0, -98),
+	&"jump": Vector2(0, -98),          # pelvis-anchored airborne pose, 10_fire_airborne
 	&"walk": Vector2(0, -256),
+	# Grounded poses that do not use the shared -388 baseline: each value puts the art's
+	# lowest opaque row on the floor line (offset = 512 - alphaBounds bottom).
+	&"skank": Vector2(0, -379),        # bottom 891; taunt is grounded, so use feet not pelvis
+	&"knockdown": Vector2(0, -399),    # 17_seated_landing, bottom 911
+	&"ko": Vector2(0, -426),           # 02_knockout, bottom 938
 }
 const ANIM_OFFSET_DEFAULT := Vector2(0, -388)
 
@@ -94,7 +101,7 @@ var attacks: Dictionary = {
 		"startup": 4, "active": 3, "recovery": 9,
 		"damage": 8, "blocked_damage": 2,
 		"hitstun": 14, "knockback": Vector2(160, 0), "knockdown": false,
-		"hitbox_pos": Vector2(70, -110), "hitbox_size": Vector2(70, 36),
+		"hitbox_pos": Vector2(84, -110), "hitbox_size": Vector2(84, 38),
 	},
 	# K = BOX (head/backhand). Poses 12/13/14 = startup/contact/recovery.
 	&"strong": {
@@ -102,7 +109,7 @@ var attacks: Dictionary = {
 		"startup": 9, "active": 4, "recovery": 18,
 		"damage": 15, "blocked_damage": 4,
 		"hitstun": 22, "knockback": Vector2(260, -60), "knockdown": false,
-		"hitbox_pos": Vector2(80, -125), "hitbox_size": Vector2(90, 50),
+		"hitbox_pos": Vector2(96, -125), "hitbox_size": Vector2(108, 54),
 	},
 	# L = TUMP (heavy body). [TODO] frame data, reach and art.
 	&"tump": {
@@ -110,7 +117,7 @@ var attacks: Dictionary = {
 		"startup": 7, "active": 4, "recovery": 14,
 		"damage": 15, "blocked_damage": 4,
 		"hitstun": 20, "knockback": Vector2(220, -20), "knockdown": false,
-		"hitbox_pos": Vector2(62, -82), "hitbox_size": Vector2(80, 46),
+		"hitbox_pos": Vector2(74, -82), "hitbox_size": Vector2(92, 48),
 	},
 	# I = UPPER BOX (rising backhand). [TODO] frame data, reach and art.
 	&"upper_box": {
@@ -118,7 +125,7 @@ var attacks: Dictionary = {
 		"startup": 8, "active": 4, "recovery": 16,
 		"damage": 15, "blocked_damage": 4,
 		"hitstun": 22, "knockback": Vector2(180, -120), "knockdown": false,
-		"hitbox_pos": Vector2(58, -132), "hitbox_size": Vector2(80, 92),
+		"hitbox_pos": Vector2(70, -132), "hitbox_size": Vector2(92, 96),
 	},
 }
 
@@ -183,6 +190,7 @@ var _hitstop_frames: int = 0
 
 
 func _ready() -> void:
+	add_to_group("fighters")          # geometric strike checks find opponents through this group
 	health = max_health
 	if use_local_input:
 		_ensure_default_actions()
@@ -257,6 +265,7 @@ func _enter_state(s: State) -> void:
 		State.ATTACK_ACTIVE:
 			_hit_targets.clear()
 			_set_hitbox_active(true)
+			_poll_hitbox()      # immediate check: the Area2D only reports overlaps on the next physics frame
 		State.TAUNT:
 			velocity.x = 0.0
 		State.CROUCH:
@@ -422,11 +431,31 @@ func _set_hitbox_active(on: bool) -> void:
 	hit_shape.set_deferred("disabled", not on)
 
 
+## Strike volume, in world space, from the attack data and the latched facing.
+func _hitbox_rect() -> Rect2:
+	var size: Vector2 = _attack.get("hitbox_size", Vector2.ZERO)
+	var pos: Vector2 = _attack.get("hitbox_pos", Vector2.ZERO)
+	var centre := global_position + Vector2(pos.x * facing, pos.y)
+	return Rect2(centre - size * 0.5, size)
+
+
+## Body rectangle opponents can hit. Simulation shape, independent of the sprite.
+func hurt_rect() -> Rect2:
+	var size := crouch_size if state == State.CROUCH else stand_size
+	return Rect2(global_position + Vector2(-size.x * 0.5, -size.y), size)
+
+
 ## Collect only. Damage is applied after all fighters tick (no node-order advantage).
+## Uses rectangle overlap rather than Area2D overlap so a one-tick active window still lands:
+## Area2D monitoring changes only refresh on the next physics frame, which is why contacts
+## were being missed on the first active tick.
 func _poll_hitbox() -> void:
-	for area in hitbox.get_overlapping_areas():
-		var target := area.get_parent() as BaseFighter
+	var volume := _hitbox_rect()
+	for node in get_tree().get_nodes_in_group("fighters"):
+		var target := node as BaseFighter
 		if target == null or target == self or target in _hit_targets:
+			continue
+		if not volume.intersects(target.hurt_rect()):
 			continue
 		_hit_targets.append(target)             # one hit per strike
 		_pending_strikes.append({
@@ -447,10 +476,12 @@ func _resolve_pending_strikes() -> void:
 		if not is_instance_valid(target):
 			continue
 		var result := target.receive_strike(self, s)
+		var ignored := bool(result.get("ignored", false))
 		var stop := KO_HITSTOP_TICKS if result.get("ko", false) else int(HITSTOP_TICKS.get(s["attack_id"], 7))
-		_apply_hitstop(stop)
-		target._apply_hitstop(stop)
-		camera_shake_requested.emit(SHAKE_LIGHT if stop <= 4 else SHAKE_HEAVY, SHAKE_SECONDS)
+		if not ignored:
+			_apply_hitstop(stop)
+			target._apply_hitstop(stop)
+			camera_shake_requested.emit(SHAKE_LIGHT if stop <= 4 else SHAKE_HEAVY, SHAKE_SECONDS)
 		if hype_requires_connect and bool((s["input_beat"] as Dictionary).get("on_beat", false)):
 			_add_hype(ON_BEAT_HYPE)
 		strike_resolved.emit(self, target, result)

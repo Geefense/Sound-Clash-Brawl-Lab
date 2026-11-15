@@ -56,6 +56,26 @@ runnable placeholders reusing jab art with no ported frame data.
 **Checks run: none in Godot.** No engine is available in the authoring environment, so this scene has
 never been opened, imported or played, and no hitbox, guard, beat-window or HUD behaviour is verified.
 
+### Playtest pass 1 fixes (2026-11-16, Garfield's Godot session)
+
+- **Missed hits.** Strike detection now tests rectangles in world space against each opponent's
+  `hurt_rect()` and polls immediately when `ATTACK_ACTIVE` is entered, instead of waiting for the
+  next physics frame's `Area2D` overlap refresh. The hitbox `Area2D` stays in the scene for debug
+  display only. Jab reach grew to 84×38 at x 84, BOX to 108×54 at x 96, tump and upper_box widened
+  to match. Hitstop, pushback and `camera_shake_requested` are emitted for every resolved contact
+  and skipped only when the target ignores the strike (already KO/downed).
+- **Jump.** A `jump` animation now exists, using `10_fire_airborne` at the pelvis offset (0, −98),
+  and the arc was retuned to `jump_velocity −1000`, `gravity 2800` (≈0.71 s airtime, ≈178 px apex).
+- **Skank taunt.** Offset −379 puts the pose's lowest opaque row on the floor, so the pelvis-anchored
+  art no longer lifts him off the stage during a grounded taunt.
+- **Knockdown / KO.** −399 (`17_seated_landing`) and −426 (`02_knockout`) put the seated and downed
+  bodies on the floor line instead of sinking below it.
+- **Untouched on purpose:** walk speed (220) and the walk animation/speed (4.4 fps).
+
+**Still pending owner approval:** the newer heavy BOX art with the foot leaving the ground is not in
+this repository as an aligned pose; the only BOX-era files are the unapproved concept images under
+`art-source/feedback/box-handoff-2026-11-13/`. Nothing was copied into `assets/`.
+
 ## Fighter wiring — UNAPPROVED, no Godot checks run
 
 Claude's audited files are saved as given: `scripts/BaseFighter.gd`, `scripts/rhythm/BeatService.gd`

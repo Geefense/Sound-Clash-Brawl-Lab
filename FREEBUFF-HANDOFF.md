@@ -63,3 +63,21 @@ All images are source/reference candidates, not blanket production-art approval.
 - `artifacts/sound-clash/art-source/feedback/box-handoff-2026-11-13/Stride pose with two loose mic loops.png` — 2083776 bytes; Git blob `475751ca06a4b8c83053e03ea4c33e58fb0d5f63`.
 - `artifacts/sound-clash/art-source/feedback/box-handoff-2026-11-13/Subtle Lean Knee-Lift Windup.png` — 1552283 bytes; Git blob `e6550afef3a3a4cc01fca3712ed739790f170a50`.
 - `artifacts/sound-clash/art-source/feedback/box-handoff-2026-11-13/Subtle lean knee-lift sprite.png` — 1539275 bytes; Git blob `8630241cc3eab96bc05566764107a9e74b4e9061`.
+
+
+## Additional Feedback frame requests — November 14, 2026 (Toronto)
+
+Owner requested these alongside the newer knee-lift BOX, all using the SAME Feedback character:
+
+| Sequence | Owner direction | Preparation brief |
+| --- | --- | --- |
+| Lightah | Some `lightah` frames | Lighter taunt: prepare readable anticipation, lighter raise/hold and return frames. Preserve the owner’s `lightah` wording; existing `Lighter!` reference is context, not permission to generate new speech. |
+| Skank | Some skank frames | Dancehall skanking with Feedback’s personality and rhythmic weight transfer; prepare a loop and clean entry/return to stance. |
+| Reverse backhand BOX | Reverse back hand box | Open-hand/backhand slap; keep distinct from Upper Box and from the knee-lift BOX. Establish strike direction from existing references; do not silently mirror the art or swap mic hands. |
+| Sparta kick | A Sparta kick to the stomach | Forward push kick aimed at the opponent’s stomach; prepare chamber, extension/contact, recoil and return to stance, with believable support-foot contact. |
+
+Freebuff owns repository preparation, verification and integration. Inventory existing lighter/skank/reverse-BOX art first and reuse suitable sources; missing frames are still to be created/prepared, not delivered by this note. Keep candidate frames isolated for owner review. The kick is a newly requested visual sequence; damage, input binding, timing, hitboxes and knockback are not specified or approved here. Preserve existing combat behavior until those choices are established. No generation-credit spending is authorized.
+
+Across all four: match the approved slim Feedback, burgundy bucket hat/jacket, cream stripes, original dreadlocks, concealed face/eyes, single gold tooth, fitted trousers and consistent tan Clarks Wallabees. Keep one microphone in the sequence’s declared anatomical hand, established forearm wrap and continuous cable with concealed jacket origin. Reconcile cross-set hand differences against approved sources before final integration. No per-frame resizing to hide drift. Verify silhouette, feet/anchors, transparency and idle → action → idle continuity at source and gameplay size. Use the same documented sprite grid for later Godot slicing. Return review previews; these requests do not approve unseen frames.
+
+Status: work requested and recorded only. No new frames generated, corrected, tested or integrated by this documentation update; Freebuff receipt/execution has not been observed.

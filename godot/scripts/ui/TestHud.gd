@@ -6,6 +6,7 @@ var p1: BaseFighter
 var p2: BaseFighter
 var beat: BeatService
 var sparring: SparringController
+var rounds: RoundController
 
 const BAR_W := 320.0
 const BAR_H := 18.0
@@ -22,7 +23,9 @@ func _draw() -> void:
 	_beat_pulse(Vector2(width * 0.5, MARGIN + BAR_H * 0.5))
 	_ai_banner(Vector2(width * 0.5 - 150.0, MARGIN + 40.0))
 	_legend(Vector2(width * 0.5 - 210.0, MARGIN + 96.0))
+	_round_pips(width)
 	_surge_banner(Vector2(width * 0.5, size.y * 0.34))
+	_round_banner(width)
 
 
 func _bar(pos: Vector2, w: float, value: int, maximum: float, colour: Color, right_aligned: bool) -> void:
@@ -68,6 +71,33 @@ func _ai_banner(pos: Vector2) -> void:
 	draw_string(ThemeDB.fallback_font, pos + Vector2(10, 30),
 		"%s · Y switch · G guard" % sparring.mode_tag(),
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.7, 0.78, 0.9))
+
+
+## Round-win pips: two per fighter, filled as rounds are taken.
+func _round_pips(width: float) -> void:
+	if rounds == null:
+		return
+	for side in 2:
+		for i in rounds.rounds_to_win:
+			var filled: bool = rounds.wins[side] > i
+			var pos := Vector2(MARGIN + 10.0 + float(i) * 18.0, MARGIN + BAR_H + 30.0)
+			if side == 1:
+				pos.x = width - MARGIN - 10.0 - float(i) * 18.0
+			draw_circle(pos, 5.0,
+				Color(0.95, 0.78, 0.25) if filled else Color(0.24, 0.24, 0.3, 0.9))
+
+
+## Round / K.O. / rematch banner published by the round controller.
+func _round_banner(width: float) -> void:
+	if rounds == null or rounds.banner == "" or rounds.banner_alpha <= 0.01:
+		return
+	var alpha: float = rounds.banner_alpha
+	var y := size.y * 0.19
+	var box := Rect2(Vector2(width * 0.5 - 330.0, y - 30.0), Vector2(660.0, 58.0))
+	draw_rect(box, Color(0.05, 0.04, 0.07, 0.66 * alpha), true)
+	draw_rect(box, Color(1.0, 0.86, 0.32, 0.75 * alpha), false, 2.0)
+	draw_string(ThemeDB.fallback_font, Vector2(box.position.x + 30.0, y + 10.0), rounds.banner,
+		HORIZONTAL_ALIGNMENT_CENTER, 600.0, 28, Color(1.0, 0.95, 0.84, alpha))
 
 
 ## 100% Crowd Hype Surge callout. Flashes while either fighter's surge boost is live.

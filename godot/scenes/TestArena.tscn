@@ -1,4 +1,4 @@
-[gd_scene load_steps=38 format=3]
+[gd_scene load_steps=39 format=3]
 
 [ext_resource type="Script" path="res://scripts/TestArena.gd" id="1_arena"]
 [ext_resource type="PackedScene" path="res://scenes/BaseFighter.tscn" id="2_fighter"]
@@ -28,6 +28,7 @@
 [ext_resource type="Texture2D" path="res://assets/sprites/crowd/crowd_14_rasta_elder.png" id="26_rasta"]
 [ext_resource type="Texture2D" path="res://assets/sprites/crowd/crowd_15_hype_woman.png" id="27_hype_woman"]
 [ext_resource type="Script" path="res://scripts/stages/GroundShadow.gd" id="28_shadow"]
+[ext_resource type="Script" path="res://scripts/match/RoundController.gd" id="29_rounds"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_floor"]
 size = Vector2(1280, 40)
@@ -281,6 +282,9 @@ bpm = 132.0
 
 [node name="SparringAI" type="Node" parent="."]
 script = ExtResource("9_ai")
+
+[node name="RoundController" type="Node" parent="."]
+script = ExtResource("29_rounds")
 
 [node name="Music" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("5_click")

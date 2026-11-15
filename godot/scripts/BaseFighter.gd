@@ -19,6 +19,7 @@ signal health_changed(current: int, maximum: int)
 signal hype_changed(current: int, maximum: int)
 signal strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dictionary)
 signal taunt_started(beat: Dictionary)
+signal static_parry_triggered(defender: BaseFighter, attacker: BaseFighter)
 signal hype_milestone_reached(percent: int)
 signal hype_surge_started(seconds: float)
 signal camera_shake_requested(intensity: float, duration: float)
@@ -80,6 +81,14 @@ const ON_BEAT_DAMAGE_MULT := 1.15
 const HYPE_SURGE_TICKS := 300
 const SURGE_DAMAGE_MULT := 1.20
 const SURGE_RECOVERY_MULT := 0.75
+
+# Record Static Parry (§9 item 13): guard tapped on the beat negates the strike.
+const PARRY_WINDOW_TICKS := 10        # ~167 ms after the on-beat guard press
+const PARRY_HYPE := 20
+const PARRY_ATTACKER_STUN_TICKS := 18 # long enough to punish
+
+# Best-of-3 round flow (§9 item 14): the match controller freezes input while it resets.
+var input_locked: bool = false
 
 # Hitstop, in ticks. KO uses its own value.
 const HITSTOP_TICKS := {&"jab": 4, &"strong": 7, &"tump": 7, &"upper_box": 7}
@@ -225,6 +234,8 @@ var _stun_is_block: bool = false
 var _hitstop_frames: int = 0
 var _surge_ticks: int = 0
 var _half_hype_awarded: bool = false
+var _guard_beat: Dictionary = {}
+var _guard_pressed_tick: int = -999
 var _guard_ticks: int = 0
 var _guard_recovering: bool = false
 var _was_on_floor: bool = true
@@ -273,6 +284,8 @@ func _physics_process(_delta: float) -> void:
 	state_frame += 1
 	if use_local_input:
 		command = _poll_local_input()
+	if input_locked:
+		command = Command.new()     # round announce / KO: no actions, physics still runs
 
 	match state:
 		State.IDLE, State.WALK: _tick_grounded()
@@ -663,6 +676,9 @@ func receive_strike(attacker: BaseFighter, strike: Dictionary) -> Dictionary:
 	# Directional guard, decided from the pre-resolution snapshot.
 	var blocked := _snap_guarding \
 		and signf(attacker.global_position.x - global_position.x) == float(facing)
+	# Record Static Parry: the guard was tapped on the beat, so the strike is negated.
+	if blocked and _parry_window_open():
+		return _resolve_static_parry(attacker, strike)
 
 	var base: int = int(a["blocked_damage"]) if blocked else int(a["damage"])
 	var on_beat := bool((strike["input_beat"] as Dictionary).get("on_beat", false))
@@ -696,6 +712,35 @@ func receive_strike(attacker: BaseFighter, strike: Dictionary) -> Dictionary:
 		velocity = Vector2(kb.x * away, kb.y)
 		_begin_stun(int(a["hitstun"]), false)
 	return result
+
+
+## True while the current guard was pressed inside the beat judgement window.
+func _parry_window_open() -> bool:
+	if not bool(_guard_beat.get("on_beat", false)):
+		return false
+	return _tick_count - _guard_pressed_tick <= PARRY_WINDOW_TICKS
+
+
+## Record Static Parry: no chip damage, no blockstun for the defender; the attacker is
+## left stunned and the defender gains hype.
+func _resolve_static_parry(attacker: BaseFighter, strike: Dictionary) -> Dictionary:
+	_add_hype(PARRY_HYPE)
+	camera_shake_requested.emit(SHAKE_HEAVY, SHAKE_SECONDS)
+	static_parry_triggered.emit(self, attacker)
+	attacker._take_parry_stun(PARRY_ATTACKER_STUN_TICKS)
+	return {
+		"blocked": true, "parried": true, "damage": 0, "ko": false, "on_beat": false,
+		"attacker_surge": attacker.is_hype_surging(),
+		"attack_id": strike.get("attack_id", &""),
+		"input_beat": strike.get("input_beat", {}),
+		"contact_beat": strike.get("contact_beat", {}),
+	}
+
+
+func _take_parry_stun(ticks: int) -> void:
+	velocity.x = 0.0
+	_buffered = {}
+	_begin_stun(ticks, false)
 
 
 func _begin_stun(frames: int, is_block: bool) -> void:
@@ -738,6 +783,41 @@ func _judge_beat() -> Dictionary:
 	return j
 
 
+## Match-controller reset for a new round. This is deliberately not a gameplay transition,
+## so it clears a KO/hitstun state without going through the LEGAL table; no combat tick can
+## reach it because the round controller owns the call.
+func reset_for_round(at: Vector2) -> void:
+	_set_hitbox_active(false)
+	_hit_targets.clear()
+	_pending_strikes.clear()
+	_resolve_queued = false
+	_buffered = {}
+	_stun_frames = 0
+	_stun_is_block = false
+	_hitstop_frames = 0
+	_surge_ticks = 0
+	_half_hype_awarded = false
+	_guard_beat = {}
+	_guard_pressed_tick = -999
+	guarding = false
+	_guard_ticks = 0
+	_guard_recovering = false
+	velocity = Vector2.ZERO
+	global_position = at
+	health = max_health
+	hype = 0
+	var old := state
+	if old != State.IDLE:
+		_exit_state(old)
+		state = State.IDLE
+		state_frame = 0
+		_enter_state(State.IDLE)
+		_play_state_anim()
+		state_changed.emit(old, State.IDLE)
+	health_changed.emit(health, max_health)
+	hype_changed.emit(hype, HYPE_MAX)
+
+
 ## For a match controller (auto-face is not implemented here). Ignored mid-attack.
 func face_toward(x: float) -> void:
 	if state in [State.IDLE, State.WALK, State.CROUCH]:
@@ -758,6 +838,10 @@ func _set_guarding(v: bool) -> void:
 	guarding = v
 	_guard_ticks = 0
 	_guard_recovering = not v      # releasing the guard plays the mic-defence recovery
+	if v:
+		# Remember the beat quality of this guard press for the Record Static Parry.
+		_guard_beat = _judge_beat()
+		_guard_pressed_tick = _tick_count
 	_play_state_anim()
 
 

@@ -13,6 +13,10 @@ extends Node2D
 ## late-night progression (AGENTS.md §9). Round 1 defaults to phase 0; **N** cycles it
 ## by hand until the round controller drives it.
 ##
+## Match flow: a best-of-3 Sound Clash runs by default (RoundController) — announce, fight,
+## K.O., next round with the day → sunset → night lighting, then a rematch banner and restart.
+## R reloads the scene and starts a fresh match; N still overrides the lighting by hand.
+##
 ## Workshop keys: R reset · G dummy guard (manual guard override in every AI mode) ·
 ## Y cycle P2's sparring AI mode · M mute · B bird hazard · N time of day
 ## · J/K/L/I attacks · T taunt · C crouch · WASD/arrows move.
@@ -63,6 +67,7 @@ const TIME_TRANSITION_SEC := 3.0
 @onready var hud: Control = $HUD/Ui/Hud
 @onready var sparring: SparringController = $SparringAI
 @onready var crowd: CrowdLine = $CrowdLine
+@onready var rounds: RoundController = $RoundController
 @onready var bird: BirdHazard = $BirdHazard
 @onready var speaker_rings: SpeakerPulse = $SpeakerRings
 @onready var time_modulate: CanvasModulate = $TimeOfDay
@@ -94,6 +99,7 @@ func _ready() -> void:
 	hud.set("p2", p2)
 	hud.set("beat", beat)
 	hud.set("sparring", sparring)
+	hud.set("rounds", rounds)
 
 	beat.beat.connect(_on_beat)
 	crowd.setup(beat)
@@ -101,8 +107,14 @@ func _ready() -> void:
 	p2.hype_surge_started.connect(_on_hype_surge)
 	p1.hype_milestone_reached.connect(_on_hype_milestone)
 	p2.hype_milestone_reached.connect(_on_hype_milestone)
+	p1.static_parry_triggered.connect(_on_static_parry)
+	p2.static_parry_triggered.connect(_on_static_parry)
 
-	set_time_of_day(_time_phase, 0.0)   # Round 1: afternoon sun, no fade on load
+	rounds.setup(p1, p2, self)
+	if rounds.enabled:
+		rounds.start_match()          # Round 1 lighting is applied by the round controller
+	else:
+		set_time_of_day(_time_phase, 0.0)
 
 	music.finished.connect(_restart_click_loop)
 	if not music.playing:
@@ -147,6 +159,17 @@ func _on_hype_surge(seconds: float) -> void:
 ## 50 % Crowd Hype: the line reshuffles itself even before the surge lands.
 func _on_hype_milestone(_percent: int) -> void:
 	crowd.celebrate()
+
+
+## Record Static Parry: an electric vinyl-static spark between the two fighters.
+func _on_static_parry(defender: BaseFighter, attacker: BaseFighter) -> void:
+	if defender == null or attacker == null:
+		return
+	var spark := ParrySpark.new()
+	spark.global_position = (defender.global_position + attacker.global_position) * 0.5 \
+		+ Vector2(0.0, -110.0)
+	add_child(spark)
+	_on_shake(0.5, 0.12)
 
 
 ## Stage thump: one micro-pulse per 132 BPM downbeat (BeatService.beat).

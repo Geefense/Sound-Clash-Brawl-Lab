@@ -314,7 +314,7 @@ This register includes all phrases recoverable from the visible conversation, su
 
 | Exact phrase / recorded variant | Meaning / cultural note |
 | --- | --- |
-| `Yuh too Bod Mine!!` | Owner's gloss: “You're to Bad Mind”; intended meaning: “you're evil.” Preserve the phonetic spelling. Trigger/performance not yet specified. |
+| `Yuh too Bod Mine!!` | Owner's gloss: “You're to Bad Mind”; intended meaning: “you're evil.” Preserve the phonetic spelling. Trigger/performance not yet specified. **Approved as a playful, family-friendly comedic voice taunt (2026-11-15).** |
 | `Yuh Betta stop-pit` | You better stop it. Owner-supplied wording; preserve exact spelling and capitalization. |
 | `Cawn soup` | Corn soup. Owner's spelling guides pronunciation; retain it in performance notes/dialogue. A big pot is also a proposed crowd-interference throwable. |
 | `Outta Awduh` | Out of Order. |
@@ -324,7 +324,7 @@ This register includes all phrases recoverable from the visible conversation, su
 | `Stop-pit!` | Stop it. |
 | `Yam dat` | Eat that. |
 | `Hole Lawn deh` | Hold on there. |
-| `Shut-Tup!` | Shut Up! Owner's favourite phrase to sprinkle throughout: flexible recurring crowd/announcer/fighter interjection, without overusing it. |
+| `Shut-Tup!` | Shut Up! Owner's favourite phrase to sprinkle throughout: flexible recurring crowd/announcer/fighter interjection, without overusing it. **Approved as a playful, family-friendly comedic voice taunt (2026-11-15).** |
 | `Shut-Tup Mon!` | Shut Up, Man; preserve exact wording. |
 | `Shut tup Mon!` | Separately recorded variant; do not normalize automatically. |
 | `Mon` | Man. |
@@ -340,7 +340,7 @@ This register includes all phrases recoverable from the visible conversation, su
 | `Wawk Good` | Walk Good; be safe; can replace goodbye. |
 | `Eat good` | Taste good. |
 | `Tase` | Taste. |
-| `Heeeyaut!` | Idiot. |
+| `Heeeyaut!` | Idiot. **Approved as a playful, family-friendly comedic voice taunt (2026-11-15).** |
 | `Likkle` | Little. |
 | `Heeed` | Pronunciation component; owner specified silent D. |
 | `Yaut` | Pronounced like the boat “yacht”; retain the owner's spelling. |
@@ -583,9 +583,9 @@ here is gameplay-verified; implementation status is stated per item.
     `LIGHTAH!`, `FORWARD!`, `WHEEL AND COME AGAIN!` and `BIG TUNE!` — and no offensive profanity may
     ship. The policy governs performance: §8 keeps every Patois line verbatim, and no existing entry
     is deleted, softened or "corrected". `FORWARD!` already ships in the 100 % Hype banner (item 10).
-    [TODO] The owner has not yet ruled which existing §8 jabs (for example `Heeeyaut!`, `Shut-Tup!`,
-    `Yuh too Bod Mine!!`) may still be used as comedic taunts in shipped audio and which are retired
-    from voice, so nothing is silently reclassified here.
+    **Resolved 2026-11-15:** `Heeeyaut!`, `Shut-Tup!` and `Yuh too Bod Mine!!` are **approved as
+    playful, family-friendly comedic voice taunts**. Any explicit spelling variants of those lines
+    stay **text-archive only** — never spoken and never displayed in the HUD or arena copy.
 
 13. **Locked-in combat & sound-system roster — approved starting names, not implemented
     (2026-11-15).** Approved starting Dancehall moves: **The Bogle**, **Log On**,
@@ -598,6 +598,28 @@ here is gameplay-verified; implementation status is stated per item.
     spend Hype/Dubplate, and the promotion criteria all remain open. Nothing here moves the Jan 14,
     2027 core-mechanics lock or the April 21, 2027 six-selector target, and none of it authorises new
     art or audio spend.
+
+14. **Record Static Parry — implemented (2026-11-15).** Guard pressed inside `BeatService`'s ±70 ms
+    judgement window arms a 10-tick parry window; if the opponent's strike connects inside it the hit
+    is negated entirely — no chip damage and no blockstun for the defender. The defender gains **+20
+    Crowd Hype**, `static_parry_triggered(defender, attacker)` fires, `TestArena` spawns an electric
+    vinyl-static `ParrySpark` between the fighters, and the attacker is stunned for 18 ticks so the
+    defender can punish. The guard's beat quality is judged at the press (`_guard_beat`) and the parry
+    resolves inside `receive_strike`, so it never bypasses the strike pipeline. [TODO] The ±70 ms
+    window, +20 hype and 18-tick stun are unplayed values, and the parry has no art or audio yet.
+
+15. **Best-of-3 round lifecycle — implemented (2026-11-15).** `RoundController` (active by default;
+    `enabled` export) runs announce → fight → K.O. → next round → result, best of three. Round 1 is
+    **Afternoon Sun** (`set_time_of_day(0)`), Round 2 **Golden Hour** (`set_time_of_day(1, 3.0)`),
+    Round 3 / final **Late-Night Sound Clash** (`set_time_of_day(2, 3.0)`). Banners are
+    `ROUND 1 — AFTERNOON CLASH`, `ROUND 2 — SUNSET HEAT`, `FINAL ROUND — LATE-NIGHT DUBPLATE`,
+    `K.O.!` and `WHEEL AND COME AGAIN!` — all clean under item 12. Between rounds both fighters reset
+    through `BaseFighter.reset_for_round()` (health, hype, state, buffered inputs, hitstop, position
+    420 / 860), and input is locked during announce and result phases. After the rematch banner the
+    match restarts from Round 1. **R** still reloads the scene for a clean match and **N** still
+    overrides the lighting by hand (the next round start sets it back). [TODO] There is no round
+    timer, time-out or draw path — the TypeScript 90 s rule is not ported — and the HUD banner boxes
+    and round-win pips are unplayed.
 
 Implementation status: written into `/godot`; **not played**. Until 2026-11-15 the port had never
 been opened in an engine. The sand-stage and round-lighting slices were then imported and run headless
@@ -645,6 +667,8 @@ For Godot, once created: [TODO] pin exact import/headless launch/test/export com
 | Dancehall crowd line + 100% Hype Surge | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 6 sliced spectators (Queen centre) + 2 record crates at the stacks, beat bob, FORWARD!/PULL UP! banner, 5 s 1.20× / faster-recovery boost; headless checks pass; **on-screen look and balance [TODO]**. |
 | 15-character two-row rotating crowd + contact shadows | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 9 new slices (pool 15), front/back rows, 12–18 s and 50 %/100 % hype reshuffles, GroundShadow on crowd and crates; headless checks pass; **on-screen look [TODO]**. |
 | Family-friendly crowd policy + locked-in move/mechanic roster | Recorded 2026-11-15 in §9 items 12–13 and §8. Documentation only: no move, mechanic, voice line or banner beyond the existing surge banner is implemented. |
+| Record Static Parry | Implemented 2026-11-15 on `stage/sound-clash-sand`: on-beat guard negates the hit, +20 hype, 18-tick attacker stun, ParrySpark; headless parry/block checks pass; **on-screen look and tuning [TODO]**. |
+| Best-of-3 round lifecycle | Implemented 2026-11-15: RoundController announce → K.O. → rematch, day → sunset → night per round, fighter resets, HUD banners + win pips; headless three-round run passes; **no timer/draw rule, on-screen layout [TODO]**. |
 
 Next agent: finish the isolated walk review, reconcile asset/engine branches, close the minimal rhythm reference gap, freeze the TypeScript baseline and complete the first Godot port inside Nov 13–26. Then follow Section 2 date gates. Keep costs at zero; preserve the April 21, 2027 target and six-selector commitment while reporting scope risks promptly.
 
@@ -709,6 +733,23 @@ accelerated it), and none of it has been played.
 Re-verified 2026-11-15 with the §9 owner-decision update applied (no runtime change): the import is
 clean, the same harness passed again (15 members at 5/6/4, 36 swaps, Queen still at x 640, shadows at
 556/516/592, the 50 % and 100 % hype paths) and `TestArena.tscn` booted for 150 frames.
+
+### Record Static Parry + Best-of-3 rounds — headless verification, 2026-11-15
+
+Godot 4.5.stable headless; import clean. Temporary harnesses on the real `TestArena.tscn` asserted:
+**parry** — an on-beat guard press followed by a jab resolved `parried` with 0 damage, exactly one
+`static_parry_triggered`, one `ParrySpark` spawned, +20 hype and the attacker left in `HITSTUN`; the
+same jab against an off-beat guard stayed an ordinary block (2 chip damage, defender in blockstun).
+**rounds** — Round 1 announced `ROUND 1 — AFTERNOON CLASH` on phase 0 with input locked; a K.O. gave
+the `K.O.!` banner and 1-0, then Round 2 `ROUND 2 — SUNSET HEAT` on phase 1 with both fighters back
+at 100 hp and their start positions; a P2 win levelled 1-1 and opened `FINAL ROUND — LATE-NIGHT
+DUBPLATE` on phase 2; a third K.O. reached `MATCH_OVER` with `WHEEL AND COME AGAIN!`, after which the
+match restarted at Round 1, 0-0, phase 0. Both harnesses were deleted before the commit, and the
+shipping scene booted 200 frames clean.
+
+**Not verified:** no engine render, so the banner boxes, win pips and parry spark were never seen;
+the ±70 ms parry window, +20 hype and 18-tick stun are unplayed; and there is still no round timer,
+time-out or draw path.
 
 
 ### Newer knee-lift BOX in main handoff — November 14, 2026 (Toronto)

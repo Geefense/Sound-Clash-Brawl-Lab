@@ -82,6 +82,13 @@ Stage mechanics, all presentation-only (no combat rule, hit registry or round st
   primitives — no new art assets were invented.
 - **132 BPM thump** — `BeatService.beat` → `SpeakerPulse.pulse()` (soft ring at 169, 411 and
   1099, 425) plus a 0.8 % camera zoom micro-pulse that decays in ~0.14 s.
+- **Round lighting** — `TimeOfDay` (`CanvasModulate`) tints the world canvas; the HUD is in a
+  `CanvasLayer` so it stays readable. `TestArena.set_time_of_day(phase, duration = 3.0)` cross-fades
+  the tint, the `Floodlight` (warm additive gradient over the centre lane, night only) and the
+  `SunGlow` alpha with one 3 s sine tween. Phase 0 Afternoon Sun `(1.0, 0.98, 0.94)` · phase 1 Golden
+  Hour `(1.0, 0.78, 0.58)` · phase 2 Late-Night `(0.48, 0.55, 0.80)` with floodlight 0.34. **N**
+  cycles the phases; Round 1 is applied instantly on load. [TODO] Nothing calls it per round yet —
+  the arena has no round lifecycle, so the round controller must drive `set_time_of_day(round - 1)`.
 
 **Checks actually run** (Godot 4.3.stable.official headless, Linux, temp harness deleted afterwards):
 `--import` then a physics run of `TestArena.tscn`. Results: project imports with no script or
@@ -90,7 +97,10 @@ spawns, flies and drops — one run splattered the standing dummy (splat parente
 height, both healths still 100), another was dodged and became a sand decal at (820, 600); walking
 emitted dust (`amount` 11, `emitting` true); a scripted beat set `thump = 1` and started the speaker
 rings; the shadow tracked the fighter at y = 600; camera zoom clamped at 1.6 and the fighter stayed
-on the floor.
+on the floor. Time of day: phase 0 reported tint `(1, 0.98, 0.94)` with floodlight 0 and sun 1; an
+instant `set_time_of_day(2, 0)` reached `(0.48, 0.55, 0.8)` / 0.34 / 0.22; a 0.25 s tween to phase 1
+landed exactly on `(1, 0.78, 0.58)` / 0.1 / 0.6; `cycle_time_of_day()` advanced 1 → 2. The `.tscn`
+writer needs 4-component `Color(...)` values — a 3-component one is a scene parse error, not a warning.
 
 **Not verified:** nothing has been looked at on screen — no GPU render, no colour/readability
 judgement, no feel check of the thump, dust density, mote density, gradient strength, or bird

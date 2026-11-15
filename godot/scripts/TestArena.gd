@@ -9,8 +9,12 @@ extends Node2D
 ## inside the sand lane. The camera never zooms out past 1.0 or leaves the stage
 ## rectangle, so the single-layer art always covers the view.
 ##
-## Workshop keys: R reset · G dummy guard · M mute · B bird hazard · J/K/L/I attacks
-## · T taunt · C crouch · WASD/arrows move.
+## Round lighting: `set_time_of_day(phase)` runs the afternoon → golden hour →
+## late-night progression (AGENTS.md §9). Round 1 defaults to phase 0; **N** cycles it
+## by hand until the round controller drives it.
+##
+## Workshop keys: R reset · G dummy guard · M mute · B bird hazard · N time of day
+## · J/K/L/I attacks · T taunt · C crouch · WASD/arrows move.
 
 const CLICK_LOOP_SECONDS := 10.0      # 22 beats at 132 BPM
 const CAMERA_MIN_DISTANCE := 420.0
@@ -22,6 +26,34 @@ const CAMERA_FOCUS_LIFT := 140.0
 const THUMP_ZOOM := 0.008             # 132 BPM speaker thump: 0.8% micro-pulse
 const THUMP_DECAY := 7.0
 
+## Round-based time of day (AGENTS.md §9 owner decision). `tint` is a CanvasModulate
+## over the whole world canvas — the HUD lives in a CanvasLayer, so it stays readable —
+## and `flood` is the aim of the warm additive floodlight over the centre lane, which
+## only rises at night so both fighters stay crisp against the dark sky.
+## [TODO] Phase-to-round mapping is exposed as an API, not driven: this workshop arena
+## has no round lifecycle yet. The match controller calls set_time_of_day(round - 1).
+const TIME_PHASES := [
+	{
+		"name": "Afternoon Sun",
+		"tint": Color(1.0, 0.98, 0.94),
+		"flood": 0.0,
+		"sun": 1.0,
+	},
+	{
+		"name": "Golden Hour / Sunset Clash",
+		"tint": Color(1.0, 0.78, 0.58),
+		"flood": 0.1,
+		"sun": 0.6,
+	},
+	{
+		"name": "Late-Night Sound Clash",
+		"tint": Color(0.48, 0.55, 0.80),
+		"flood": 0.34,
+		"sun": 0.22,
+	},
+]
+const TIME_TRANSITION_SEC := 3.0
+
 @onready var p1: BaseFighter = $P1
 @onready var p2: BaseFighter = $P2
 @onready var beat: BeatService = $BeatService
@@ -30,11 +62,16 @@ const THUMP_DECAY := 7.0
 @onready var hud: Control = $HUD/Ui/Hud
 @onready var bird: BirdHazard = $BirdHazard
 @onready var speaker_rings: SpeakerPulse = $SpeakerRings
+@onready var time_modulate: CanvasModulate = $TimeOfDay
+@onready var floodlight: Sprite2D = $Floodlight
+@onready var sun_glow: Sprite2D = $SunGlow
 
 var _dummy_guard: bool = false
 var _shake_time: float = 0.0
 var _shake_intensity: float = 0.0
 var _thump: float = 0.0
+var _time_phase: int = 0
+var _time_tween: Tween = null
 
 
 func _ready() -> void:
@@ -53,6 +90,8 @@ func _ready() -> void:
 	hud.set("beat", beat)
 
 	beat.beat.connect(_on_beat)
+
+	set_time_of_day(_time_phase, 0.0)   # Round 1: afternoon sun, no fade on load
 
 	music.finished.connect(_restart_click_loop)
 	if not music.playing:
@@ -86,6 +125,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_B:
 			if bird != null:
 				bird.spawn_now()
+		KEY_N:
+			cycle_time_of_day()
 
 
 ## Stage thump: one micro-pulse per 132 BPM downbeat (BeatService.beat).
@@ -93,6 +134,48 @@ func _on_beat(_beat_index: int) -> void:
 	_thump = 1.0
 	if speaker_rings != null:
 		speaker_rings.pulse()
+
+
+# =========================================================================
+# Round-based time of day (AGENTS.md §9)
+# =========================================================================
+## phase 0 = Afternoon Sun (Round 1), 1 = Golden Hour (Round 2), 2 = Late Night
+## (Round 3 / final). `duration` 0 applies instantly; otherwise the tint, floodlight
+## and sun glow cross-fade together.
+func set_time_of_day(phase: int, duration: float = TIME_TRANSITION_SEC) -> void:
+	_time_phase = clampi(phase, 0, TIME_PHASES.size() - 1)
+	var target: Dictionary = TIME_PHASES[_time_phase]
+	var tint: Color = target["tint"]
+	var flood: float = target["flood"]
+	var sun: float = target["sun"]
+
+	if _time_tween != null and _time_tween.is_valid():
+		_time_tween.kill()
+	if duration <= 0.0:
+		time_modulate.color = tint
+		floodlight.modulate.a = flood
+		sun_glow.modulate.a = sun
+		return
+
+	_time_tween = create_tween()
+	_time_tween.set_parallel(true)
+	_time_tween.set_trans(Tween.TRANS_SINE)
+	_time_tween.set_ease(Tween.EASE_IN_OUT)
+	_time_tween.tween_property(time_modulate, "color", tint, duration)
+	_time_tween.tween_property(floodlight, "modulate:a", flood, duration)
+	_time_tween.tween_property(sun_glow, "modulate:a", sun, duration)
+
+
+func cycle_time_of_day(duration: float = TIME_TRANSITION_SEC) -> void:
+	set_time_of_day((_time_phase + 1) % TIME_PHASES.size(), duration)
+
+
+func time_of_day_phase() -> int:
+	return _time_phase
+
+
+func time_of_day_name() -> String:
+	return String(TIME_PHASES[_time_phase]["name"])
 
 
 func _restart_click_loop() -> void:

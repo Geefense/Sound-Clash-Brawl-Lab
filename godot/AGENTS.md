@@ -499,13 +499,28 @@ here is gameplay-verified; implementation status is stated per item.
    when dodged. Values (5 %/15 s, 12-tick flinch, thump amount, particle rates, speaker-ring centres)
    are hand-set defaults awaiting a playtest, not approved tuning.
 
+8. **Round-based day → sunset → night progression — approved (2026-11-15).** Match lighting follows
+   the round: **Round 1 — Afternoon Sun** (`Color(1.0, 0.98, 0.94)`), **Round 2 — Golden Hour /
+   Sunset Clash** (`Color(1.0, 0.78, 0.58)`), **Round 3 / final — Late-Night Sound Clash**
+   (`Color(0.48, 0.55, 0.80)`). The late round pairs the night tint with a subtle warm arena
+   floodlight over the **centre fighting lane** so both fighters stay crisp and readable against the
+   night sky. Implemented with Godot's built-in modulation and **zero new art**: a `CanvasModulate`
+   over the world canvas (the HUD lives in a `CanvasLayer`, so it is never tinted), a warm additive
+   `Floodlight` gradient sprite over the lane that only rises at night, and the existing `SunGlow`
+   dimmed with it. Transitions cross-fade with a 3 s sine tween via
+   **`TestArena.set_time_of_day(phase, duration = 3.0)`**; **N** cycles Afternoon → Sunset → Night for
+   playtesting and the HUD legend lists it. Round 1 is applied instantly on load.
+   [TODO] The phase-to-round mapping is an **API, not a driven rule**: the workshop arena still has no
+   round lifecycle, so the future round controller must call `set_time_of_day(round - 1)`. The night
+   tint and floodlight strength are hand-set defaults awaiting a playtest.
+
 Implementation status: written into `/godot`; **not played**. Until 2026-11-15 the port had never
-been opened in an engine. The sand-stage slice was then imported and run headless in
-Godot 4.3.stable (no GPU, no audio device, no on-screen look), which proves the project imports with
-no script/resource errors and that the stage, shadow, dust, beat-thump and bird paths execute — not
-that any of it looks or feels right. No hitbox, guard, beat-window or HUD behaviour was re-verified,
-and the port remains unapproved. Details and exact commands: "Sound Clash Sand Stage integrated"
-below.
+been opened in an engine. The sand-stage and round-lighting slices were then imported and run headless
+in Godot 4.3.stable (no GPU, no audio device, no on-screen look), which proves the project imports
+with no script/resource errors and that the stage, shadow, dust, beat-thump, bird and time-of-day
+paths execute — not that any of it looks or feels right. No hitbox, guard, beat-window or HUD
+behaviour was re-verified, and the port remains unapproved. Details and exact commands: "Sound Clash
+Sand Stage integrated" below.
 
 ### Verification commands and acceptance evidence
 
@@ -540,6 +555,7 @@ For Godot, once created: [TODO] pin exact import/headless launch/test/export com
 | Venues, Character Select and Arcade | Scheduled Mar 12–Apr 1; stretch #7–#8 only if ahead. |
 | Birthday release / May Jamaica trip | Launch target Apr 21, 2027; final QA Apr 2–21; trip May 2027. |
 | Sound Clash Sand Stage (art + foot dust + shadows + atmosphere + speaker thump + rare bird) | Implemented 2026-11-15 on branch `stage/sound-clash-sand`; headless Godot 4.3 import/run clean; **on-screen playtest [TODO]**. |
+| Round-based day → sunset → night lighting | Implemented 2026-11-15 on branch `stage/sound-clash-sand`; headless checks of all three phases, tween and N cycle pass; round-controller driving and **on-screen look [TODO]**. |
 
 Next agent: finish the isolated walk review, reconcile asset/engine branches, close the minimal rhythm reference gap, freeze the TypeScript baseline and complete the first Godot port inside Nov 13–26. Then follow Section 2 date gates. Keep costs at zero; preserve the April 21, 2027 target and six-selector commitment while reporting scope risks promptly.
 
@@ -625,3 +641,40 @@ regenerates them on open).
 **Next:** Garfield opens `/godot` on the target device, presses **B** a few times and plays a round,
 then tunes or rejects the hand-set stage values above. Fixing `TestArena.gd`'s camera clamp is
 reversible if the tighter framing is not wanted.
+
+
+### Round-based day → sunset → night lighting — November 15, 2026 (Toronto)
+
+Same branch and commit series as the sand stage (`stage/sound-clash-sand`). Recorded as §9 Owner
+Decisions Log item 8.
+
+`TestArena.tscn` gained two nodes and no art: **`TimeOfDay`** (`CanvasModulate`, world canvas only —
+the HUD `CanvasLayer` is never tinted) and **`Floodlight`** (a radial warm gradient sprite with an
+additive `CanvasItemMaterial` at z 5, i.e. above the fighters, so its soft bloom restores warmth and
+contrast over the centre lane at night instead of hiding them).
+
+`TestArena.gd` gained `TIME_PHASES` (Afternoon Sun / Golden Hour / Late-Night with tint, floodlight
+aim and sun-glow aim), **`set_time_of_day(phase, duration = 3.0)`** — one parallel `TRANS_SINE`
+`EASE_IN_OUT` tween over the tint, the floodlight alpha and `SunGlow`'s alpha, killed and replaced if
+re-triggered, applied instantly at `duration <= 0` — plus `cycle_time_of_day()`, `time_of_day_phase()`,
+`time_of_day_name()`, and the **N** key. Round 1 is applied on `_ready`. `TestHud.gd`'s legend now
+lists `N time of day`.
+
+**Checks actually run** (Godot 4.3.stable headless, temp harness deleted): phase 0 = tint
+`(1, 0.98, 0.94)`, floodlight 0, sun 1; `set_time_of_day(2, 0)` = `(0.48, 0.55, 0.8)`, 0.34, 0.22;
+a 0.25 s tween from night to phase 1 landed exactly on `(1, 0.78, 0.58)`, 0.1, 0.6; `cycle_time_of_day()`
+advanced 1 → 2 and the name followed. The full arena then ran 240 headless physics frames with no
+script, scene or resource errors.
+
+**Not verified:** no GPU render — the night tint, floodlight strength, sunset warmth and whether the
+lane still reads at phase 2 are all unlooked-at defaults. No round actually drives the phases yet:
+the workshop arena has no round lifecycle, so this is an API plus a test key, not a working
+"Round 2 turns orange" rule. Wiring `set_time_of_day(round - 1)` into the round controller (and
+deciding whether the 3 s fade plays between rounds or under the round intro) stays [TODO].
+
+**Note for whoever writes the next `.tscn` by hand:** the text scene format needs 4-component
+`Color(r, g, b, a)`; a 3-component one is a hard scene parse error (found and fixed here), unlike
+GDScript where `Color(r, g, b)` is fine.
+
+**Next:** owner playtests **N** through all three phases on the target device and rules on tint
+strength and floodlight amount before any round controller is wired to it.

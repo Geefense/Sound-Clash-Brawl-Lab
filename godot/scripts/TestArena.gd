@@ -13,7 +13,8 @@ extends Node2D
 ## late-night progression (AGENTS.md §9). Round 1 defaults to phase 0; **N** cycles it
 ## by hand until the round controller drives it.
 ##
-## Workshop keys: R reset · G dummy guard · M mute · B bird hazard · N time of day
+## Workshop keys: R reset · G dummy guard (manual guard override in every AI mode) ·
+## Y cycle P2's sparring AI mode · M mute · B bird hazard · N time of day
 ## · J/K/L/I attacks · T taunt · C crouch · WASD/arrows move.
 
 const CLICK_LOOP_SECONDS := 10.0      # 22 beats at 132 BPM
@@ -60,6 +61,7 @@ const TIME_TRANSITION_SEC := 3.0
 @onready var music: AudioStreamPlayer = $Music
 @onready var camera: Camera2D = $Camera2D
 @onready var hud: Control = $HUD/Ui/Hud
+@onready var sparring: SparringController = $SparringAI
 @onready var bird: BirdHazard = $BirdHazard
 @onready var speaker_rings: SpeakerPulse = $SpeakerRings
 @onready var time_modulate: CanvasModulate = $TimeOfDay
@@ -79,8 +81,10 @@ func _ready() -> void:
 	p2.beat_service = beat
 	beat.audio_player = music
 
-	p2.use_local_input = false          # the dummy is driven below
+	p2.use_local_input = false          # P2 is driven by the sparring controller only
 	p2.input_prefix = "p2_"
+	sparring.setup(p1, p2, beat)
+	sparring.manual_guard = _dummy_guard
 
 	p1.camera_shake_requested.connect(_on_shake)
 	p2.camera_shake_requested.connect(_on_shake)
@@ -88,6 +92,7 @@ func _ready() -> void:
 	hud.set("p1", p1)
 	hud.set("p2", p2)
 	hud.set("beat", beat)
+	hud.set("sparring", sparring)
 
 	beat.beat.connect(_on_beat)
 
@@ -105,13 +110,6 @@ func _process(delta: float) -> void:
 	hud.queue_redraw()
 
 
-func _physics_process(_delta: float) -> void:
-	# Dummy: stand, or hold guard when toggled.
-	var c := BaseFighter.Command.new()
-	c.guard = _dummy_guard
-	p2.command = c
-
-
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey) or not event.pressed or event.echo:
 		return
@@ -120,6 +118,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_tree().reload_current_scene()
 		KEY_G:
 			_dummy_guard = not _dummy_guard
+			if sparring != null:
+				sparring.manual_guard = _dummy_guard
+		KEY_Y:
+			if sparring != null:
+				sparring.cycle_mode()
 		KEY_M:
 			music.stream_paused = not music.stream_paused
 		KEY_B:

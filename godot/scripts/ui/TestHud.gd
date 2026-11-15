@@ -1,10 +1,11 @@
 extends Control
-## Workshop HUD: health bars, P1 Crowd Hype bar and a beat pulse.
+## Workshop HUD: health bars, P1 Crowd Hype bar, a beat pulse and the P2 AI mode banner.
 ## UNAPPROVED. Drawn with primitives only — no theme, no art.
 
 var p1: BaseFighter
 var p2: BaseFighter
 var beat: BeatService
+var sparring: SparringController
 
 const BAR_W := 320.0
 const BAR_H := 18.0
@@ -19,6 +20,7 @@ func _draw() -> void:
 	_bar(Vector2(width - MARGIN - BAR_W, MARGIN), BAR_W, p2.health, float(p2.max_health), Color(0.9, 0.4, 0.4), true)
 	_hype_bar(Vector2(MARGIN, MARGIN + BAR_H + 8.0))
 	_beat_pulse(Vector2(width * 0.5, MARGIN + BAR_H * 0.5))
+	_ai_banner(Vector2(width * 0.5 - 150.0, MARGIN + 40.0))
 	_legend(Vector2(width * 0.5 - 210.0, MARGIN + 96.0))
 
 
@@ -52,7 +54,22 @@ func _beat_pulse(centre: Vector2) -> void:
 	draw_circle(centre, 9.0 if on_beat else 6.0, colour)
 
 
+## Active P2 sparring AI mode. Y cycles it; G stays a manual guard override in every mode.
+func _ai_banner(pos: Vector2) -> void:
+	if sparring == null:
+		return
+	var box := Rect2(pos, Vector2(300, 36))
+	draw_rect(box, Color(0.08, 0.08, 0.1, 0.72), true)
+	draw_rect(box, Color(0.55, 0.75, 0.95, 0.5), false, 1.0)
+	draw_string(ThemeDB.fallback_font, pos + Vector2(10, 16),
+		"P2 AI %d · %s" % [sparring.mode_index(), sparring.mode_name()],
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.95, 0.95, 1.0))
+	draw_string(ThemeDB.fallback_font, pos + Vector2(10, 30),
+		"%s · Y switch · G guard" % sparring.mode_tag(),
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.7, 0.78, 0.9))
+
+
 func _legend(pos: Vector2) -> void:
-	var keys := "J jab · K box · L tump · I upper box · T taunt · C crouch · B bird · N time of day · R reset · G dummy guard · M mute"
+	var keys := "J jab · K box · L tump · I upper box · T taunt · C crouch · Y AI mode · B bird · N time of day · R reset · G dummy guard · M mute"
 	draw_string(ThemeDB.fallback_font, pos, keys, HORIZONTAL_ALIGNMENT_LEFT, -1, 12,
 		Color(0.7, 0.72, 0.78))

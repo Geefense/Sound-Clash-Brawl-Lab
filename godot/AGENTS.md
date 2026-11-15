@@ -514,6 +514,22 @@ here is gameplay-verified; implementation status is stated per item.
    round lifecycle, so the future round controller must call `set_time_of_day(round - 1)`. The night
    tint and floodlight strength are hand-set defaults awaiting a playtest.
 
+9. **Smart Sparring AI modes for P2 — owner-requested workshop tool, implemented (2026-11-15).**
+   `godot/scripts/ai/SparringController.gd` drives the sparring dummy by writing
+   `BaseFighter.Command` only. It never assigns FSM state, calls `change_state`, moves a hitbox or
+   skips frame data, so every AI attack takes the same startup/active/recovery path, input buffer
+   and input-time beat judgement as a human press. `TestArena.gd` cycles the modes with **Y** and
+   `TestHud.gd` draws the active mode in a banner under the beat pulse. **0 Workshop Dummy** is the
+   old behaviour exactly: no input at all, guard while **G** is toggled. **1 Counter-Puncher** holds
+   the mic-defence guard inside 190 px and punishes P1's recovery — a whiff and a blocked hit both
+   end there — with Jab (≤150 px) or Sparta Kick (≤166 px). **2 Riddim Rusher** takes a beat-step in
+   on every 132 BPM beat and throws a two-bar on-beat string (Jab → Sparta Kick → BOX) from
+   `RUSH_PATTERN`, stepping instead of swinging when out of reach. **3 Spacing & Skank Baiter** runs
+   two-beats-in / two-beats-out footsies, skank taunts above 330 px and throws the heavy BOX on a P1
+   dash-in. **G stays an instant manual guard override in every mode** (ORed into the command).
+   [TODO] Every range, cooldown, punish window and `RUSH_PATTERN` itself are hand-set lab defaults
+   with no playtest; the controller is a test partner, not shipping opponent AI.
+
 Implementation status: written into `/godot`; **not played**. Until 2026-11-15 the port had never
 been opened in an engine. The sand-stage and round-lighting slices were then imported and run headless
 in Godot 4.3.stable (no GPU, no audio device, no on-screen look), which proves the project imports
@@ -556,8 +572,37 @@ For Godot, once created: [TODO] pin exact import/headless launch/test/export com
 | Birthday release / May Jamaica trip | Launch target Apr 21, 2027; final QA Apr 2–21; trip May 2027. |
 | Sound Clash Sand Stage (art + foot dust + shadows + atmosphere + speaker thump + rare bird) | Implemented 2026-11-15 on branch `stage/sound-clash-sand`; headless Godot 4.3 import/run clean; **on-screen playtest [TODO]**. |
 | Round-based day → sunset → night lighting | Implemented 2026-11-15 on branch `stage/sound-clash-sand`; headless checks of all three phases, tween and N cycle pass; round-controller driving and **on-screen look [TODO]**. |
+| Smart Sparring AI modes (P2) | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 4 modes cycle on **Y**, HUD banner, **G** guard override; headless Godot 4.5 runs pass for every mode; **on-screen/feel playtest [TODO]**. |
 
 Next agent: finish the isolated walk review, reconcile asset/engine branches, close the minimal rhythm reference gap, freeze the TypeScript baseline and complete the first Godot port inside Nov 13–26. Then follow Section 2 date gates. Keep costs at zero; preserve the April 21, 2027 target and six-selector commitment while reporting scope risks promptly.
+
+### Smart Sparring AI — headless verification, 2026-11-15
+
+Written into `/godot` on branch `stage/sound-clash-sand`. Engine: **Godot 4.5.stable** headless (no
+GPU, no audio device, no on-screen look), imported with
+`Godot_v4.5-stable_linux.x86_64 --headless --path godot --import` (clean, 50 assets). Each mode was
+then run through a **temporary** harness that instantiated `TestArena.tscn`, stopped the click so
+`BeatService` used its wall-clock dev fallback, drove a scripted P1 (walk in → jab/BOX → retreat),
+and ticked 480 physics frames (~8 s) per mode. The harness was deleted before the commit; it is not
+part of the project. Results:
+
+| Mode | P2 attacks started | Guard ticks | Taunts | P1 HP left | Result |
+| --- | --- | --- | --- | --- | --- |
+| 0 Workshop Dummy | 0 | 0 | 0 | 100 | pass |
+| 1 Counter-Puncher | 5 | 83 | 0 | 34 | pass |
+| 2 Riddim Rusher | 4 | 0 | 0 | 48 | pass |
+| 3 Spacing & Skank Baiter | 2 | 0 | 3 | 85 | pass |
+
+The **G manual-guard override** was checked separately (mode 2 with `manual_guard = true` → P2
+guarding in `IDLE`: pass), and `TestArena.tscn` booted for 150 frames on the Dummy default. No
+script, resource, missing-node or illegal-transition warning was printed by any of those runs. The
+`--quit-after` main-scene run does print Godot's exit-time "ObjectDB instances leaked / 1 resources
+still in use" cleanup notice; the identical notice appears with the pre-change `TestArena.tscn`,
+`TestArena.gd` and `TestHud.gd` restored, so it is a forced-quit artefact and not an AI regression.
+
+**Not verified:** frame data, hitbox reach, HUD banner placement or AI feel — nothing was watched on
+screen and no mode has been played by the owner. These runs prove the modes tick, guard, punish,
+step, attack on the beat and taunt without errors; they do not prove any of it feels right.
 
 
 ### Newer knee-lift BOX in main handoff — November 14, 2026 (Toronto)

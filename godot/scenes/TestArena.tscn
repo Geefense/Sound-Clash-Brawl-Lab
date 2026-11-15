@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3]
+[gd_scene load_steps=19 format=3]
 
 [ext_resource type="Script" path="res://scripts/TestArena.gd" id="1_arena"]
 [ext_resource type="PackedScene" path="res://scenes/BaseFighter.tscn" id="2_fighter"]
@@ -8,6 +8,7 @@
 [ext_resource type="Texture2D" path="res://assets/stages/sound_clash_sand_stage_1280x720.png" id="6_stage"]
 [ext_resource type="Script" path="res://scripts/stages/BirdHazard.gd" id="7_bird"]
 [ext_resource type="Script" path="res://scripts/stages/SpeakerPulse.gd" id="8_speakers"]
+[ext_resource type="Script" path="res://scripts/ai/SparringController.gd" id="9_ai"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_floor"]
 size = Vector2(1280, 40)
@@ -135,6 +136,9 @@ script = ExtResource("7_bird")
 [node name="BeatService" type="Node" parent="."]
 script = ExtResource("3_beat")
 bpm = 132.0
+
+[node name="SparringAI" type="Node" parent="."]
+script = ExtResource("9_ai")
 
 [node name="Music" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("5_click")

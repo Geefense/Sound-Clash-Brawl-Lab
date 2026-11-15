@@ -51,8 +51,13 @@ class Command:
 
 # 60 Hz tick counts. [TODO] PLACEHOLDERS unless noted: port from combatRules.ts.
 const KNOCKDOWN_FALL_TICKS := 36       # KO fall constant from AGENTS.md §3; nonlethal get-up [TODO]
-const TAUNT_TICKS := 30
+# One full 5-frame skank cycle at 4.4 fps = 2.5 beats at 132 BPM, so each pose lands
+# on an eighth note. [TODO] confirm the taunt commitment feels right on beat.
+const TAUNT_TICKS := 68
 const BLOCKSTUN_TICKS := 8
+# Guard presentation phases (mic-defence frames): entry -> held brace -> release.
+const GUARD_ENTRY_TICKS := 8
+const GUARD_RECOVERY_TICKS := 8
 const BLOCK_PUSHBACK := 120.0
 const INPUT_BUFFER_TICKS := 12
 const STUN_FRICTION := 900.0
@@ -75,20 +80,36 @@ const SHAKE_SECONDS := 0.12
 # keys are 460x620, so their origins cannot share one offset. [TODO] the walk scale
 # was matched by eye against the pose frames; confirm it on screen.
 const ANIM_OFFSET := {
-	&"idle": Vector2(0, -388), &"crouch": Vector2(0, -388), &"block": Vector2(0, -388),
+	&"idle": Vector2(0, -388), &"crouch": Vector2(0, -388),
 	&"jab": Vector2(0, -388), &"box_startup": Vector2(0, -388),
 	&"box_active": Vector2(0, -388), &"box_recovery": Vector2(0, -388),
-	&"ko": Vector2(0, -388), &"knockdown": Vector2(0, -388),
 	&"fire_ground": Vector2(0, -388),
 	&"launched": Vector2(0, -98), &"tumble": Vector2(0, -98), &"hitstun": Vector2(0, -98),
 	&"salute": Vector2(0, -98), &"fire_air": Vector2(0, -98),
 	&"jump": Vector2(0, -98),          # pelvis-anchored airborne pose, 10_fire_airborne
 	&"walk": Vector2(0, -256),
-	# Grounded poses that do not use the shared -388 baseline: each value puts the art's
-	# lowest opaque row on the floor line (offset = 512 - alphaBounds bottom).
-	&"skank": Vector2(0, -379),        # bottom 891; taunt is grounded, so use feet not pelvis
 	&"knockdown": Vector2(0, -399),    # 17_seated_landing, bottom 911
 	&"ko": Vector2(0, -426),           # 02_knockout, bottom 938
+	# Selected 512x512 frames (offset = 256 - median sole row of that animation).
+	# Soles measured per frame: 488-494, so each animation keeps its own baseline.
+	&"guard_entry": Vector2(0, -235),  # mic-defence 01-02, soles 491-492
+	&"block": Vector2(0, -235),        # mic-defence 03-04, soles 492
+	&"guard_recovery": Vector2(0, -235),  # mic-defence 05-06, soles 491
+	&"sparta_startup": Vector2(0, -234),  # sparta-kick 01-03, soles 488-490
+	&"sparta_active": Vector2(0, -234),   # sparta-kick 04, sole 490
+	&"sparta_recovery": Vector2(0, -234), # sparta-kick 05-06, soles 488-490
+	&"skank": Vector2(0, -238),        # skank 01-05, soles 492-494 (grounded dance loop)
+	&"lightah": Vector2(0, -168),      # lightah 03-04, airborne (sole rows 423-425)
+}
+
+# Selected frames are 512x512, not 1536x1024, so they need their own display scale.
+# 0.257 makes a 477 px standing figure render at the pack's 122.5 px (490 px at 0.25).
+# [TODO] confirm on screen; individual frames vary by a few px in alpha height.
+const BASE_SPRITE_SCALE := 0.25
+const ANIM_SCALE := {
+	"guard_entry": 0.257, "block": 0.257, "guard_recovery": 0.257,
+	"sparta_startup": 0.257, "sparta_active": 0.257, "sparta_recovery": 0.257,
+	"skank": 0.257, "lightah": 0.257,
 }
 const ANIM_OFFSET_DEFAULT := Vector2(0, -388)
 
@@ -111,13 +132,15 @@ var attacks: Dictionary = {
 		"hitstun": 22, "knockback": Vector2(260, -60), "knockdown": false,
 		"hitbox_pos": Vector2(96, -125), "hitbox_size": Vector2(108, 54),
 	},
-	# L = TUMP (heavy body). [TODO] frame data, reach and art.
+	# L = TUMP, played by the selected Sparta kick frames: 01-03 startup, 04 contact,
+	# 05-06 recovery. Contact is the extended kick, so the box sits at stomach height.
+	# [TODO] frame data still not ported; the timing below is hand-set to the art.
 	&"tump": {
-		"anim_startup": &"jab", "anim_active": &"jab", "anim_recovery": &"jab",
-		"startup": 7, "active": 4, "recovery": 14,
+		"anim_startup": &"sparta_startup", "anim_active": &"sparta_active", "anim_recovery": &"sparta_recovery",
+		"startup": 12, "active": 4, "recovery": 12,
 		"damage": 15, "blocked_damage": 4,
 		"hitstun": 20, "knockback": Vector2(220, -20), "knockdown": false,
-		"hitbox_pos": Vector2(74, -82), "hitbox_size": Vector2(92, 48),
+		"hitbox_pos": Vector2(88, -78), "hitbox_size": Vector2(104, 52),
 	},
 	# I = UPPER BOX (rising backhand). [TODO] frame data, reach and art.
 	&"upper_box": {
@@ -181,6 +204,8 @@ var _buffered: Dictionary = {}
 var _stun_frames: int = 0
 var _stun_is_block: bool = false
 var _hitstop_frames: int = 0
+var _guard_ticks: int = 0
+var _guard_recovering: bool = false
 
 @onready var sprite: AnimatedSprite2D = $Sprite
 @onready var body_shape: CollisionShape2D = $Body
@@ -227,6 +252,15 @@ func _physics_process(_delta: float) -> void:
 		State.HITSTUN: _tick_hitstun()
 		State.KNOCKDOWN: _tick_knockdown()
 		State.KO: _tick_ko()
+
+	# Guard presentation phases: refresh the animation when a phase expires.
+	if guarding or _guard_recovering:
+		_guard_ticks += 1
+		if guarding and _guard_ticks == GUARD_ENTRY_TICKS:
+			_play_state_anim()
+		elif _guard_recovering and _guard_ticks == GUARD_RECOVERY_TICKS:
+			_guard_recovering = false
+			_play_state_anim()
 
 	move_and_slide()
 
@@ -614,7 +648,18 @@ func _set_guarding(v: bool) -> void:
 	if v == guarding:
 		return
 	guarding = v
+	_guard_ticks = 0
+	_guard_recovering = not v      # releasing the guard plays the mic-defence recovery
 	_play_state_anim()
+
+
+## Guard uses the selected mic-defence frames: brace in, hold, release.
+func _guard_anim() -> StringName:
+	if guarding:
+		return &"guard_entry" if _guard_ticks < GUARD_ENTRY_TICKS else &"block"
+	if _guard_recovering and _guard_ticks < GUARD_RECOVERY_TICKS:
+		return &"guard_recovery"
+	return &"idle"
 
 
 func _apply_stance(crouching: bool) -> void:
@@ -626,14 +671,15 @@ func _apply_stance(crouching: bool) -> void:
 
 
 ## SpriteFrames animation names expected (missing ones are skipped silently):
-## idle, walk, jump, crouch, block, jab, box_startup, box_active, box_recovery,
-## taunt, hitstun, knockdown, ko. The scene also carries the pack's unused poses
-## (launched, tumble, salute, dizzy, fire_air, fire_ground, skank) for later wiring.
+## idle, walk, jump, crouch, guard_entry, block, guard_recovery, jab,
+## sparta_startup, sparta_active, sparta_recovery, hitstun, knockdown, ko, skank.
+## The scene also carries the pack's unused poses (launched, tumble, salute, dizzy,
+## fire_air, fire_ground) and the lightah prototype for later wiring.
 ## Left-facing attempts <name>_left first; no such art exists yet, so it falls back.
 func _play_state_anim() -> void:
 	var anim: StringName = &"idle"
 	match state:
-		State.IDLE: anim = &"block" if guarding else &"idle"
+		State.IDLE: anim = _guard_anim()
 		State.WALK: anim = &"walk"
 		State.JUMP: anim = &"jump"
 		State.CROUCH: anim = &"crouch"
@@ -649,7 +695,10 @@ func _play_state_anim() -> void:
 	if facing < 0 and sprite.sprite_frames.has_animation("%s_left" % anim):
 		anim = StringName("%s_left" % anim)
 	if sprite.sprite_frames.has_animation(anim):
-		sprite.offset = ANIM_OFFSET.get(anim, ANIM_OFFSET_DEFAULT)
+		var key := String(anim).trim_suffix("_left")
+		sprite.offset = ANIM_OFFSET.get(StringName(key), ANIM_OFFSET_DEFAULT)
+		var s: float = float(ANIM_SCALE.get(key, BASE_SPRITE_SCALE))
+		sprite.scale = Vector2(s, s)
 		sprite.play(anim)
 
 

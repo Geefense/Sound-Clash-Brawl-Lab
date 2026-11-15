@@ -1,4 +1,4 @@
-[gd_scene load_steps=27 format=3]
+[gd_scene load_steps=44 format=3]
 
 [ext_resource type="Script" path="res://scripts/BaseFighter.gd" id="1_fighter"]
 [ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/01_idle.png" id="t2"]
@@ -6,22 +6,39 @@
 [ext_resource type="Texture2D" path="res://assets/sprites/feedback/walk-four-keys/poses/02_pass_a.png" id="t4"]
 [ext_resource type="Texture2D" path="res://assets/sprites/feedback/walk-four-keys/poses/03_contact_b.png" id="t5"]
 [ext_resource type="Texture2D" path="res://assets/sprites/feedback/walk-four-keys/poses/04_pass_b.png" id="t6"]
-[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/07_crouch.png" id="t7"]
-[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/08_block.png" id="t8"]
-[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/09_point.png" id="t9"]
-[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/12_backhand_windup.png" id="t10"]
-[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/13_box_palm.png" id="t11"]
-[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/14_followthrough.png" id="t12"]
-[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/16_gut_punch.png" id="t13"]
-[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/17_seated_landing.png" id="t14"]
-[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/02_knockout.png" id="t15"]
-[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/03_c_recoil.png" id="t16"]
-[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/04_inverted_c.png" id="t17"]
-[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/05_dizzy_bogle.png" id="t18"]
-[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/06_rear_salute.png" id="t19"]
-[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/10_fire_airborne.png" id="t20"]
-[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/11_fire_grounded.png" id="t21"]
-[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/15_skank.png" id="t22"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/10_fire_airborne.png" id="t7"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/07_crouch.png" id="t8"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/mic-defence/01.png" id="t9"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/mic-defence/02.png" id="t10"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/mic-defence/03.png" id="t11"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/mic-defence/04.png" id="t12"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/mic-defence/05.png" id="t13"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/mic-defence/06.png" id="t14"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/09_point.png" id="t15"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/12_backhand_windup.png" id="t16"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/13_box_palm.png" id="t17"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/14_followthrough.png" id="t18"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/sparta-kick/01.png" id="t19"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/sparta-kick/02.png" id="t20"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/sparta-kick/03.png" id="t21"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/sparta-kick/04.png" id="t22"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/sparta-kick/05.png" id="t23"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/sparta-kick/06.png" id="t24"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/16_gut_punch.png" id="t25"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/17_seated_landing.png" id="t26"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/02_knockout.png" id="t27"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/03_c_recoil.png" id="t28"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/04_inverted_c.png" id="t29"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/05_dizzy_bogle.png" id="t30"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/06_rear_salute.png" id="t31"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/11_fire_grounded.png" id="t32"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/skank/01.png" id="t33"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/skank/02.png" id="t34"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/skank/03.png" id="t35"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/skank/04.png" id="t36"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/skank/05.png" id="t37"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/lightah/03.png" id="t38"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/lightah/04.png" id="t39"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 resource_local_to_scene = true
@@ -64,7 +81,7 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("t20")
+"texture": ExtResource("t7")
 }],
 "loop": true,
 "name": &"jump",
@@ -72,7 +89,7 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("t7")
+"texture": ExtResource("t8")
 }],
 "loop": true,
 "name": &"crouch",
@@ -80,15 +97,40 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("t8")
+"texture": ExtResource("t9")
+}, {
+"duration": 1.0,
+"texture": ExtResource("t10")
 }],
-"loop": true,
-"name": &"block",
-"speed": 1.0
+"loop": false,
+"name": &"guard_entry",
+"speed": 6.0
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("t9")
+"texture": ExtResource("t11")
+}, {
+"duration": 1.0,
+"texture": ExtResource("t12")
+}],
+"loop": true,
+"name": &"block",
+"speed": 2.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t13")
+}, {
+"duration": 1.0,
+"texture": ExtResource("t14")
+}],
+"loop": false,
+"name": &"guard_recovery",
+"speed": 6.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t15")
 }],
 "loop": false,
 "name": &"jab",
@@ -96,7 +138,7 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("t10")
+"texture": ExtResource("t16")
 }],
 "loop": false,
 "name": &"box_startup",
@@ -104,7 +146,7 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("t11")
+"texture": ExtResource("t17")
 }],
 "loop": false,
 "name": &"box_active",
@@ -112,7 +154,7 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("t12")
+"texture": ExtResource("t18")
 }],
 "loop": false,
 "name": &"box_recovery",
@@ -120,7 +162,40 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("t13")
+"texture": ExtResource("t19")
+}, {
+"duration": 1.0,
+"texture": ExtResource("t20")
+}, {
+"duration": 1.0,
+"texture": ExtResource("t21")
+}],
+"loop": false,
+"name": &"sparta_startup",
+"speed": 9.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t22")
+}],
+"loop": false,
+"name": &"sparta_active",
+"speed": 24.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t23")
+}, {
+"duration": 1.0,
+"texture": ExtResource("t24")
+}],
+"loop": false,
+"name": &"sparta_recovery",
+"speed": 9.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t25")
 }],
 "loop": false,
 "name": &"hitstun",
@@ -128,7 +203,7 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("t14")
+"texture": ExtResource("t26")
 }],
 "loop": false,
 "name": &"knockdown",
@@ -136,7 +211,7 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("t15")
+"texture": ExtResource("t27")
 }],
 "loop": false,
 "name": &"ko",
@@ -144,7 +219,7 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("t16")
+"texture": ExtResource("t28")
 }],
 "loop": false,
 "name": &"launched",
@@ -152,7 +227,7 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("t17")
+"texture": ExtResource("t29")
 }],
 "loop": false,
 "name": &"tumble",
@@ -160,7 +235,7 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("t18")
+"texture": ExtResource("t30")
 }],
 "loop": true,
 "name": &"dizzy",
@@ -168,7 +243,7 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("t19")
+"texture": ExtResource("t31")
 }],
 "loop": false,
 "name": &"salute",
@@ -176,7 +251,7 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("t20")
+"texture": ExtResource("t7")
 }],
 "loop": false,
 "name": &"fire_air",
@@ -184,7 +259,7 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("t21")
+"texture": ExtResource("t32")
 }],
 "loop": false,
 "name": &"fire_ground",
@@ -192,11 +267,34 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("t22")
+"texture": ExtResource("t33")
+}, {
+"duration": 1.0,
+"texture": ExtResource("t34")
+}, {
+"duration": 1.0,
+"texture": ExtResource("t35")
+}, {
+"duration": 1.0,
+"texture": ExtResource("t36")
+}, {
+"duration": 1.0,
+"texture": ExtResource("t37")
 }],
 "loop": true,
 "name": &"skank",
-"speed": 1.0
+"speed": 4.4
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t38")
+}, {
+"duration": 1.0,
+"texture": ExtResource("t39")
+}],
+"loop": true,
+"name": &"lightah",
+"speed": 4.4
 }]
 
 [node name="BaseFighter" type="CharacterBody2D"]
@@ -229,6 +327,6 @@ monitoring = false
 monitorable = false
 
 [node name="Shape" type="CollisionShape2D" parent="Hitbox"]
-position = Vector2(70, -110)
+position = Vector2(96, -125)
 shape = SubResource("RectangleShape2D_hit")
 disabled = true

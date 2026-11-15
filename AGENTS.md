@@ -449,6 +449,20 @@ here is gameplay-verified; implementation status is stated per item.
    C crouch, guard on S/Down, move on WASD/arrows. `tump` and `upper_box` are runnable placeholders
    with no art and no ported frame data.
 
+5. **Selected 512×512 frames adopted as working gameplay art — approved (2026-11-15).** The 20
+   frames in `art-source/feedback/selected-frames-2026-11-15/` are copied unchanged into
+   `godot/assets/sprites/feedback/selected-frames-2026-11-15/` and treated as their own animation
+   group: every animation keeps its natural sole baseline (rows 488–494) through its own
+   `ANIM_OFFSET` entry and renders at 0.257, which matches the pose pack's on-screen height without
+   resampling the pixels. The 17-pose pack, the walk keys and everything in `art-source/` stay
+   untouched. Wiring: `skank/01–05` replaces the single-frame taunt as a beat-timed loop (`06`
+   duplicates `01` and is not animated); `mic-defence/01–02` is guard entry, `03–04` the held block
+   and blockstun, `05–06` guard release; `sparta-kick/01–06` is the `tump` (L) sequence with the
+   contact box at stomach height; `lightah/03–04` sit in `SpriteFrames` as a flagged prototype only.
+   BOX (K) stays on poses 12/13/14. [TODO] The 0.257 scale, the guard phase lengths (8/8 ticks),
+   the tump timing (12/4/12), the 1.13 s taunt length, and the unclipped-lightah and separate-flame
+   VFX work are all hand-set defaults awaiting a Godot playtest.
+
 Implementation status: written into `/godot` and committed, but **not run** — no Godot engine is
 available in the authoring environment, so no scene load, import, hitbox, guard, beat-window or HUD
 check has been performed. The port remains unapproved.

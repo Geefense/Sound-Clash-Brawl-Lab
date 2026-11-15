@@ -3,7 +3,8 @@
 Setup folder for the engine port described in the repository-root `AGENTS.md` (§5). The pin to one
 Godot 4.x release, the renderer, and Chromebook run/export steps are still **[TODO]** in the
 blueprint, so this folder holds the project file, the folder layout, and a verified copy of the
-art that exists today. Nothing here is committed as approved gameplay content.
+art that exists today. The 20 selected frames adopted on 2026-11-15 are owner-approved working art;
+everything else here (arena, fighters, wiring) is still unapproved and unverified.
 
 ## Layout
 
@@ -17,6 +18,7 @@ godot/
     sprites/feedback/aligned/           the 17-pose RGBA pack + manifest + README
     sprites/feedback/imported-poses/    six imported pose studies
     sprites/feedback/walk-four-keys/    four walk keys (unapproved movement test)
+    sprites/feedback/selected-frames-2026-11-15/  20 selected 512×512 frames (owner-approved working art)
     flow_exports/walk/                  walk video exports
     audio/                              inventory placeholder — no audio files exist yet
 ```
@@ -28,6 +30,7 @@ godot/
 | `assets/sprites/feedback/aligned/` | `artifacts/sound-clash/public/assets/feedback/` | 17 pose PNGs (1536×1024), `feedback.poses.json` |
 | `assets/sprites/feedback/imported-poses/` | `artifacts/sound-clash/art-source/feedback/imported-poses/` | 6 study PNGs |
 | `assets/sprites/feedback/walk-four-keys/poses/` | `artifacts/sound-clash/art-source/feedback/walk-four-keys/poses/` | 4 walk keys — **unapproved movement test** |
+| `assets/sprites/feedback/selected-frames-2026-11-15/` | `artifacts/sound-clash/art-source/feedback/selected-frames-2026-11-15/` | 20 selected 512×512 frames + `inventory.json` — owner-approved working art, originals untouched |
 | `assets/flow_exports/walk/` | `art-source/feedback/` and `chat-movement-transfer-2026-11-13/movement-reference/` | walk flow test, approved 132 BPM reference |
 
 Copies were verified by file count and per-file SHA-256 against the sources. Original filenames,
@@ -51,7 +54,8 @@ The owner-approved behaviour recorded in AGENTS.md §9 is implemented here: on-b
 1.15× damage, judged at input, hype only on connect unless `hype_requires_connect` is off), the
 no-mirroring mic-hand rule (`<anim>_left`, falling back to right-facing frames), and the skank taunt.
 Hitstop is 4 ticks for the jab, 7 for the heavies and 9 on KO. `tump` (L) and `upper_box` (I) are
-runnable placeholders reusing jab art with no ported frame data.
+moves: `tump` now plays the selected Sparta kick frames, `upper_box` is still a placeholder reusing jab
+art with no ported frame data.
 
 **Checks run: none in Godot.** No engine is available in the authoring environment, so this scene has
 never been opened, imported or played, and no hitbox, guard, beat-window or HUD behaviour is verified.
@@ -74,7 +78,8 @@ never been opened, imported or played, and no hitbox, guard, beat-window or HUD 
 
 **Still pending owner approval:** the newer heavy BOX art with the foot leaving the ground is not in
 this repository as an aligned pose; the only BOX-era files are the unapproved concept images under
-`art-source/feedback/box-handoff-2026-11-13/`. Nothing was copied into `assets/`.
+`art-source/feedback/box-handoff-2026-11-13/`. Nothing from that set was copied into `assets/`. The
+only foot-lifted strike that is wired is the Sparta kick's contact frame (`sparta-kick/04`).
 
 ## Fighter wiring — UNAPPROVED, no Godot checks run
 
@@ -83,21 +88,26 @@ and `scenes/BaseFighter.tscn`. Physics runs at 60 Hz (`project.godot`). Nothing 
 run or tested in Godot; the engine is not installed in this environment, so **checks run: none in
 Godot**.
 
-`BaseFighter.tscn`'s `AnimatedSprite2D` carries all 17 aligned poses and the 4 walk keys as 18
-animations, using the manifest's own state names where they exist. No original art file was edited.
+`BaseFighter.tscn`'s `AnimatedSprite2D` carries all 17 aligned poses, the 4 walk keys and the selected
+frames as 25 animations, using the manifest's own state names where they exist. No original art file
+was edited.
 
 | Animation | Frame(s) | Origin (manifest anchor) |
 | --- | --- | --- |
 | `idle` | `01_idle` | feet, y 900 |
 | `walk` | 4 walk keys (`01_contact_a` … `04_pass_b`) | pinned sole, y 566 in the 460×620 keys |
-| `crouch` / `block` | `07_crouch` / `08_block` | feet, y 900 |
+| `crouch` | `07_crouch` | feet, y 900 |
 | `jab` | `09_point` (poke — placeholder for a jab) | feet, y 900 |
 | `box_startup` / `box_active` / `box_recovery` | `12` / `13` / `14` | feet, y 900 |
 | `hitstun` | `16_gut_punch` | pelvis, y 610 |
 | `knockdown` | `17_seated_landing` | ground contact, y 900 |
 | `ko` | `02_knockout` | feet, y 900 |
 | `launched` / `tumble` | `03_c_recoil` / `04_inverted_c` | pelvis, y 610 |
-| `dizzy` / `salute` / `skank` | `05`, `06`, `15` | 900 / 610 / 610 |
+| `dizzy` / `salute` | `05`, `06` | 900 / 610 |
+| `guard_entry` / `block` / `guard_recovery` | selected `mic-defence/01–02` / `03–04` / `05–06` | 512×512, sole rows 491–492 |
+| `sparta_startup` / `sparta_active` / `sparta_recovery` | selected `sparta-kick/01–03` / `04` / `05–06` | 512×512, sole rows 488–490 |
+| `skank` | selected `skank/01–05` (5-frame loop; `06` duplicates `01`) | 512×512, sole rows 492–494 |
+| `lightah` | selected `lightah/03–04` — **prototype, not wired to a state** | 512×512, airborne (sole 423–425) |
 | `fire_air` / `fire_ground` | `10` / `11` | 610 / 900 |
 
 Because the pack has two anchors and the walk keys have their own canvas, `BaseFighter.gd` sets
@@ -110,6 +120,27 @@ window (placeholder 70 ms — no approved window exists), latency calibration, t
 policy, the walk playback rate (4.4 fps assumes two keys per beat at 132 BPM), the walk display scale
 matched by eye against the pose frames, attack/movement numbers marked `[TODO] port from TS`, and
 the canonical mic hand. `jump` has no pose, so the animation is skipped rather than faked.
+
+### Selected-frame group (owner-approved 2026-11-15)
+
+The 20 frames in `assets/sprites/feedback/selected-frames-2026-11-15/` are a **separate animation group**
+from the 1536×1024 pack: they are 512×512 crops whose soles sit at rows 488–494. Each animation owns its
+baseline in `ANIM_OFFSET` (`offset.y = 256 − median sole row`) and its display scale in `ANIM_SCALE`
+(0.257, so a 477 px standing figure renders at the pack's 122.5 px). No art file was edited, upscaled or
+regenerated; `skank/06.png` is copied for provenance but not animated. Wiring:
+
+- **Skank taunt.** `State.TAUNT` now plays `skank/01–05` as a 5-frame loop at 4.4 fps (2.5 beats at
+  132 BPM, one pose per eighth note) and `TAUNT_TICKS` is 68 so one full cycle plays before the
+  on-beat hype check. [TODO] the 2.3 s→1.13 s commitment change is not feel-tested.
+- **Guard.** `guard_entry` (01–02) plays for 8 ticks, then `block` loops on 03–04 while the guard is
+  held, and releasing it plays `guard_recovery` (05–06) for 8 ticks. Blockstun hitstun also uses
+  `block`. Presentation only — the guard rule itself (directional, from the pre-resolution snapshot)
+  is unchanged.
+- **Tump (L) is the Sparta kick.** `sparta_startup` (01–03, 12 ticks) → `sparta_active` (04, 4 ticks) →
+  `sparta_recovery` (05–06, 12 ticks), with the contact box at stomach height (104×52 at x 88, y −78).
+- **Lightah** (`lightah/03–04`) is in `SpriteFrames` as a 2-frame prototype only, flagged **[TODO]**
+  for unclipped art (`03.png` touches x = 0) and separate flame VFX; no state plays it yet.
+- **BOX (K) is unchanged** and still plays poses 12/13/14.
 
 ## Still missing ([TODO] in the blueprint)
 

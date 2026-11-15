@@ -40,8 +40,6 @@ Garfield is the visual lead and final visual approver. The same slim Feedback, f
 
 **Optional BOX leg-lift concept — November 13, 2026:** Owner proposed borrowing the right-knee lift/weight transfer of a left-handed pitcher, not the actual baseball throwing-arm motion, to heighten the BOX windup and follow-through. Test one isolated pose first (right knee raised, left support foot planted), preserving the established mic/cord and attack identity. Do not overwrite the current windup, change combat timing or add a full sequence automatically. This is a candidate idea, not an approved replacement or committed launch-scope expansion.
 
-**Selected pitcher-BOX movement — November 13, 2026:** Garfield chose the LEFT version of `Feedback_BOX_Lean_Comparison.mp4`: the slightly stronger but still subtle torso lean, described as feeling like a real pitch. Keep it at this amount; stop increasing the lean. Selected knee-lift source in the chat workspace: `generated_images/exec-e27d3d55-4e29-470a-824b-fd47c9e6fcad.png`; stride-out source: `generated_images/exec-97a4cb9d-5836-4df3-a595-b221718c4e3a.png`. Sequence: knee lift with slight screen-left lean → stride out → planted original windup → BOX contact → follow-through. Test display holds were 12/8/7/6/39 at 60 fps; these are presentation experiment settings, not approved gameplay frame data. This selects the motion direction, not production art: restore consistent slim proportions, fitted trousers, approved Clarks, one gold tooth, concealed eyes, remove unwanted pockets/glow and preserve approved sleeve/wrap cable treatments. Earlier/current original BOX remains preserved. The BOX concept images and review videos were subsequently transferred under `artifacts/sound-clash/art-source/feedback/box-handoff-2026-11-13/`; see `FREEBUFF-HANDOFF.md`. Transfer does not approve production art. Next task: appearance-consistency cleanup and transition review without another lean redesign.
-
 **Clarks: match approved artwork, not a new shoe design.** Tan suede Wallabees must retain their approved moccasin/apron seam, toe shape, lacing, crepe sole, size and proportions through all poses. An isolated improved shoe redraw is only a candidate until compared with the existing pack. Do not bulk-regenerate the approved pose pack or replace files to match an unapproved new candidate.
 
 **Preserve work and audit before replacement.** The existing 17-pose asset pack was re-located on `assets/feedback-transparent-poses`; manifest and README inspected, not a fresh full pixel audit. Its README explicitly says the cable is baked into poses and acknowledges detail drift. Imported assets are recoverable/versioned, but this does not make correction automatic or free of rework. Keep originals and anchors, make a comparison inventory by pose, and apply only necessary local repairs. Recheck idle → walk → BOX windup/contact/recovery → guard → hurt/landing/KO as transitions, not only isolated illustrations.
@@ -187,11 +185,6 @@ Six additional imported studies under `art-source/feedback/imported-poses/`: `01
 
 All 17 aligned PNGs on `assets/feedback-transparent-poses` were retrieved, decoded and inspected in a comparison sheet; idle, block, BOX startup/contact/recovery and KO received enlarged inspection. Multiple stored poses have floor-trailing cables that conflict with the owner’s jacket-origin requirement. This is not only a walk issue. No original PNGs or runtime files changed. See `artifacts/sound-clash/art-source/feedback/APPEARANCE-CONSISTENCY-AUDIT-2026-11-13.md` for evidence, open checks and Freebuff’s next task. Build the appearance comparison before further broad generation or integration. The stored idle is a proposed working appearance reference; owner approval remains required for any replacement art.
 
-
-### Approved walk reference delivery — November 13, 2026
-
-Owner explicitly authorized transfer of the prepared walk package to this review branch. The exact approved four-pose swing–bop movement reference (approximately 132 BPM), source keys and timing manifest are now available via `artifacts/sound-clash/art-source/feedback/chat-movement-transfer-2026-11-13/README.md`. Importer saved at `e11aa456`; all four parts and importer read back byte-for-byte. Local validation/restore/repeat/conflict-protection checks passed. Freebuff has not yet run the importer or updated its preview. Movement approval is separate from pending appearance/cable repairs. Do not substitute the older four-key study. Next: restore locally and update the review comparison; then correct idle cable only, preserving originals.
-
 ### Interference and audio inventory gaps
 
 The owner identifies bottles, chairs, fire extinguishers and Flow sprite/audio exports as migration inventory. No matching bottle/chair/extinguisher directories or finished soundtrack/voice asset tree was found on inspected Lab `main`, pose, animation-refinement, sprite-pipeline or combat-hardening snapshots. **[TODO] Freebuff locates any local/unmerged files and records exact paths, filenames, status and source before copying.** Do not claim missing files exist or replace them with silently invented assets.
@@ -232,8 +225,6 @@ When creating a Godot project or adding `/godot` inside the existing GitHub repo
 5. Retain the TypeScript prototype as a runnable reference throughout the port. This request creates the blueprint; it does **not** start the engine migration now.
 
 **Godot folder created — November 15, 2026.** `/godot` now exists with `project.godot` (minimal; `config/features` is added the first time the project is opened), `.gitignore` (`.godot/`, `*.translation`, exports, no art ignored), `.gitattributes`, a byte-identical `AGENTS.md` copy, empty `scenes/` and `scripts/`, and `assets/` holding the verified art copies: `sprites/feedback/aligned/` (17 pose PNGs + `feedback.poses.json`), `sprites/feedback/imported-poses/` (6 studies), `sprites/feedback/walk-four-keys/poses/` (4 keys, still an unapproved movement test) and `flow_exports/walk/` (walk flow test and the approved 132 BPM reference). All 30 copies verified byte-identical by `cmp`/SHA-256; candidate and comparison-only art was deliberately left in `art-source/`. Still **[TODO]**: no audio file exists anywhere in the repository, no Spriteriffic sprite sheets, and no bottle/chair/fire-extinguisher art — so `assets/sprites/{bottles,chairs,fire_extinguishers}/` and real audio content are not created yet. Engine version, renderer and Chromebook export path remain unpinned and unverified; no scene, script or gameplay rule exists in `/godot`.
-
-Target layout for the port: `godot/scenes/fighters/BaseFighter.tscn`; `godot/scenes/match/`; `godot/scenes/hazards/ThrowableHazard.tscn`; `godot/scripts/{combat,fsm,rhythm,crowd}/`; `godot/data/{fighters,moves,hazards}/`. [TODO] Final paths after the engine pin and inventory settle.
 
 ## 6. Finite State Machine (FSM) Architecture (TypeScript -> GDScript Blueprint)
 
@@ -458,6 +449,20 @@ here is gameplay-verified; implementation status is stated per item.
    C crouch, guard on S/Down, move on WASD/arrows. `tump` and `upper_box` are runnable placeholders
    with no art and no ported frame data.
 
+5. **Selected 512×512 frames adopted as working gameplay art — approved (2026-11-15).** The 20
+   frames in `art-source/feedback/selected-frames-2026-11-15/` are copied unchanged into
+   `godot/assets/sprites/feedback/selected-frames-2026-11-15/` and treated as their own animation
+   group: every animation keeps its natural sole baseline (rows 488–494) through its own
+   `ANIM_OFFSET` entry and renders at 0.257, which matches the pose pack's on-screen height without
+   resampling the pixels. The 17-pose pack, the walk keys and everything in `art-source/` stay
+   untouched. Wiring: `skank/01–05` replaces the single-frame taunt as a beat-timed loop (`06`
+   duplicates `01` and is not animated); `mic-defence/01–02` is guard entry, `03–04` the held block
+   and blockstun, `05–06` guard release; `sparta-kick/01–06` is the `tump` (L) sequence with the
+   contact box at stomach height; `lightah/03–04` sit in `SpriteFrames` as a flagged prototype only.
+   BOX (K) stays on poses 12/13/14. [TODO] The 0.257 scale, the guard phase lengths (8/8 ticks),
+   the tump timing (12/4/12), the 1.13 s taunt length, and the unclipped-lightah and separate-flame
+   VFX work are all hand-set defaults awaiting a Godot playtest.
+
 Implementation status: written into `/godot` and committed, but **not run** — no Godot engine is
 available in the authoring environment, so no scene load, import, hitbox, guard, beat-window or HUD
 check has been performed. The port remains unapproved.
@@ -498,6 +503,21 @@ For Godot, once created: [TODO] pin exact import/headless launch/test/export com
 Next agent: finish the isolated walk review, reconcile asset/engine branches, close the minimal rhythm reference gap, freeze the TypeScript baseline and complete the first Godot port inside Nov 13–26. Then follow Section 2 date gates. Keep costs at zero; preserve the April 21, 2027 target and six-selector commitment while reporting scope risks promptly.
 
 
-### Freebuff BOX handoff — November 13, 2026
+### Newer knee-lift BOX in main handoff — November 14, 2026 (Toronto)
 
-Owner explicitly requested Freebuff continue corrections and preparation. See root `FREEBUFF-HANDOFF.md`, added in `ebdd98d3f3a70058e6373a2ee954f1ace2f30e7a`, for exact knee-lift/stride source identities, selected lean reference, latest UNAPPROVED two-loop video, and first/last-frame appearance, mic-hand and cable corrections. Media handoff completed after Garfield explicitly approved upload following the initial automatic review block: ten recovered files are included under `artifacts/sound-clash/art-source/feedback/box-handoff-2026-11-13/`; blob hashes match the local bytes. Latest two-loop video remains UNAPPROVED. Freebuff owns the next correction/verification work. No artwork changes, runtime integration, generation or gameplay tests were performed for this handoff. Next task: Freebuff fetches this branch, corrects first/last-frame appearance, mic-hand and cable continuity, and returns a preview for Garfield's approval. Receipt/execution by Freebuff is not claimed.
+Garfield requested Feedback’s newer foot-off-the-ground BOX enter the GitHub flow. Root `FREEBUFF-HANDOFF.md` and ten exact source/reference media blobs from review commit `9eaeae74144e8a453034aa3ff2cf33014dd63511` are now delivered on main under `artifacts/sound-clash/art-source/feedback/box-handoff-2026-11-13/`. Selected movement: LEFT lean comparison, knee lift → stride → planted windup → BOX → follow-through. Freebuff owns corrections, preparation, verification and integration; return a preview for Garfield. First/last-frame appearance, mic-hand and cable continuity remain open; latest two-loop clip is UNAPPROVED. Verified repository source paths and exact blob reuse; no runtime change or gameplay tests. No broad merge of the review branch. Next: Freebuff fetches main and follows the root handoff while preserving local work.
+
+
+### Additional Feedback animation requests — November 14, 2026 (Toronto)
+
+Garfield requested `lightah` frames, skank frames, reverse back hand BOX, and a Sparta kick to the stomach, all with the same Feedback character. See `FREEBUFF-HANDOFF.md` → Additional Feedback frame requests for preparation/continuity criteria. Freebuff inventories/reuses existing sources, prepares missing candidate frames and returns previews. Preserve character identity, declared mic hand, continuous jacket-origin cable, Wallabees, frame anchors and shared grid. Reverse BOX stays distinct from Upper Box; do not mirror art to create it. Kick gameplay parameters are unspecified. Status: recorded request only, no new frames or runtime implementation; no gameplay tests applicable. Existing knee-lift BOX handoff remains active.
+
+
+### Five-move review studies created — November 14, 2026 (Toronto)
+
+Owner assigned ChatGPT creation and added a microphone `squeeeek` defence. Five six-keyframe animated studies now exist: Lightah, skank, reverse backhand BOX, Sparta stomach push kick, and mic-squeak guard. Root `FREEBUFF-HANDOFF.md` at `187c284` records exact owner-access video/player/source-pack links, reference identity, checks and limitations. Status: UNAPPROVED review previews, not smooth final animations or gameplay assets. H.264/AAC export and player syntax verified; no runtime tests. Same right-hand mic setup across this batch; cross-pack canonical hand remains open. Next: Garfield reviews, ChatGPT corrects art/motion and prepares in-betweens; Freebuff handles approved repo preparation/integration. No receipt or implementation by Freebuff is claimed.
+
+
+### Owner move corrections — November 15, 2026 (Toronto)
+
+Lightah must use existing massive-flame reference and jump-skank; reverse backhand BOX means spinning around into an open-hand backhand, superseding the stationary v1 interpretation. Garfield likes the Sparta kick direction; keep its drawings. Rear-facing two-finger skank original recovered for Freebuff (`libfile_95d3f14281248191821f8825ae8ef570`); preserve original but do not propagate obsolete back pockets/floor cable. Same Feedback appearance and mic/cable continuity mandatory. Root `FREEBUFF-HANDOFF.md` details source identities, screenshot identification and v2 status. V2 Lightah/spinning BOX are new six-keyframe review studies, not final approved animations; other three studies unchanged. No gameplay changes or runtime tests. Next: owner reviews v2, then targeted continuity fixes/in-betweens and Freebuff preparation.

@@ -107,3 +107,12 @@ These instructions supersede the v1 move interpretations:
 - Uploaded screenshot 1 (`IMG_6453.jpeg`) shows the v1 MIC-SQUEAK DEFENCE study: guard raises, brace, release. Screenshot 2 (`IMG_6454.jpeg`) shows the v1 BASIC SKANK study: dip, knee lift, hip/shoulder bop, reset. They are review keyframes, not other newly named attacks.
 
 CONSISTENCY: owner reiterated the SAME Feedback across moves. Reference recovery does not approve the source’s obsolete pockets, cable topology or tooth drift. Check actual head/hat shape and colour, original locks, face concealment, single gold tooth, slim proportions, cream jacket stripes, fitted trousers, matching Wallabees, one mic in its declared anatomical hand, forearm wrap and connected concealed jacket-origin lead. Do not silently mirror a spinning frame. Compare full loop and transitions at gameplay and source scale. Retain v1 originals; v2 changes only Lightah and spinning reverse BOX; kick, basic skank and defence drawings remain unchanged. All new v2 drawings remain UNAPPROVED until Garfield reviews them. Six-keyframe motion studies still need in-betweens and impact/reaction review; no runtime implementation is claimed.
+
+
+## Frame-by-frame owner review rule — November 15, 2026
+
+Garfield requires ONE INDIVIDUAL FRAME at a time for review and selection. Do not generate whole sheets or several different animations together. Build accepted frames progressively; preserve each selected drawing and only animate the accepted sequence for review. He selected the two airborne Lightah poses with the full big flame (v2 frames 3 and 4) as the direction to keep building. Do not treat the rest of that sheet as accepted.
+
+Move clarification: the spinning attack is a SPINNING UPPER BOX: free open hand drops down toward his ankle/lower body, then rises into an upward backhand while he turns. This supersedes the horizontal spinning backhand interpretation for this current request. Show clearer rear-view detail and preserve Feedback’s exact look/mic continuity. One low windup candidate is under review; no approval inferred.
+
+Latest owner feedback: he likes the Sparta kick; retain it. The mic/defence sequence and skank are not good enough yet, but their foundations are worth keeping and improving. Neither is approved. Continue targeted improvements one frame at a time, not wholesale multi-frame generation. Keep the same Feedback identity throughout. No runtime changes authorized by this note.

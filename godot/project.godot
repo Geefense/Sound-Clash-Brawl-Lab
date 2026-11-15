@@ -1,0 +1,9 @@
+; Sound Clash Brawl — Godot project.
+; Engine version pin: [TODO] record the exact Godot 4.x release the first time the
+; project is opened, then add the matching config/features line here.
+config_version=5
+
+[application]
+
+config/name="Sound Clash Brawl"
+config/description="Fighter #1 (Feedback) — ported from the TypeScript reference."

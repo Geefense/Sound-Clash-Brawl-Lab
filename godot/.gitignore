@@ -1,0 +1,35 @@
+# Godot 4 ignores.
+# The repository-root .gitignore still applies; these rules cover the engine.
+
+# Godot 4 cache and imported resources
+.godot/
+.import/
+
+# Editor and export settings that are machine-specific
+export.cfg
+export_presets.cfg
+
+# Imported translations generated from CSV
+*.translation
+
+# Mono/.NET artefacts (unused today, ignored so an accidental build never lands)
+.mono/
+data_*/
+mono_crash.*.json
+
+# Exported builds and temporary renders
+/build/
+/exports/
+/tmp/
+*.zip
+*.pck
+*.exe
+*.dmg
+*.apk
+*.aab
+
+# OS and editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*~

@@ -1,0 +1,25 @@
+# Consistent line endings across platforms.
+* text=auto eol=lf
+
+# Godot source: text, LF, diffable
+*.gd text eol=lf
+*.tscn text eol=lf
+*.tres text eol=lf
+*.godot text eol=lf
+*.import text eol=lf
+*.cfg text eol=lf
+*.md text eol=lf
+
+# Art and audio: stored exactly as produced, never normalised
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.mp4 binary
+*.webm binary
+*.ogg binary
+*.wav binary
+*.mp3 binary
+*.ttf binary
+*.otf binary

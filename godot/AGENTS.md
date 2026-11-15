@@ -377,6 +377,10 @@ This register includes all phrases recoverable from the visible conversation, su
 | `THREE PIECE!` | Implemented successful nonlethal Three Piece feedback. |
 | `KO!` | Implemented ordinary KO overlay. |
 | `Lighter!` | Requested lighter taunt shout. |
+| `LIGHTAH!` | Shouted form of the existing `Lighter!` request; one of the owner's family-friendly callouts (2026-11-15). |
+| `FORWARD!` | Owner's family-friendly hype callout; the implemented 100 % Hype Surge banner (§9 item 10). |
+| `WHEEL AND COME AGAIN!` | Shouted banner/voice form of the existing `wheel and cum again`. A separately recorded capitalization variant — do not normalise the two into one. |
+| `BIG TUNE!` | Owner's family-friendly crowd/hype callout. [TODO] Trigger and delivery are unset. |
 | `Feedbackhand` | Proposed backhand pun. |
 
 ### Comedy, taunt and move register
@@ -574,6 +578,27 @@ here is gameplay-verified; implementation status is stated per item.
     crowd member is promoted, are undecided; the §2 six-selector commitment, the Jan 14 mechanics
     lock and the April 21, 2027 target are unchanged.
 
+12. **Family-friendly Patois & crowd policy — approved (2026-11-15).** Every shipped voice callout,
+    HUD banner and arena line must stay strictly clean and family-friendly — the owner's examples are
+    `LIGHTAH!`, `FORWARD!`, `WHEEL AND COME AGAIN!` and `BIG TUNE!` — and no offensive profanity may
+    ship. The policy governs performance: §8 keeps every Patois line verbatim, and no existing entry
+    is deleted, softened or "corrected". `FORWARD!` already ships in the 100 % Hype banner (item 10).
+    [TODO] The owner has not yet ruled which existing §8 jabs (for example `Heeeyaut!`, `Shut-Tup!`,
+    `Yuh too Bod Mine!!`) may still be used as comedic taunts in shipped audio and which are retired
+    from voice, so nothing is silently reclassified here.
+
+13. **Locked-in combat & sound-system roster — approved starting names, not implemented
+    (2026-11-15).** Approved starting Dancehall moves: **The Bogle**, **Log On**,
+    **Signal Di Plane**. Approved sound-system mechanics: **Pull-Up / Rewind Finisher**,
+    **Needle Skip Dash**, **Mic Feedback / Dub Echo Shockwave**, **Record Static Parry**. With them
+    the owner restates the direction to **promote standout crowd characters into playable fighters**
+    (item 11). These are names and creative intent only: no startup/active/recovery frames, hitboxes,
+    damage, meter cost, input motion, animation or audio exists for any of them and none is wired in
+    `/godot`. [TODO] Frame data, input motions, which fighter owns which move, how the four mechanics
+    spend Hype/Dubplate, and the promotion criteria all remain open. Nothing here moves the Jan 14,
+    2027 core-mechanics lock or the April 21, 2027 six-selector target, and none of it authorises new
+    art or audio spend.
+
 Implementation status: written into `/godot`; **not played**. Until 2026-11-15 the port had never
 been opened in an engine. The sand-stage and round-lighting slices were then imported and run headless
 in Godot 4.3.stable (no GPU, no audio device, no on-screen look), which proves the project imports
@@ -619,6 +644,7 @@ For Godot, once created: [TODO] pin exact import/headless launch/test/export com
 | Smart Sparring AI modes (P2) | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 4 modes cycle on **Y**, HUD banner, **G** guard override; headless Godot 4.5 runs pass for every mode; **on-screen/feel playtest [TODO]**. |
 | Dancehall crowd line + 100% Hype Surge | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 6 sliced spectators (Queen centre) + 2 record crates at the stacks, beat bob, FORWARD!/PULL UP! banner, 5 s 1.20× / faster-recovery boost; headless checks pass; **on-screen look and balance [TODO]**. |
 | 15-character two-row rotating crowd + contact shadows | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 9 new slices (pool 15), front/back rows, 12–18 s and 50 %/100 % hype reshuffles, GroundShadow on crowd and crates; headless checks pass; **on-screen look [TODO]**. |
+| Family-friendly crowd policy + locked-in move/mechanic roster | Recorded 2026-11-15 in §9 items 12–13 and §8. Documentation only: no move, mechanic, voice line or banner beyond the existing surge banner is implemented. |
 
 Next agent: finish the isolated walk review, reconcile asset/engine branches, close the minimal rhythm reference gap, freeze the TypeScript baseline and complete the first Godot port inside Nov 13–26. Then follow Section 2 date gates. Keep costs at zero; preserve the April 21, 2027 target and six-selector commitment while reporting scope risks promptly.
 
@@ -679,6 +705,10 @@ The harness was deleted before the commit; `TestArena.tscn` also booted for 150 
 composite of the stage, the 11 visible members, the crates and an idle fighter at the shipped
 coordinates, scales, tint and z-order. The shipping 12–18 s cadence was not waited out (the test
 accelerated it), and none of it has been played.
+
+Re-verified 2026-11-15 with the §9 owner-decision update applied (no runtime change): the import is
+clean, the same harness passed again (15 members at 5/6/4, 36 swaps, Queen still at x 640, shadows at
+556/516/592, the 50 % and 100 % hype paths) and `TestArena.tscn` booted for 150 frames.
 
 
 ### Newer knee-lift BOX in main handoff — November 14, 2026 (Toronto)

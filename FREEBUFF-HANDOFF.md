@@ -81,3 +81,17 @@ Freebuff owns repository preparation, verification and integration. Inventory ex
 Across all four: match the approved slim Feedback, burgundy bucket hat/jacket, cream stripes, original dreadlocks, concealed face/eyes, single gold tooth, fitted trousers and consistent tan Clarks Wallabees. Keep one microphone in the sequence’s declared anatomical hand, established forearm wrap and continuous cable with concealed jacket origin. Reconcile cross-set hand differences against approved sources before final integration. No per-frame resizing to hide drift. Verify silhouette, feet/anchors, transparency and idle → action → idle continuity at source and gameplay size. Use the same documented sprite grid for later Godot slicing. Return review previews; these requests do not approve unseen frames.
 
 Status: work requested and recorded only. No new frames generated, corrected, tested or integrated by this documentation update; Freebuff receipt/execution has not been observed.
+
+
+## Five animated review studies — November 14, 2026 (Toronto)
+
+Garfield assigned ChatGPT the creation and consistency review of the requested moves and added a Feedback defence with microphone `squeeeek`. ChatGPT has now generated five six-keyframe sheets and assembled actual pose-to-pose animated previews: Lightah, skank, reverse backhand BOX, Sparta kick to stomach, and microphone-squeak defence. This supersedes the earlier request-only status for the review studies; no gameplay integration is claimed. All remain UNAPPROVED pending Garfield's review.
+
+Reference: `Dreadlocked performer with microphone and comic palm.png`, Library `libfile_0344467aeb888191a16865fda00ad201`. The same right-hand mic convention is used through this batch; it does not resolve the canonical cross-pack mic-hand TODO. Reverse BOX contact was corrected from palm to backhand; Lightah flame overlap was revised. These are six-drawing pose-to-pose studies, not final smooth animation. Fine character/cable/tooth/hat/shoe consistency and entry/return seams remain review items. No per-frame scaling/mirroring or optical interpolation. Defence interpreted provisionally as raised guard with a short synthesized feedback squeak at frame 4, not settled gameplay behavior.
+
+Review deliverables (owner-access links; these files are not claimed as repository assets):
+- Video, 18.7 seconds, five moves at normal and half speed: https://chatgpt.com/library?file_id=libfile_09edb774d4948191ab9e59ca8c3f09ea&account_id=personal
+- Self-contained player with speed controls, pause, six-frame scrub/step and optional quiet squeak: https://chatgpt.com/library?file_id=libfile_0dae777c02208191acfe3c0d14ad9ce1&account_id=personal
+- Full source/review ZIP with sheets, 30 cropped frames, GIFs, video, player and notes: https://chatgpt.com/library?file_id=libfile_f92f5f74c0d48191a02ba0f173e75254&account_id=personal
+
+Validation: all sheets 1536x1024 RGBA, exact 512x512 crops; player JavaScript syntax check passed; H.264/AAC 512x568 video decoded successfully. No gameplay tests; no opponent impact reactions, hitboxes, damage or final combat timing. Next: Garfield reviews movement/contact/recovery; then targeted corrections and in-betweens, followed by Freebuff preparation/integration of approved output. Freebuff receipt/execution not observed.

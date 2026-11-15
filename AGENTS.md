@@ -550,6 +550,30 @@ here is gameplay-verified; implementation status is stated per item.
     [TODO] Crowd scales/positions, bob depth, the 1.20 / 0.75 multipliers and the 5 s length are
     hand-set defaults; none of this has been seen on screen or played.
 
+11. **15-character rotating crowd: two rows, real depth, contact shadows — implemented (2026-11-15).**
+    Nine further owner uploads (`02FCC31C-…`, `D1EB3EF0-…`, `E5C3A8F8-…`) are moved unchanged into
+    `art-source/crowd/` as crowd-sheet-c/d/e and keyed with the same committed script
+    (`slice_crowd_sheets.py`, now manifest-driven) into `crowd_07`…`crowd_15`, bringing the pool to
+    **15 characters**. The mane-queen sheet proves the key is safe on genuine magenta clothing: her
+    hair and shorts sit at |r−b| ≈ 136 while the backdrop is |r−b| ≈ 2, so nothing is eaten, and no
+    pixel is recoloured or resampled. `CrowdLine` now runs two rows — a **Front Rope Row at y 556
+    (scale 1.0, untinted)** and a **Back Crowd Row at y 516 (scale 0.85, tinted 0.80/0.84/0.94)** —
+    five front and six back, with the other four off-stage in the pool. The **Dancehall Queen stays
+    pinned to the centre front slot** and is never swapped out. Every 12–18 s, on 50 % hype (a new
+    `hype_milestone_reached` signal on `BaseFighter`) and on the 100 % surge, one to two members fade
+    out and are replaced by pooled characters, so the line keeps reshuffling. Row z-indexes keep the
+    back row behind the front row, and every crowd member plus both crates carries a `GroundShadow`
+    at its own feet (crowd shadows are created by `CrowdLine` from sprite width and re-grounded per
+    row). [TODO] Row spacing, the 12–18 s cadence, the 0.85 depth scale/tint and the shadow radii are
+    unplayed defaults; the full 15-character pool has not been seen on screen.
+
+    **Owner creative direction — crowd (recorded 2026-11-15, not implemented):** classic **Dancehall
+    dances** should feed the fighters' movesets (the skank already does), and **breakout crowd
+    characters can be promoted to playable fighters**. The crowd pool is a casting bench as well as
+    decoration. [TODO] Which dances map to which fighter or move, and what "breakout" means before a
+    crowd member is promoted, are undecided; the §2 six-selector commitment, the Jan 14 mechanics
+    lock and the April 21, 2027 target are unchanged.
+
 Implementation status: written into `/godot`; **not played**. Until 2026-11-15 the port had never
 been opened in an engine. The sand-stage and round-lighting slices were then imported and run headless
 in Godot 4.3.stable (no GPU, no audio device, no on-screen look), which proves the project imports
@@ -594,6 +618,7 @@ For Godot, once created: [TODO] pin exact import/headless launch/test/export com
 | Round-based day → sunset → night lighting | Implemented 2026-11-15 on branch `stage/sound-clash-sand`; headless checks of all three phases, tween and N cycle pass; round-controller driving and **on-screen look [TODO]**. |
 | Smart Sparring AI modes (P2) | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 4 modes cycle on **Y**, HUD banner, **G** guard override; headless Godot 4.5 runs pass for every mode; **on-screen/feel playtest [TODO]**. |
 | Dancehall crowd line + 100% Hype Surge | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 6 sliced spectators (Queen centre) + 2 record crates at the stacks, beat bob, FORWARD!/PULL UP! banner, 5 s 1.20× / faster-recovery boost; headless checks pass; **on-screen look and balance [TODO]**. |
+| 15-character two-row rotating crowd + contact shadows | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 9 new slices (pool 15), front/back rows, 12–18 s and 50 %/100 % hype reshuffles, GroundShadow on crowd and crates; headless checks pass; **on-screen look [TODO]**. |
 
 Next agent: finish the isolated walk review, reconcile asset/engine branches, close the minimal rhythm reference gap, freeze the TypeScript baseline and complete the first Godot port inside Nov 13–26. Then follow Section 2 date gates. Keep costs at zero; preserve the April 21, 2027 target and six-selector commitment while reporting scope risks promptly.
 
@@ -638,6 +663,22 @@ and no residual tween. The harness was deleted before the commit and `TestArena.
 **Not verified:** the on-screen composition — checked only with an offline composite of the stage,
 crowd, crates and one idle sprite at the same coordinates and z-order — plus the banner flash,
 readability behind the fighters, and the balance of a 5 s 1.20× / faster-recovery window.
+
+### Rotating crowd + contact shadows — headless verification, 2026-11-15
+
+Godot 4.5.stable headless; import clean. A temporary harness on the real `TestArena.tscn` asserted:
+15 members splitting 5 front / 6 back / 4 pooled; the Queen at x 640, unshaded and still centred after
+36 swaps; the back-row Elder at 0.85 × its scene scale and tinted; a `GroundShadow` on every crowd
+member at its own row's y (556 / 516) and on both crates at 592; `rotate_now(2)` swapping members and
+emitting `crowd_rotated`; the automatic timer swapping on its own once accelerated to 0.25–0.35 s for
+the test; 50 % hype firing `hype_milestone_reached` and reshuffling; and 100 % hype surging both the
+fighter and the crowd, holding hype at 100 then resetting it to 0 after 5 s with row counts intact.
+The harness was deleted before the commit; `TestArena.tscn` also booted for 150 frames clean.
+
+**Not verified:** the on-screen look — the two-row composition was checked only with an offline
+composite of the stage, the 11 visible members, the crates and an idle fighter at the shipped
+coordinates, scales, tint and z-order. The shipping 12–18 s cadence was not waited out (the test
+accelerated it), and none of it has been played.
 
 
 ### Newer knee-lift BOX in main handoff — November 14, 2026 (Toronto)

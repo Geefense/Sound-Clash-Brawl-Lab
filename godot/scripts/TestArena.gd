@@ -99,6 +99,8 @@ func _ready() -> void:
 	crowd.setup(beat)
 	p1.hype_surge_started.connect(_on_hype_surge)
 	p2.hype_surge_started.connect(_on_hype_surge)
+	p1.hype_milestone_reached.connect(_on_hype_milestone)
+	p2.hype_milestone_reached.connect(_on_hype_milestone)
 
 	set_time_of_day(_time_phase, 0.0)   # Round 1: afternoon sun, no fade on load
 
@@ -140,6 +142,11 @@ func _unhandled_input(event: InputEvent) -> void:
 ## window the fighter's momentum boost lasts.
 func _on_hype_surge(seconds: float) -> void:
 	crowd.surge(seconds)
+
+
+## 50 % Crowd Hype: the line reshuffles itself even before the surge lands.
+func _on_hype_milestone(_percent: int) -> void:
+	crowd.celebrate()
 
 
 ## Stage thump: one micro-pulse per 132 BPM downbeat (BeatService.beat).

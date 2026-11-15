@@ -1,36 +1,70 @@
 class_name CrowdLine
 extends Node2D
-## Beat-synced Dancehall crowd (AGENTS.md §9). Presentation only: it never touches the
-## simulation, the hitboxes or either fighter's FSM.
+## Two-row, rotating Dancehall crowd (AGENTS.md §9). Presentation only: it never touches
+## the simulation, the hitboxes or either fighter's FSM.
 ##
-## Every crowd member is a plain Sprite2D child placed in the scene. This node bobs them on
-## the 132 BPM BeatService beat, and on a 100% Crowd Hype Surge it drives the rapid
-## jump/cheer loop until the boost expires.
+## Fifteen characters live in this node (one Sprite2D each, placed in TestArena.tscn). At any
+## time five stand on the Front Rope Row (scale 1.0, crisp) and six on the Back Crowd Row
+## (scale 0.85, tinted for depth); the rest wait off-stage in the pool. Every 12–18 s, and
+## whenever a fighter reaches 50 % or 100 % Crowd Hype, one or two people fade out and are
+## replaced by pooled characters, so the crowd keeps reshuffling.
+##
+## The Dancehall Queen ("Queen") is pinned to the centre front slot and never swapped out.
+## Each member gets a grounded contact shadow from the shared GroundShadow script.
 
-@export var bob_pixels: float = 4.0          # subtle off-beat sway during normal play
-@export var surge_hop_pixels: float = 22.0   # surge jubilation
-@export var surge_hop_interval: float = 0.16 # ~6 hops/s spread across the line
+signal crowd_rotated(moved: int)
+
+const FRONT_ROW_Y := 556.0
+const BACK_ROW_Y := 516.0
+const FRONT_SLOTS := [340.0, 470.0, 640.0, 810.0, 940.0]
+const BACK_SLOTS := [300.0, 428.0, 556.0, 724.0, 852.0, 980.0]
+const PINNED_NAME := "Queen"
+const PINNED_SLOT := 2
+
+@export var bob_pixels: float = 4.0           # subtle off-beat sway during normal play
+@export var surge_hop_pixels: float = 18.0    # surge jubilation
+@export var surge_hop_interval: float = 0.16  # ~6 hops/s spread across the line
+@export var back_scale_mult: float = 0.85
+@export var back_shade: Color = Color(0.80, 0.84, 0.94)
+@export var rotate_min_seconds: float = 12.0
+@export var rotate_max_seconds: float = 18.0
+@export var swap_min: int = 1
+@export var swap_max: int = 2
+@export var swap_seconds: float = 0.34
+
+
+## One crowd member: its sprite, its contact shadow and its current slot.
+class Member:
+	var sprite: Sprite2D
+	var shadow: GroundShadow
+	var front_scale: Vector2 = Vector2.ONE
+	var shadow_radius: float = 16.0
+	var row: int = -1                       # 0 front, 1 back, -1 pooled (off-stage)
+	var slot: int = -1
+	var home: Vector2 = Vector2.ZERO
+	var bounce: Tween
+	var swap: Tween
+	var swapping: bool = false
+
 
 var beat: BeatService
 
-var _sprites: Array[Sprite2D] = []
-var _home: Array[Vector2] = []
-var _home_rot: Array[float] = []
-var _tweens: Array[Tween] = []
+var _members: Array[Member] = []
 var _surge_left: float = 0.0
 var _hop_timer: float = 0.0
 var _hop_index: int = 0
+var _rotate_timer: float = 0.0
+var _rng := RandomNumberGenerator.new()
 
 
 func _ready() -> void:
+	_rng.randomize()
 	for child in get_children():
-		var s := child as Sprite2D
-		if s == null:
-			continue
-		_sprites.append(s)
-		_home.append(s.position)
-		_home_rot.append(s.rotation)
-		_tweens.append(null)
+		var sprite := child as Sprite2D
+		if sprite != null:
+			_members.append(_make_member(sprite))
+	_layout()
+	_rotate_timer = _rng.randf_range(rotate_min_seconds, rotate_max_seconds)
 
 
 func setup(service: BeatService) -> void:
@@ -39,13 +73,191 @@ func setup(service: BeatService) -> void:
 		beat.beat.connect(on_beat)
 
 
+func _make_member(sprite: Sprite2D) -> Member:
+	var m := Member.new()
+	m.sprite = sprite
+	m.front_scale = sprite.scale
+	var shadow := GroundShadow.new()
+	shadow.name = "Shadow"
+	shadow.squash = 0.30
+	shadow.z_index = -2                 # every shadow sits under every body
+	var width: float = sprite.texture.get_width() if sprite.texture != null else 64.0
+	m.shadow_radius = clampf(width * sprite.scale.x * 0.42, 9.0, 24.0)
+	shadow.radius = m.shadow_radius
+	sprite.add_child(shadow)
+	m.shadow = shadow
+	return m
+
+
+# =========================================================================
+# Rows and pool
+# =========================================================================
+func _layout() -> void:
+	var free: Array[Member] = _members.duplicate()
+	var queen := _member_named(PINNED_NAME)
+	if queen != null:
+		_assign(queen, 0, PINNED_SLOT)
+		free.erase(queen)
+	for slot in [0, 1, 3, 4]:
+		if free.is_empty():
+			break
+		_assign(free.pop_front(), 0, slot)
+	for slot in range(BACK_SLOTS.size()):
+		if free.is_empty():
+			break
+		_assign(free.pop_front(), 1, slot)
+	for m in free:
+		_pool(m)
+
+
+func _assign(m: Member, row: int, slot: int) -> void:
+	m.row = row
+	m.slot = slot
+	m.home = Vector2(_slot_x(row, slot), _row_y(row))
+	m.sprite.position = m.home
+	m.sprite.scale = _row_scale(m, row)
+	m.sprite.z_index = 0 if row == 0 else -1     # the back row never draws over the front
+	m.sprite.modulate = Color(1.0, 1.0, 1.0, 1.0) if row == 0 else back_shade
+	m.sprite.visible = true
+	_update_shadow(m)
+
+
+func _pool(m: Member) -> void:
+	m.row = -1
+	m.slot = -1
+	m.sprite.visible = false
+	# Park the shadow at the front line; _assign re-grounds it when the member returns.
+	m.shadow.ground_y = FRONT_ROW_Y
+	m.shadow.radius = clampf(m.shadow_radius, 8.0, 24.0)
+	if m.bounce != null and m.bounce.is_valid():
+		m.bounce.kill()
+
+
+func _update_shadow(m: Member) -> void:
+	var mult: float = 1.0 if m.row == 0 else back_scale_mult
+	m.shadow.ground_y = m.home.y
+	m.shadow.radius = clampf(m.shadow_radius * mult, 8.0, 24.0)
+
+
+func _row_scale(m: Member, row: int) -> Vector2:
+	return m.front_scale if row == 0 else m.front_scale * back_scale_mult
+
+
+func _slot_x(row: int, slot: int) -> float:
+	return float(FRONT_SLOTS[slot]) if row == 0 else float(BACK_SLOTS[slot])
+
+
+func _row_y(row: int) -> float:
+	return FRONT_ROW_Y if row == 0 else BACK_ROW_Y
+
+
+func _member_named(node_name: String) -> Member:
+	for m in _members:
+		if m.sprite.name == node_name:
+			return m
+	return null
+
+
+# =========================================================================
+# Rotation — the crowd reshuffles itself every 12–18 s
+# =========================================================================
+## Swap 1–2 people out of the rows for pooled characters. Returns how many moved.
+func rotate_now(count: int) -> int:
+	var moved := 0
+	for i in count:
+		if _rotate_one():
+			moved += 1
+	if moved > 0:
+		crowd_rotated.emit(moved)
+	return moved
+
+
+## 50 % Crowd Hype: the crowd reacts with a reshuffle of its own.
+func celebrate() -> void:
+	rotate_now(_rng.randi_range(swap_min, swap_max))
+
+
+func _rotate_one() -> bool:
+	var outgoing := _random_visible()
+	var incoming := _random_pooled()
+	if outgoing == null or incoming == null:
+		return false
+	var row := outgoing.row
+	var slot := outgoing.slot
+	var target_home := Vector2(_slot_x(row, slot), _row_y(row))
+	var target_scale := _row_scale(incoming, row)
+
+	# Free the slot at once so the row counts never wobble mid-swap; the outgoing member
+	# stays visible while it fades, then hides and joins the pool.
+	outgoing.row = -1
+	outgoing.slot = -1
+	outgoing.swapping = true
+	incoming.swapping = true
+	if outgoing.bounce != null and outgoing.bounce.is_valid():
+		outgoing.bounce.kill()
+
+	var fade := create_tween()
+	fade.tween_property(outgoing.sprite, "modulate:a", 0.0, swap_seconds * 0.5)
+	fade.parallel().tween_property(outgoing.sprite, "position:y", outgoing.home.y + 7.0,
+		swap_seconds * 0.5)
+	fade.tween_callback(func() -> void:
+		outgoing.sprite.visible = false
+		outgoing.swapping = false)
+
+	incoming.row = row
+	incoming.slot = slot
+	incoming.home = target_home
+	incoming.sprite.position = target_home + Vector2(0.0, 9.0)
+	incoming.sprite.scale = target_scale * 0.93
+	incoming.sprite.modulate = Color(back_shade.r, back_shade.g, back_shade.b, 0.0) \
+		if row == 1 else Color(1.0, 1.0, 1.0, 0.0)
+	incoming.sprite.visible = true
+	_update_shadow(incoming)
+
+	var enter := create_tween()
+	enter.tween_property(incoming.sprite, "modulate:a", 1.0, swap_seconds)
+	enter.parallel().tween_property(incoming.sprite, "position", target_home, swap_seconds)
+	enter.parallel().tween_property(incoming.sprite, "scale", target_scale, swap_seconds)
+	enter.tween_callback(func() -> void:
+		incoming.swapping = false
+		_assign(incoming, row, slot))
+	incoming.swap = enter
+	return true
+
+
+func _random_visible() -> Member:
+	var candidates: Array[Member] = []
+	for m in _members:
+		if m.row >= 0 and not m.swapping and m.sprite.name != PINNED_NAME:
+			candidates.append(m)
+	if candidates.is_empty():
+		return null
+	return candidates[_rng.randi_range(0, candidates.size() - 1)]
+
+
+func _random_pooled() -> Member:
+	var candidates: Array[Member] = []
+	for m in _members:
+		if m.row < 0 and not m.swapping:
+			candidates.append(m)
+	if candidates.is_empty():
+		return null
+	return candidates[_rng.randi_range(0, candidates.size() - 1)]
+
+
+# =========================================================================
+# Beat bounce, hype surge
+# =========================================================================
 func on_beat(_beat_index: int) -> void:
 	var surging := is_surging()
-	for i in _sprites.size():
+	for i in _members.size():
+		var m := _members[i]
+		if m.row < 0 or m.swapping:
+			continue
 		if surging:
-			_bounce(i, surge_hop_pixels, 0.16, float(i) * 0.015)
+			_bounce(m, surge_hop_pixels, 0.16, float(i) * 0.015)
 		else:
-			_bounce(i, bob_pixels, 0.24, float(i) * 0.02)
+			_bounce(m, bob_pixels, 0.24, float(i) * 0.02)
 
 
 ## Called when a fighter's Hype Meter fills. `seconds` is the fighter's boost length, so
@@ -53,8 +265,12 @@ func on_beat(_beat_index: int) -> void:
 func surge(seconds: float) -> void:
 	_surge_left = maxf(seconds, 0.1)
 	_hop_timer = 0.0
-	for i in _sprites.size():
-		_bounce(i, surge_hop_pixels * 1.3, 0.22, float(i) * 0.03)
+	for i in _members.size():
+		var m := _members[i]
+		if m.row < 0 or m.swapping:
+			continue
+		_bounce(m, surge_hop_pixels * 1.3, 0.22, float(i) * 0.03)
+	rotate_now(1)          # 100 % Hype also reshuffles the line
 
 
 func is_surging() -> bool:
@@ -62,47 +278,80 @@ func is_surging() -> bool:
 
 
 func crowd_size() -> int:
-	return _sprites.size()
+	return _members.size()
+
+
+func front_row_count() -> int:
+	var n := 0
+	for m in _members:
+		if m.row == 0:
+			n += 1
+	return n
+
+
+func back_row_count() -> int:
+	var n := 0
+	for m in _members:
+		if m.row == 1:
+			n += 1
+	return n
+
+
+func pooled_count() -> int:
+	var n := 0
+	for m in _members:
+		if m.row < 0:
+			n += 1
+	return n
 
 
 func _process(delta: float) -> void:
+	_rotate_timer -= delta
+	if _rotate_timer <= 0.0:
+		_rotate_timer = _rng.randf_range(rotate_min_seconds, rotate_max_seconds)
+		rotate_now(_rng.randi_range(swap_min, swap_max))
+
 	if _surge_left <= 0.0:
 		return
 	_surge_left = maxf(0.0, _surge_left - delta)
 	_hop_timer -= delta
-	if _hop_timer <= 0.0 and not _sprites.is_empty():
+	if _hop_timer <= 0.0 and not _members.is_empty():
 		_hop_timer = surge_hop_interval
-		_hop_index = (_hop_index + 1) % _sprites.size()
-		_bounce(_hop_index, randf_range(surge_hop_pixels * 0.7, surge_hop_pixels * 1.4),
-			0.2, 0.0, randf_range(-0.12, 0.12))
+		_hop_index = (_hop_index + 1) % _members.size()
+		var m := _members[_hop_index]
+		if m.row >= 0 and not m.swapping:
+			_bounce(m, randf_range(surge_hop_pixels * 0.7, surge_hop_pixels * 1.4),
+				0.2, 0.0, randf_range(-0.12, 0.12))
 	if _surge_left <= 0.0:
 		_settle()
 
 
-func _bounce(i: int, amp: float, duration: float, delay: float, tilt: float = 0.0) -> void:
-	var sprite := _sprites[i]
-	var home := _home[i]
-	var previous := _tweens[i]
+func _bounce(m: Member, amp: float, duration: float, delay: float, tilt: float = 0.0) -> void:
+	if m.swapping:
+		return
+	var previous := m.bounce
 	if previous != null and previous.is_valid():
 		previous.kill()
 	var tw := create_tween()
 	if delay > 0.0:
 		tw.tween_interval(delay)
-	tw.tween_property(sprite, "position:y", home.y - amp, duration * 0.45) \
+	tw.tween_property(m.sprite, "position:y", m.home.y - amp, duration * 0.45) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	if tilt != 0.0:
-		tw.parallel().tween_property(sprite, "rotation", _home_rot[i] + tilt, duration * 0.45)
-	tw.tween_property(sprite, "position:y", home.y, duration * 0.55) \
+		tw.parallel().tween_property(m.sprite, "rotation", tilt, duration * 0.45)
+	tw.tween_property(m.sprite, "position:y", m.home.y, duration * 0.55) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
 	if tilt != 0.0:
-		tw.parallel().tween_property(sprite, "rotation", _home_rot[i], duration * 0.55)
-	_tweens[i] = tw
+		tw.parallel().tween_property(m.sprite, "rotation", 0.0, duration * 0.55)
+	m.bounce = tw
 
 
 func _settle() -> void:
-	for i in _sprites.size():
-		var tw := _tweens[i]
+	for m in _members:
+		if m.row < 0:
+			continue
+		var tw := m.bounce
 		if tw != null and tw.is_valid():
 			tw.kill()
-		_sprites[i].position = _home[i]
-		_sprites[i].rotation = _home_rot[i]
+		m.sprite.position = m.home
+		m.sprite.rotation = 0.0

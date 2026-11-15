@@ -1,4 +1,4 @@
-[gd_scene load_steps=28 format=3]
+[gd_scene load_steps=38 format=3]
 
 [ext_resource type="Script" path="res://scripts/TestArena.gd" id="1_arena"]
 [ext_resource type="PackedScene" path="res://scenes/BaseFighter.tscn" id="2_fighter"]
@@ -18,6 +18,16 @@
 [ext_resource type="Texture2D" path="res://assets/sprites/crates/crate_01_red.png" id="16_crate_red"]
 [ext_resource type="Texture2D" path="res://assets/sprites/crates/crate_02_black.png" id="17_crate_black"]
 [ext_resource type="Script" path="res://scripts/stages/CrowdLine.gd" id="18_crowd"]
+[ext_resource type="Texture2D" path="res://assets/sprites/crowd/crowd_07_cap_pointing_elder.png" id="19_cap_elder"]
+[ext_resource type="Texture2D" path="res://assets/sprites/crowd/crowd_08_cup_jersey_youth.png" id="20_cup_youth"]
+[ext_resource type="Texture2D" path="res://assets/sprites/crowd/crowd_09_airhorn_hypeman.png" id="21_airhorn"]
+[ext_resource type="Texture2D" path="res://assets/sprites/crowd/crowd_10_headscarf_clapper.png" id="22_clapper"]
+[ext_resource type="Texture2D" path="res://assets/sprites/crowd/crowd_11_mane_queen.png" id="23_mane_queen"]
+[ext_resource type="Texture2D" path="res://assets/sprites/crowd/crowd_12_towel_waver.png" id="24_towel"]
+[ext_resource type="Texture2D" path="res://assets/sprites/crowd/crowd_13_floral_skanker.png" id="25_skanker"]
+[ext_resource type="Texture2D" path="res://assets/sprites/crowd/crowd_14_rasta_elder.png" id="26_rasta"]
+[ext_resource type="Texture2D" path="res://assets/sprites/crowd/crowd_15_hype_woman.png" id="27_hype_woman"]
+[ext_resource type="Script" path="res://scripts/stages/GroundShadow.gd" id="28_shadow"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_floor"]
 size = Vector2(1280, 40)
@@ -147,6 +157,20 @@ scale = Vector2(0.38, 0.38)
 texture = ExtResource("17_crate_black")
 offset = Vector2(0, -118.5)
 
+[node name="Shadow" type="Node2D" parent="RecordCrates/LeftCrate"]
+z_index = -1
+script = ExtResource("28_shadow")
+ground_y = 592.0
+radius = 34.0
+squash = 0.28
+
+[node name="Shadow" type="Node2D" parent="RecordCrates/RightCrate"]
+z_index = -1
+script = ExtResource("28_shadow")
+ground_y = 592.0
+radius = 32.0
+squash = 0.28
+
 [node name="CrowdLine" type="Node2D" parent="."]
 z_index = -5
 script = ExtResource("18_crowd")
@@ -186,6 +210,60 @@ position = Vector2(1060, 556)
 scale = Vector2(0.13, 0.13)
 texture = ExtResource("15_elder")
 offset = Vector2(0, -419)
+
+[node name="CapElder" type="Sprite2D" parent="CrowdLine"]
+position = Vector2(640, 556)
+scale = Vector2(0.132, 0.132)
+texture = ExtResource("19_cap_elder")
+offset = Vector2(0, -437.5)
+
+[node name="CupYouth" type="Sprite2D" parent="CrowdLine"]
+position = Vector2(640, 556)
+scale = Vector2(0.132, 0.132)
+texture = ExtResource("20_cup_youth")
+offset = Vector2(0, -439)
+
+[node name="AirhornHypeman" type="Sprite2D" parent="CrowdLine"]
+position = Vector2(640, 556)
+scale = Vector2(0.12, 0.12)
+texture = ExtResource("21_airhorn")
+offset = Vector2(0, -481)
+
+[node name="HeadscarfClapper" type="Sprite2D" parent="CrowdLine"]
+position = Vector2(640, 556)
+scale = Vector2(0.134, 0.134)
+texture = ExtResource("22_clapper")
+offset = Vector2(0, -430)
+
+[node name="ManeQueen" type="Sprite2D" parent="CrowdLine"]
+position = Vector2(640, 556)
+scale = Vector2(0.115, 0.115)
+texture = ExtResource("23_mane_queen")
+offset = Vector2(0, -502)
+
+[node name="TowelWaver" type="Sprite2D" parent="CrowdLine"]
+position = Vector2(640, 556)
+scale = Vector2(0.119, 0.119)
+texture = ExtResource("24_towel")
+offset = Vector2(0, -481.5)
+
+[node name="FloralSkanker" type="Sprite2D" parent="CrowdLine"]
+position = Vector2(640, 556)
+scale = Vector2(0.137, 0.137)
+texture = ExtResource("25_skanker")
+offset = Vector2(0, -419.5)
+
+[node name="RastaElder" type="Sprite2D" parent="CrowdLine"]
+position = Vector2(640, 556)
+scale = Vector2(0.119, 0.119)
+texture = ExtResource("26_rasta")
+offset = Vector2(0, -481.5)
+
+[node name="HypeWoman" type="Sprite2D" parent="CrowdLine"]
+position = Vector2(640, 556)
+scale = Vector2(0.134, 0.134)
+texture = ExtResource("27_hype_woman")
+offset = Vector2(0, -429)
 
 [node name="P1" parent="." instance=ExtResource("2_fighter")]
 position = Vector2(420, 600)

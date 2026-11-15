@@ -1,8 +1,43 @@
-"""Slice the two Dancehall crowd sheets: key the magenta background and cut
-6 characters + 2 vinyl crates. Run from the repository root."""
-import sys, numpy as np
+"""Slice the Dancehall crowd sheets into individual game sprites.
+
+Run from the repository root:  python3 art-source/crowd/slice_crowd_sheets.py
+
+Pipeline (unchanged since the first crowd batch):
+  1. Key the magenta background with a flood fill from the borders, so a character's own
+     pink/magenta clothing is only removed when it is genuinely background-coloured and
+     connected to the outside.
+  2. Also clear enclosed pure magenta (the gaps inside arm loops, between legs).
+  3. Cut a 2 px fringe around the key so no magenta halo survives, then write RGBA at 1:1.
+     Pixels are never resampled, recoloured or scaled; only alpha changes.
+  4. Split the sheet by connected component (not by column), so characters that overlap in
+     projection stay whole. The one touching crate pair is split at its emptiest column.
+
+Outputs: godot/assets/sprites/crowd/<name>.png and godot/assets/sprites/crates/*.png
+"""
+import os
+import numpy as np
 from PIL import Image
 from scipy import ndimage
+
+CROWD_OUT = 'godot/assets/sprites/crowd'
+CRATE_OUT = 'godot/assets/sprites/crates'
+
+SHEETS = [
+    dict(path='art-source/crowd/crowd-sheet-a-queen-flag-hypeman-crates.png', crates=True,
+         names=['crowd_01_dancehall_queen', 'crowd_02_flag_waver',
+                'crowd_03_hypeman_bucket_hat']),
+    dict(path='art-source/crowd/crowd-sheet-b-three-spectators.png',
+         names=['crowd_04_cheer_woman', 'crowd_05_arms_crossed_man', 'crowd_06_elder_clap']),
+    dict(path='art-source/crowd/crowd-sheet-c-four-spectators.png',
+         names=['crowd_07_cap_pointing_elder', 'crowd_08_cup_jersey_youth',
+                'crowd_09_airhorn_hypeman', 'crowd_10_headscarf_clapper']),
+    dict(path='art-source/crowd/crowd-sheet-d-mane-queen.png',
+         names=['crowd_11_mane_queen']),
+    dict(path='art-source/crowd/crowd-sheet-e-four-spectators.png',
+         names=['crowd_12_towel_waver', 'crowd_13_floral_skanker',
+                'crowd_14_rasta_elder', 'crowd_15_hype_woman']),
+]
+
 
 def keyed(path):
     a = np.asarray(Image.open(path).convert('RGB'))
@@ -19,6 +54,7 @@ def keyed(path):
     alpha[near] = np.where(score > 0.35, 0, 255).astype(np.uint8)
     return np.dstack([a[:, :, :3], alpha])
 
+
 def components(arr, minarea=3000):
     lbl, _ = ndimage.label(arr[:, :, 3] > 0, structure=np.ones((3, 3)))
     out = []
@@ -33,41 +69,50 @@ def components(arr, minarea=3000):
     out.sort(key=lambda c: c['x0'])
     return lbl, out
 
+
 def cut(arr, lbl, c):
     sub = arr[c['y0']:c['y1'] + 1, c['x0']:c['x1'] + 1].copy()
-    sub[:, :, 3] = np.where(lbl[c['y0']:c['y1'] + 1, c['x0']:c['x1'] + 1] == c['label'], sub[:, :, 3], 0)
+    sub[:, :, 3] = np.where(lbl[c['y0']:c['y1'] + 1, c['x0']:c['x1'] + 1] == c['label'],
+                            sub[:, :, 3], 0)
     return sub
 
-def split_columns(sub, gap_min=3):
+
+def split_columns(sub):
     """Crates touch: split at the emptiest column in the middle third."""
     cols = (sub[:, :, 3] > 0).sum(axis=0)
     lo, hi = len(cols) // 3, 2 * len(cols) // 3
     mid = lo + int(np.argmin(cols[lo:hi]))
-    left = sub.copy();  left[:, :, 3]  = np.where(np.arange(sub.shape[1]) < mid, sub[:, :, 3], 0)
-    right = sub.copy(); right[:, :, 3] = np.where(np.arange(sub.shape[1]) >= mid, sub[:, :, 3], 0)
-    return left, right, mid
+    left = sub.copy()
+    left[:, :, 3] = np.where(np.arange(sub.shape[1]) < mid, sub[:, :, 3], 0)
+    right = sub.copy()
+    right[:, :, 3] = np.where(np.arange(sub.shape[1]) >= mid, sub[:, :, 3], 0)
+    return left, right
+
 
 def trim(a):
     ys, xs = np.where(a[:, :, 3] > 0)
     return a[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
 
+
+def main():
+    os.makedirs(CROWD_OUT, exist_ok=True)
+    os.makedirs(CRATE_OUT, exist_ok=True)
+    for sheet in SHEETS:
+        arr = keyed(sheet['path'])
+        lbl, comps = components(arr)
+        bodies = comps[:len(sheet['names'])]
+        if len(bodies) != len(sheet['names']):
+            raise SystemExit('%s: expected %d characters, found %d' %
+                             (sheet['path'], len(sheet['names']), len(bodies)))
+        for c, name in zip(bodies, sheet['names']):
+            Image.fromarray(trim(cut(arr, lbl, c))).save('%s/%s.png' % (CROWD_OUT, name))
+            print('%-34s %4dx%d' % (name, c['x1'] - c['x0'] + 1, c['y1'] - c['y0'] + 1))
+        if sheet.get('crates'):
+            red, black = split_columns(trim(cut(arr, lbl, comps[len(sheet['names'])])))
+            Image.fromarray(trim(red)).save('%s/crate_01_red.png' % CRATE_OUT)
+            Image.fromarray(trim(black)).save('%s/crate_02_black.png' % CRATE_OUT)
+            print('crates                              both split')
+
+
 if __name__ == '__main__':
-    out = sys.argv[1] if len(sys.argv) > 1 else '/tmp/crowd'
-    import os; os.makedirs(out, exist_ok=True)
-    A = keyed('B6BD1902-2297-4484-AF0A-1EE824147F4B.png')
-    B = keyed('DFBF74CC-0D06-417C-8DBA-E2A10DEAD891.png')
-    lblA, cA = components(A); lblB, cB = components(B)
-    namesA = ['crowd_01_dancehall_queen', 'crowd_02_flag_waver', 'crowd_03_hypeman_bucket_hat']
-    namesB = ['crowd_04_cheer_woman', 'crowd_05_arms_crossed_man', 'crowd_06_elder_clap']
-    for c, nm in zip(cA[:3], namesA):
-        Image.fromarray(trim(cut(A, lblA, c))).save('%s/%s.png' % (out, nm))
-    for c, nm in zip(cB[:3], namesB):
-        Image.fromarray(trim(cut(B, lblB, c))).save('%s/%s.png' % (out, nm))
-    crates = trim(cut(A, lblA, cA[3]))
-    red, black, mid = split_columns(crates)
-    Image.fromarray(trim(red)).save('%s/crate_01_red.png' % out)
-    Image.fromarray(trim(black)).save('%s/crate_02_black.png' % out)
-    for f in namesA + namesB + ['crate_01_red', 'crate_02_black']:
-        im = Image.open('%s/%s.png' % (out, f))
-        print('%-30s %4dx%-4d alpha0=%d' % (f, im.width, im.height,
-              int((np.asarray(im)[:, :, 3] == 0).sum())))
+    main()

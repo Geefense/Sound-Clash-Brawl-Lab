@@ -19,6 +19,7 @@ signal health_changed(current: int, maximum: int)
 signal hype_changed(current: int, maximum: int)
 signal strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dictionary)
 signal taunt_started(beat: Dictionary)
+signal hype_milestone_reached(percent: int)
 signal hype_surge_started(seconds: float)
 signal camera_shake_requested(intensity: float, duration: float)
 signal died
@@ -223,6 +224,7 @@ var _stun_frames: int = 0
 var _stun_is_block: bool = false
 var _hitstop_frames: int = 0
 var _surge_ticks: int = 0
+var _half_hype_awarded: bool = false
 var _guard_ticks: int = 0
 var _guard_recovering: bool = false
 var _was_on_floor: bool = true
@@ -258,6 +260,7 @@ func _physics_process(_delta: float) -> void:
 		_surge_ticks -= 1
 		if _surge_ticks == 0:
 			hype = 0
+			_half_hype_awarded = false
 			hype_changed.emit(hype, HYPE_MAX)
 
 	# Hitstop freezes state logic but keeps the body moving so nothing tunnels.
@@ -611,6 +614,10 @@ func _add_hype(amount: int) -> void:
 	hype = clampi(hype + amount, 0, HYPE_MAX)
 	if hype != before:
 		hype_changed.emit(hype, HYPE_MAX)
+	# 50 % is a crowd reaction of its own; 100 % escalates into the surge.
+	if not _half_hype_awarded and hype >= int(HYPE_MAX * 0.5):
+		_half_hype_awarded = true
+		hype_milestone_reached.emit(50)
 	if hype >= HYPE_MAX:
 		_start_hype_surge()
 

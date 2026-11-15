@@ -639,6 +639,32 @@ here is gameplay-verified; implementation status is stated per item.
     compression polish; GitHub Pages is not enabled; and the build has not been run on the actual 4 GB
     Dell Chromebook.
 
+17. **Chromebook crash/freeze safeguards — implemented (2026-11-15).** Three guards for long demo
+    sessions in a browser tab on a 4 GB Chromebook. None of them touches art bytes.
+    **Import-cache cap:** every texture larger than 512 px now carries `process/size_limit=512` in
+    its **committed** `.import` file (those files are tracked from this milestone on), so a
+    1536 × 1024 fighter frame decodes at 512 × 341 instead of 6.29 MB of RGBA. Measured from the real
+    scene graph, the textures the arena loads dropped from **149.6 MB to 50.0 MB (−67 %)** and the
+    `.pck` from 17.1 MB to 10.3 MB; the source PNGs are byte-identical and `art-source/` is untouched.
+    Sprites stay sharp because a 512 px frame still renders ~4× oversampled at the ~122 px on-screen
+    height. Because the cap changes the decoded pixel size, `BaseFighter` (`ANIM_SOURCE_MAX`) and
+    `CrowdLine` (`ART_MAX_SIDE`) compensate by dividing `offset` and multiplying `scale` with
+    (original side ÷ decoded side); without that the fighters and the crowd line render at a third of
+    their size. Verified: P1's idle draws 255.8 world px tall and the pinned Queen 123.6 px, exactly
+    the pre-cap sizes.
+    **Pre-warm:** `TestArena._prewarm_effects()` spawns an invisible (alpha 0) off-screen
+    (`x = −4000`) `ParrySpark` and `CPUParticles2D` puff during `_ready`, behind the round announce
+    banner, so the driver compiles the effect shaders and allocates the particle buffers there rather
+    than on the first footstep, hit or parry; both free themselves.
+    **Hard caps:** `MAX_ACTIVE_BIRDS` = 1 (enforced in `_spawn_bird()` through
+    `BirdHazard.is_flying()`), `MAX_PARRY_SPARKS` = 4 (the oldest spark is recycled) and
+    `MAX_PARTICLE_AMOUNT` = 16, applied at start-up to every `CPUParticles2D` in the arena (the wind
+    motes drop from 34 to 16).
+    [TODO] **50.0 MB is short of the 40 MB goal:** the 19 hand-selected frames are already 512² and
+    account for ~20 MB of the total, so only a smaller cap on those frames (or downscaled copies)
+    goes lower. The stall that the pre-warm targets has not been measured on the real Chromebook, and
+    the two ratio tables must be extended whenever a new art group is added.
+
 Implementation status: written into `/godot`; **not played**. Until 2026-11-15 the port had never
 been opened in an engine. The sand-stage and round-lighting slices were then imported and run headless
 in Godot 4.3.stable (no GPU, no audio device, no on-screen look), which proves the project imports
@@ -688,6 +714,7 @@ For Godot, once created: [TODO] pin exact import/headless launch/test/export com
 | Record Static Parry | Implemented 2026-11-15 on `stage/sound-clash-sand`: on-beat guard negates the hit, +20 hype, 18-tick attacker stun, ParrySpark; headless parry/block checks pass; **on-screen look and tuning [TODO]**. |
 | Best-of-3 round lifecycle | Implemented 2026-11-15: RoundController announce → K.O. → rematch, day → sunset → night per round, fighter resets, HUD banners + win pips; headless three-round run passes; **no timer/draw rule, on-screen layout [TODO]**. |
 | Chromebook Web export | Implemented 2026-11-15: committed Web preset (GL Compatibility, single-threaded, VRAM compression off) exporting to `/docs`; headless export clean and the build rendered on WebGL2 in a browser; **not yet tried on the 4 GB Chromebook, not deployed [TODO]**. |
+| Chromebook crash/freeze safeguards | Implemented 2026-11-15: committed `.import` `size_limit=512` (149.6 → 50.0 MB decoded, pck 10.3 MB) with offset/scale compensation, off-screen effect pre-warm, and 1 bird / 4 spark / 16 particle caps; headless guard checks and WebGL2 boot pass; **on-device timing unmeasured and the 40 MB goal not reached [TODO]**. |
 
 Next agent: finish the isolated walk review, reconcile asset/engine branches, close the minimal rhythm reference gap, freeze the TypeScript baseline and complete the first Godot port inside Nov 13–26. Then follow Section 2 date gates. Keep costs at zero; preserve the April 21, 2027 target and six-selector commitment while reporting scope risks promptly.
 
@@ -789,6 +816,22 @@ exclude filter. `art-source/` and every original PNG are untouched and no textur
 **Not verified:** the build was never opened on the actual 4 GB Dell Chromebook or
 `editor.godotengine.org`, GitHub Pages was not enabled, nothing was deployed, and the 149.6 MB figure
 is computed from the source image dimensions rather than measured inside the browser tab.
+
+### Chromebook safeguards — verification, 2026-11-15
+
+Temporary headless harness on the real `TestArena.tscn`: the arena loads 59 textures totalling
+**50.0 MB** decoded (from 149.6 MB); every `CPUParticles2D` reports amount 16; the pre-warm nodes are
+gone two frames later; eight rapid parries leave exactly **4** live `ParrySpark`s; six rapid bird
+triggers leave exactly **1** bird in the air; and the compensation keeps the authored sizes — P1's
+idle renders 255.8 world px tall (a 3× capped 341 px frame at 0.75) and the pinned Queen 123.6 px,
+both matching the pre-cap build. The harness was deleted before the commit and `TestArena.tscn`
+booted 200 frames clean. The Web export rebuilt headless (exit 0, `.pck` 10.3 MB, `/docs` 47 MB) and
+the browser run showed no script or engine errors, a live WebGL2 context, and the same fighter/crowd
+sizes and layout as the pre-cap build.
+
+**Not verified:** nothing was measured on the actual 4 GB Chromebook — no frame timings, no tab
+memory reading, no long demo session — so the pre-warm is a structural fix rather than a demonstrated
+stall removal.
 
 
 ### Newer knee-lift BOX in main handoff — November 14, 2026 (Toronto)

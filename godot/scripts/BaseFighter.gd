@@ -141,6 +141,18 @@ const ANIM_SCALE := {
 }
 const ANIM_OFFSET_DEFAULT := Vector2(0, -388)
 
+# Import-cache cap compensation (AGENTS.md §9 item 17). `process/size_limit=512` in the
+# .import files decodes the big frames smaller, so the pixel-space ANIM_OFFSET/ANIM_SCALE
+# above are divided/multiplied by the same factor. Values are the longest side of the
+# original art, so an uncapped import (ratio 1.0) behaves exactly as before.
+const ANIM_SOURCE_MAX := {
+	"walk": 620.0,
+	"guard_entry": 512.0, "block": 512.0, "guard_recovery": 512.0,
+	"sparta_startup": 512.0, "sparta_active": 512.0, "sparta_recovery": 512.0,
+	"skank": 512.0, "lightah": 512.0,
+}
+const ANIM_SOURCE_MAX_DEFAULT := 1536.0
+
 # Attack data. [TODO] move to data-driven move resources (§5). Damage values are from §3.
 # Active window is polled from the tick after the hitbox is enabled (one-tick lag).
 # tump and upper_box are runnable placeholders: no art and no ported frame data yet.
@@ -888,10 +900,27 @@ func _play_state_anim() -> void:
 		anim = StringName("%s_left" % anim)
 	if sprite.sprite_frames.has_animation(anim):
 		var key := String(anim).trim_suffix("_left")
-		sprite.offset = ANIM_OFFSET.get(StringName(key), ANIM_OFFSET_DEFAULT)
-		var s: float = float(ANIM_SCALE.get(key, BASE_SPRITE_SCALE))
+		var k := _import_cap_ratio(key, anim)
+		sprite.offset = ANIM_OFFSET.get(StringName(key), ANIM_OFFSET_DEFAULT) / k
+		var s: float = float(ANIM_SCALE.get(key, BASE_SPRITE_SCALE)) * k
 		sprite.scale = Vector2(s, s)
 		sprite.play(anim)
+
+
+## How much the import cap shrank this animation's frames (1.0 when uncapped). The
+## offset is authored in texture pixels, so it shrinks with the texture and the scale
+## has to grow by the same factor to keep the fighter's on-screen size.
+func _import_cap_ratio(key: String, anim: StringName) -> float:
+	var frames := sprite.sprite_frames
+	if frames == null or not frames.has_animation(anim) or frames.get_frame_count(anim) == 0:
+		return 1.0
+	var tex := frames.get_frame_texture(anim, 0)
+	if tex == null:
+		return 1.0
+	var decoded := float(maxi(tex.get_width(), tex.get_height()))
+	if decoded <= 0.0:
+		return 1.0
+	return float(ANIM_SOURCE_MAX.get(key, ANIM_SOURCE_MAX_DEFAULT)) / decoded
 
 
 func _poll_local_input() -> Command:

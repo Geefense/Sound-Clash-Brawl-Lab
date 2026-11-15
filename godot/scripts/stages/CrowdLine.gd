@@ -27,6 +27,27 @@ const PINNED_SLOT := 2
 @export var back_scale_mult: float = 0.85
 @export var back_shade: Color = Color(0.80, 0.84, 0.94)
 @export var rotate_min_seconds: float = 12.0
+## Longest side of each crowd sprite's original art (AGENTS.md §9 item 17). The .import
+## cap decodes the art smaller than the pixels the scene's scale/offset were authored
+## for, so both are scaled back by (original side / decoded side).
+const ART_MAX_SIDE := {
+	"Queen": 824.0,
+	"FlagWaver": 895.0,
+	"Hypeman": 762.0,
+	"CheerWoman": 949.0,
+	"ArmsCrossed": 851.0,
+	"Elder": 838.0,
+	"CapElder": 875.0,
+	"CupYouth": 878.0,
+	"AirhornHypeman": 962.0,
+	"HeadscarfClapper": 860.0,
+	"ManeQueen": 1004.0,
+	"TowelWaver": 963.0,
+	"FloralSkanker": 839.0,
+	"RastaElder": 963.0,
+	"HypeWoman": 858.0,
+}
+
 @export var rotate_max_seconds: float = 18.0
 @export var swap_min: int = 1
 @export var swap_max: int = 2
@@ -74,6 +95,7 @@ func setup(service: BeatService) -> void:
 
 
 func _make_member(sprite: Sprite2D) -> Member:
+	_compensate_import_cap(sprite)
 	var m := Member.new()
 	m.sprite = sprite
 	m.front_scale = sprite.scale
@@ -87,6 +109,19 @@ func _make_member(sprite: Sprite2D) -> Member:
 	sprite.add_child(shadow)
 	m.shadow = shadow
 	return m
+
+
+## Restore the authored on-screen size after an import-cache resize (ratio 1.0 is a no-op).
+func _compensate_import_cap(sprite: Sprite2D) -> void:
+	if sprite.texture == null:
+		return
+	var decoded := float(maxi(sprite.texture.get_width(), sprite.texture.get_height()))
+	var original: float = float(ART_MAX_SIDE.get(String(sprite.name), 0.0))
+	if decoded <= 0.0 or original <= 0.0:
+		return
+	var k := original / decoded
+	sprite.scale *= k
+	sprite.offset /= k
 
 
 # =========================================================================

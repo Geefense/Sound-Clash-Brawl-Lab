@@ -60,6 +60,11 @@ func _process(delta: float) -> void:
 		queue_redraw()
 
 
+## True while a bird is crossing the screen. Used by the arena's active-hazard cap.
+func is_flying() -> bool:
+	return _flying
+
+
 ## Debug key / scripted trigger. Ignored while a bird is already in the air.
 func spawn_now() -> bool:
 	if _flying:

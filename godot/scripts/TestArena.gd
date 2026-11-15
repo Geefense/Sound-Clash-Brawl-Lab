@@ -59,6 +59,15 @@ const TIME_PHASES := [
 ]
 const TIME_TRANSITION_SEC := 3.0
 
+## Long-demo safeguards for low-RAM Chromebooks (AGENTS.md §9). Rapid inputs and long
+## sessions must never pile up effects, so every transient spawn goes through a cap.
+const MAX_ACTIVE_BIRDS := 1           # one bird in the air at a time, however fast B is pressed
+const MAX_PARRY_SPARKS := 4           # oldest spark is recycled once four are alive
+const MAX_PARTICLE_AMOUNT := 16       # hard ceiling applied to every CPUParticles2D
+## Where the pre-warm instances live: far outside the camera's clamped stage rectangle,
+## so they are never on screen even for one frame.
+const PREWARM_OFFSCREEN := Vector2(-4000.0, -4000.0)
+
 @onready var p1: BaseFighter = $P1
 @onready var p2: BaseFighter = $P2
 @onready var beat: BeatService = $BeatService
@@ -120,6 +129,9 @@ func _ready() -> void:
 	if not music.playing:
 		music.play()
 
+	_cap_particles()
+	_prewarm_effects()
+
 
 func _process(delta: float) -> void:
 	_thump = maxf(0.0, _thump - delta * THUMP_DECAY)
@@ -144,8 +156,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_M:
 			music.stream_paused = not music.stream_paused
 		KEY_B:
-			if bird != null:
-				bird.spawn_now()
+			_spawn_bird()
 		KEY_N:
 			cycle_time_of_day()
 
@@ -165,11 +176,72 @@ func _on_hype_milestone(_percent: int) -> void:
 func _on_static_parry(defender: BaseFighter, attacker: BaseFighter) -> void:
 	if defender == null or attacker == null:
 		return
+	var live := _live_parry_sparks()
+	if live.size() >= MAX_PARRY_SPARKS:
+		# Recycle the oldest spark so the newest parry still reads and the node count
+		# can never grow past the cap.
+		live[0].queue_free()
 	var spark := ParrySpark.new()
 	spark.global_position = (defender.global_position + attacker.global_position) * 0.5 \
 		+ Vector2(0.0, -110.0)
 	add_child(spark)
 	_on_shake(0.5, 0.12)
+
+
+# =========================================================================
+# Chromebook safeguards (AGENTS.md §9)
+# =========================================================================
+## Hard particle ceiling: applied once at start-up to every emitter in the arena, so
+## adding nodes later cannot raise it by accident.
+func _cap_particles() -> void:
+	for node in find_children("*", "CPUParticles2D", true, false):
+		var particles := node as CPUParticles2D
+		particles.amount = mini(particles.amount, MAX_PARTICLE_AMOUNT)
+
+
+## Spawn a bird only when none is already in the air (the hazard guards itself too;
+## this is the arena-level cap so rapid B presses cannot queue work).
+func _spawn_bird() -> void:
+	if bird == null:
+		return
+	var active := 0
+	for child in get_children():
+		var hazard := child as BirdHazard
+		if hazard != null and hazard.is_flying():
+			active += 1
+	if active >= MAX_ACTIVE_BIRDS:
+		return
+	bird.spawn_now()
+
+
+func _live_parry_sparks() -> Array[ParrySpark]:
+	var found: Array[ParrySpark] = []
+	for child in get_children():
+		var spark := child as ParrySpark
+		if spark != null and not spark.is_queued_for_deletion():
+			found.append(spark)
+	return found
+
+
+## Compile the primitive shaders and allocate the particle buffers now, off-screen and
+## invisible, behind the round announce banner. Without this the first footstep, hit or
+## parry pays the driver cost mid-fight, which is exactly where an Intel Chromebook's
+## shared-memory GPU stutters or freezes.
+func _prewarm_effects() -> void:
+	var spark := ParrySpark.new()
+	spark.global_position = PREWARM_OFFSCREEN
+	spark.modulate.a = 0.0            # silent even if it were inside the frame
+	add_child(spark)
+
+	var puff := CPUParticles2D.new()
+	puff.position = PREWARM_OFFSCREEN
+	puff.amount = 4
+	puff.lifetime = 0.1
+	puff.one_shot = true
+	puff.emitting = true
+	puff.finished.connect(puff.queue_free)   # self-cleaning, no timer to leak
+	add_child(puff)
+	# The spark frees itself after ParrySpark.DURATION; both are invisible here.
 
 
 ## Stage thump: one micro-pulse per 132 BPM downbeat (BeatService.beat).

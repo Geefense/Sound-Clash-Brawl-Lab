@@ -7,6 +7,14 @@ config_version=5
 
 config/name="Sound Clash Brawl"
 config/description="Fighter #1 (Feedback) — ported from the TypeScript reference."
+run/main_scene="res://scenes/TestArena.tscn"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
 
 [physics]
 

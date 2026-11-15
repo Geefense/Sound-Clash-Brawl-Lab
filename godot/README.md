@@ -37,6 +37,25 @@ Deliberately **not** copied: candidate and comparison-only art (`cable-candidate
 `walk-four-keys/candidates/`, `box-handoff-2026-11-13/` concept images and review videos, review
 overlays), which stays distinguishable in `art-source/` and must not read as approved assets.
 
+## Workshop arena — UNAPPROVED, no Godot checks run
+
+`scenes/TestArena.tscn` is the main scene: 1280×720, floor and side walls, Player 1 against a
+standing dummy, one `BeatService` at 132 BPM wired to both fighters, a tracking/zooming `Camera2D`
+that shakes on impact, a primitive HUD (health bars, P1 hype, beat pulse) and a generated 10 s click
+loop (`assets/audio/dev/click_132bpm.wav`, 22 beats) because no approved music exists. Sprites are
+mapped but the fighters also keep debug collision shapes visible.
+
+Workshop keys: R reset · G dummy guard · M mute · J/K/L/I attacks · T taunt · C crouch · WASD/arrows.
+
+The owner-approved behaviour recorded in AGENTS.md §9 is implemented here: on-beat reward (+15 hype,
+1.15× damage, judged at input, hype only on connect unless `hype_requires_connect` is off), the
+no-mirroring mic-hand rule (`<anim>_left`, falling back to right-facing frames), and the skank taunt.
+Hitstop is 4 ticks for the jab, 7 for the heavies and 9 on KO. `tump` (L) and `upper_box` (I) are
+runnable placeholders reusing jab art with no ported frame data.
+
+**Checks run: none in Godot.** No engine is available in the authoring environment, so this scene has
+never been opened, imported or played, and no hitbox, guard, beat-window or HUD behaviour is verified.
+
 ## Fighter wiring — UNAPPROVED, no Godot checks run
 
 Claude's audited files are saved as given: `scripts/BaseFighter.gd`, `scripts/rhythm/BeatService.gd`

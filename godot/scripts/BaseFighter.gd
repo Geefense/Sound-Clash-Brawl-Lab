@@ -5,6 +5,8 @@ extends CharacterBody2D
 ## Origin = feet. Sprite is presentation only; it never decides combat.
 ## Frame origins come from feedback.poses.json: grounded poses anchor at y 900,
 ## pelvis-anchored poses at y 610, the walk keys at their pinned sole y 566.
+## Canonical mic hand (owner decision): never mirror the art. A left-facing fighter
+## looks for <anim>_left and falls back to the right-facing frames until that art exists.
 
 enum State {
 	IDLE, WALK, JUMP, CROUCH,
@@ -14,25 +16,31 @@ enum State {
 
 signal state_changed(old_state: State, new_state: State)
 signal health_changed(current: int, maximum: int)
+signal hype_changed(current: int, maximum: int)
 signal strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dictionary)
 signal taunt_started(beat: Dictionary)
+signal camera_shake_requested(intensity: float, duration: float)
 signal died
 
 ## One tick of input. Local keyboard fills it; AI/dummy/replay can set it instead.
 class Command:
 	var move_x: float = 0.0
-	var jump: bool = false     # just pressed
-	var guard: bool = false    # held (S / Down)
-	var crouch: bool = false   # held (distinct input; see DEFAULT_P1_KEYS)
-	var light: bool = false    # just pressed (J)
-	var heavy: bool = false    # just pressed (K)
-	var taunt: bool = false    # just pressed
+	var jump: bool = false        # just pressed
+	var guard: bool = false       # held (S / Down)
+	var crouch: bool = false      # held (distinct input; see DEFAULT_P1_KEYS)
+	var light: bool = false       # just pressed (J)
+	var heavy: bool = false       # just pressed (K)
+	var tump: bool = false        # just pressed (L)
+	var upper_box: bool = false   # just pressed (I)
+	var taunt: bool = false       # just pressed
 
 # ---- Config ----------------------------------------------------------------
 @export var input_prefix: String = "p1_"
 @export var use_local_input: bool = true
 @export var beat_service: BeatService          # optional; judgement is "unavailable" without it
 @export var max_health: int = 100              # [TODO] PLACEHOLDER: confirm from SimulationEngine.ts
+## true = hype is awarded only when the on-beat strike actually connects (owner default)
+@export var hype_requires_connect: bool = true
 
 @export var walk_speed: float = 220.0          # [TODO] port from TS
 @export var jump_velocity: float = -560.0      # [TODO] port from TS
@@ -47,6 +55,19 @@ const BLOCKSTUN_TICKS := 8
 const BLOCK_PUSHBACK := 120.0
 const INPUT_BUFFER_TICKS := 12
 const STUN_FRICTION := 900.0
+
+# Owner-approved on-beat reward policy (AGENTS.md §9 Owner Decisions Log):
+# +15 Crowd Hype and damage x1.15, judged at input time.
+const HYPE_MAX := 100
+const ON_BEAT_HYPE := 15               # [TODO] amount is a placeholder value
+const ON_BEAT_DAMAGE_MULT := 1.15
+
+# Hitstop, in ticks. KO uses its own value.
+const HITSTOP_TICKS := {&"jab": 4, &"strong": 7, &"tump": 7, &"upper_box": 7}
+const KO_HITSTOP_TICKS := 9
+const SHAKE_LIGHT := 0.35
+const SHAKE_HEAVY := 0.7
+const SHAKE_SECONDS := 0.12
 
 # Sprite placement per animation, in texture pixels (before the node's 0.25 scale):
 # offset.y = canvas_height / 2 - anchor_y. The pose frame is 1536x1024 and the walk
@@ -66,6 +87,7 @@ const ANIM_OFFSET_DEFAULT := Vector2(0, -388)
 
 # Attack data. [TODO] move to data-driven move resources (§5). Damage values are from §3.
 # Active window is polled from the tick after the hitbox is enabled (one-tick lag).
+# tump and upper_box are runnable placeholders: no art and no ported frame data yet.
 var attacks: Dictionary = {
 	&"jab": {
 		"anim_startup": &"jab", "anim_active": &"jab", "anim_recovery": &"jab",
@@ -82,6 +104,22 @@ var attacks: Dictionary = {
 		"hitstun": 22, "knockback": Vector2(260, -60), "knockdown": false,
 		"hitbox_pos": Vector2(80, -125), "hitbox_size": Vector2(90, 50),
 	},
+	# L = TUMP (heavy body). [TODO] frame data, reach and art.
+	&"tump": {
+		"anim_startup": &"jab", "anim_active": &"jab", "anim_recovery": &"jab",
+		"startup": 7, "active": 4, "recovery": 14,
+		"damage": 15, "blocked_damage": 4,
+		"hitstun": 20, "knockback": Vector2(220, -20), "knockdown": false,
+		"hitbox_pos": Vector2(62, -82), "hitbox_size": Vector2(80, 46),
+	},
+	# I = UPPER BOX (rising backhand). [TODO] frame data, reach and art.
+	&"upper_box": {
+		"anim_startup": &"jab", "anim_active": &"jab", "anim_recovery": &"jab",
+		"startup": 8, "active": 4, "recovery": 16,
+		"damage": 15, "blocked_damage": 4,
+		"hitstun": 22, "knockback": Vector2(180, -120), "knockdown": false,
+		"hitbox_pos": Vector2(58, -132), "hitbox_size": Vector2(80, 92),
+	},
 }
 
 # PROVISIONAL dev defaults, registered only for the p1_ prefix and only if missing.
@@ -93,6 +131,8 @@ const DEFAULT_P1_KEYS := {
 	"guard": [KEY_S, KEY_DOWN],
 	"light": [KEY_J],
 	"heavy": [KEY_K],
+	"tump": [KEY_L],
+	"upper_box": [KEY_I],
 	"crouch": [KEY_C],
 	"taunt": [KEY_T],
 }
@@ -117,6 +157,7 @@ var state: State = State.IDLE
 var state_frame: int = 0
 var facing: int = 1
 var health: int = 0
+var hype: int = 0
 var guarding: bool = false                 # defensive flag (no BLOCK in the state enum, per §5)
 var command: Command = Command.new()
 
@@ -124,6 +165,7 @@ var _tick_count: int = 0
 var _attack_id: StringName = &""
 var _attack: Dictionary = {}
 var _input_beat: Dictionary = {}
+var _taunt_beat: Dictionary = {}
 var _hit_targets: Array[BaseFighter] = []
 var _pending_strikes: Array[Dictionary] = []
 var _resolve_queued: bool = false
@@ -131,6 +173,7 @@ var _snap_guarding: bool = false
 var _buffered: Dictionary = {}
 var _stun_frames: int = 0
 var _stun_is_block: bool = false
+var _hitstop_frames: int = 0
 
 @onready var sprite: AnimatedSprite2D = $Sprite
 @onready var body_shape: CollisionShape2D = $Body
@@ -147,12 +190,19 @@ func _ready() -> void:
 	_apply_stance(false)
 	_play_state_anim()
 	health_changed.emit(health, max_health)
+	hype_changed.emit(hype, HYPE_MAX)
 
 
 # =========================================================================
 # Tick
 # =========================================================================
 func _physics_process(_delta: float) -> void:
+	# Hitstop freezes state logic but keeps the body moving so nothing tunnels.
+	if _hitstop_frames > 0:
+		_hitstop_frames -= 1
+		move_and_slide()
+		return
+
 	_tick_count += 1
 	state_frame += 1
 	if use_local_input:
@@ -246,10 +296,17 @@ func _tick_grounded() -> void:
 	if command.heavy:
 		_start_attack(&"strong", _judge_beat())
 		return
+	if command.tump:
+		_start_attack(&"tump", _judge_beat())
+		return
+	if command.upper_box:
+		_start_attack(&"upper_box", _judge_beat())
+		return
 	if command.taunt:
 		var b := _judge_beat()
 		if change_state(State.TAUNT):
-			taunt_started.emit(b)   # reward/risk undecided (§5 TODO)
+			_taunt_beat = b
+			taunt_started.emit(b)   # risk/reward still undecided (§5 TODO)
 		return
 	if command.jump:
 		velocity.y = jump_velocity
@@ -299,6 +356,8 @@ func _start_attack(id: StringName, beat: Dictionary) -> void:
 	_attack = attacks[id]
 	_input_beat = beat                  # beat quality of the INPUT; contact quality is recorded separately
 	_configure_hitbox(_attack)          # facing is latched here and not changed until the attack ends
+	if not hype_requires_connect and bool(beat.get("on_beat", false)):
+		_add_hype(ON_BEAT_HYPE)         # opt-in: award on trigger instead of on connect
 	change_state(State.ATTACK_STARTUP)
 
 
@@ -334,6 +393,10 @@ func _buffer_attack_input() -> void:
 		id = &"jab"
 	elif command.heavy:
 		id = &"strong"
+	elif command.tump:
+		id = &"tump"
+	elif command.upper_box:
+		id = &"upper_box"
 	if id != &"":
 		_buffered = {"id": id, "tick": _tick_count, "beat": _judge_beat()}
 
@@ -384,15 +447,35 @@ func _resolve_pending_strikes() -> void:
 		if not is_instance_valid(target):
 			continue
 		var result := target.receive_strike(self, s)
+		var stop := KO_HITSTOP_TICKS if result.get("ko", false) else int(HITSTOP_TICKS.get(s["attack_id"], 7))
+		_apply_hitstop(stop)
+		target._apply_hitstop(stop)
+		camera_shake_requested.emit(SHAKE_LIGHT if stop <= 4 else SHAKE_HEAVY, SHAKE_SECONDS)
+		if hype_requires_connect and bool((s["input_beat"] as Dictionary).get("on_beat", false)):
+			_add_hype(ON_BEAT_HYPE)
 		strike_resolved.emit(self, target, result)
 
 
+func _apply_hitstop(ticks: int) -> void:
+	_hitstop_frames = maxi(_hitstop_frames, ticks)
+
+
+func _add_hype(amount: int) -> void:
+	var before := hype
+	hype = clampi(hype + amount, 0, HYPE_MAX)
+	if hype != before:
+		hype_changed.emit(hype, HYPE_MAX)
+
+
 # =========================================================================
-# Taunt
+# Taunt — plays the skank pose; an on-beat completion awards hype
 # =========================================================================
 func _tick_taunt() -> void:
 	_apply_gravity()
 	if state_frame >= TAUNT_TICKS:
+		if bool(_taunt_beat.get("on_beat", false)):
+			_add_hype(ON_BEAT_HYPE)       # [TODO] amount and interruptibility
+		_taunt_beat = {}
 		change_state(State.IDLE)
 
 
@@ -411,13 +494,16 @@ func receive_strike(attacker: BaseFighter, strike: Dictionary) -> Dictionary:
 	var blocked := _snap_guarding \
 		and signf(attacker.global_position.x - global_position.x) == float(facing)
 
-	var dmg: int = int(a["blocked_damage"]) if blocked else int(a["damage"])
+	var base: int = int(a["blocked_damage"]) if blocked else int(a["damage"])
+	var on_beat := bool((strike["input_beat"] as Dictionary).get("on_beat", false))
+	# On-beat bonus applies to chip damage too (owner decision, AGENTS.md §9).
+	var dmg: int = roundi(base * ON_BEAT_DAMAGE_MULT) if on_beat else base
 	health = maxi(0, health - dmg)
 	health_changed.emit(health, max_health)
 
 	var kb: Vector2 = a["knockback"]
 	var result := {
-		"blocked": blocked, "damage": dmg, "ko": false,
+		"blocked": blocked, "damage": dmg, "ko": false, "on_beat": on_beat,
 		"attack_id": strike["attack_id"],
 		"input_beat": strike["input_beat"],
 		"contact_beat": strike["contact_beat"],
@@ -485,12 +571,12 @@ func face_toward(x: float) -> void:
 		_set_facing(1 if x >= global_position.x else -1)
 
 
+## Canonical mic hand: never mirror. Left-facing art would be <anim>_left.
 func _set_facing(dir: int) -> void:
 	if dir == 0 or dir == facing:
 		return
 	facing = dir
-	# PROVISIONAL: mirroring changes apparent mic hand (AGENTS.md §1). Owner must resolve canonical hand.
-	sprite.flip_h = facing < 0
+	_play_state_anim()
 
 
 func _set_guarding(v: bool) -> void:
@@ -512,6 +598,7 @@ func _apply_stance(crouching: bool) -> void:
 ## idle, walk, jump, crouch, block, jab, box_startup, box_active, box_recovery,
 ## taunt, hitstun, knockdown, ko. The scene also carries the pack's unused poses
 ## (launched, tumble, salute, dizzy, fire_air, fire_ground, skank) for later wiring.
+## Left-facing attempts <name>_left first; no such art exists yet, so it falls back.
 func _play_state_anim() -> void:
 	var anim: StringName = &"idle"
 	match state:
@@ -522,11 +609,15 @@ func _play_state_anim() -> void:
 		State.ATTACK_STARTUP: anim = _attack.get("anim_startup", &"jab")
 		State.ATTACK_ACTIVE: anim = _attack.get("anim_active", &"jab")
 		State.ATTACK_RECOVERY: anim = _attack.get("anim_recovery", &"jab")
-		State.TAUNT: anim = &"taunt"
+		State.TAUNT: anim = &"skank"
 		State.HITSTUN: anim = &"block" if _stun_is_block else &"hitstun"
 		State.KNOCKDOWN: anim = &"knockdown"
 		State.KO: anim = &"ko"
-	if sprite.sprite_frames and sprite.sprite_frames.has_animation(anim):
+	if sprite.sprite_frames == null:
+		return
+	if facing < 0 and sprite.sprite_frames.has_animation("%s_left" % anim):
+		anim = StringName("%s_left" % anim)
+	if sprite.sprite_frames.has_animation(anim):
 		sprite.offset = ANIM_OFFSET.get(anim, ANIM_OFFSET_DEFAULT)
 		sprite.play(anim)
 
@@ -539,6 +630,8 @@ func _poll_local_input() -> Command:
 	c.crouch = Input.is_action_pressed(input_prefix + "crouch")
 	c.light = Input.is_action_just_pressed(input_prefix + "light")
 	c.heavy = Input.is_action_just_pressed(input_prefix + "heavy")
+	c.tump = Input.is_action_just_pressed(input_prefix + "tump")
+	c.upper_box = Input.is_action_just_pressed(input_prefix + "upper_box")
 	c.taunt = Input.is_action_just_pressed(input_prefix + "taunt")
 	return c
 

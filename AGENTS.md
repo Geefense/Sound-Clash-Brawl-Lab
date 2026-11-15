@@ -435,6 +435,33 @@ Generated Flow speech such as `yo, check this out`, `I'm bringing it to the stag
 
 11. **Keep Spriteriffic sprite sheet grid dimensions consistent across all fighters for fast Godot slicing.** Use a shared cell width/height, consistent margins and spacing, and documented row/column layouts. Preserve each fighter’s intended proportions and frame anchors within that grid. Record frame order and animation timing for import into `AnimatedSprite2D`/`SpriteFrames`; do not stretch characters to fit cells.
 
+### §9 Owner Decisions Log
+
+Decisions the owner approved on 2026-11-16, recorded so the port stops re-litigating them. Nothing
+here is gameplay-verified; implementation status is stated per item.
+
+1. **On-beat reward policy — approved.** Judged on the attack *input* inside the judgement window:
+   **+15 Crowd Hype** (0–100) and **1.15× damage**. Contact is judged separately. Hype is awarded
+   only when the on-beat attack **connects** (hit or block), so mashing cannot farm it; the export
+   flag `hype_requires_connect` flips it to award on trigger instead. The 1.15× applies to chip
+   damage too, blocked hits still get hitstop, and a taunt that completes on-beat awards the same
+   +15. [TODO] The ±70 ms window, both +15 amounts, taunt length and risk/reward rules remain
+   placeholders; blocked chip multiplier and taunt amount are owner-visible defaults.
+2. **Canonical mic hand — approved.** The port never mirrors art: no `flip_h` anywhere. A
+   left-facing fighter looks for `<anim>_left` and falls back to the right-facing frames until that
+   art exists, so a left-facing fighter currently shows right-facing frames. This does **not**
+   resolve the source pack's cross-set handedness, which stays [TODO]; it stops the port inventing
+   a different hand by mirroring.
+3. **Skank taunt — approved.** `State.TAUNT` plays the `skank` pose (`15_skank`) and an on-beat
+   completion awards hype. This resolves the §5 taunt-animation TODO.
+4. **Move keys as wired in the workshop arena:** J jab, K box, L tump, I upper box, T taunt,
+   C crouch, guard on S/Down, move on WASD/arrows. `tump` and `upper_box` are runnable placeholders
+   with no art and no ported frame data.
+
+Implementation status: written into `/godot` and committed, but **not run** — no Godot engine is
+available in the authoring environment, so no scene load, import, hitbox, guard, beat-window or HUD
+check has been performed. The port remains unapproved.
+
 ### Verification commands and acceptance evidence
 
 Existing web package commands from the repository root:

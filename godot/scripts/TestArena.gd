@@ -118,6 +118,12 @@ func _ready() -> void:
 	p2.hype_milestone_reached.connect(_on_hype_milestone)
 	p1.static_parry_triggered.connect(_on_static_parry)
 	p2.static_parry_triggered.connect(_on_static_parry)
+	p1.throw_broken.connect(_on_throw_broken)
+	p2.throw_broken.connect(_on_throw_broken)
+	p1.throw_connected.connect(_on_throw_connected)
+	p2.throw_connected.connect(_on_throw_connected)
+	p1.speaker_slam_triggered.connect(_on_speaker_slam)
+	p2.speaker_slam_triggered.connect(_on_speaker_slam)
 
 	rounds.setup(p1, p2, self)
 	if rounds.enabled:
@@ -176,16 +182,40 @@ func _on_hype_milestone(_percent: int) -> void:
 func _on_static_parry(defender: BaseFighter, attacker: BaseFighter) -> void:
 	if defender == null or attacker == null:
 		return
+	_add_spark((defender.global_position + attacker.global_position) * 0.5 + Vector2(0.0, -110.0))
+	_on_shake(0.5, 0.12)
+
+
+## Throw break: the mutual shove-apart gets the same spark flash, with no damage.
+func _on_throw_broken(attacker: BaseFighter, defender: BaseFighter) -> void:
+	if attacker == null or defender == null:
+		return
+	_add_spark((attacker.global_position + defender.global_position) * 0.5 + Vector2(0.0, -110.0))
+	_on_shake(0.55, 0.14)
+
+
+## A landed throw: the spinback pops the crowd (the slam's shake comes from the fighter).
+func _on_throw_connected(_attacker: BaseFighter, _defender: BaseFighter, kind: StringName) -> void:
+	if kind == &"back":
+		crowd.celebrate()
+
+
+## Speaker-Stack Bounce: electric impact right where the thrown fighter hit the stack.
+func _on_speaker_slam(victim: BaseFighter, _side: int) -> void:
+	if victim == null:
+		return
+	_add_spark(victim.global_position + Vector2(0.0, -110.0))
+
+
+## Transient sparks all share the ParrySpark cap, so a long demo can never pile up nodes.
+func _add_spark(at: Vector2) -> void:
 	var live := _live_parry_sparks()
 	if live.size() >= MAX_PARRY_SPARKS:
-		# Recycle the oldest spark so the newest parry still reads and the node count
-		# can never grow past the cap.
+		# Recycle the oldest spark so the newest effect still reads.
 		live[0].queue_free()
 	var spark := ParrySpark.new()
-	spark.global_position = (defender.global_position + attacker.global_position) * 0.5 \
-		+ Vector2(0.0, -110.0)
+	spark.global_position = at
 	add_child(spark)
-	_on_shake(0.5, 0.12)
 
 
 # =========================================================================

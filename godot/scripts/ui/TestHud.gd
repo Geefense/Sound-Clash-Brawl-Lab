@@ -122,6 +122,6 @@ func _surge_banner(centre: Vector2) -> void:
 
 
 func _legend(pos: Vector2) -> void:
-	var keys := "J jab · K box · L tump · I upper box · T taunt · C crouch · Y AI mode · B bird · N time of day · R reset · G dummy guard · M mute"
+	var keys := "J jab · K box · L tump · I upper box · U grab/tech · T taunt · C crouch · Y AI mode · B bird · N time of day · R reset · G dummy guard · M mute"
 	draw_string(ThemeDB.fallback_font, pos, keys, HORIZONTAL_ALIGNMENT_LEFT, -1, 12,
 		Color(0.7, 0.72, 0.78))

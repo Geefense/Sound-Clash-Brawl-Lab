@@ -12,6 +12,7 @@ enum State {
 	IDLE, WALK, JUMP, CROUCH,
 	ATTACK_STARTUP, ATTACK_ACTIVE, ATTACK_RECOVERY,
 	TAUNT, HITSTUN, KNOCKDOWN, KO,
+	GRAB, GRABBED, THROWN,
 }
 
 signal state_changed(old_state: State, new_state: State)
@@ -24,6 +25,12 @@ signal hype_milestone_reached(percent: int)
 signal hype_surge_started(seconds: float)
 signal camera_shake_requested(intensity: float, duration: float)
 signal died
+# Grab / throw chain (§9 item 18). No new art: the victim is thrown into the existing
+# launched -> tumble -> knockdown poses.
+signal grab_connected(attacker: BaseFighter, defender: BaseFighter)
+signal throw_broken(attacker: BaseFighter, defender: BaseFighter)
+signal throw_connected(attacker: BaseFighter, defender: BaseFighter, kind: StringName)
+signal speaker_slam_triggered(victim: BaseFighter, side: int)   # -1 left stack, +1 right stack
 
 ## One tick of input. Local keyboard fills it; AI/dummy/replay can set it instead.
 class Command:
@@ -36,6 +43,7 @@ class Command:
 	var tump: bool = false        # just pressed (L)
 	var upper_box: bool = false   # just pressed (I)
 	var taunt: bool = false       # just pressed
+	var grab: bool = false        # just pressed (U) — also the throw-break input
 
 # ---- Config ----------------------------------------------------------------
 @export var input_prefix: String = "p1_"
@@ -86,6 +94,29 @@ const SURGE_RECOVERY_MULT := 0.75
 const PARRY_WINDOW_TICKS := 10        # ~167 ms after the on-beat guard press
 const PARRY_HYPE := 20
 const PARRY_ATTACKER_STUN_TICKS := 18 # long enough to punish
+
+# Grab / directional throw / throw break (AGENTS.md §9 item 18, Def Jam-inspired).
+const GRAB_RANGE := 96.0              # centre-to-centre, owner-specified close range
+const GRAB_STARTUP_TICKS := 5         # fast: beats a held guard before it can react
+const GRAB_TECH_TICKS := 8            # defender's break window, in ticks
+const GRAB_HOLD_TICKS := 16           # how long the attacker holds before committing
+const GRAB_RECOVERY_TICKS := 12
+const GRAB_HOLD_GAP := 46.0           # victim stands this far in front of the attacker
+const THROW_FORWARD_DAMAGE := 14
+const THROW_FORWARD_HYPE := 15
+const THROW_BACK_DAMAGE := 12
+const THROW_BACK_HYPE := 18
+const THROW_LAUNCH := Vector2(520.0, -420.0)
+const THROW_BACK_LAUNCH := Vector2(160.0, -260.0)
+const THROW_SPIN_TICKS := 18          # launched pose -> tumble pose
+const THROW_BREAK_PUSH := 200.0       # mutual shove-apart
+const THROW_BREAK_STUN := 10          # no damage, just the standoff
+const WALL_SLAM_BONUS := 4            # extra damage off a speaker stack
+const WALL_SLAM_BOUNCE := 0.62        # how much horizontal speed comes back
+## Sand stage speaker stacks: 40-wide walls at x 20 / 1260, so a 60-wide fighter's
+## centre can reach 70 / 1210. Those are the points a thrown body slams the stack.
+const STAGE_LEFT := 70.0
+const STAGE_RIGHT := 1210.0
 
 # Best-of-3 round flow (§9 item 14): the match controller freezes input while it resets.
 var input_locked: bool = false
@@ -205,21 +236,26 @@ const DEFAULT_P1_KEYS := {
 	"upper_box": [KEY_I],
 	"crouch": [KEY_C],
 	"taunt": [KEY_T],
+	"grab": [KEY_U],
 }
 
 # Single transition authority (§5). Anything not listed is rejected.
 const LEGAL := {
-	State.IDLE: [State.WALK, State.JUMP, State.CROUCH, State.ATTACK_STARTUP, State.TAUNT, State.HITSTUN, State.KNOCKDOWN, State.KO],
-	State.WALK: [State.IDLE, State.JUMP, State.CROUCH, State.ATTACK_STARTUP, State.TAUNT, State.HITSTUN, State.KNOCKDOWN, State.KO],
-	State.JUMP: [State.IDLE, State.HITSTUN, State.KNOCKDOWN, State.KO],                      # air attacks [TODO]
-	State.CROUCH: [State.IDLE, State.HITSTUN, State.KNOCKDOWN, State.KO],                    # low moves [TODO]
-	State.ATTACK_STARTUP: [State.ATTACK_ACTIVE, State.HITSTUN, State.KNOCKDOWN, State.KO],
-	State.ATTACK_ACTIVE: [State.ATTACK_RECOVERY, State.HITSTUN, State.KNOCKDOWN, State.KO],
-	State.ATTACK_RECOVERY: [State.IDLE, State.ATTACK_STARTUP, State.HITSTUN, State.KNOCKDOWN, State.KO],
-	State.TAUNT: [State.IDLE, State.HITSTUN, State.KNOCKDOWN, State.KO],
-	State.HITSTUN: [State.IDLE, State.KNOCKDOWN, State.KO],
+	State.IDLE: [State.WALK, State.JUMP, State.CROUCH, State.ATTACK_STARTUP, State.TAUNT, State.HITSTUN, State.KNOCKDOWN, State.KO, State.GRAB, State.GRABBED],
+	State.WALK: [State.IDLE, State.JUMP, State.CROUCH, State.ATTACK_STARTUP, State.TAUNT, State.HITSTUN, State.KNOCKDOWN, State.KO, State.GRAB, State.GRABBED],
+	State.JUMP: [State.IDLE, State.HITSTUN, State.KNOCKDOWN, State.KO, State.GRABBED],       # air attacks [TODO]
+	State.CROUCH: [State.IDLE, State.HITSTUN, State.KNOCKDOWN, State.KO, State.GRABBED],     # low moves [TODO]
+	State.ATTACK_STARTUP: [State.ATTACK_ACTIVE, State.HITSTUN, State.KNOCKDOWN, State.KO, State.GRABBED],
+	State.ATTACK_ACTIVE: [State.ATTACK_RECOVERY, State.HITSTUN, State.KNOCKDOWN, State.KO, State.GRABBED],
+	State.ATTACK_RECOVERY: [State.IDLE, State.ATTACK_STARTUP, State.HITSTUN, State.KNOCKDOWN, State.KO, State.GRABBED],
+	State.TAUNT: [State.IDLE, State.HITSTUN, State.KNOCKDOWN, State.KO, State.GRABBED],
+	State.HITSTUN: [State.IDLE, State.KNOCKDOWN, State.KO, State.GRABBED],
 	State.KNOCKDOWN: [State.IDLE, State.KO],
 	State.KO: [],
+	# The grab chain: attacker holds, victim waits out the tech window, then flies.
+	State.GRAB: [State.IDLE, State.HITSTUN, State.KNOCKDOWN, State.KO, State.GRABBED],
+	State.GRABBED: [State.IDLE, State.HITSTUN, State.THROWN, State.KNOCKDOWN, State.KO],
+	State.THROWN: [State.IDLE, State.KNOCKDOWN, State.KO],
 }
 
 # ---- Runtime state -----------------------------------------------------------
@@ -250,6 +286,13 @@ var _guard_beat: Dictionary = {}
 var _guard_pressed_tick: int = -999
 var _guard_ticks: int = 0
 var _guard_recovering: bool = false
+# Grab / throw runtime.
+var _grab_target: BaseFighter = null
+var _grab_hold: int = 0
+var _grab_recovery: int = 0
+var _grabbed_by: BaseFighter = null
+var _grab_tech_ticks: int = 0
+var _wall_bounced: bool = false
 var _was_on_floor: bool = true
 var _fall_speed: float = 0.0
 var _step_ticks: int = 0
@@ -310,6 +353,9 @@ func _physics_process(_delta: float) -> void:
 		State.HITSTUN: _tick_hitstun()
 		State.KNOCKDOWN: _tick_knockdown()
 		State.KO: _tick_ko()
+		State.GRAB: _tick_grab()
+		State.GRABBED: _tick_grabbed()
+		State.THROWN: _tick_thrown()
 
 	# Guard presentation phases: refresh the animation when a phase expires.
 	if guarding or _guard_recovering:
@@ -381,6 +427,8 @@ func _exit_state(s: State) -> void:
 			_set_hitbox_active(false)
 		State.CROUCH:
 			_apply_stance(false)
+		State.GRAB:
+			_release_grab_target()    # interrupted mid-hold: never leave a victim frozen
 
 
 func _apply_gravity() -> void:
@@ -395,6 +443,9 @@ func _tick_grounded() -> void:
 	_apply_gravity()
 	if not is_on_floor():
 		change_state(State.JUMP)
+		return
+	if command.grab:
+		_start_grab()             # beats a held guard: the grab never enters receive_strike
 		return
 	if command.light:
 		_start_attack(&"jab", _judge_beat())
@@ -675,6 +726,241 @@ func _tick_taunt() -> void:
 
 
 # =========================================================================
+# Grab / directional throw / throw break (AGENTS.md §9 item 18)
+# =========================================================================
+## Grab start: a 5-tick reach window, then the 96 px check. The attempt is fast enough
+## that a held guard has no answer — nothing in this path enters receive_strike.
+func _start_grab() -> void:
+	_grab_target = null
+	_grab_hold = 0
+	_grab_recovery = 0
+	velocity.x = 0.0
+	change_state(State.GRAB)
+
+
+func _tick_grab() -> void:
+	_apply_gravity()
+	if _grab_recovery > 0:
+		# Recovery keeps the break shove: it decays instead of snapping to zero.
+		velocity.x = move_toward(velocity.x, 0.0, STUN_FRICTION * get_physics_process_delta_time())
+		_grab_recovery -= 1
+		if _grab_recovery == 0:
+			change_state(State.IDLE)
+		return
+	velocity.x = 0.0
+	if _grab_target == null or not is_instance_valid(_grab_target) \
+			or _grab_target.state != State.GRABBED:
+		_grab_target = null              # the hold ended by other means (reset, break, KO)
+		if state_frame >= GRAB_STARTUP_TICKS:
+			var victim := _find_grab_target()
+			if victim != null:
+				_begin_grab_hold(victim)
+			else:
+				_grab_recovery = GRAB_RECOVERY_TICKS   # a whiffed grab still commits
+		return
+	_grab_hold += 1
+	_hold_target_in_place()
+	if _grab_hold >= GRAB_HOLD_TICKS:
+		_throw_target()
+
+
+## Closest standing, in-front opponent inside the grab reach.
+func _find_grab_target() -> BaseFighter:
+	var best: BaseFighter = null
+	for node in get_tree().get_nodes_in_group("fighters"):
+		var other := node as BaseFighter
+		if other == null or other == self:
+			continue
+		if other.state in [State.KO, State.KNOCKDOWN, State.THROWN, State.GRABBED]:
+			continue
+		if not other.is_on_floor():
+			continue
+		var offset := other.global_position.x - global_position.x
+		if offset * float(facing) < -12.0 or absf(offset) > GRAB_RANGE:
+			continue
+		return other
+	return best
+
+
+func _begin_grab_hold(victim: BaseFighter) -> void:
+	if not victim.begin_grabbed(self):
+		_grab_recovery = GRAB_RECOVERY_TICKS
+		return
+	_grab_target = victim
+	_grab_hold = 0
+	grab_connected.emit(self, victim)
+
+
+func _hold_target_in_place() -> void:
+	var victim := _grab_target
+	victim.global_position.x = clampf(global_position.x + float(facing) * GRAB_HOLD_GAP,
+		STAGE_LEFT, STAGE_RIGHT)
+	victim.global_position.y = global_position.y
+	victim.velocity = Vector2.ZERO
+	victim._set_facing(-facing)
+
+
+## Holding back spins them behind (corner escape); forward or neutral hurls them across
+## the sand towards the speaker stacks.
+func _throw_target() -> void:
+	var victim := _grab_target
+	_grab_target = null
+	_grab_recovery = GRAB_RECOVERY_TICKS
+	if victim == null or not is_instance_valid(victim):
+		return
+	var holding_back := absf(command.move_x) > 0.1 and signf(command.move_x) != float(facing)
+	if holding_back:
+		_add_hype(THROW_BACK_HYPE)
+		victim.receive_back_throw(self, THROW_BACK_DAMAGE)
+		throw_connected.emit(self, victim, &"back")
+	else:
+		_add_hype(THROW_FORWARD_HYPE)
+		victim.receive_forward_throw(self, THROW_FORWARD_DAMAGE)
+		throw_connected.emit(self, victim, &"forward")
+
+
+func _release_grab_target() -> void:
+	var victim := _grab_target
+	_grab_target = null
+	if victim != null and is_instance_valid(victim) and victim.state == State.GRABBED:
+		victim.released_from_grab()
+
+
+# ---- victim side -------------------------------------------------------------
+## Called by the attacker. Refuses when the victim cannot be held.
+func begin_grabbed(attacker: BaseFighter) -> bool:
+	if state in [State.KO, State.KNOCKDOWN, State.THROWN, State.GRABBED]:
+		return false
+	_set_hitbox_active(false)
+	_buffered = {}
+	_grabbed_by = attacker
+	_grab_tech_ticks = GRAB_TECH_TICKS
+	velocity = Vector2.ZERO
+	guarding = false
+	if not change_state(State.GRABBED):
+		_grabbed_by = null
+		return false
+	return true
+
+
+func _tick_grabbed() -> void:
+	velocity = Vector2.ZERO
+	if _grab_tech_ticks > 0:
+		_grab_tech_ticks -= 1
+		if command.grab:
+			_tech_throw()
+			return
+	if _grabbed_by == null or not is_instance_valid(_grabbed_by) \
+			or _grabbed_by.state != State.GRAB:
+		_grabbed_by = null
+		change_state(State.IDLE)
+
+
+## Throw break: both fighters shove apart with no damage. The arena flashes the spark.
+func _tech_throw() -> void:
+	var attacker := _grabbed_by
+	_grabbed_by = null
+	_grab_tech_ticks = 0
+	if attacker != null and is_instance_valid(attacker):
+		attacker._on_throw_broken()
+		throw_broken.emit(attacker, self)
+	velocity.x = -float(facing) * THROW_BREAK_PUSH
+	_begin_stun(THROW_BREAK_STUN, false)
+
+
+func _on_throw_broken() -> void:
+	_grab_target = null
+	_grab_recovery = GRAB_RECOVERY_TICKS
+	velocity.x = -float(facing) * THROW_BREAK_PUSH
+	camera_shake_requested.emit(SHAKE_LIGHT, SHAKE_SECONDS)
+
+
+func released_from_grab() -> void:
+	_grabbed_by = null
+	_grab_tech_ticks = 0
+	if state == State.GRABBED:
+		change_state(State.IDLE)
+
+
+func receive_forward_throw(attacker: BaseFighter, damage: int) -> void:
+	var dir := _throw_dir_from(attacker)
+	_grabbed_by = null
+	_grab_tech_ticks = 0
+	_wall_bounced = false
+	var ko := _take_throw_damage(damage)
+	global_position.x = clampf(global_position.x, STAGE_LEFT, STAGE_RIGHT)
+	velocity = Vector2(THROW_LAUNCH.x * dir, THROW_LAUNCH.y)
+	if ko:
+		change_state(State.KO)
+		return
+	change_state(State.THROWN)
+
+
+func receive_back_throw(attacker: BaseFighter, damage: int) -> void:
+	var dir := _throw_dir_from(attacker)
+	_grabbed_by = null
+	_grab_tech_ticks = 0
+	_wall_bounced = true           # a spinback is a corner escape, not a wall slam
+	var ko := _take_throw_damage(damage)
+	# Spun around and dropped behind the attacker.
+	global_position.x = clampf(attacker.global_position.x - dir * GRAB_HOLD_GAP,
+		STAGE_LEFT, STAGE_RIGHT)
+	velocity = Vector2(-dir * THROW_BACK_LAUNCH.x, THROW_BACK_LAUNCH.y)
+	if ko:
+		change_state(State.KO)
+		return
+	change_state(State.THROWN)
+
+
+func _throw_dir_from(attacker: BaseFighter) -> float:
+	var dir := float(attacker.facing)
+	return dir if dir != 0.0 else 1.0
+
+
+func _take_throw_damage(amount: int) -> bool:
+	health = maxi(0, health - amount)
+	health_changed.emit(health, max_health)
+	return health == 0
+
+
+func _tick_thrown() -> void:
+	_apply_gravity()
+	velocity.x = move_toward(velocity.x, 0.0, 120.0 * get_physics_process_delta_time())
+	_check_speaker_wall()
+	if state_frame == THROW_SPIN_TICKS:
+		_play_state_anim()        # launched -> tumble
+	if state_frame > 4 and is_on_floor():
+		change_state(State.KNOCKDOWN)
+
+
+## Speaker-Stack Bounce: an airborne thrown fighter that reaches a stack slams it,
+## takes the bonus damage, shakes the camera and comes back onto the sand.
+func _check_speaker_wall() -> void:
+	if _wall_bounced or is_on_floor():
+		return
+	# The body stops a fraction short of the collision face, so allow a small margin.
+	var side := 0
+	if global_position.x <= STAGE_LEFT + 2.0:
+		side = -1
+	elif global_position.x >= STAGE_RIGHT - 2.0:
+		side = 1
+	if side == 0:
+		return
+	_wall_bounced = true
+	global_position.x = clampf(global_position.x, STAGE_LEFT, STAGE_RIGHT)
+	# The wall collision may already have zeroed velocity.x, so bounce off the side that
+	# was hit rather than off the incoming sign.
+	var speed := absf(velocity.x)
+	velocity.x = -float(side) * maxf(speed * WALL_SLAM_BOUNCE, 220.0)
+	velocity.y = minf(velocity.y, -200.0)      # pop back up off the stack
+	var ko := _take_throw_damage(WALL_SLAM_BONUS)
+	speaker_slam_triggered.emit(self, side)
+	camera_shake_requested.emit(SHAKE_HEAVY * 1.5, 0.26)
+	if ko:
+		change_state(State.KO)
+
+
+# =========================================================================
 # Taking hits / block
 # =========================================================================
 func receive_strike(attacker: BaseFighter, strike: Dictionary) -> Dictionary:
@@ -814,6 +1100,12 @@ func reset_for_round(at: Vector2) -> void:
 	guarding = false
 	_guard_ticks = 0
 	_guard_recovering = false
+	_grab_target = null
+	_grab_hold = 0
+	_grab_recovery = 0
+	_grabbed_by = null
+	_grab_tech_ticks = 0
+	_wall_bounced = false
 	velocity = Vector2.ZERO
 	global_position = at
 	health = max_health
@@ -894,6 +1186,9 @@ func _play_state_anim() -> void:
 		State.HITSTUN: anim = &"block" if _stun_is_block else &"hitstun"
 		State.KNOCKDOWN: anim = &"knockdown"
 		State.KO: anim = &"ko"
+		State.GRAB: anim = &"jab"           # reaching grab frames, no new art
+		State.GRABBED: anim = &"hitstun"    # held: the recoil pose reads as being wrenched
+		State.THROWN: anim = &"tumble" if state_frame >= THROW_SPIN_TICKS else &"launched"
 	if sprite.sprite_frames == null:
 		return
 	if facing < 0 and sprite.sprite_frames.has_animation("%s_left" % anim):
@@ -934,6 +1229,7 @@ func _poll_local_input() -> Command:
 	c.tump = Input.is_action_just_pressed(input_prefix + "tump")
 	c.upper_box = Input.is_action_just_pressed(input_prefix + "upper_box")
 	c.taunt = Input.is_action_just_pressed(input_prefix + "taunt")
+	c.grab = Input.is_action_just_pressed(input_prefix + "grab")
 	return c
 
 

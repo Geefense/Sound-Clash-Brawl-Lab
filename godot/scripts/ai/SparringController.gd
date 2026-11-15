@@ -46,6 +46,10 @@ const FALLBACK_BEAT_STEP_TICKS := 26   # 132 BPM = 27.3 ticks per beat
 const PUNISH_TICKS := 16           # reaction window after P1 enters recovery
 const TAUNT_COOLDOWN_TICKS := 70
 const DASH_SPEED := 150.0          # |velocity.x| that counts as a P1 dash-in
+# Grab / throw-break behaviour (§9 item 18). The AI uses the same Command as a human.
+const GRAB_RANGE := 92.0           # just inside BaseFighter.GRAB_RANGE
+const GRAB_COOLDOWN_TICKS := 110
+const TECH_CHANCE := 0.55          # how often the AI presses Grab inside the break window
 
 ## One action per beat, two bars at 132 BPM: a Jab-led string into the Sparta Kick (L)
 ## and a BOX (K) accent on the 6th beat, with beat-steps in between to close distance.
@@ -63,6 +67,9 @@ var _pending: StringName = &""
 var _step_ticks: int = 0
 var _footsie_advance: bool = true
 var _taunt_cooldown: int = 0
+var _grab_cooldown: int = 0
+var _tech_armed: bool = false
+var _tech_delay: int = 0
 
 
 func _ready() -> void:
@@ -113,6 +120,9 @@ func _reset_mode_state() -> void:
 	_step_ticks = 0
 	_punish_ticks = 0
 	_taunt_cooldown = 0
+	_grab_cooldown = 0
+	_tech_armed = false
+	_tech_delay = 0
 	_footsie_advance = true
 
 
@@ -135,6 +145,7 @@ func _physics_process(_delta: float) -> void:
 			_drive_baiter(c)
 		_:
 			pass                          # Workshop Dummy: no input at all
+	_tick_grab(c)
 	c.guard = c.guard or manual_guard
 	p2.command = c
 
@@ -154,6 +165,31 @@ func _tick_timers() -> void:
 	_punish_ticks = maxi(0, _punish_ticks - 1)
 	_step_ticks = maxi(0, _step_ticks - 1)
 	_taunt_cooldown = maxi(0, _taunt_cooldown - 1)
+	_grab_cooldown = maxi(0, _grab_cooldown - 1)
+
+
+## Throw break: while held, occasionally press Grab inside the defender's window.
+func _tick_grab(c: BaseFighter.Command) -> void:
+	if p2.state != BaseFighter.State.GRABBED:
+		_tech_armed = false
+		return
+	if not _tech_armed:
+		_tech_armed = true
+		_tech_delay = randi_range(1, 6)
+		if randf() > TECH_CHANCE:
+			_tech_delay = 99          # this grab goes through
+	_tech_delay -= 1
+	if _tech_delay <= 0:
+		c.grab = true
+
+
+## True when a grab is worth throwing at a turtling P1 (or a crouching one).
+func _wants_grab() -> bool:
+	if _grab_cooldown > 0 or not _can_act():
+		return false
+	if _distance() > GRAB_RANGE:
+		return false
+	return p1.guarding or p1.state == BaseFighter.State.CROUCH
 
 
 func _on_beat(beat_index: int) -> void:
@@ -171,6 +207,12 @@ func _on_beat(beat_index: int) -> void:
 func _drive_counter(c: BaseFighter.Command) -> void:
 	var d := _distance()
 	p2.face_toward(p1.global_position.x)
+
+	# Turtling P1: a grab beats the held guard, so take it instead of swinging.
+	if _wants_grab():
+		c.grab = true
+		_grab_cooldown = GRAB_COOLDOWN_TICKS
+		return
 
 	if _punish_ticks > 0 and _can_act():
 		if d <= JAB_RANGE:
@@ -195,6 +237,12 @@ func _drive_counter(c: BaseFighter.Command) -> void:
 # =========================================================================
 func _drive_rusher(c: BaseFighter.Command) -> void:
 	p2.face_toward(p1.global_position.x)
+
+	# Mix a grab into the on-beat pressure when P1 is holding guard.
+	if _pending == &"" and _wants_grab():
+		c.grab = true
+		_grab_cooldown = GRAB_COOLDOWN_TICKS
+		return
 
 	if _pending != &"":
 		var action := _pending

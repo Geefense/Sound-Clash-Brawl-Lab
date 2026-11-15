@@ -665,6 +665,31 @@ here is gameplay-verified; implementation status is stated per item.
     goes lower. The stall that the pre-warm targets has not been measured on the real Chromebook, and
     the two ratio tables must be extended whenever a new art group is added.
 
+18. **Grab / directional throw / throw break / Speaker-Stack Bounce — implemented (2026-11-15).**
+    Def Jam-inspired close-range chain with **no new art**: the victim is thrown into the existing
+    `launched` → `tumble` → `knockdown` (17_seated_landing) poses. New FSM states `GRAB`, `GRABBED`
+    and `THROWN` are in the single transition table; `BaseFighter.Command.grab` is bound to **U**
+    (`p1_grab`) and joins the HUD legend as `U grab/tech`.
+    **Grab:** inside 96 px and in front, a 5-tick reaching grab holds the defender for 16 ticks. It
+    never enters `receive_strike`, so a held guard (S) has no answer. **Throw Break ('Tech'):** the
+    defender pressing Grab inside an **8-tick** window shoves both fighters apart for zero damage and
+    fires `throw_broken`; `TestArena` answers it with the shared spark flash.
+    **Directional throws:** forward/neutral hurls the victim across the sand for **14 damage and +15
+    Crowd Hype**, and holding back spins them behind the attacker for **12 damage and +18 Hype** plus a
+    `crowd.celebrate()` cheer pop. Both fire `throw_connected(attacker, defender, &"forward"|&"back")`.
+    **Speaker-Stack Bounce:** an airborne forward-thrown fighter that reaches a stack (the 40-wide
+    walls at x 20 / 1260, so a 60-wide body stops at centre 70 / 1210) takes **+4 bonus damage**,
+    emits `speaker_slam_triggered(victim, side)`, gets a heavy camera shake and bounces back onto the
+    sand. The bounce is driven off *which side* was hit, because the wall collision has already zeroed
+    `velocity.x` by the time the check runs.
+    **AI:** `SparringController` now grabs a turtling (guarding or crouching) P1 in Mode 1 and Mode 2,
+    and presses Grab inside the defender's window on ~55 % of the grabs it takes (measured 5–6 of 10
+    in the harness).
+    [TODO] All values (96 px, 5/16/12/8 ticks, 14/12/+4 damage, 15/18 Hype, the 55 % tech rate, the
+    55 % forward-throw arc and the 220 px/s minimum bounce) are hand-set defaults awaiting a playtest;
+    there is no throw animation art (the grab uses the jab frames and the held victim the hitstun pose),
+    no air grab, no grab invulnerability and no throw whiff punish window beyond the 12-tick recovery.
+
 Implementation status: written into `/godot`; **not played**. Until 2026-11-15 the port had never
 been opened in an engine. The sand-stage and round-lighting slices were then imported and run headless
 in Godot 4.3.stable (no GPU, no audio device, no on-screen look), which proves the project imports
@@ -715,6 +740,7 @@ For Godot, once created: [TODO] pin exact import/headless launch/test/export com
 | Best-of-3 round lifecycle | Implemented 2026-11-15: RoundController announce → K.O. → rematch, day → sunset → night per round, fighter resets, HUD banners + win pips; headless three-round run passes; **no timer/draw rule, on-screen layout [TODO]**. |
 | Chromebook Web export | Implemented 2026-11-15: committed Web preset (GL Compatibility, single-threaded, VRAM compression off) exporting to `/docs`; headless export clean and the build rendered on WebGL2 in a browser; **not yet tried on the 4 GB Chromebook, not deployed [TODO]**. |
 | Chromebook crash/freeze safeguards | Implemented 2026-11-15: committed `.import` `size_limit=512` (149.6 → 50.0 MB decoded, pck 10.3 MB) with offset/scale compensation, off-screen effect pre-warm, and 1 bird / 4 spark / 16 particle caps; headless guard checks and WebGL2 boot pass; **on-device timing unmeasured and the 40 MB goal not reached [TODO]**. |
+| Grab / throw / tech / speaker bounce | Implemented 2026-11-15: `GRAB`/`GRABBED`/`THROWN` states, 96 px grab, 8-tick throw break, forward 14/+15 and back 12/+18 throws, +4 speaker-stack bounce with `speaker_slam_triggered`, AI grabs a turtling P1 and techs ~55 %; headless chain passes and the Web build rebuilds; **values unplayed, no throw art [TODO]**. |
 
 Next agent: finish the isolated walk review, reconcile asset/engine branches, close the minimal rhythm reference gap, freeze the TypeScript baseline and complete the first Godot port inside Nov 13–26. Then follow Section 2 date gates. Keep costs at zero; preserve the April 21, 2027 target and six-selector commitment while reporting scope risks promptly.
 
@@ -832,6 +858,23 @@ sizes and layout as the pre-cap build.
 **Not verified:** nothing was measured on the actual 4 GB Chromebook — no frame timings, no tab
 memory reading, no long demo session — so the pre-warm is a structural fix rather than a demonstrated
 stall removal.
+
+### Grab / throw chain — verification, 2026-11-15
+
+Temporary headless harness on the real `TestArena.tscn`, all six cases on the shipping scene: a grab
+inside 96 px held a **guarding** P2; a Grab press inside the 8-tick window fired `throw_broken`, dealt
+**0 damage** and shoved the fighters apart; a neutral hold threw forward for **14 damage, +15 Hype**,
+`throw_connected(&"forward")`, the victim leaving at ~478 px/s and reaching the knockdown pose; a throw
+from x 1150 into the right stack fired `speaker_slam_triggered` with side +1, total damage **18**
+(14 + 4) and bounced the body back at −220 px/s; holding back threw for **12 damage, +18 Hype**,
+`throw_connected(&"back")`, and dropped the victim behind the attacker (760 → 651, i.e. 700 − 46);
+and in Mode 1 the AI grabbed a turtling P1 on its own and broke **5 of 10** scripted grabs. Harness
+deleted before the commit; `TestArena.tscn` booted 200 frames clean; the Web export rebuilt headless
+(`.pck` 10.3 MB) and the browser run had no script errors, a live WebGL2 context, and the updated
+`U grab/tech` legend.
+
+**Not verified:** no throw of any kind was watched on screen, and none of the damage, Hype, timing or
+arc values have been playtested — they are hand-set defaults.
 
 
 ### Newer knee-lift BOX in main handoff — November 14, 2026 (Toronto)

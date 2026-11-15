@@ -7,3 +7,7 @@ config_version=5
 
 config/name="Sound Clash Brawl"
 config/description="Fighter #1 (Feedback) — ported from the TypeScript reference."
+
+[physics]
+
+common/physics_ticks_per_second=60

@@ -1,0 +1,557 @@
+class_name BaseFighter
+extends CharacterBody2D
+## Fighter base: FSM + guard flag + beat-judgement hook.
+## Authority: AGENTS.md §5 (FSM, beat service) and §9 (guardrails).
+## Origin = feet. Sprite is presentation only; it never decides combat.
+## Frame origins come from feedback.poses.json: grounded poses anchor at y 900,
+## pelvis-anchored poses at y 610, the walk keys at their pinned sole y 566.
+
+enum State {
+	IDLE, WALK, JUMP, CROUCH,
+	ATTACK_STARTUP, ATTACK_ACTIVE, ATTACK_RECOVERY,
+	TAUNT, HITSTUN, KNOCKDOWN, KO,
+}
+
+signal state_changed(old_state: State, new_state: State)
+signal health_changed(current: int, maximum: int)
+signal strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dictionary)
+signal taunt_started(beat: Dictionary)
+signal died
+
+## One tick of input. Local keyboard fills it; AI/dummy/replay can set it instead.
+class Command:
+	var move_x: float = 0.0
+	var jump: bool = false     # just pressed
+	var guard: bool = false    # held (S / Down)
+	var crouch: bool = false   # held (distinct input; see DEFAULT_P1_KEYS)
+	var light: bool = false    # just pressed (J)
+	var heavy: bool = false    # just pressed (K)
+	var taunt: bool = false    # just pressed
+
+# ---- Config ----------------------------------------------------------------
+@export var input_prefix: String = "p1_"
+@export var use_local_input: bool = true
+@export var beat_service: BeatService          # optional; judgement is "unavailable" without it
+@export var max_health: int = 100              # [TODO] PLACEHOLDER: confirm from SimulationEngine.ts
+
+@export var walk_speed: float = 220.0          # [TODO] port from TS
+@export var jump_velocity: float = -560.0      # [TODO] port from TS
+@export var gravity: float = 1700.0            # [TODO] port from TS
+@export var stand_size: Vector2 = Vector2(60, 160)
+@export var crouch_size: Vector2 = Vector2(60, 96)
+
+# 60 Hz tick counts. [TODO] PLACEHOLDERS unless noted: port from combatRules.ts.
+const KNOCKDOWN_FALL_TICKS := 36       # KO fall constant from AGENTS.md §3; nonlethal get-up [TODO]
+const TAUNT_TICKS := 30
+const BLOCKSTUN_TICKS := 8
+const BLOCK_PUSHBACK := 120.0
+const INPUT_BUFFER_TICKS := 12
+const STUN_FRICTION := 900.0
+
+# Sprite placement per animation, in texture pixels (before the node's 0.25 scale):
+# offset.y = canvas_height / 2 - anchor_y. The pose frame is 1536x1024 and the walk
+# keys are 460x620, so their origins cannot share one offset. [TODO] the walk scale
+# was matched by eye against the pose frames; confirm it on screen.
+const ANIM_OFFSET := {
+	&"idle": Vector2(0, -388), &"crouch": Vector2(0, -388), &"block": Vector2(0, -388),
+	&"jab": Vector2(0, -388), &"box_startup": Vector2(0, -388),
+	&"box_active": Vector2(0, -388), &"box_recovery": Vector2(0, -388),
+	&"ko": Vector2(0, -388), &"knockdown": Vector2(0, -388),
+	&"fire_ground": Vector2(0, -388),
+	&"launched": Vector2(0, -98), &"tumble": Vector2(0, -98), &"hitstun": Vector2(0, -98),
+	&"salute": Vector2(0, -98), &"fire_air": Vector2(0, -98), &"skank": Vector2(0, -98),
+	&"walk": Vector2(0, -256),
+}
+const ANIM_OFFSET_DEFAULT := Vector2(0, -388)
+
+# Attack data. [TODO] move to data-driven move resources (§5). Damage values are from §3.
+# Active window is polled from the tick after the hitbox is enabled (one-tick lag).
+var attacks: Dictionary = {
+	&"jab": {
+		"anim_startup": &"jab", "anim_active": &"jab", "anim_recovery": &"jab",
+		"startup": 4, "active": 3, "recovery": 9,
+		"damage": 8, "blocked_damage": 2,
+		"hitstun": 14, "knockback": Vector2(160, 0), "knockdown": false,
+		"hitbox_pos": Vector2(70, -110), "hitbox_size": Vector2(70, 36),
+	},
+	# K = BOX (head/backhand). Poses 12/13/14 = startup/contact/recovery.
+	&"strong": {
+		"anim_startup": &"box_startup", "anim_active": &"box_active", "anim_recovery": &"box_recovery",
+		"startup": 9, "active": 4, "recovery": 18,
+		"damage": 15, "blocked_damage": 4,
+		"hitstun": 22, "knockback": Vector2(260, -60), "knockdown": false,
+		"hitbox_pos": Vector2(80, -125), "hitbox_size": Vector2(90, 50),
+	},
+}
+
+# PROVISIONAL dev defaults, registered only for the p1_ prefix and only if missing.
+# Move to Project Settings > Input Map. crouch (C) and taunt (T) are not specified in AGENTS.md.
+const DEFAULT_P1_KEYS := {
+	"left": [KEY_A, KEY_LEFT],
+	"right": [KEY_D, KEY_RIGHT],
+	"jump": [KEY_W, KEY_UP],
+	"guard": [KEY_S, KEY_DOWN],
+	"light": [KEY_J],
+	"heavy": [KEY_K],
+	"crouch": [KEY_C],
+	"taunt": [KEY_T],
+}
+
+# Single transition authority (§5). Anything not listed is rejected.
+const LEGAL := {
+	State.IDLE: [State.WALK, State.JUMP, State.CROUCH, State.ATTACK_STARTUP, State.TAUNT, State.HITSTUN, State.KNOCKDOWN, State.KO],
+	State.WALK: [State.IDLE, State.JUMP, State.CROUCH, State.ATTACK_STARTUP, State.TAUNT, State.HITSTUN, State.KNOCKDOWN, State.KO],
+	State.JUMP: [State.IDLE, State.HITSTUN, State.KNOCKDOWN, State.KO],                      # air attacks [TODO]
+	State.CROUCH: [State.IDLE, State.HITSTUN, State.KNOCKDOWN, State.KO],                    # low moves [TODO]
+	State.ATTACK_STARTUP: [State.ATTACK_ACTIVE, State.HITSTUN, State.KNOCKDOWN, State.KO],
+	State.ATTACK_ACTIVE: [State.ATTACK_RECOVERY, State.HITSTUN, State.KNOCKDOWN, State.KO],
+	State.ATTACK_RECOVERY: [State.IDLE, State.ATTACK_STARTUP, State.HITSTUN, State.KNOCKDOWN, State.KO],
+	State.TAUNT: [State.IDLE, State.HITSTUN, State.KNOCKDOWN, State.KO],
+	State.HITSTUN: [State.IDLE, State.KNOCKDOWN, State.KO],
+	State.KNOCKDOWN: [State.IDLE, State.KO],
+	State.KO: [],
+}
+
+# ---- Runtime state -----------------------------------------------------------
+var state: State = State.IDLE
+var state_frame: int = 0
+var facing: int = 1
+var health: int = 0
+var guarding: bool = false                 # defensive flag (no BLOCK in the state enum, per §5)
+var command: Command = Command.new()
+
+var _tick_count: int = 0
+var _attack_id: StringName = &""
+var _attack: Dictionary = {}
+var _input_beat: Dictionary = {}
+var _hit_targets: Array[BaseFighter] = []
+var _pending_strikes: Array[Dictionary] = []
+var _resolve_queued: bool = false
+var _snap_guarding: bool = false
+var _buffered: Dictionary = {}
+var _stun_frames: int = 0
+var _stun_is_block: bool = false
+
+@onready var sprite: AnimatedSprite2D = $Sprite
+@onready var body_shape: CollisionShape2D = $Body
+@onready var hurt_shape: CollisionShape2D = $Hurtbox/Shape
+@onready var hitbox: Area2D = $Hitbox
+@onready var hit_shape: CollisionShape2D = $Hitbox/Shape
+
+
+func _ready() -> void:
+	health = max_health
+	if use_local_input:
+		_ensure_default_actions()
+	_set_hitbox_active(false)
+	_apply_stance(false)
+	_play_state_anim()
+	health_changed.emit(health, max_health)
+
+
+# =========================================================================
+# Tick
+# =========================================================================
+func _physics_process(_delta: float) -> void:
+	_tick_count += 1
+	state_frame += 1
+	if use_local_input:
+		command = _poll_local_input()
+
+	match state:
+		State.IDLE, State.WALK: _tick_grounded()
+		State.CROUCH: _tick_crouch()
+		State.JUMP: _tick_jump()
+		State.ATTACK_STARTUP: _tick_attack_startup()
+		State.ATTACK_ACTIVE: _tick_attack_active()
+		State.ATTACK_RECOVERY: _tick_attack_recovery()
+		State.TAUNT: _tick_taunt()
+		State.HITSTUN: _tick_hitstun()
+		State.KNOCKDOWN: _tick_knockdown()
+		State.KO: _tick_ko()
+
+	move_and_slide()
+
+	# Snapshot for simultaneous resolution, then resolve after every fighter has ticked.
+	_snap_guarding = guarding
+	if not _pending_strikes.is_empty() and not _resolve_queued:
+		_resolve_queued = true
+		call_deferred("_resolve_pending_strikes")
+
+
+# =========================================================================
+# FSM core
+# =========================================================================
+func change_state(new_state: State) -> bool:
+	if new_state == state:
+		return false
+	if not (new_state in LEGAL[state]):
+		push_warning("BaseFighter: illegal transition %s -> %s" % [State.keys()[state], State.keys()[new_state]])
+		return false
+	var old := state
+	_exit_state(old)
+	if new_state != State.IDLE:
+		guarding = false
+	state = new_state
+	state_frame = 0
+	_enter_state(new_state)
+	_play_state_anim()
+	state_changed.emit(old, new_state)
+	return true
+
+
+func _enter_state(s: State) -> void:
+	match s:
+		State.ATTACK_STARTUP:
+			velocity.x = 0.0
+		State.ATTACK_ACTIVE:
+			_hit_targets.clear()
+			_set_hitbox_active(true)
+		State.TAUNT:
+			velocity.x = 0.0
+		State.CROUCH:
+			velocity.x = 0.0
+			_apply_stance(true)
+		State.HITSTUN, State.KNOCKDOWN:
+			_buffered = {}
+		State.KO:
+			_buffered = {}
+			died.emit()
+
+
+func _exit_state(s: State) -> void:
+	match s:
+		State.ATTACK_ACTIVE:
+			_set_hitbox_active(false)
+		State.CROUCH:
+			_apply_stance(false)
+
+
+func _apply_gravity() -> void:
+	if not is_on_floor():
+		velocity.y += gravity * get_physics_process_delta_time()
+
+
+# =========================================================================
+# Grounded / crouch / jump
+# =========================================================================
+func _tick_grounded() -> void:
+	_apply_gravity()
+	if not is_on_floor():
+		change_state(State.JUMP)
+		return
+	if command.light:
+		_start_attack(&"jab", _judge_beat())
+		return
+	if command.heavy:
+		_start_attack(&"strong", _judge_beat())
+		return
+	if command.taunt:
+		var b := _judge_beat()
+		if change_state(State.TAUNT):
+			taunt_started.emit(b)   # reward/risk undecided (§5 TODO)
+		return
+	if command.jump:
+		velocity.y = jump_velocity
+		velocity.x = command.move_x * walk_speed   # takeoff velocity latched [TODO confirm vs TS]
+		change_state(State.JUMP)
+		return
+	if command.crouch:
+		change_state(State.CROUCH)
+		return
+	if command.guard:
+		_set_guarding(true)
+		velocity.x = 0.0                           # [TODO] confirm whether TS allows moving while guarding
+		change_state(State.IDLE)
+		return
+
+	_set_guarding(false)
+	if absf(command.move_x) > 0.1:
+		_set_facing(int(signf(command.move_x)))
+		velocity.x = command.move_x * walk_speed
+		change_state(State.WALK)
+	else:
+		velocity.x = 0.0
+		change_state(State.IDLE)
+
+
+func _tick_crouch() -> void:
+	_apply_gravity()
+	velocity.x = 0.0
+	if not command.crouch:
+		change_state(State.IDLE)
+
+
+func _tick_jump() -> void:
+	_apply_gravity()
+	if state_frame > 1 and velocity.y >= 0.0 and is_on_floor():
+		change_state(State.IDLE)
+
+
+# =========================================================================
+# Attacks
+# =========================================================================
+func _start_attack(id: StringName, beat: Dictionary) -> void:
+	if not attacks.has(id):
+		push_warning("BaseFighter: unknown attack '%s'" % id)
+		return
+	_attack_id = id
+	_attack = attacks[id]
+	_input_beat = beat                  # beat quality of the INPUT; contact quality is recorded separately
+	_configure_hitbox(_attack)          # facing is latched here and not changed until the attack ends
+	change_state(State.ATTACK_STARTUP)
+
+
+func _tick_attack_startup() -> void:
+	_apply_gravity()
+	_buffer_attack_input()
+	if state_frame >= int(_attack["startup"]):
+		change_state(State.ATTACK_ACTIVE)
+
+
+func _tick_attack_active() -> void:
+	_apply_gravity()
+	_buffer_attack_input()
+	_poll_hitbox()
+	if state_frame >= int(_attack["active"]):
+		change_state(State.ATTACK_RECOVERY)
+
+
+func _tick_attack_recovery() -> void:
+	_apply_gravity()
+	_buffer_attack_input()
+	if state_frame >= int(_attack["recovery"]):
+		var next := _take_buffered_attack()
+		if next.is_empty():
+			change_state(State.IDLE)
+		else:
+			_start_attack(next["id"], next["beat"])
+
+
+func _buffer_attack_input() -> void:
+	var id: StringName = &""
+	if command.light:
+		id = &"jab"
+	elif command.heavy:
+		id = &"strong"
+	if id != &"":
+		_buffered = {"id": id, "tick": _tick_count, "beat": _judge_beat()}
+
+
+func _take_buffered_attack() -> Dictionary:
+	if _buffered.is_empty():
+		return {}
+	var fresh := _tick_count - int(_buffered["tick"]) <= INPUT_BUFFER_TICKS
+	var out := _buffered if fresh else {}
+	_buffered = {}
+	return out
+
+
+func _configure_hitbox(a: Dictionary) -> void:
+	var size: Vector2 = a["hitbox_size"]
+	var pos: Vector2 = a["hitbox_pos"]
+	(hit_shape.shape as RectangleShape2D).size = size
+	hit_shape.position = Vector2(pos.x * facing, pos.y)
+
+
+func _set_hitbox_active(on: bool) -> void:
+	hitbox.set_deferred("monitoring", on)
+	hit_shape.set_deferred("disabled", not on)
+
+
+## Collect only. Damage is applied after all fighters tick (no node-order advantage).
+func _poll_hitbox() -> void:
+	for area in hitbox.get_overlapping_areas():
+		var target := area.get_parent() as BaseFighter
+		if target == null or target == self or target in _hit_targets:
+			continue
+		_hit_targets.append(target)             # one hit per strike
+		_pending_strikes.append({
+			"target": target,
+			"attack_id": _attack_id,
+			"attack": _attack,
+			"input_beat": _input_beat,
+			"contact_beat": _judge_beat(),      # separate from collision result (§5)
+		})
+
+
+func _resolve_pending_strikes() -> void:
+	_resolve_queued = false
+	var strikes := _pending_strikes
+	_pending_strikes = []
+	for s in strikes:
+		var target := s["target"] as BaseFighter
+		if not is_instance_valid(target):
+			continue
+		var result := target.receive_strike(self, s)
+		strike_resolved.emit(self, target, result)
+
+
+# =========================================================================
+# Taunt
+# =========================================================================
+func _tick_taunt() -> void:
+	_apply_gravity()
+	if state_frame >= TAUNT_TICKS:
+		change_state(State.IDLE)
+
+
+# =========================================================================
+# Taking hits / block
+# =========================================================================
+func receive_strike(attacker: BaseFighter, strike: Dictionary) -> Dictionary:
+	if state == State.KO or state == State.KNOCKDOWN:
+		return {"ignored": true}               # [TODO] confirm TS rule for hits on downed fighters
+
+	var a: Dictionary = strike["attack"]
+	var away := signf(global_position.x - attacker.global_position.x)
+	if away == 0.0:
+		away = float(attacker.facing)
+	# Directional guard, decided from the pre-resolution snapshot.
+	var blocked := _snap_guarding \
+		and signf(attacker.global_position.x - global_position.x) == float(facing)
+
+	var dmg: int = int(a["blocked_damage"]) if blocked else int(a["damage"])
+	health = maxi(0, health - dmg)
+	health_changed.emit(health, max_health)
+
+	var kb: Vector2 = a["knockback"]
+	var result := {
+		"blocked": blocked, "damage": dmg, "ko": false,
+		"attack_id": strike["attack_id"],
+		"input_beat": strike["input_beat"],
+		"contact_beat": strike["contact_beat"],
+	}
+
+	if health == 0:
+		result["ko"] = true
+		velocity = Vector2(kb.x * away, kb.y)
+		change_state(State.KO)
+	elif blocked:
+		velocity = Vector2(BLOCK_PUSHBACK * away, 0.0)
+		_begin_stun(BLOCKSTUN_TICKS, true)
+	elif bool(a["knockdown"]):
+		velocity = Vector2(kb.x * away, kb.y)
+		change_state(State.KNOCKDOWN)
+	else:
+		velocity = Vector2(kb.x * away, kb.y)
+		_begin_stun(int(a["hitstun"]), false)
+	return result
+
+
+func _begin_stun(frames: int, is_block: bool) -> void:
+	_stun_frames = frames
+	_stun_is_block = is_block
+	if state == State.HITSTUN:
+		state_frame = 0
+		_play_state_anim()
+	else:
+		change_state(State.HITSTUN)
+
+
+func _tick_hitstun() -> void:
+	_apply_gravity()
+	velocity.x = move_toward(velocity.x, 0.0, STUN_FRICTION * get_physics_process_delta_time())
+	if state_frame >= _stun_frames:
+		change_state(State.IDLE)
+
+
+func _tick_knockdown() -> void:
+	_apply_gravity()
+	velocity.x = move_toward(velocity.x, 0.0, STUN_FRICTION * get_physics_process_delta_time())
+	if state_frame >= KNOCKDOWN_FALL_TICKS and is_on_floor():
+		change_state(State.IDLE)
+
+
+func _tick_ko() -> void:
+	_apply_gravity()
+	velocity.x = move_toward(velocity.x, 0.0, STUN_FRICTION * get_physics_process_delta_time())
+
+
+# =========================================================================
+# Helpers
+# =========================================================================
+func _judge_beat() -> Dictionary:
+	if beat_service == null:
+		return {"available": false}
+	var j := beat_service.judge()
+	j["available"] = true
+	return j
+
+
+## For a match controller (auto-face is not implemented here). Ignored mid-attack.
+func face_toward(x: float) -> void:
+	if state in [State.IDLE, State.WALK, State.CROUCH]:
+		_set_facing(1 if x >= global_position.x else -1)
+
+
+func _set_facing(dir: int) -> void:
+	if dir == 0 or dir == facing:
+		return
+	facing = dir
+	# PROVISIONAL: mirroring changes apparent mic hand (AGENTS.md §1). Owner must resolve canonical hand.
+	sprite.flip_h = facing < 0
+
+
+func _set_guarding(v: bool) -> void:
+	if v == guarding:
+		return
+	guarding = v
+	_play_state_anim()
+
+
+func _apply_stance(crouching: bool) -> void:
+	var size := crouch_size if crouching else stand_size
+	(body_shape.shape as RectangleShape2D).size = size
+	body_shape.position.y = -size.y * 0.5
+	(hurt_shape.shape as RectangleShape2D).size = size + Vector2(10, 10)
+	hurt_shape.position.y = -size.y * 0.5
+
+
+## SpriteFrames animation names expected (missing ones are skipped silently):
+## idle, walk, jump, crouch, block, jab, box_startup, box_active, box_recovery,
+## taunt, hitstun, knockdown, ko. The scene also carries the pack's unused poses
+## (launched, tumble, salute, dizzy, fire_air, fire_ground, skank) for later wiring.
+func _play_state_anim() -> void:
+	var anim: StringName = &"idle"
+	match state:
+		State.IDLE: anim = &"block" if guarding else &"idle"
+		State.WALK: anim = &"walk"
+		State.JUMP: anim = &"jump"
+		State.CROUCH: anim = &"crouch"
+		State.ATTACK_STARTUP: anim = _attack.get("anim_startup", &"jab")
+		State.ATTACK_ACTIVE: anim = _attack.get("anim_active", &"jab")
+		State.ATTACK_RECOVERY: anim = _attack.get("anim_recovery", &"jab")
+		State.TAUNT: anim = &"taunt"
+		State.HITSTUN: anim = &"block" if _stun_is_block else &"hitstun"
+		State.KNOCKDOWN: anim = &"knockdown"
+		State.KO: anim = &"ko"
+	if sprite.sprite_frames and sprite.sprite_frames.has_animation(anim):
+		sprite.offset = ANIM_OFFSET.get(anim, ANIM_OFFSET_DEFAULT)
+		sprite.play(anim)
+
+
+func _poll_local_input() -> Command:
+	var c := Command.new()
+	c.move_x = Input.get_axis(input_prefix + "left", input_prefix + "right")
+	c.jump = Input.is_action_just_pressed(input_prefix + "jump")
+	c.guard = Input.is_action_pressed(input_prefix + "guard")
+	c.crouch = Input.is_action_pressed(input_prefix + "crouch")
+	c.light = Input.is_action_just_pressed(input_prefix + "light")
+	c.heavy = Input.is_action_just_pressed(input_prefix + "heavy")
+	c.taunt = Input.is_action_just_pressed(input_prefix + "taunt")
+	return c
+
+
+func _ensure_default_actions() -> void:
+	if input_prefix != "p1_":
+		return
+	for suffix in DEFAULT_P1_KEYS:
+		var action: String = input_prefix + suffix
+		if InputMap.has_action(action):
+			continue
+		InputMap.add_action(action)
+		for key in DEFAULT_P1_KEYS[suffix]:
+			var ev := InputEventKey.new()
+			ev.physical_keycode = key
+			InputMap.action_add_event(action, ev)

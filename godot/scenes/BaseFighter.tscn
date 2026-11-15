@@ -1,0 +1,226 @@
+[gd_scene load_steps=27 format=3]
+
+[ext_resource type="Script" path="res://scripts/BaseFighter.gd" id="1_fighter"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/01_idle.png" id="t2"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/walk-four-keys/poses/01_contact_a.png" id="t3"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/walk-four-keys/poses/02_pass_a.png" id="t4"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/walk-four-keys/poses/03_contact_b.png" id="t5"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/walk-four-keys/poses/04_pass_b.png" id="t6"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/07_crouch.png" id="t7"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/08_block.png" id="t8"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/09_point.png" id="t9"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/12_backhand_windup.png" id="t10"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/13_box_palm.png" id="t11"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/14_followthrough.png" id="t12"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/16_gut_punch.png" id="t13"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/17_seated_landing.png" id="t14"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/02_knockout.png" id="t15"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/03_c_recoil.png" id="t16"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/04_inverted_c.png" id="t17"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/05_dizzy_bogle.png" id="t18"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/06_rear_salute.png" id="t19"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/10_fire_airborne.png" id="t20"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/11_fire_grounded.png" id="t21"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/15_skank.png" id="t22"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+resource_local_to_scene = true
+size = Vector2(60, 160)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_hurt"]
+resource_local_to_scene = true
+size = Vector2(70, 170)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_hit"]
+resource_local_to_scene = true
+size = Vector2(70, 36)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_feedback"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t2")
+}],
+"loop": true,
+"name": &"idle",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("t4")
+}, {
+"duration": 1.0,
+"texture": ExtResource("t5")
+}, {
+"duration": 1.0,
+"texture": ExtResource("t6")
+}],
+"loop": true,
+"name": &"walk",
+"speed": 4.4
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t7")
+}],
+"loop": true,
+"name": &"crouch",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t8")
+}],
+"loop": true,
+"name": &"block",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t9")
+}],
+"loop": false,
+"name": &"jab",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t10")
+}],
+"loop": false,
+"name": &"box_startup",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t11")
+}],
+"loop": false,
+"name": &"box_active",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t12")
+}],
+"loop": false,
+"name": &"box_recovery",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t13")
+}],
+"loop": false,
+"name": &"hitstun",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t14")
+}],
+"loop": false,
+"name": &"knockdown",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t15")
+}],
+"loop": false,
+"name": &"ko",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t16")
+}],
+"loop": false,
+"name": &"launched",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t17")
+}],
+"loop": false,
+"name": &"tumble",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t18")
+}],
+"loop": true,
+"name": &"dizzy",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t19")
+}],
+"loop": false,
+"name": &"salute",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t20")
+}],
+"loop": false,
+"name": &"fire_air",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t21")
+}],
+"loop": false,
+"name": &"fire_ground",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t22")
+}],
+"loop": true,
+"name": &"skank",
+"speed": 1.0
+}]
+
+[node name="BaseFighter" type="CharacterBody2D"]
+collision_layer = 2
+collision_mask = 1
+script = ExtResource("1_fighter")
+
+[node name="Sprite" type="AnimatedSprite2D" parent="."]
+scale = Vector2(0.25, 0.25)
+sprite_frames = SubResource("SpriteFrames_feedback")
+offset = Vector2(0, -388)
+
+[node name="Body" type="CollisionShape2D" parent="."]
+position = Vector2(0, -80)
+shape = SubResource("RectangleShape2D_body")
+
+[node name="Hurtbox" type="Area2D" parent="."]
+collision_layer = 4
+collision_mask = 0
+monitoring = false
+
+[node name="Shape" type="CollisionShape2D" parent="Hurtbox"]
+position = Vector2(0, -80)
+shape = SubResource("RectangleShape2D_hurt")
+
+[node name="Hitbox" type="Area2D" parent="."]
+collision_layer = 0
+collision_mask = 4
+monitoring = false
+monitorable = false
+
+[node name="Shape" type="CollisionShape2D" parent="Hitbox"]
+position = Vector2(70, -110)
+shape = SubResource("RectangleShape2D_hit")
+disabled = true

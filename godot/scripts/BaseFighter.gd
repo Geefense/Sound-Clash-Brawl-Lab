@@ -19,6 +19,7 @@ signal health_changed(current: int, maximum: int)
 signal hype_changed(current: int, maximum: int)
 signal strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dictionary)
 signal taunt_started(beat: Dictionary)
+signal hype_surge_started(seconds: float)
 signal camera_shake_requested(intensity: float, duration: float)
 signal died
 
@@ -72,6 +73,12 @@ const SPLATTER_STUN_TICKS := 12     # comedic bird-splatter flinch, no damage
 const HYPE_MAX := 100
 const ON_BEAT_HYPE := 15               # [TODO] amount is a placeholder value
 const ON_BEAT_DAMAGE_MULT := 1.15
+
+# 100% Crowd Hype Surge (owner decision, AGENTS.md §9 item 10): a full meter buys ~5 s
+# of momentum — 1.20x damage and 25% faster attack recovery — then the meter resets to 0.
+const HYPE_SURGE_TICKS := 300
+const SURGE_DAMAGE_MULT := 1.20
+const SURGE_RECOVERY_MULT := 0.75
 
 # Hitstop, in ticks. KO uses its own value.
 const HITSTOP_TICKS := {&"jab": 4, &"strong": 7, &"tump": 7, &"upper_box": 7}
@@ -215,6 +222,7 @@ var _buffered: Dictionary = {}
 var _stun_frames: int = 0
 var _stun_is_block: bool = false
 var _hitstop_frames: int = 0
+var _surge_ticks: int = 0
 var _guard_ticks: int = 0
 var _guard_recovering: bool = false
 var _was_on_floor: bool = true
@@ -245,6 +253,13 @@ func _ready() -> void:
 # Tick
 # =========================================================================
 func _physics_process(_delta: float) -> void:
+	# The surge runs on the wall clock: hitstop must not extend the boost.
+	if _surge_ticks > 0:
+		_surge_ticks -= 1
+		if _surge_ticks == 0:
+			hype = 0
+			hype_changed.emit(hype, HYPE_MAX)
+
 	# Hitstop freezes state logic but keeps the body moving so nothing tunnels.
 	if _hitstop_frames > 0:
 		_hitstop_frames -= 1
@@ -447,7 +462,11 @@ func _tick_attack_active() -> void:
 func _tick_attack_recovery() -> void:
 	_apply_gravity()
 	_buffer_attack_input()
-	if state_frame >= int(_attack["recovery"]):
+	# A surging fighter shakes off recovery 25% faster (integer ticks, never below 1).
+	var recovery: int = int(_attack["recovery"])
+	if is_hype_surging():
+		recovery = maxi(1, int(round(float(recovery) * SURGE_RECOVERY_MULT)))
+	if state_frame >= recovery:
 		var next := _take_buffered_attack()
 		if next.is_empty():
 			change_state(State.IDLE)
@@ -586,10 +605,29 @@ func receive_splatter(source_x: float) -> bool:
 
 
 func _add_hype(amount: int) -> void:
+	if _surge_ticks > 0:
+		return                          # the meter is held full until the surge expires
 	var before := hype
 	hype = clampi(hype + amount, 0, HYPE_MAX)
 	if hype != before:
 		hype_changed.emit(hype, HYPE_MAX)
+	if hype >= HYPE_MAX:
+		_start_hype_surge()
+
+
+## A full Crowd Hype meter: boost now, hold the bar at 100, reset to 0 when it expires.
+func _start_hype_surge() -> void:
+	_surge_ticks = HYPE_SURGE_TICKS
+	hype_surge_started.emit(HYPE_SURGE_TICKS / 60.0)
+	camera_shake_requested.emit(SHAKE_LIGHT, SHAKE_SECONDS)
+
+
+func is_hype_surging() -> bool:
+	return _surge_ticks > 0
+
+
+func hype_surge_seconds_left() -> float:
+	return _surge_ticks / 60.0
 
 
 # =========================================================================
@@ -621,14 +659,17 @@ func receive_strike(attacker: BaseFighter, strike: Dictionary) -> Dictionary:
 
 	var base: int = int(a["blocked_damage"]) if blocked else int(a["damage"])
 	var on_beat := bool((strike["input_beat"] as Dictionary).get("on_beat", false))
-	# On-beat bonus applies to chip damage too (owner decision, AGENTS.md §9).
-	var dmg: int = roundi(base * ON_BEAT_DAMAGE_MULT) if on_beat else base
+	# The 100% Hype Surge multiplies the attacker's damage before the on-beat bonus, so a
+	# surging on-beat strike is 1.20 x 1.15. On-beat still applies to chip damage too.
+	var surge_mult: float = SURGE_DAMAGE_MULT if attacker.is_hype_surging() else 1.0
+	var dmg: int = roundi(base * surge_mult * (ON_BEAT_DAMAGE_MULT if on_beat else 1.0))
 	health = maxi(0, health - dmg)
 	health_changed.emit(health, max_health)
 
 	var kb: Vector2 = a["knockback"]
 	var result := {
 		"blocked": blocked, "damage": dmg, "ko": false, "on_beat": on_beat,
+		"attacker_surge": attacker.is_hype_surging(),
 		"attack_id": strike["attack_id"],
 		"input_beat": strike["input_beat"],
 		"contact_beat": strike["contact_beat"],

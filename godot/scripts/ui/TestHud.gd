@@ -22,6 +22,7 @@ func _draw() -> void:
 	_beat_pulse(Vector2(width * 0.5, MARGIN + BAR_H * 0.5))
 	_ai_banner(Vector2(width * 0.5 - 150.0, MARGIN + 40.0))
 	_legend(Vector2(width * 0.5 - 210.0, MARGIN + 96.0))
+	_surge_banner(Vector2(width * 0.5, size.y * 0.34))
 
 
 func _bar(pos: Vector2, w: float, value: int, maximum: float, colour: Color, right_aligned: bool) -> void:
@@ -67,6 +68,27 @@ func _ai_banner(pos: Vector2) -> void:
 	draw_string(ThemeDB.fallback_font, pos + Vector2(10, 30),
 		"%s · Y switch · G guard" % sparring.mode_tag(),
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.7, 0.78, 0.9))
+
+
+## 100% Crowd Hype Surge callout. Flashes while either fighter's surge boost is live.
+func _surge_banner(centre: Vector2) -> void:
+	var who := ""
+	if p1 != null and p1.is_hype_surging():
+		who = "P1"
+	elif p2 != null and p2.is_hype_surging():
+		who = "P2"
+	if who == "":
+		return
+	var flash := int(Time.get_ticks_msec() / 140) % 2 == 0
+	var box := Rect2(centre - Vector2(270.0, 48.0), Vector2(540.0, 96.0))
+	draw_rect(box, Color(0.06, 0.04, 0.06, 0.72), true)
+	draw_rect(box, Color(1.0, 0.82, 0.2, 0.9 if flash else 0.35), false, 3.0)
+	var colour := Color(1.0, 0.92, 0.28) if flash else Color(1.0, 0.98, 0.86)
+	draw_string(ThemeDB.fallback_font, centre + Vector2(-250.0, -4.0), "FORWARD!",
+		HORIZONTAL_ALIGNMENT_CENTER, 500.0, 34, colour)
+	draw_string(ThemeDB.fallback_font, centre + Vector2(-250.0, 34.0),
+		"PULL UP! · %s 100%% HYPE" % who, HORIZONTAL_ALIGNMENT_CENTER, 500.0, 20,
+		Color(1.0, 1.0, 1.0, 0.9))
 
 
 func _legend(pos: Vector2) -> void:

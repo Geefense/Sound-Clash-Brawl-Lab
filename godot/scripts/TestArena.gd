@@ -62,6 +62,7 @@ const TIME_TRANSITION_SEC := 3.0
 @onready var camera: Camera2D = $Camera2D
 @onready var hud: Control = $HUD/Ui/Hud
 @onready var sparring: SparringController = $SparringAI
+@onready var crowd: CrowdLine = $CrowdLine
 @onready var bird: BirdHazard = $BirdHazard
 @onready var speaker_rings: SpeakerPulse = $SpeakerRings
 @onready var time_modulate: CanvasModulate = $TimeOfDay
@@ -95,6 +96,9 @@ func _ready() -> void:
 	hud.set("sparring", sparring)
 
 	beat.beat.connect(_on_beat)
+	crowd.setup(beat)
+	p1.hype_surge_started.connect(_on_hype_surge)
+	p2.hype_surge_started.connect(_on_hype_surge)
 
 	set_time_of_day(_time_phase, 0.0)   # Round 1: afternoon sun, no fade on load
 
@@ -130,6 +134,12 @@ func _unhandled_input(event: InputEvent) -> void:
 				bird.spawn_now()
 		KEY_N:
 			cycle_time_of_day()
+
+
+## 100% Crowd Hype Surge: the crowd jumps and the HUD banner flashes for the same
+## window the fighter's momentum boost lasts.
+func _on_hype_surge(seconds: float) -> void:
+	crowd.surge(seconds)
 
 
 ## Stage thump: one micro-pulse per 132 BPM downbeat (BeatService.beat).

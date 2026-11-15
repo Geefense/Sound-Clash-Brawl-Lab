@@ -530,6 +530,26 @@ here is gameplay-verified; implementation status is stated per item.
    [TODO] Every range, cooldown, punish window and `RUSH_PATTERN` itself are hand-set lab defaults
    with no playtest; the controller is a test partner, not shipping opponent AI.
 
+10. **Dancehall crowd line + 100% Crowd Hype Surge — owner request, implemented (2026-11-15).**
+    The two owner uploads (`B6BD1902-…` = 3 characters + both crates, `DFBF74CC-…` = 3 more
+    characters) are moved unchanged out of the repository root into `art-source/crowd/` and keyed
+    with `art-source/crowd/slice_crowd_sheets.py` into six 1:1 character PNGs in
+    `godot/assets/sprites/crowd/` plus `crate_01_red.png` / `crate_02_black.png` in
+    `godot/assets/sprites/crates/`. The key is a magenta flood fill plus a tight fringe cut (the
+    queen's pink shorts survive; no pixel is recoloured or resampled), the two men that overlap in
+    projection are split by connected component rather than a column cut, and the touching crates
+    are split at their emptiest column. `CrowdLine` in `TestArena.tscn` sits at **z_index −5** with
+    the **Dancehall Queen at centre (640, feet 556)** flanked by the flag-waver, bucket-hat hypeman,
+    cheering woman, arms-crossed man and clapping elder along the crowd line; the crates stand at
+    (300, 592) and (1025, 592) beside the left and right speaker stacks. Nothing crosses the
+    foreground sand lane below y = 600. Each 132 BPM beat bobs the line ~4 px with a 20 ms stagger;
+    when a fighter's meter reaches 100 %, `BaseFighter.hype_surge_started` fires, the crowd jumps on
+    a 0.16 s loop, `TestHud` flashes a **FORWARD! / PULL UP!** banner, and that fighter gets
+    **1.20× damage and 25 % faster attack recovery for 300 ticks (5 s)**; the meter holds at 100 and
+    resets to 0 when the boost ends. The surge multiplier applies before the on-beat 1.15×.
+    [TODO] Crowd scales/positions, bob depth, the 1.20 / 0.75 multipliers and the 5 s length are
+    hand-set defaults; none of this has been seen on screen or played.
+
 Implementation status: written into `/godot`; **not played**. Until 2026-11-15 the port had never
 been opened in an engine. The sand-stage and round-lighting slices were then imported and run headless
 in Godot 4.3.stable (no GPU, no audio device, no on-screen look), which proves the project imports
@@ -573,6 +593,7 @@ For Godot, once created: [TODO] pin exact import/headless launch/test/export com
 | Sound Clash Sand Stage (art + foot dust + shadows + atmosphere + speaker thump + rare bird) | Implemented 2026-11-15 on branch `stage/sound-clash-sand`; headless Godot 4.3 import/run clean; **on-screen playtest [TODO]**. |
 | Round-based day → sunset → night lighting | Implemented 2026-11-15 on branch `stage/sound-clash-sand`; headless checks of all three phases, tween and N cycle pass; round-controller driving and **on-screen look [TODO]**. |
 | Smart Sparring AI modes (P2) | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 4 modes cycle on **Y**, HUD banner, **G** guard override; headless Godot 4.5 runs pass for every mode; **on-screen/feel playtest [TODO]**. |
+| Dancehall crowd line + 100% Hype Surge | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 6 sliced spectators (Queen centre) + 2 record crates at the stacks, beat bob, FORWARD!/PULL UP! banner, 5 s 1.20× / faster-recovery boost; headless checks pass; **on-screen look and balance [TODO]**. |
 
 Next agent: finish the isolated walk review, reconcile asset/engine branches, close the minimal rhythm reference gap, freeze the TypeScript baseline and complete the first Godot port inside Nov 13–26. Then follow Section 2 date gates. Keep costs at zero; preserve the April 21, 2027 target and six-selector commitment while reporting scope risks promptly.
 
@@ -603,6 +624,20 @@ still in use" cleanup notice; the identical notice appears with the pre-change `
 **Not verified:** frame data, hitbox reach, HUD banner placement or AI feel — nothing was watched on
 screen and no mode has been played by the owner. These runs prove the modes tick, guard, punish,
 step, attack on the beat and taunt without errors; they do not prove any of it feels right.
+
+### Crowd line + Hype Surge — headless verification, 2026-11-15
+
+Godot 4.5.stable headless; the import is clean apart from the container's missing fontconfig. A
+temporary harness instantiated `TestArena.tscn` and asserted: 6 crowd sprites and both crates load
+with non-null textures; a synthetic P1 jab resolves 8 damage before the surge and 10 (8 × 1.20)
+while it is live; `_add_hype(100)` fires `hype_surge_started`, holds the bar at 100, drives the
+crowd (peak 30.6 px of travel) and then resets hype to 0 after the 5 s boost with the crowd settled
+and no residual tween. The harness was deleted before the commit and `TestArena.tscn` booted for
+150 frames with no script, resource or node errors.
+
+**Not verified:** the on-screen composition — checked only with an offline composite of the stage,
+crowd, crates and one idle sprite at the same coordinates and z-order — plus the banner flash,
+readability behind the fighters, and the balance of a 5 s 1.20× / faster-recovery window.
 
 
 ### Newer knee-lift BOX in main handoff — November 14, 2026 (Toronto)

@@ -480,9 +480,32 @@ here is gameplay-verified; implementation status is stated per item.
    rectangle is still the old 108×54 at x 96; the new frame's raised-palm silhouette has no forward
    extension, so its reach is unverified and needs a playtest.
 
-Implementation status: written into `/godot` and committed, but **not run** — no Godot engine is
-available in the authoring environment, so no scene load, import, hitbox, guard, beat-window or HUD
-check has been performed. The port remains unapproved.
+7. **Sound Clash Sand Stage direction — approved (2026-11-15).** The owner's 1672 × 941 beach
+   sound-yard background (uploaded to the repository root as
+   `3DFAD58B-2779-4DA7-B37E-9CF15C480341.png`) is the arena: two sound-system stacks framing an open
+   sand yard, surf and sky. The untouched original now lives at
+   `art-source/stages/sound-clash-sand/sound-clash-sand-stage-1672x941.png` (same bytes; the root copy
+   was removed so the root stays a drop zone) and the game reads a 1280 × 720 Lanczos export at
+   `godot/assets/stages/sound_clash_sand_stage_1280x720.png`. It is the `Stage` sprite in
+   `TestArena.tscn` at **z_index −10**. The fighting floor line stays **y = 600**: the sand yard starts
+   at world y ≈ 505 in that export, so both fighters stand inside the sand lane with sand front and
+   back, and no crop, offset or repaint was needed. **Direction approved:** sand foot particles,
+   ground contact shadows, gentle coastal wind, a warm-sun/cool-shade gradient and a 132 BPM speaker
+   thump are wanted, but subtle — the centre fighting lane must stay crisp and readable, and nothing
+   may wash out the fighters (the atmosphere layer sits behind them). **No crowd sprites yet**; the
+   crowd/party work stays on its own §7 milestone. **Rare bird interference approved as a stage
+   gag:** ~5 % chance every 15 s plus the **B** workshop key, a fly-by across the upper screen dropping
+   one splatter that gives a standing fighter a brief comedic flinch (no damage) or lands on the sand
+   when dodged. Values (5 %/15 s, 12-tick flinch, thump amount, particle rates, speaker-ring centres)
+   are hand-set defaults awaiting a playtest, not approved tuning.
+
+Implementation status: written into `/godot`; **not played**. Until 2026-11-15 the port had never
+been opened in an engine. The sand-stage slice was then imported and run headless in
+Godot 4.3.stable (no GPU, no audio device, no on-screen look), which proves the project imports with
+no script/resource errors and that the stage, shadow, dust, beat-thump and bird paths execute — not
+that any of it looks or feels right. No hitbox, guard, beat-window or HUD behaviour was re-verified,
+and the port remains unapproved. Details and exact commands: "Sound Clash Sand Stage integrated"
+below.
 
 ### Verification commands and acceptance evidence
 
@@ -516,6 +539,7 @@ For Godot, once created: [TODO] pin exact import/headless launch/test/export com
 | Fighters #3–#6 | Scheduled Jan 15–Mar 11; two weeks each. |
 | Venues, Character Select and Arcade | Scheduled Mar 12–Apr 1; stretch #7–#8 only if ahead. |
 | Birthday release / May Jamaica trip | Launch target Apr 21, 2027; final QA Apr 2–21; trip May 2027. |
+| Sound Clash Sand Stage (art + foot dust + shadows + atmosphere + speaker thump + rare bird) | Implemented 2026-11-15 on branch `stage/sound-clash-sand`; headless Godot 4.3 import/run clean; **on-screen playtest [TODO]**. |
 
 Next agent: finish the isolated walk review, reconcile asset/engine branches, close the minimal rhythm reference gap, freeze the TypeScript baseline and complete the first Godot port inside Nov 13–26. Then follow Section 2 date gates. Keep costs at zero; preserve the April 21, 2027 target and six-selector commitment while reporting scope risks promptly.
 
@@ -538,3 +562,66 @@ Owner assigned ChatGPT creation and added a microphone `squeeeek` defence. Five 
 ### Owner move corrections — November 15, 2026 (Toronto)
 
 Lightah must use existing massive-flame reference and jump-skank; reverse backhand BOX means spinning around into an open-hand backhand, superseding the stationary v1 interpretation. Garfield likes the Sparta kick direction; keep its drawings. Rear-facing two-finger skank original recovered for Freebuff (`libfile_95d3f14281248191821f8825ae8ef570`); preserve original but do not propagate obsolete back pockets/floor cable. Same Feedback appearance and mic/cable continuity mandatory. Root `FREEBUFF-HANDOFF.md` details source identities, screenshot identification and v2 status. V2 Lightah/spinning BOX are new six-keyframe review studies, not final approved animations; other three studies unchanged. No gameplay changes or runtime tests. Next: owner reviews v2, then targeted continuity fixes/in-betweens and Freebuff preparation.
+
+
+### Sound Clash Sand Stage integrated — November 15, 2026 (Toronto)
+
+Owner uploaded the 1672 × 941 beach sound-yard background to the root of `main`
+(`3DFAD58B-2779-4DA7-B37E-9CF15C480341.png`) and asked for it to become the arena background plus a
+first pass of stage mechanics and polish, recorded in §9 Owner Decisions Log item 7.
+
+**Branch note, stated plainly:** `main` does not contain `/godot`. The Godot project —
+`TestArena.tscn`, `BaseFighter`, `BeatService` — lives on `review/feedback-appearance-consistency`
+(`9ad9348`), 39 commits ahead of `main` and never merged into it. This work is therefore committed on
+**`stage/sound-clash-sand`**, branched from that review tip and merged with the owner's upload commit
+so the source art came along. Nothing was force-pushed, no branch was rewritten, and `main` and the
+review branch were not modified. The owner decides when `/godot` lands on `main`.
+
+**Art.** Original moved, byte-identical, to
+`art-source/stages/sound-clash-sand/sound-clash-sand-stage-1672x941.png` (root copy removed); notes
+and the measured floor data are in that folder's `README.md`. Export:
+`godot/assets/stages/sound_clash_sand_stage_1280x720.png` (1280 × 720, Lanczos, no crop, no retouch).
+Sand yard measured at source row 660 → world y ≈ 505 in the export, so the floor line stays y = 600
+with sand behind and in front of the fighters. Speaker thump centres from the dark-pixel centroids of
+the subwoofer cabs: (169, 411) and (1099, 425).
+
+**Scene.** `Stage` (z −10) · `Atmosphere` + `SunGlow` (z −9, gradient resources, drawn behind the
+fighters so they are never tinted) · `SpeakerRings` (z −8) · sand splats (z −6) · `WindMotes`
+(z −5) · per-fighter `Shadow` (z −2) and `Dust` (z −1) · fighters (0) · splatter on a hit fighter
+(z 6) · bird (z 20). Because the background is one 1280 × 720 layer, `TestArena.gd` now clamps camera
+zoom to **1.0–1.6** and its position to the stage rectangle; zooming in only shrinks the visible
+area, so the art always covers the view and the sand line cannot drift. This is a framing change, not
+a combat change — walk speed, animations, hitboxes, guard, beat windows and hitstop are untouched.
+
+**Mechanics.** New scripts are `scripts/stages/{BirdHazard,GroundShadow,SpeakerPulse,StageSplat}.gd`;
+`BaseFighter.gd` only gained presentation hooks (`_puff`, `_emit_landing_dust`,
+`receive_splatter`) and the two cosmetic children — no FSM, damage, hit-resolution or beat-judgement
+logic was altered. Dust fires on walking footfalls (every 8 ticks), jump takeoff, landings above
+260 px/s and `17_seated_landing` knockouts. `receive_splatter` is a 12-tick flinch with no damage and
+is refused when downed or airborne, so the drop then falls to the sand. The bird and every splat are
+drawn with primitives — no invented art assets, no crowd sprites.
+
+**Checks actually run** — Godot **4.3.stable.official** (Linux x86_64, headless; binary kept outside
+the repository; temp harness deleted after the run):
+
+```bash
+godot --headless --path godot --import
+godot --headless --path godot --quit-after 180        # main scene, no errors
+```
+
+Results: import and scene load clean (no script or missing-resource errors); `Stage` reports
+1280 × 720 at z −10; a scripted run spawned the bird, which flew and dropped a splatter that hit the
+standing dummy (splat parented to `P2` at head height, both fighters still at 100 health); a second run
+was dodged and produced a sand decal at (820, 600); a driven walk set `dust.emitting = true` at
+`amount` 11 and the shadow tracked the fighter at y = 600; `_on_beat` set the thump and started the
+speaker rings; camera zoom clamped at 1.6 with the fighter on the floor.
+
+**Not verified, and not claimed:** no GPU render and no on-screen review — colour, gradient strength,
+dust/mote density, legibility of the centre lane, thump feel, bird readability and the 5 %/15 s rate
+are all unjudged. The engine pin, renderer and export path remain [TODO]. Generated `*.import`
+sidecars from the headless import were not committed (the repository still carries none; Godot
+regenerates them on open).
+
+**Next:** Garfield opens `/godot` on the target device, presses **B** a few times and plays a round,
+then tunes or rejects the hand-set stage values above. Fixing `TestArena.gd`'s camera clamp is
+reversible if the tighter framing is not wanted.

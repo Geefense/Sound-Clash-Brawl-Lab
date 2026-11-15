@@ -62,6 +62,11 @@ const BLOCK_PUSHBACK := 120.0
 const INPUT_BUFFER_TICKS := 12
 const STUN_FRICTION := 900.0
 
+# Sand stage presentation (AGENTS.md §9). Cosmetic only: never touches combat.
+const STEP_PUFF_TICKS := 8          # one footfall puff every 8 ticks of walking
+const LANDING_PUFF_MIN_SPEED := 260.0
+const SPLATTER_STUN_TICKS := 12     # comedic bird-splatter flinch, no damage
+
 # Owner-approved on-beat reward policy (AGENTS.md §9 Owner Decisions Log):
 # +15 Crowd Hype and damage x1.15, judged at input time.
 const HYPE_MAX := 100
@@ -212,12 +217,16 @@ var _stun_is_block: bool = false
 var _hitstop_frames: int = 0
 var _guard_ticks: int = 0
 var _guard_recovering: bool = false
+var _was_on_floor: bool = true
+var _fall_speed: float = 0.0
+var _step_ticks: int = 0
 
 @onready var sprite: AnimatedSprite2D = $Sprite
 @onready var body_shape: CollisionShape2D = $Body
 @onready var hurt_shape: CollisionShape2D = $Hurtbox/Shape
 @onready var hitbox: Area2D = $Hitbox
 @onready var hit_shape: CollisionShape2D = $Hitbox/Shape
+@onready var dust: CPUParticles2D = get_node_or_null("Dust") as CPUParticles2D
 
 
 func _ready() -> void:
@@ -268,7 +277,9 @@ func _physics_process(_delta: float) -> void:
 			_guard_recovering = false
 			_play_state_anim()
 
+	_fall_speed = velocity.y
 	move_and_slide()
+	_emit_landing_dust()
 
 	# Snapshot for simultaneous resolution, then resolve after every fighter has ticked.
 	_snap_guarding = guarding
@@ -311,7 +322,10 @@ func _enter_state(s: State) -> void:
 		State.CROUCH:
 			velocity.x = 0.0
 			_apply_stance(true)
-		State.HITSTUN, State.KNOCKDOWN:
+		State.KNOCKDOWN:
+			_buffered = {}
+			_puff(1.6)                 # heavy knockdown (17_seated_landing) sand burst
+		State.HITSTUN:
 			_buffered = {}
 		State.KO:
 			_buffered = {}
@@ -360,6 +374,7 @@ func _tick_grounded() -> void:
 	if command.jump:
 		velocity.y = jump_velocity
 		velocity.x = command.move_x * walk_speed   # takeoff velocity latched [TODO confirm vs TS]
+		_puff(1.0)                                 # takeoff kick-up
 		change_state(State.JUMP)
 		return
 	if command.crouch:
@@ -375,8 +390,12 @@ func _tick_grounded() -> void:
 	if absf(command.move_x) > 0.1:
 		_set_facing(int(signf(command.move_x)))
 		velocity.x = command.move_x * walk_speed
+		_step_ticks += 1
+		if _step_ticks % STEP_PUFF_TICKS == 0:
+			_puff(0.32)                            # walking footfall
 		change_state(State.WALK)
 	else:
+		_step_ticks = 0
 		velocity.x = 0.0
 		change_state(State.IDLE)
 
@@ -529,6 +548,41 @@ func _resolve_pending_strikes() -> void:
 
 func _apply_hitstop(ticks: int) -> void:
 	_hitstop_frames = maxi(_hitstop_frames, ticks)
+
+
+# =========================================================================
+# Sand stage presentation (cosmetic — AGENTS.md §9)
+# =========================================================================
+## One sand puff at the feet. Uses the Dust CPUParticles2D child when it exists, so
+## the base scene still works without stage art. Strength 0.3 = footfall, 1.0 = jump
+## takeoff, 1.6 = heavy knockdown.
+func _puff(strength: float) -> void:
+	if dust == null:
+		return
+	dust.amount = int(clampf(6.0 + 16.0 * strength, 6.0, 40.0))
+	dust.initial_velocity_min = 24.0 + 26.0 * strength
+	dust.initial_velocity_max = 74.0 + 96.0 * strength
+	dust.restart()
+	dust.emitting = true
+
+
+func _emit_landing_dust() -> void:
+	var grounded := is_on_floor()
+	if grounded and not _was_on_floor and _fall_speed > LANDING_PUFF_MIN_SPEED:
+		_puff(clampf(_fall_speed / 1200.0, 0.5, 1.8))
+	_was_on_floor = grounded
+
+
+## Rare bird splatter (AGENTS.md §9). A brief comedic flinch only: no damage and no
+## strike resolution. Returns false when the fighter is downed, mid-air or already
+## recovering, in which case the drop keeps falling and may splat the sand instead.
+func receive_splatter(source_x: float) -> bool:
+	if state in [State.KO, State.KNOCKDOWN] or not is_on_floor():
+		return false
+	velocity.x = signf(global_position.x - source_x) * 70.0
+	_begin_stun(SPLATTER_STUN_TICKS, false)
+	camera_shake_requested.emit(SHAKE_LIGHT * 0.5, 0.08)
+	return true
 
 
 func _add_hype(amount: int) -> void:

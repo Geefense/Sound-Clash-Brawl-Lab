@@ -42,6 +42,61 @@ Deliberately **not** copied: candidate and comparison-only art (`cable-candidate
 `walk-four-keys/candidates/`, `box-handoff-2026-11-13/` concept images and review videos, review
 overlays), which stays distinguishable in `art-source/` and must not read as approved assets.
 
+## Sound Clash Sand Stage — UNAPPROVED, headless checks only
+
+`assets/stages/sound_clash_sand_stage_1280x720.png` is the owner's beach sound-yard background
+(original 1672 × 941 kept untouched in `art-source/stages/sound-clash-sand/`), wired as the
+`Stage` sprite in `TestArena.tscn` at **z_index −10**. The sand yard begins at world y ≈ 505 in this
+export, so the fighting floor line stays at **y = 600**: both fighters stand ~95 px into the sand
+with sand in front and behind them. Nothing was cropped, repainted or offset.
+
+| Layer | Node | z_index |
+| --- | --- | --- |
+| Stage art (1280 × 720) | `Stage` | −10 |
+| Warm-sun / cool-shade gradient + sun bloom | `Atmosphere`, `SunGlow` | −9 |
+| 132 BPM speaker rings | `SpeakerRings` (`SpeakerPulse.gd`) | −8 |
+| Sand splats (dodged bird drops) | runtime `StageSplat` children | −6 |
+| Coastal wind motes (CPUParticles2D) | `WindMotes` | −5 |
+| Fighter contact shadows | `Shadow` in `BaseFighter.tscn` | −2 |
+| Sand foot dust (CPUParticles2D) | `Dust` in `BaseFighter.tscn` | −1 |
+| Fighters | `P1`, `P2` | 0 |
+| Splatter on a hit fighter | runtime `StageSplat` child | 6 |
+| Bird fly-by | `BirdHazard` | 20 |
+
+Because the background is a single 1280 × 720 layer, the camera now clamps its zoom to **1.0–1.6**
+and its position to the stage rectangle (`TestArena.STAGE_SIZE`). Zooming in only ever shrinks the
+visible area, so the art always covers the view and the sand line never drifts.
+
+Stage mechanics, all presentation-only (no combat rule, hit registry or round state was changed):
+
+- **Sand underfoot** — `Dust` (`CPUParticles2D`, `local_coords = false`, one-shot) puffs on walking
+  footfalls (every 8 ticks), jump takeoff, landings above 260 px/s fall speed, and heavy knockdown
+  (`17_seated_landing`). Driven by `BaseFighter._puff()`.
+- **Contact shadows** — `GroundShadow.gd`, `top_level` so it stays glued to the sand at y = 600 while
+  the fighter is airborne; it shrinks to 0.6 and fades to 0.35 over the ~178 px jump apex.
+- **Wind motes** — `WindMotes` drifts 34 slow specks across the sky/upper stage.
+- **Bird hazard** — `BirdHazard.gd`: 5 % chance every 15 s, or **B** on demand. The bird crosses the
+  upper screen relative to the camera view, drops one splatter on a fighter's lane; a standing
+  fighter takes a 12-tick comedic flinch via `BaseFighter.receive_splatter()` (no damage, camera
+  shake only), a dodged drop becomes a sand decal. Both the bird and the splats are drawn with
+  primitives — no new art assets were invented.
+- **132 BPM thump** — `BeatService.beat` → `SpeakerPulse.pulse()` (soft ring at 169, 411 and
+  1099, 425) plus a 0.8 % camera zoom micro-pulse that decays in ~0.14 s.
+
+**Checks actually run** (Godot 4.3.stable.official headless, Linux, temp harness deleted afterwards):
+`--import` then a physics run of `TestArena.tscn`. Results: project imports with no script or
+resource errors; `Stage` loads `1280 × 720` at z −10; `Atmosphere` gradient loads at z −9; the bird
+spawns, flies and drops — one run splattered the standing dummy (splat parented to `P2` at head
+height, both healths still 100), another was dodged and became a sand decal at (820, 600); walking
+emitted dust (`amount` 11, `emitting` true); a scripted beat set `thump = 1` and started the speaker
+rings; the shadow tracked the fighter at y = 600; camera zoom clamped at 1.6 and the fighter stayed
+on the floor.
+
+**Not verified:** nothing has been looked at on screen — no GPU render, no colour/readability
+judgement, no feel check of the thump, dust density, mote density, gradient strength, or bird
+frequency. Those are owner calls at playtest. The thump amount, 5 %/15 s rate, 12-tick flinch,
+speaker-ring centres and dust rates are hand-set defaults, not approved values.
+
 ## Workshop arena — UNAPPROVED, no Godot checks run
 
 `scenes/TestArena.tscn` is the main scene: 1280×720, floor and side walls, Player 1 against a

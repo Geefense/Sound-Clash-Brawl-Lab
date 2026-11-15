@@ -19,3 +19,12 @@ window/stretch/aspect="keep"
 [physics]
 
 common/physics_ticks_per_second=60
+
+[rendering]
+
+; The Web export must run on WebGL2 (GL Compatibility). The desktop renderer is
+; unchanged: only the `web` feature override is set. VRAM compression stays off
+; for both the importer and the exporter so the Web build never needs ETC2/ASTC
+; extension support on Chromebook Intel GPUs.
+renderer/rendering_method.web="gl_compatibility"
+textures/vram_compression/import_etc2_astc=false

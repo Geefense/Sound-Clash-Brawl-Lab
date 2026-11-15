@@ -74,7 +74,7 @@ Suggested content slots within the supplied eight-week roster block: #3 Jan 15�
 - The Weeks 3–6 systems list is ambitious within ~40 minimum hours. Build the smallest complete versions, not production crowds/cinematics. Flag any slip promptly with remaining work and hours; the roadmap is a target, not proof that work fits.
 - At each session/milestone, record estimated versus observed time, completed exit criteria, remaining hours and the next date gate. Track useful debugging as development; distinguish avoidable tool/setup churn. Never subtract unverifiable hours or count the same session twice. Maintain the ledger without requiring manual data entry when activity is visible; ask only for missing session duration.
 - Protect April 2–21 for stabilization. If behind, remove #7–#8 first, target two venues within the 2–3 range, and defer elaborate cinematics/extra polish. If six complete fighters or another committed feature is still at risk, present the concrete tradeoff to Garfield; do not silently reduce the six-fighter target, mislabel unfinished content, or move the date.
-- **[TODO]** Pin launch platform(s), distribution location, minimum target hardware, export format and release acceptance checklist during Weeks 1–2. The Chromebook/phone workflow needs a verified zero-cost way to run and export Godot; do not assume desktop/mobile/web parity.
+- **[TODO]** Pin launch platform(s), distribution location, minimum target hardware, export format and release acceptance checklist during Weeks 1–2. The Chromebook/phone workflow needs a verified zero-cost way to run and export Godot; do not assume desktop/mobile/web parity. *(Partly resolved 2026-11-15: the committed Web export in §9 item 16 builds headless and runs in a plain browser tab with no paid service — see its verification section for what is still unverified.)*
 - **[TODO]** Record exact May trip dates if they affect post-launch availability. No travel dates beyond May 2027 are established here.
 - **[TODO]** Define the minimum unique move/animation/voice set per selector and confirm free Flow allowance/export throughput before promising six fully animated rosters. Batch approved outputs; generation failure must not consume unbounded time or credits.
 
@@ -621,6 +621,24 @@ here is gameplay-verified; implementation status is stated per item.
     timer, time-out or draw path — the TypeScript 90 s rule is not ported — and the HUD banner boxes
     and round-win pips are unplayed.
 
+16. **Chromebook Web export — implemented (2026-11-15).** `godot/export_presets.cfg` is now committed
+    (it used to be git-ignored) and holds one **Web** preset: GL Compatibility via
+    `renderer/rendering_method.web="gl_compatibility"` (the desktop renderer is unchanged), **single
+    threaded** (`variant/thread_support=false`, so no COOP/COEP headers and it runs on plain static
+    hosts such as GitHub Pages), **VRAM compression off** (`vram_texture_compression/*=false` plus
+    `textures/vram_compression/import_etc2_astc=false`) so it never needs ETC2/ASTC support on Intel
+    Chromebook GPUs, and extension support off. It exports to the repository-root **`/docs`** folder —
+    `index.html`, `index.js`, `index.wasm`, `index.pck` and icons — which is the ready-to-publish
+    GitHub Pages source; the full build is ~53 MB (38.1 MB wasm + 17.1 MB pck). Rebuild without an
+    editor: `godot --headless --path godot --import && godot --headless --path godot --export-release
+    "Web" docs/index.html` (needs the 4.5.stable web export templates). Nothing under `art-source/`
+    changed and no art was resized: `exclude_filter` leaves the nine PNGs no scene references out of
+    the packed build (the six `imported-poses` studies, `aligned/08_block`, `aligned/15_skank` and
+    `selected-frames-2026-11-15/skank/06`), which holds the `.pck` at **17.1 MB instead of 20.9 MB**.
+    [TODO] A plain static host serves the 38 MB `.wasm` uncompressed with no loading progress or
+    compression polish; GitHub Pages is not enabled; and the build has not been run on the actual 4 GB
+    Dell Chromebook.
+
 Implementation status: written into `/godot`; **not played**. Until 2026-11-15 the port had never
 been opened in an engine. The sand-stage and round-lighting slices were then imported and run headless
 in Godot 4.3.stable (no GPU, no audio device, no on-screen look), which proves the project imports
@@ -669,6 +687,7 @@ For Godot, once created: [TODO] pin exact import/headless launch/test/export com
 | Family-friendly crowd policy + locked-in move/mechanic roster | Recorded 2026-11-15 in §9 items 12–13 and §8. Documentation only: no move, mechanic, voice line or banner beyond the existing surge banner is implemented. |
 | Record Static Parry | Implemented 2026-11-15 on `stage/sound-clash-sand`: on-beat guard negates the hit, +20 hype, 18-tick attacker stun, ParrySpark; headless parry/block checks pass; **on-screen look and tuning [TODO]**. |
 | Best-of-3 round lifecycle | Implemented 2026-11-15: RoundController announce → K.O. → rematch, day → sunset → night per round, fighter resets, HUD banners + win pips; headless three-round run passes; **no timer/draw rule, on-screen layout [TODO]**. |
+| Chromebook Web export | Implemented 2026-11-15: committed Web preset (GL Compatibility, single-threaded, VRAM compression off) exporting to `/docs`; headless export clean and the build rendered on WebGL2 in a browser; **not yet tried on the 4 GB Chromebook, not deployed [TODO]**. |
 
 Next agent: finish the isolated walk review, reconcile asset/engine branches, close the minimal rhythm reference gap, freeze the TypeScript baseline and complete the first Godot port inside Nov 13–26. Then follow Section 2 date gates. Keep costs at zero; preserve the April 21, 2027 target and six-selector commitment while reporting scope risks promptly.
 
@@ -750,6 +769,26 @@ shipping scene booted 200 frames clean.
 **Not verified:** no engine render, so the banner boxes, win pips and parry spark were never seen;
 the ±70 ms parry window, +20 hype and 18-tick stun are unplayed; and there is still no round timer,
 time-out or draw path.
+
+### Chromebook Web build — export verification, 2026-11-15
+
+Godot 4.5.stable exported the **Web** preset headless (`--export-release`, exit 0) into `/docs` with no
+export errors. Served from a plain `python3 -m http.server` (which returns the correct
+`application/wasm` MIME type) and opened in a browser: `index.wasm` and `index.pck` both returned
+200, there were **no script or engine errors** in the console (only the expected autoplay-policy
+audio warning and a benign WebGL `ReadPixels` performance notice), a **WebGL2 context was live**, and
+the arena, crowd, HUD and both fighters rendered inside the letterboxed frame. Build sizes: wasm
+38.1 MB, pck 17.1 MB, `/docs` 53 MB.
+
+Runtime texture budget, measured from the two scenes: **57 referenced PNGs = 149.6 MB decoded RGBA**
+(22.6 MB as stored PNGs) load with `BaseFighter.tscn`; that is the bulk of the tab's texture memory,
+so the large 1024×1536 / 1536×1024 fighter frames matter far more than the download size. The nine
+art files no scene references (a further 62.8 MB decoded) are left out of the pack by the preset's
+exclude filter. `art-source/` and every original PNG are untouched and no texture was resized.
+
+**Not verified:** the build was never opened on the actual 4 GB Dell Chromebook or
+`editor.godotengine.org`, GitHub Pages was not enabled, nothing was deployed, and the 149.6 MB figure
+is computed from the source image dimensions rather than measured inside the browser tab.
 
 
 ### Newer knee-lift BOX in main handoff — November 14, 2026 (Toronto)

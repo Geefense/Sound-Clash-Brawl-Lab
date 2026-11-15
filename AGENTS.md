@@ -470,3 +470,8 @@ Garfield requested Feedback’s newer foot-off-the-ground BOX enter the GitHub f
 ### Additional Feedback animation requests — November 14, 2026 (Toronto)
 
 Garfield requested `lightah` frames, skank frames, reverse back hand BOX, and a Sparta kick to the stomach, all with the same Feedback character. See `FREEBUFF-HANDOFF.md` → Additional Feedback frame requests for preparation/continuity criteria. Freebuff inventories/reuses existing sources, prepares missing candidate frames and returns previews. Preserve character identity, declared mic hand, continuous jacket-origin cable, Wallabees, frame anchors and shared grid. Reverse BOX stays distinct from Upper Box; do not mirror art to create it. Kick gameplay parameters are unspecified. Status: recorded request only, no new frames or runtime implementation; no gameplay tests applicable. Existing knee-lift BOX handoff remains active.
+
+
+### Five-move review studies created — November 14, 2026 (Toronto)
+
+Owner assigned ChatGPT creation and added a microphone `squeeeek` defence. Five six-keyframe animated studies now exist: Lightah, skank, reverse backhand BOX, Sparta stomach push kick, and mic-squeak guard. Root `FREEBUFF-HANDOFF.md` at `187c284` records exact owner-access video/player/source-pack links, reference identity, checks and limitations. Status: UNAPPROVED review previews, not smooth final animations or gameplay assets. H.264/AAC export and player syntax verified; no runtime tests. Same right-hand mic setup across this batch; cross-pack canonical hand remains open. Next: Garfield reviews, ChatGPT corrects art/motion and prepares in-betweens; Freebuff handles approved repo preparation/integration. No receipt or implementation by Freebuff is claimed.

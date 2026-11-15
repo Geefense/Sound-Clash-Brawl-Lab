@@ -1,4 +1,4 @@
-[gd_scene load_steps=44 format=3]
+[gd_scene load_steps=45 format=3]
 
 [ext_resource type="Script" path="res://scripts/BaseFighter.gd" id="1_fighter"]
 [ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/01_idle.png" id="t2"]
@@ -39,6 +39,8 @@
 [ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/skank/05.png" id="t37"]
 [ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/lightah/03.png" id="t38"]
 [ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/lightah/04.png" id="t39"]
+
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/box-footoff-ground-2026-11-15/Feedback_Baseball_Pitch_BOX_Foot_Off_Ground.png" id="t40"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 resource_local_to_scene = true
@@ -146,7 +148,7 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("t17")
+"texture": ExtResource("t40")
 }],
 "loop": false,
 "name": &"box_active",

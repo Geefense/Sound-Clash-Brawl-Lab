@@ -82,7 +82,7 @@ const SHAKE_SECONDS := 0.12
 const ANIM_OFFSET := {
 	&"idle": Vector2(0, -388), &"crouch": Vector2(0, -388),
 	&"jab": Vector2(0, -388), &"box_startup": Vector2(0, -388),
-	&"box_active": Vector2(0, -388), &"box_recovery": Vector2(0, -388),
+	&"box_recovery": Vector2(0, -388),
 	&"fire_ground": Vector2(0, -388),
 	&"launched": Vector2(0, -98), &"tumble": Vector2(0, -98), &"hitstun": Vector2(0, -98),
 	&"salute": Vector2(0, -98), &"fire_air": Vector2(0, -98),
@@ -100,6 +100,10 @@ const ANIM_OFFSET := {
 	&"sparta_recovery": Vector2(0, -234), # sparta-kick 05-06, soles 488-490
 	&"skank": Vector2(0, -238),        # skank 01-05, soles 492-494 (grounded dance loop)
 	&"lightah": Vector2(0, -168),      # lightah 03-04, airborne (sole rows 423-425)
+	# Foot-off-ground BOX contact (baseball-pitch lean), 1024x1536: planted sole at row
+	# 1406, planted-foot centre x 402, crown-to-sole 1202 px. y = 768 - 1406 = -638;
+	# x puts the planted foot at the +37.5 px the pack's 12/13/14 feet share.
+	&"box_active": Vector2(479, -638),
 }
 
 # Selected frames are 512x512, not 1536x1024, so they need their own display scale.
@@ -110,6 +114,8 @@ const ANIM_SCALE := {
 	"guard_entry": 0.257, "block": 0.257, "guard_recovery": 0.257,
 	"sparta_startup": 0.257, "sparta_active": 0.257, "sparta_recovery": 0.257,
 	"skank": 0.257, "lightah": 0.257,
+	# 121.75 px target (pack idle 487 px at 0.25) / 1202 px crown-to-sole.
+	"box_active": 0.1013,
 }
 const ANIM_OFFSET_DEFAULT := Vector2(0, -388)
 

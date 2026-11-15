@@ -19,6 +19,7 @@ godot/
     sprites/feedback/imported-poses/    six imported pose studies
     sprites/feedback/walk-four-keys/    four walk keys (unapproved movement test)
     sprites/feedback/selected-frames-2026-11-15/  20 selected 512×512 frames (owner-approved working art)
+    sprites/feedback/box-footoff-ground-2026-11-15/  foot-off-ground BOX contact frame (1024×1536, owner-approved)
     flow_exports/walk/                  walk video exports
     audio/                              inventory placeholder — no audio files exist yet
 ```
@@ -31,6 +32,7 @@ godot/
 | `assets/sprites/feedback/imported-poses/` | `artifacts/sound-clash/art-source/feedback/imported-poses/` | 6 study PNGs |
 | `assets/sprites/feedback/walk-four-keys/poses/` | `artifacts/sound-clash/art-source/feedback/walk-four-keys/poses/` | 4 walk keys — **unapproved movement test** |
 | `assets/sprites/feedback/selected-frames-2026-11-15/` | `artifacts/sound-clash/art-source/feedback/selected-frames-2026-11-15/` | 20 selected 512×512 frames + `inventory.json` — owner-approved working art, originals untouched |
+| `assets/sprites/feedback/box-footoff-ground-2026-11-15/` | repository root `Feedback_Baseball_Pitch_BOX_Foot_Off_Ground.png` | foot-off-ground BOX contact frame — owner-approved, byte-identical copy |
 | `assets/flow_exports/walk/` | `art-source/feedback/` and `chat-movement-transfer-2026-11-13/movement-reference/` | walk flow test, approved 132 BPM reference |
 
 Copies were verified by file count and per-file SHA-256 against the sources. Original filenames,
@@ -76,10 +78,10 @@ never been opened, imported or played, and no hitbox, guard, beat-window or HUD 
   bodies on the floor line instead of sinking below it.
 - **Untouched on purpose:** walk speed (220) and the walk animation/speed (4.4 fps).
 
-**Still pending owner approval:** the newer heavy BOX art with the foot leaving the ground is not in
-this repository as an aligned pose; the only BOX-era files are the unapproved concept images under
-`art-source/feedback/box-handoff-2026-11-13/`. Nothing from that set was copied into `assets/`. The
-only foot-lifted strike that is wired is the Sparta kick's contact frame (`sparta-kick/04`).
+**Still pending owner approval:** the heavier BOX concepts beyond the contact frame — the multi-loop
+knee-lift clip in `art-source/feedback/box-handoff-2026-11-13/` and its review videos — remain
+unapproved concepts and were not copied. The approved foot-off-ground contact frame is the only one
+wired; the Baseball-pitch lean comparison video stays at the repository root as a reference only.
 
 ## Fighter wiring — UNAPPROVED, no Godot checks run
 
@@ -98,7 +100,7 @@ was edited.
 | `walk` | 4 walk keys (`01_contact_a` … `04_pass_b`) | pinned sole, y 566 in the 460×620 keys |
 | `crouch` | `07_crouch` | feet, y 900 |
 | `jab` | `09_point` (poke — placeholder for a jab) | feet, y 900 |
-| `box_startup` / `box_active` / `box_recovery` | `12` / `13` / `14` | feet, y 900 |
+| `box_startup` / `box_active` / `box_recovery` | `12` / **root `Feedback_Baseball_Pitch_BOX_Foot_Off_Ground.png`** / `14` | feet, y 900 / planted sole row 1406 of 1536 / feet, y 900 |
 | `hitstun` | `16_gut_punch` | pelvis, y 610 |
 | `knockdown` | `17_seated_landing` | ground contact, y 900 |
 | `ko` | `02_knockout` | feet, y 900 |
@@ -140,7 +142,16 @@ regenerated; `skank/06.png` is copied for provenance but not animated. Wiring:
   `sparta_recovery` (05–06, 12 ticks), with the contact box at stomach height (104×52 at x 88, y −78).
 - **Lightah** (`lightah/03–04`) is in `SpriteFrames` as a 2-frame prototype only, flagged **[TODO]**
   for unclipped art (`03.png` touches x = 0) and separate flame VFX; no state plays it yet.
-- **BOX (K) is unchanged** and still plays poses 12/13/14.
+- **BOX (K) contact is the new foot-off-ground frame.** `box_active` now plays
+  `Feedback_Baseball_Pitch_BOX_Foot_Off_Ground.png` (1024×1536, baseball-pitch lean, right knee lifted,
+  left support foot planted) between `12` startup and `14` recovery. Its own placement is
+  `offset (479, −638)` at `scale 0.1013`: sole row 1406 → `768 − 1406 = −638` puts the planted foot on
+  the floor line, and 1202 px crown-to-sole × 0.1013 = 121.9 px on screen, against the pack idle's
+  121.75 px. The x offset reproduces the planted-foot screen position the pack's 12/13/14 share
+  (+34…+40 px forward of the origin, here +37.4 px). No pixel was resampled in the source file; the
+  copy is byte-identical. [TODO] The contact box is still the old 108×54 at x 96 — the new frame's
+  raised-palm silhouette has no forward extension, so the reach needs a playtest. Pose
+  `13_box_palm` stays in the pack but is no longer animated.
 
 ## Still missing ([TODO] in the blueprint)
 

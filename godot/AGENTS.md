@@ -459,9 +459,26 @@ here is gameplay-verified; implementation status is stated per item.
    duplicates `01` and is not animated); `mic-defence/01–02` is guard entry, `03–04` the held block
    and blockstun, `05–06` guard release; `sparta-kick/01–06` is the `tump` (L) sequence with the
    contact box at stomach height; `lightah/03–04` sit in `SpriteFrames` as a flagged prototype only.
-   BOX (K) stays on poses 12/13/14. [TODO] The 0.257 scale, the guard phase lengths (8/8 ticks),
+   BOX (K) stays on poses 12/13/14 at that point, superseded by item 6 for its contact frame.
+   [TODO] The 0.257 scale, the guard phase lengths (8/8 ticks),
    the tump timing (12/4/12), the 1.13 s taunt length, and the unclipped-lightah and separate-flame
    VFX work are all hand-set defaults awaiting a Godot playtest.
+
+6. **Foot-off-ground BOX contact frame — approved and wired (2026-11-15).**
+   `Feedback_Baseball_Pitch_BOX_Foot_Off_Ground.png` at the repository root (1024×1536; rear
+   three-quarter view, right knee lifted, left support foot planted, microphone in the right hand) is
+   copied byte-identically into `godot/assets/sprites/feedback/box-footoff-ground-2026-11-15/` and is
+   now the `box_active` frame of BOX (K), between the `12_backhand_windup` startup and the
+   `14_followthrough` recovery. It gets its own placement instead of being resampled: `ANIM_OFFSET`
+   (479, −638) with `ANIM_SCALE` 0.1013, derived from a planted-sole row of 1406 in a 1536-tall canvas
+   (`768 − 1406 = −638`) and a 1202 px crown-to-sole height, which renders 121.9 px against the pack
+   idle's 121.75 px at 0.25. The x offset puts the planted foot at +37.4 px forward of the origin, the
+   same screen position the pack's 12/13/14 feet already occupy (+34…+40 px), so the K sequence does
+   not slide sideways. Pose `13_box_palm` stays in the pack untouched but is no longer animated. The
+   Baseball-pitch lean comparison video stays at the repository root as a reference only: it was not
+   decoded here (no ffmpeg available) and no gameplay decision rests on it. [TODO] The BOX contact
+   rectangle is still the old 108×54 at x 96; the new frame's raised-palm silhouette has no forward
+   extension, so its reach is unverified and needs a playtest.
 
 Implementation status: written into `/godot` and committed, but **not run** — no Godot engine is
 available in the authoring environment, so no scene load, import, hitbox, guard, beat-window or HUD

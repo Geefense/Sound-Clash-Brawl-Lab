@@ -18,7 +18,7 @@ extends Node2D
 ## R reloads the scene and starts a fresh match; N still overrides the lighting by hand.
 ##
 ## Workshop keys: R reset · G dummy guard (manual guard override in every AI mode) ·
-## Y cycle P2's sparring AI mode · M mute · B bird hazard · N time of day
+## Y cycle P2's sparring AI mode · M mute · B bird hazard · N time of day · V subtitles
 ## · J/K/L/I attacks · T taunt · C crouch · WASD/arrows move.
 
 const CLICK_LOOP_SECONDS := 10.0      # 22 beats at 132 BPM
@@ -118,6 +118,8 @@ func _ready() -> void:
 	p2.hype_milestone_reached.connect(_on_hype_milestone)
 	p1.static_parry_triggered.connect(_on_static_parry)
 	p2.static_parry_triggered.connect(_on_static_parry)
+	p1.taunt_finished.connect(_on_taunt_finished)
+	p2.taunt_finished.connect(_on_taunt_finished)
 	p1.throw_broken.connect(_on_throw_broken)
 	p2.throw_broken.connect(_on_throw_broken)
 	p1.throw_connected.connect(_on_throw_connected)
@@ -165,12 +167,15 @@ func _unhandled_input(event: InputEvent) -> void:
 			_spawn_bird()
 		KEY_N:
 			cycle_time_of_day()
+		KEY_V:
+			hud.toggle_subtitles()
 
 
 ## 100% Crowd Hype Surge: the crowd jumps and the HUD banner flashes for the same
 ## window the fighter's momentum boost lasts.
 func _on_hype_surge(seconds: float) -> void:
 	crowd.surge(seconds)
+	hud.announce_subtitle("WHEEL AND COME AGAIN!", "(Translation: Rewind the track — rematch!)")
 
 
 ## 50 % Crowd Hype: the line reshuffles itself even before the surge lands.
@@ -184,6 +189,14 @@ func _on_static_parry(defender: BaseFighter, attacker: BaseFighter) -> void:
 		return
 	_add_spark((defender.global_position + attacker.global_position) * 0.5 + Vector2(0.0, -110.0))
 	_on_shake(0.5, 0.12)
+	hud.announce_subtitle("BIG TUNE!", "(Translation: Cleanest block in the dance!)")
+
+
+## On-beat skank taunt: the one taunt line that gets a callout (off-beat stays quiet).
+func _on_taunt_finished(on_beat: bool) -> void:
+	if not on_beat:
+		return
+	hud.announce_subtitle("YUH TOO BOD MINE!!", "(Translation: You're way too jealous!)")
 
 
 ## Throw break: the mutual shove-apart gets the same spark flash, with no damage.
@@ -205,6 +218,7 @@ func _on_speaker_slam(victim: BaseFighter, _side: int) -> void:
 	if victim == null:
 		return
 	_add_spark(victim.global_position + Vector2(0.0, -110.0))
+	hud.announce_subtitle("HOLD DAT!", "(Translation: Take that to the speakers!)")
 
 
 ## Transient sparks all share the ParrySpark cap, so a long demo can never pile up nodes.

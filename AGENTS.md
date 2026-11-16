@@ -690,6 +690,32 @@ here is gameplay-verified; implementation status is stated per item.
     there is no throw animation art (the grab uses the jab frames and the held victim the hitstun pose),
     no air grab, no grab invulnerability and no throw whiff punish window beyond the 12-tick recovery.
 
+19. **Arcade typography + Patois callout subtitles — implemented (2026-11-15).** Four genuine SIL
+    Open Font License faces live in `godot/assets/fonts/` beside their licence texts
+    (`OFL-bungee.txt`, `OFL-bungeeshade.txt`, `OFL-chakrapetch.txt`): `Bungee-Regular.ttf`,
+    `BungeeInline-Regular.ttf`, `BungeeShade-Regular.ttf` and `ChakraPetch-Bold.ttf`. `TestHud.gd`
+    no longer touches `ThemeDB.fallback_font`; every label goes through one `_text()` helper that
+    draws a drop shadow, a dark outline (`max(2, 16 % of the size)`) and then the crisp face.
+    **Face map:** Bungee **Shade** for the huge `K.O.!` banner, Bungee **Inline** for the Hype Surge
+    (`FORWARD!` / `PULL UP!`) and rematch (`WHEEL AND COME AGAIN!`) banners, Bungee for the fighter
+    tags inside the health bars, the round announce headers and the Patois shouts, and Chakra Petch
+    Bold for the deadpan translations, the Hype readout, the AI-mode banner and the key legend.
+    Bungee is a very wide face, so `_fit_size()` shrinks a string to its box instead of letting it run
+    off the viewport.
+    **Callouts:** big moments only — an **on-beat** skank taunt (`BaseFighter.taunt_finished(true)`,
+    so an off-beat taunt stays silent) shows `YUH TOO BOD MINE!!` / `(Translation: You're way too
+    jealous!)`; `speaker_slam_triggered` shows `HOLD DAT!` / `(Translation: Take that to the
+    speakers!)`; `static_parry_triggered` shows `BIG TUNE!` / `(Translation: Cleanest block in the
+    dance!)`; and `hype_surge_started` shows `WHEEL AND COME AGAIN!` / `(Translation: Rewind the
+    track — rematch!)`. They render in a translucent pill at bottom centre (y 655, under the sand
+    lane), fade out over the last 0.45 s of a 1.8 s life, share a **4.0 s cooldown** and hold **one
+    line at a time** — a trigger inside the cooldown is dropped, never queued. **V** toggles the
+    subtitles (`TestArena._unhandled_input` → `TestHud.toggle_subtitles()`) and joins the legend as
+    `V subtitles`. Patois is preserved verbatim, in the uppercase shout form the owner specified.
+    [TODO] All sizes, the 1.8 s / 4.0 s values and the pill geometry are hand-set defaults awaiting a
+    look on the real Chromebook; there is no queue (a second callout inside 4 s is simply lost) and
+    the rematch line reuses the round-banner slot rather than its own animation.
+
 Implementation status: written into `/godot`; **not played**. Until 2026-11-15 the port had never
 been opened in an engine. The sand-stage and round-lighting slices were then imported and run headless
 in Godot 4.3.stable (no GPU, no audio device, no on-screen look), which proves the project imports
@@ -875,6 +901,26 @@ deleted before the commit; `TestArena.tscn` booted 200 frames clean; the Web exp
 
 **Not verified:** no throw of any kind was watched on screen, and none of the damage, Hype, timing or
 arc values have been playtested — they are hand-set defaults.
+
+
+### Arcade typography + callout subtitles — verification, 2026-11-15
+
+Temporary headless harness on the real `TestArena.tscn` (deleted before the commit): all four faces
+load as real `FontFile`s reporting their own family names — `Bungee`, `Bungee Inline`, `Bungee
+Shade`, `Chakra Petch` — so nothing fell back to `ThemeDB.fallback_font`, and a 200-frame boot
+printed no `fallback` / `unable to load font` warning. The subtitle state machine passed: the first
+`announce_subtitle()` was accepted, a second one inside the 4.0 s cooldown was refused without
+replacing the live line, the pill was gone 2.0 s after its trigger and the cooldown read 0.0 s at
+4.2 s; `static_parry_triggered`, `taunt_finished(true)`, `speaker_slam_triggered` and
+`hype_surge_started` each produced their exact Patois line; an off-beat `taunt_finished(false)`
+stayed silent; the **V** toggle refused callouts while off and cleared the pill; and re-enabling kept
+a single slot, the newest line replacing the older one. The Web export rebuilt headless (exit 0,
+`.pck` 10.6 MB, `/docs` 47 MB) and the browser run drew the Bungee fighter tags and the Chakra Petch
+legend and mode labels with no script errors.
+
+**Not verified:** no callout pill was caught on screen (the browser taunt attempts landed off-beat
+and headless Godot cannot draw), the banner/Shade faces and the outline weight were not judged on the
+actual Chromebook, and none of the sizes or timings have been playtested.
 
 
 ### Newer knee-lift BOX in main handoff — November 14, 2026 (Toronto)

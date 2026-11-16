@@ -20,6 +20,7 @@ signal health_changed(current: int, maximum: int)
 signal hype_changed(current: int, maximum: int)
 signal strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dictionary)
 signal taunt_started(beat: Dictionary)
+signal taunt_finished(on_beat: bool)     # the subtitle callout only fires on the beat
 signal static_parry_triggered(defender: BaseFighter, attacker: BaseFighter)
 signal hype_milestone_reached(percent: int)
 signal hype_surge_started(seconds: float)
@@ -719,10 +720,12 @@ func hype_surge_seconds_left() -> float:
 func _tick_taunt() -> void:
 	_apply_gravity()
 	if state_frame >= TAUNT_TICKS:
-		if bool(_taunt_beat.get("on_beat", false)):
+		var on_beat := bool(_taunt_beat.get("on_beat", false))
+		if on_beat:
 			_add_hype(ON_BEAT_HYPE)       # [TODO] amount and interruptibility
 		_taunt_beat = {}
 		change_state(State.IDLE)
+		taunt_finished.emit(on_beat)
 
 
 # =========================================================================

@@ -43,6 +43,12 @@ func beat_index() -> int:
 	return int(floor(_grid_time() / beat_length_sec()))
 
 
+## 0..1 position *inside* the current beat, for presentation that grooves on the grid
+## (idle bob, crowd sway). Never used for judgement — §9 item 1 judges the input.
+func beat_phase() -> float:
+	return fposmod(_grid_time() / beat_length_sec(), 1.0)
+
+
 ## Signed error to the nearest beat in ms. Negative = early, positive = late.
 func nearest_beat_error_ms() -> float:
 	var beat_len := beat_length_sec()

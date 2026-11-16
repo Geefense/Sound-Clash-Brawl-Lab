@@ -9,6 +9,12 @@ config/name="Sound Clash Brawl"
 config/description="Fighter #1 (Feedback) — ported from the TypeScript reference."
 run/main_scene="res://scenes/TestArena.tscn"
 
+[autoload]
+
+; Procedural arcade SFX (AGENTS.md §9 backlog item B8): every cue is synthesised with
+; AudioStreamGenerator, so the build ships no audio files.
+Sfx="*res://scripts/audio/SfxPlayer.gd"
+
 [display]
 
 window/size/viewport_width=1280
@@ -19,3 +25,12 @@ window/stretch/aspect="keep"
 [physics]
 
 common/physics_ticks_per_second=60
+
+[rendering]
+
+; The Web export must run on WebGL2 (GL Compatibility). The desktop renderer is
+; unchanged: only the `web` feature override is set. VRAM compression stays off
+; for both the importer and the exporter so the Web build never needs ETC2/ASTC
+; extension support on Chromebook Intel GPUs.
+renderer/rendering_method.web="gl_compatibility"
+textures/vram_compression/import_etc2_astc=false

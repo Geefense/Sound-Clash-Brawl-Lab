@@ -1,6 +1,6 @@
 # Sound Clash Brawl — Master Blueprint
 
-Last updated: 2026-11-13. Owner and final creative approver: Garfield Connell.
+Last updated: 2026-11-16. Owner and final creative approver: Garfield Connell.
 
 This is the project instruction and handoff document for all agents. It records verified repository work, recovered design decisions, and the owner's Godot migration direction. **Implemented**, **asset available**, **planned**, and **[TODO]** are different statuses. Never present a concept, imported illustration, successful upload, or old test report as a working or approved feature.
 
@@ -74,7 +74,7 @@ Suggested content slots within the supplied eight-week roster block: #3 Jan 15�
 - The Weeks 3–6 systems list is ambitious within ~40 minimum hours. Build the smallest complete versions, not production crowds/cinematics. Flag any slip promptly with remaining work and hours; the roadmap is a target, not proof that work fits.
 - At each session/milestone, record estimated versus observed time, completed exit criteria, remaining hours and the next date gate. Track useful debugging as development; distinguish avoidable tool/setup churn. Never subtract unverifiable hours or count the same session twice. Maintain the ledger without requiring manual data entry when activity is visible; ask only for missing session duration.
 - Protect April 2–21 for stabilization. If behind, remove #7–#8 first, target two venues within the 2–3 range, and defer elaborate cinematics/extra polish. If six complete fighters or another committed feature is still at risk, present the concrete tradeoff to Garfield; do not silently reduce the six-fighter target, mislabel unfinished content, or move the date.
-- **[TODO]** Pin launch platform(s), distribution location, minimum target hardware, export format and release acceptance checklist during Weeks 1–2. The Chromebook/phone workflow needs a verified zero-cost way to run and export Godot; do not assume desktop/mobile/web parity.
+- **[TODO]** Pin launch platform(s), distribution location, minimum target hardware, export format and release acceptance checklist during Weeks 1–2. The Chromebook/phone workflow needs a verified zero-cost way to run and export Godot; do not assume desktop/mobile/web parity. *(Partly resolved 2026-11-15: the committed Web export in §9 item 16 builds headless and runs in a plain browser tab with no paid service — see its verification section for what is still unverified.)*
 - **[TODO]** Record exact May trip dates if they affect post-launch availability. No travel dates beyond May 2027 are established here.
 - **[TODO]** Define the minimum unique move/animation/voice set per selector and confirm free Flow allowance/export throughput before promising six fully animated rosters. Batch approved outputs; generation failure must not consume unbounded time or credits.
 
@@ -314,7 +314,7 @@ This register includes all phrases recoverable from the visible conversation, su
 
 | Exact phrase / recorded variant | Meaning / cultural note |
 | --- | --- |
-| `Yuh too Bod Mine!!` | Owner's gloss: “You're to Bad Mind”; intended meaning: “you're evil.” Preserve the phonetic spelling. Trigger/performance not yet specified. |
+| `Yuh too Bod Mine!!` | Owner's gloss: “You're to Bad Mind”; intended meaning: “you're evil.” Preserve the phonetic spelling. Trigger/performance not yet specified. **Approved as a playful, family-friendly comedic voice taunt (2026-11-15).** |
 | `Yuh Betta stop-pit` | You better stop it. Owner-supplied wording; preserve exact spelling and capitalization. |
 | `Cawn soup` | Corn soup. Owner's spelling guides pronunciation; retain it in performance notes/dialogue. A big pot is also a proposed crowd-interference throwable. |
 | `Outta Awduh` | Out of Order. |
@@ -324,7 +324,7 @@ This register includes all phrases recoverable from the visible conversation, su
 | `Stop-pit!` | Stop it. |
 | `Yam dat` | Eat that. |
 | `Hole Lawn deh` | Hold on there. |
-| `Shut-Tup!` | Shut Up! Owner's favourite phrase to sprinkle throughout: flexible recurring crowd/announcer/fighter interjection, without overusing it. |
+| `Shut-Tup!` | Shut Up! Owner's favourite phrase to sprinkle throughout: flexible recurring crowd/announcer/fighter interjection, without overusing it. **Approved as a playful, family-friendly comedic voice taunt (2026-11-15).** |
 | `Shut-Tup Mon!` | Shut Up, Man; preserve exact wording. |
 | `Shut tup Mon!` | Separately recorded variant; do not normalize automatically. |
 | `Mon` | Man. |
@@ -340,7 +340,7 @@ This register includes all phrases recoverable from the visible conversation, su
 | `Wawk Good` | Walk Good; be safe; can replace goodbye. |
 | `Eat good` | Taste good. |
 | `Tase` | Taste. |
-| `Heeeyaut!` | Idiot. |
+| `Heeeyaut!` | Idiot. **Approved as a playful, family-friendly comedic voice taunt (2026-11-15).** |
 | `Likkle` | Little. |
 | `Heeed` | Pronunciation component; owner specified silent D. |
 | `Yaut` | Pronounced like the boat “yacht”; retain the owner's spelling. |
@@ -377,6 +377,10 @@ This register includes all phrases recoverable from the visible conversation, su
 | `THREE PIECE!` | Implemented successful nonlethal Three Piece feedback. |
 | `KO!` | Implemented ordinary KO overlay. |
 | `Lighter!` | Requested lighter taunt shout. |
+| `LIGHTAH!` | Shouted form of the existing `Lighter!` request; one of the owner's family-friendly callouts (2026-11-15). |
+| `FORWARD!` | Owner's family-friendly hype callout; the implemented 100 % Hype Surge banner (§9 item 10). |
+| `WHEEL AND COME AGAIN!` | Shouted banner/voice form of the existing `wheel and cum again`. A separately recorded capitalization variant — do not normalise the two into one. |
+| `BIG TUNE!` | Owner's family-friendly crowd/hype callout. [TODO] Trigger and delivery are unset. |
 | `Feedbackhand` | Proposed backhand pun. |
 
 ### Comedy, taunt and move register
@@ -516,6 +520,443 @@ here is gameplay-verified; implementation status is stated per item.
    round lifecycle, so the future round controller must call `set_time_of_day(round - 1)`. The night
    tint and floodlight strength are hand-set defaults awaiting a playtest.
 
+9. **Smart Sparring AI modes for P2 — owner-requested workshop tool, implemented (2026-11-15).**
+   `godot/scripts/ai/SparringController.gd` drives the sparring dummy by writing
+   `BaseFighter.Command` only. It never assigns FSM state, calls `change_state`, moves a hitbox or
+   skips frame data, so every AI attack takes the same startup/active/recovery path, input buffer
+   and input-time beat judgement as a human press. `TestArena.gd` cycles the modes with **Y** and
+   `TestHud.gd` draws the active mode in a banner under the beat pulse. **0 Workshop Dummy** is the
+   old behaviour exactly: no input at all, guard while **G** is toggled. **1 Counter-Puncher** holds
+   the mic-defence guard inside 190 px and punishes P1's recovery — a whiff and a blocked hit both
+   end there — with Jab (≤150 px) or Sparta Kick (≤166 px). **2 Riddim Rusher** takes a beat-step in
+   on every 132 BPM beat and throws a two-bar on-beat string (Jab → Sparta Kick → BOX) from
+   `RUSH_PATTERN`, stepping instead of swinging when out of reach. **3 Spacing & Skank Baiter** runs
+   two-beats-in / two-beats-out footsies, skank taunts above 330 px and throws the heavy BOX on a P1
+   dash-in. **G stays an instant manual guard override in every mode** (ORed into the command).
+   [TODO] Every range, cooldown, punish window and `RUSH_PATTERN` itself are hand-set lab defaults
+   with no playtest; the controller is a test partner, not shipping opponent AI.
+
+10. **Dancehall crowd line + 100% Crowd Hype Surge — owner request, implemented (2026-11-15).**
+    The two owner uploads (`B6BD1902-…` = 3 characters + both crates, `DFBF74CC-…` = 3 more
+    characters) are moved unchanged out of the repository root into `art-source/crowd/` and keyed
+    with `art-source/crowd/slice_crowd_sheets.py` into six 1:1 character PNGs in
+    `godot/assets/sprites/crowd/` plus `crate_01_red.png` / `crate_02_black.png` in
+    `godot/assets/sprites/crates/`. The key is a magenta flood fill plus a tight fringe cut (the
+    queen's pink shorts survive; no pixel is recoloured or resampled), the two men that overlap in
+    projection are split by connected component rather than a column cut, and the touching crates
+    are split at their emptiest column. `CrowdLine` in `TestArena.tscn` sits at **z_index −5** with
+    the **Dancehall Queen at centre (640, feet 556)** flanked by the flag-waver, bucket-hat hypeman,
+    cheering woman, arms-crossed man and clapping elder along the crowd line; the crates stand at
+    (300, 592) and (1025, 592) beside the left and right speaker stacks. Nothing crosses the
+    foreground sand lane below y = 600. Each 132 BPM beat bobs the line ~4 px with a 20 ms stagger;
+    when a fighter's meter reaches 100 %, `BaseFighter.hype_surge_started` fires, the crowd jumps on
+    a 0.16 s loop, `TestHud` flashes a **FORWARD! / PULL UP!** banner, and that fighter gets
+    **1.20× damage and 25 % faster attack recovery for 300 ticks (5 s)**; the meter holds at 100 and
+    resets to 0 when the boost ends. The surge multiplier applies before the on-beat 1.15×.
+    [TODO] Crowd scales/positions, bob depth, the 1.20 / 0.75 multipliers and the 5 s length are
+    hand-set defaults; none of this has been seen on screen or played.
+
+11. **15-character rotating crowd: two rows, real depth, contact shadows — implemented (2026-11-15).**
+    Nine further owner uploads (`02FCC31C-…`, `D1EB3EF0-…`, `E5C3A8F8-…`) are moved unchanged into
+    `art-source/crowd/` as crowd-sheet-c/d/e and keyed with the same committed script
+    (`slice_crowd_sheets.py`, now manifest-driven) into `crowd_07`…`crowd_15`, bringing the pool to
+    **15 characters**. The mane-queen sheet proves the key is safe on genuine magenta clothing: her
+    hair and shorts sit at |r−b| ≈ 136 while the backdrop is |r−b| ≈ 2, so nothing is eaten, and no
+    pixel is recoloured or resampled. `CrowdLine` now runs two rows — a **Front Rope Row at y 556
+    (scale 1.0, untinted)** and a **Back Crowd Row at y 516 (scale 0.85, tinted 0.80/0.84/0.94)** —
+    five front and six back, with the other four off-stage in the pool. The **Dancehall Queen stays
+    pinned to the centre front slot** and is never swapped out. Every 12–18 s, on 50 % hype (a new
+    `hype_milestone_reached` signal on `BaseFighter`) and on the 100 % surge, one to two members fade
+    out and are replaced by pooled characters, so the line keeps reshuffling. Row z-indexes keep the
+    back row behind the front row, and every crowd member plus both crates carries a `GroundShadow`
+    at its own feet (crowd shadows are created by `CrowdLine` from sprite width and re-grounded per
+    row). [TODO] Row spacing, the 12–18 s cadence, the 0.85 depth scale/tint and the shadow radii are
+    unplayed defaults; the full 15-character pool has not been seen on screen.
+
+    **Owner creative direction — crowd (recorded 2026-11-15, not implemented):** classic **Dancehall
+    dances** should feed the fighters' movesets (the skank already does), and **breakout crowd
+    characters can be promoted to playable fighters**. The crowd pool is a casting bench as well as
+    decoration. [TODO] Which dances map to which fighter or move, and what "breakout" means before a
+    crowd member is promoted, are undecided; the §2 six-selector commitment, the Jan 14 mechanics
+    lock and the April 21, 2027 target are unchanged.
+
+12. **Family-friendly Patois & crowd policy — approved (2026-11-15).** Every shipped voice callout,
+    HUD banner and arena line must stay strictly clean and family-friendly — the owner's examples are
+    `LIGHTAH!`, `FORWARD!`, `WHEEL AND COME AGAIN!` and `BIG TUNE!` — and no offensive profanity may
+    ship. The policy governs performance: §8 keeps every Patois line verbatim, and no existing entry
+    is deleted, softened or "corrected". `FORWARD!` already ships in the 100 % Hype banner (item 10).
+    **Resolved 2026-11-15:** `Heeeyaut!`, `Shut-Tup!` and `Yuh too Bod Mine!!` are **approved as
+    playful, family-friendly comedic voice taunts**. Any explicit spelling variants of those lines
+    stay **text-archive only** — never spoken and never displayed in the HUD or arena copy.
+
+13. **Locked-in combat & sound-system roster — approved starting names, not implemented
+    (2026-11-15).** Approved starting Dancehall moves: **The Bogle**, **Log On**,
+    **Signal Di Plane**. Approved sound-system mechanics: **Pull-Up / Rewind Finisher**,
+    **Needle Skip Dash**, **Mic Feedback / Dub Echo Shockwave**, **Record Static Parry**. With them
+    the owner restates the direction to **promote standout crowd characters into playable fighters**
+    (item 11). These are names and creative intent only: no startup/active/recovery frames, hitboxes,
+    damage, meter cost, input motion, animation or audio exists for any of them and none is wired in
+    `/godot`. [TODO] Frame data, input motions, which fighter owns which move, how the four mechanics
+    spend Hype/Dubplate, and the promotion criteria all remain open. Nothing here moves the Jan 14,
+    2027 core-mechanics lock or the April 21, 2027 six-selector target, and none of it authorises new
+    art or audio spend.
+
+14. **Record Static Parry — implemented (2026-11-15).** Guard pressed inside `BeatService`'s ±70 ms
+    judgement window arms a 10-tick parry window; if the opponent's strike connects inside it the hit
+    is negated entirely — no chip damage and no blockstun for the defender. The defender gains **+20
+    Crowd Hype**, `static_parry_triggered(defender, attacker)` fires, `TestArena` spawns an electric
+    vinyl-static `ParrySpark` between the fighters, and the attacker is stunned for 18 ticks so the
+    defender can punish. The guard's beat quality is judged at the press (`_guard_beat`) and the parry
+    resolves inside `receive_strike`, so it never bypasses the strike pipeline. [TODO] The ±70 ms
+    window, +20 hype and 18-tick stun are unplayed values, and the parry has no art or audio yet.
+
+15. **Best-of-3 round lifecycle — implemented (2026-11-15).** `RoundController` (active by default;
+    `enabled` export) runs announce → fight → K.O. → next round → result, best of three. Round 1 is
+    **Afternoon Sun** (`set_time_of_day(0)`), Round 2 **Golden Hour** (`set_time_of_day(1, 3.0)`),
+    Round 3 / final **Late-Night Sound Clash** (`set_time_of_day(2, 3.0)`). Banners are
+    `ROUND 1 — AFTERNOON CLASH`, `ROUND 2 — SUNSET HEAT`, `FINAL ROUND — LATE-NIGHT DUBPLATE`,
+    `K.O.!` and `WHEEL AND COME AGAIN!` — all clean under item 12. Between rounds both fighters reset
+    through `BaseFighter.reset_for_round()` (health, hype, state, buffered inputs, hitstop, position
+    420 / 860), and input is locked during announce and result phases. After the rematch banner the
+    match restarts from Round 1. **R** still reloads the scene for a clean match and **N** still
+    overrides the lighting by hand (the next round start sets it back). [TODO] There is no round
+    timer, time-out or draw path — the TypeScript 90 s rule is not ported — and the HUD banner boxes
+    and round-win pips are unplayed.
+
+16. **Chromebook Web export — implemented (2026-11-15).** `godot/export_presets.cfg` is now committed
+    (it used to be git-ignored) and holds one **Web** preset: GL Compatibility via
+    `renderer/rendering_method.web="gl_compatibility"` (the desktop renderer is unchanged), **single
+    threaded** (`variant/thread_support=false`, so no COOP/COEP headers and it runs on plain static
+    hosts such as GitHub Pages), **VRAM compression off** (`vram_texture_compression/*=false` plus
+    `textures/vram_compression/import_etc2_astc=false`) so it never needs ETC2/ASTC support on Intel
+    Chromebook GPUs, and extension support off. It exports to the repository-root **`/docs`** folder —
+    `index.html`, `index.js`, `index.wasm`, `index.pck` and icons — which is the ready-to-publish
+    GitHub Pages source; the full build is ~53 MB (38.1 MB wasm + 17.1 MB pck). Rebuild without an
+    editor: `godot --headless --path godot --import && godot --headless --path godot --export-release
+    "Web" docs/index.html` (needs the 4.5.stable web export templates). Nothing under `art-source/`
+    changed and no art was resized: `exclude_filter` leaves the nine PNGs no scene references out of
+    the packed build (the six `imported-poses` studies, `aligned/08_block`, `aligned/15_skank` and
+    `selected-frames-2026-11-15/skank/06`), which holds the `.pck` at **17.1 MB instead of 20.9 MB**.
+    [TODO] A plain static host serves the 38 MB `.wasm` uncompressed with no loading progress or
+    compression polish; GitHub Pages is not enabled; and the build has not been run on the actual 4 GB
+    Dell Chromebook.
+
+17. **Chromebook crash/freeze safeguards — implemented (2026-11-15).** Three guards for long demo
+    sessions in a browser tab on a 4 GB Chromebook. None of them touches art bytes.
+    **Import-cache cap:** every texture larger than 512 px now carries `process/size_limit=512` in
+    its **committed** `.import` file (those files are tracked from this milestone on), so a
+    1536 × 1024 fighter frame decodes at 512 × 341 instead of 6.29 MB of RGBA. Measured from the real
+    scene graph, the textures the arena loads dropped from **149.6 MB to 50.0 MB (−67 %)** and the
+    `.pck` from 17.1 MB to 10.3 MB; the source PNGs are byte-identical and `art-source/` is untouched.
+    Sprites stay sharp because a 512 px frame still renders ~4× oversampled at the ~122 px on-screen
+    height. Because the cap changes the decoded pixel size, `BaseFighter` (`ANIM_SOURCE_MAX`) and
+    `CrowdLine` (`ART_MAX_SIDE`) compensate by dividing `offset` and multiplying `scale` with
+    (original side ÷ decoded side); without that the fighters and the crowd line render at a third of
+    their size. Verified: P1's idle draws 255.8 world px tall and the pinned Queen 123.6 px, exactly
+    the pre-cap sizes.
+    **Pre-warm:** `TestArena._prewarm_effects()` spawns an invisible (alpha 0) off-screen
+    (`x = −4000`) `ParrySpark` and `CPUParticles2D` puff during `_ready`, behind the round announce
+    banner, so the driver compiles the effect shaders and allocates the particle buffers there rather
+    than on the first footstep, hit or parry; both free themselves.
+    **Hard caps:** `MAX_ACTIVE_BIRDS` = 1 (enforced in `_spawn_bird()` through
+    `BirdHazard.is_flying()`), `MAX_PARRY_SPARKS` = 4 (the oldest spark is recycled) and
+    `MAX_PARTICLE_AMOUNT` = 16, applied at start-up to every `CPUParticles2D` in the arena (the wind
+    motes drop from 34 to 16).
+    [TODO] **50.0 MB is short of the 40 MB goal:** the 19 hand-selected frames are already 512² and
+    account for ~20 MB of the total, so only a smaller cap on those frames (or downscaled copies)
+    goes lower. The stall that the pre-warm targets has not been measured on the real Chromebook, and
+    the two ratio tables must be extended whenever a new art group is added.
+
+18. **Grab / directional throw / throw break / Speaker-Stack Bounce — implemented (2026-11-15).**
+    Def Jam-inspired close-range chain with **no new art**: the victim is thrown into the existing
+    `launched` → `tumble` → `knockdown` (17_seated_landing) poses. New FSM states `GRAB`, `GRABBED`
+    and `THROWN` are in the single transition table; `BaseFighter.Command.grab` is bound to **U**
+    (`p1_grab`) and joins the HUD legend as `U grab/tech`.
+    **Grab:** inside 96 px and in front, a 5-tick reaching grab holds the defender for 16 ticks. It
+    never enters `receive_strike`, so a held guard (S) has no answer. **Throw Break ('Tech'):** the
+    defender pressing Grab inside an **8-tick** window shoves both fighters apart for zero damage and
+    fires `throw_broken`; `TestArena` answers it with the shared spark flash.
+    **Directional throws:** forward/neutral hurls the victim across the sand for **14 damage and +15
+    Crowd Hype**, and holding back spins them behind the attacker for **12 damage and +18 Hype** plus a
+    `crowd.celebrate()` cheer pop. Both fire `throw_connected(attacker, defender, &"forward"|&"back")`.
+    **Speaker-Stack Bounce:** an airborne forward-thrown fighter that reaches a stack (the 40-wide
+    walls at x 20 / 1260, so a 60-wide body stops at centre 70 / 1210) takes **+4 bonus damage**,
+    emits `speaker_slam_triggered(victim, side)`, gets a heavy camera shake and bounces back onto the
+    sand. The bounce is driven off *which side* was hit, because the wall collision has already zeroed
+    `velocity.x` by the time the check runs.
+    **AI:** `SparringController` now grabs a turtling (guarding or crouching) P1 in Mode 1 and Mode 2,
+    and presses Grab inside the defender's window on ~55 % of the grabs it takes (measured 5–6 of 10
+    in the harness).
+    [TODO] All values (96 px, 5/16/12/8 ticks, 14/12/+4 damage, 15/18 Hype, the 55 % tech rate, the
+    55 % forward-throw arc and the 220 px/s minimum bounce) are hand-set defaults awaiting a playtest;
+    there is no throw animation art (the grab uses the jab frames and the held victim the hitstun pose),
+    no air grab, no grab invulnerability and no throw whiff punish window beyond the 12-tick recovery.
+
+19. **Arcade typography + Patois callout subtitles — implemented (2026-11-15).** Four genuine SIL
+    Open Font License faces live in `godot/assets/fonts/` beside their licence texts
+    (`OFL-bungee.txt`, `OFL-bungeeshade.txt`, `OFL-chakrapetch.txt`): `Bungee-Regular.ttf`,
+    `BungeeInline-Regular.ttf`, `BungeeShade-Regular.ttf` and `ChakraPetch-Bold.ttf`. `TestHud.gd`
+    no longer touches `ThemeDB.fallback_font`; every label goes through one `_text()` helper that
+    draws a drop shadow, a dark outline (`max(2, 16 % of the size)`) and then the crisp face.
+    **Face map:** Bungee **Shade** for the huge `K.O.!` banner, Bungee **Inline** for the Hype Surge
+    (`FORWARD!` / `PULL UP!`) and rematch (`WHEEL AND COME AGAIN!`) banners, Bungee for the fighter
+    tags inside the health bars, the round announce headers and the Patois shouts, and Chakra Petch
+    Bold for the deadpan translations, the Hype readout, the AI-mode banner and the key legend.
+    Bungee is a very wide face, so `_fit_size()` shrinks a string to its box instead of letting it run
+    off the viewport.
+    **Callouts:** big moments only — an **on-beat** skank taunt (`BaseFighter.taunt_finished(true)`,
+    so an off-beat taunt stays silent) shows `YUH TOO BOD MINE!!` / `(Translation: You're way too
+    jealous!)`; `speaker_slam_triggered` shows `HOLD DAT!` / `(Translation: Take that to the
+    speakers!)`; `static_parry_triggered` shows `BIG TUNE!` / `(Translation: Cleanest block in the
+    dance!)`; and `hype_surge_started` shows `WHEEL AND COME AGAIN!` / `(Translation: Rewind the
+    track — rematch!)`. They render in a translucent pill at bottom centre (y 655, under the sand
+    lane), fade out over the last 0.45 s of a 1.8 s life, share a **4.0 s cooldown** and hold **one
+    line at a time** — a trigger inside the cooldown is dropped, never queued. **V** toggles the
+    subtitles (`TestArena._unhandled_input` → `TestHud.toggle_subtitles()`) and joins the legend as
+    `V subtitles`. Patois is preserved verbatim, in the uppercase shout form the owner specified.
+    [TODO] All sizes, the 1.8 s / 4.0 s values and the pill geometry are hand-set defaults awaiting a
+    look on the real Chromebook; there is no queue (a second callout inside 4 s is simply lost) and
+    the rematch line reuses the round-banner slot rather than its own animation.
+
+20. **60-second round clock — approved (2026-11-16).** Owner decision: a round lasts **60 seconds**
+    of live play, not the TypeScript prototype's 90 s — shorter rounds keep the clashes intense and
+    cycle faster. The clock drains only in `RoundController.Phase.FIGHTING`, so the announce, the K.O.
+    banner, the rematch banner and a future pause never consume it. At zero the higher remaining health
+    wins the round under a `TIME!` banner; an **exact HP tie** replays the round with the
+    `WHEEL AND COME AGAIN!` banner and awards **no** win pip (`round_ended(round, -1)`), keeping the
+    same round number and lighting with a fresh clock. Implementation and evidence: backlog item B6 and
+    its verification section below. [TODO] The `TIME!` wording, the red-under-10 s styling and the
+    tie-replay length are agent defaults; only the 60 s length and the time-out/tie rules are owner
+    decisions.
+
+21. **Crowd staging + impact juice from the screen-recording review — implemented (2026-11-16).**
+    Owner direction: apply the 2026-11-16 reference findings directly to the live Godot build, on top
+    of the existing 15 sliced Dancehall crowd characters and 2 vinyl milk crates, without touching the
+    approved Feedback art. Everything below is presentation-only.
+
+    - **Reference relocation.** The three screen recordings moved out of the repository root into
+      `artifacts/sound-clash/art-source/references/2026-11-16-scr-review/` beside
+      `CROWD-AND-MOVEMENT-REVIEW-2026-11-16.md` and five evidence stills, under their real names
+      (`ScreenRecording_11-15-2026-{17-34-45,23-25-15,23-26-04}_1.mov`; byte-identical to the root
+      blobs from `596ae3a`). They live outside `/godot` and `/docs`, so the Web pack never carries
+      them: `docs/index.pck` is **10,648,048 B (10.16 MiB)** after this build, still under the 11 MB
+      budget, and `index.wasm` is unchanged at 38,057,390 B.
+    - **`YardBarrier.gd`** draws a low wooden/zinc yard barrier with primitives across y **524–558**
+      at **z −4** — over the crowd rows (−5 front, −6 back), under the fighters (0) — so the 15
+      sprites stand behind something instead of being cut off onto the sand. No texture, no export
+      weight. The pinned Dancehall Queen and both milk crates are untouched and stay crisp; the crates
+      sit at y 592, in front of and below the barrier band.
+    - **`ForegroundSpectator.gd`** puts one cropped shoulder/bucket-hat silhouette in its own
+      `Foreground` **CanvasLayer (layer 1, below the HUD's)** at **z +10**, bottom-left, alpha 0.85.
+      It is screen-space, so the tracking camera never drags or scales it, and it sits below the
+      fighters' feet band so it cannot hide the lane. This is the fifth depth plane the arena was
+      missing.
+    - **`CrowdLine` ambient sway + proximity ebb.** Each member gets its own phase and rate
+      (0.15–0.29 Hz, ±2.6 px, 1.3° tilt) written into `position.x` only, so the existing beat bounce,
+      surge hop and 12–18 s reshuffle keep owning `position.y`/`rotation` unchanged. `flinch(at_x,
+      strength)` pulls spectators within **240 px** away from a body (9 px, 6°, 0.55 s decay);
+      `TestArena` fires it when a fighter is **THROWN / KNOCKDOWN** (strength 1.25) or moving at
+      **≥ 320 px/s** (0.55 — walking is 220, so walking never triggers it), rate-limited to one per
+      fighter per **0.85 s**. This is the live-action yard-brawl beat: they lean out of the way and
+      close back in.
+    - **Impact juice (closes backlog item B4).** `BaseFighter.flash_impact(on_beat)` brightens the
+      struck `Sprite` for **2 physics ticks** — `(2.10, 1.94, 1.52)` off the beat, `(1.55, 1.92,
+      1.30)` on it — counted before the hitstop early-return so a frozen contact still releases it,
+      and cleared in `reset_for_round()`. `ParrySpark` gained `parry` / `hit` / `hit_onbeat` styles:
+      the existing electric static plus a crisp four-point contact burst (white/gold, or vibrant
+      green/gold when the **input** was judged on-beat), primitives only, 0.24 s life. `TestArena`
+      spawns the burst from `_on_strike_resolved`, and the speaker-stack slam uses the `hit` style.
+      Caps unchanged: **4 sparks, 16 particles**, no per-hit allocation, no new texture group.
+    - **Checks actually run** (Godot 4.5.stable, headless, temporary harness created then deleted):
+      `--import` clean; an 18-check run of `TestArena.tscn` passed **18/18** — barrier present at
+      z −4, `Foreground` CanvasLayer with the spectator at z +10, crowd 15 / front 5 / back 6 /
+      pooled 4, crowd line y 556, ambient sway moved **9 of 11** visible members off their home x,
+      flinch reached **7** members and set a visible lean, the flash tinted `(2.1, 1.94, 1.52)` and
+      cleared to white after 2 ticks, an on-beat contact produced a `hit_onbeat` burst **and** the
+      green flash `(1.55, 1.92, 1.3)`, and six forced sparks still capped at **4**.
+      `--export-release "Web"` rebuilt `docs/` successfully.
+    - **Looked at on screen (one still, Web build).** The rebuilt `docs/` export was served and
+      captured in a browser: `artifacts/sound-clash/art-source/references/2026-11-16-scr-review/frames/06-godot-build-after-upgrade.png`.
+      It confirms the five-plane composition, the barrier occluding the crowd's ankles along the
+      whole line, the front/back rows at the right scale, and the corner silhouette sitting below
+      both fighters' feet. The first capture also showed the barrier reading as a bright straw band
+      that pulled the eye, so every plank/rail value was dropped roughly 30 % and the bright rail
+      highlight removed; the shipped plank is **rgb(77, 50, 31)** against **rgb(234, 167, 78)** sand,
+      the zinc cap **rgb(58, 54, 48)**. That is a sampled pixel measurement, not an impression.
+    - **[TODO] Still unverified:** motion and feel — the sway, the proximity flinch, the two-tick
+      flash and the on-beat burst cannot be judged from one still, and the crowd/flash colours have
+      not been seen under the Round 2 sunset or Round 3 night tint. Sway, flinch, speed threshold,
+      cooldown, flash colours and burst life remain hand-set agent defaults for Garfield's eye on the
+      Chromebook build.
+
+22. **Framing + visual-polish pass — implemented (2026-11-16).** Second owner-directed pass on the
+    sand arena after the first screenshot. Zero new art credits: everything is code, primitives and
+    existing sprites. Presentation only — no combat rule, hitbox, hurtbox or movement value changed.
+
+    - **Camera framing.** `CAMERA_FIT_DISTANCE = 820` replaces the inline `1100`: at the neutral
+      440 px fighter spacing the zoom is now **1.041** (was ~1.39) and the visible world is
+      **x 25…1255**, so the left flag stack (82–204) and the right lion stack (1075–1201) both sit
+      fully inside the frame. The 1.0 floor is unchanged, so the single-layer stage art still always
+      covers the view.
+    - **Milk crates.** Both scaled to **55 %** (0.22 and 0.209 from 0.4/0.38) and tucked against the
+      inner speaker bases at **(215, 568)** and **(1065, 568)**; the `offset` values were already
+      exactly half the texture height, so the base still sits on the sand with no re-authoring. Their
+      `GroundShadow`s follow (radius 19 / 18 at ground y 568).
+    - **Anchored leaning member.** `crowd_05_arms_crossed_man` (`ArmsCrossed`) now owns a dedicated
+      **edge slot** at **x 1032, slot −1**, with a permanent **7° lean**, and is excluded from
+      `_random_visible()`, so no rotation can ever drop him mid-line leaning on air. `YardBarrier`
+      grew a **corner post** at the same x (top y 492) for him to lean on. The front line is
+      therefore **6 bodies** (5 slots + the post) and the pool holds 3; the crowd is still 15.
+    - **Key legend** moved out of the sky to `LEGEND_Y = 698`, below the subtitle pill (630–680).
+    - **Depth and fighter pop.** New `CrowdHaze.gd` lays a cool wash (12 strips, sine falloff, peak
+      alpha 0.26) over **y 404–566** at **z −4**: the crowd and midground lose a value step while the
+      fighters keep full contrast. Fighter contact shadows widened to **radius 46** and
+      **strength 1.35** (from the 32 default), so both leads sit on a heavier grounded shadow.
+    - **Foreground corner.** The flat hat-and-shoulders primitive is gone: the corner is now an
+      **existing illustrated spectator** (`crowd_03_hypeman_bucket_hat`) at 0.34 scale, darkened to
+      `(0.26, 0.28, 0.36, 0.92)`, in the screen-space `Foreground` CanvasLayer at **z +10**, with
+      `ForegroundCorner.gd` drawing a soft radial wash behind it. The card's top sits at screen y
+      ≈ 620, below the fighters' feet band (576–600 at every zoom), so it still cannot cover the lane.
+    - **Idle groove and squash/stretch.** `BaseFighter` gains a presentation-only `_process` polish
+      layer that composes on `_anim_base_scale`: IDLE/CROUCH pop **2 px** up with **1.8 % squash** on
+      every **eighth note at 132 BPM** (exponential settle, so it breathes on the grid instead of
+      drifting); attacks get a **0.93 squash + 2.5 px** wind-up during startup, a **1.055 stretch +
+      6 px** micro-lunge at the active frame and an eased return through recovery; JUMP stretches on
+      the way up and compresses on the way down. `BeatService.beat_phase()` was added for the grid
+      position only — judgement still reads the input, per item 1.
+    - **Checks actually run** (Godot 4.5.stable headless, temporary harness deleted after the run):
+      **25/25** — zoom 1.041 with the view at 25…1255 (both stacks inside), crates at (215,568) and
+      (1065,568) at 55 % with matching shadows, the leaner on row 0 / slot −1 / x 1032 / 0.122 rad
+      lean, front line 6 of 15, eight forced rotations never moved him, haze and corner post present,
+      foreground card using the real texture at z +10 and darkened, legend at 698, idle groove bobbing
+      **1.86 px** with a **3.4 %** squash ratio. `--export-release "Web"` rebuilt `docs/` at
+      **10,651,400 B**.
+    - **Looked at on screen:** `…/frames/07-godot-build-framing-polish.png` — both full stacks framed,
+      knee-high crates beside them, clear sky, bottom-edge legend, illustrated corner spectator and
+      heavier fighter shadows all confirmed in the running Web build.
+    - **[TODO] Still unverified / open:** motion at speed (groove snap, lunge, squash on a real
+      exchange), whether a sixth front-line body crowds the right end once the stack is in frame, and
+      none of this has been seen under the Round 2 sunset or Round 3 night tint. The 820 fit
+      distance, 6 px lunge, 2 px groove, 0.26 haze and card tint are agent defaults for Garfield's eye.
+
+### Approved Backlog / Roadmap — master list (2026-11-16)
+
+Recorded at build `ad27516` (`stage/sound-clash-sand`); §9 items 1–19 above are the decisions that
+produced that build. **Everything below is [TODO] — none of it is implemented**, and this section is
+documentation only: no code was changed for it — with the single exception of **B4**, implemented
+later under decisions item 21. The order is the owner's sprint order followed by the
+agent's recommendations, not a delivery promise; each item records its scope and the evidence that
+would close it so a later session can pick one up without re-deciding the design. Re-read §2 before
+scheduling any of it against the April 21, 2027 target, and §8 before writing any new Patois copy.
+
+#### Owner items — approved in planning (2026-11-16)
+
+**[TODO] B1. Arcade title screen and match setup (`TitleScreen.tscn`).**
+- Bungee **Shade** start screen: `SOUND CLASH BRAWL —` over `PRESS START / CLICK TO CLASH`, then a mode
+  select (**1P vs AI** / **Local 2P**), an AI-style picker for the four `SparringController` modes that
+  **Y** already cycles in the workshop arena, and the Patois Subtitle on/off toggle that
+  `TestHud.toggle_subtitles()` (**V**) already exposes.
+- Owner-visible requirement: the title scene boots before `TestArena.tscn`, the three choices live in
+  one small autoload/resource, and the arena reads them instead of hard-coding P2 as the Workshop
+  Dummy. Esc returns to the title without losing the selection.
+- Exit evidence: title → mode select → arena carrying the chosen mode, AI style and subtitle flag;
+  keyboard-only navigation; headless boot of both scenes.
+
+**[TODO] B2. Controller support and local 2P bindings.**
+- Standard Xbox/PlayStation gamepad mappings (`InputEventJoypadButton` / `InputEventJoypadMotion`) for
+  every action the FSM already uses: move, jump, crouch, guard, jab, BOX, tump, upper box, grab, taunt.
+- A second keyboard layout (Arrow keys + Numpad) so two players share one Chromebook, P1 keeping
+  WASD/`JKLI` and P2 on Arrows/Numpad, with no key claimed by both layouts.
+- Owner-visible requirement: the same `p1_*` / `p2_*` action names, device handling kept out of
+  `BaseFighter`, hot-plug/reconnect tolerated, and the stick deadzone plus axis signs written down.
+- Exit evidence: headless check that every action resolves on both layouts and for a synthetic pad
+  event; then a real 2P check on the Chromebook.
+
+**[TODO] B3. Pause and move-list overlay (Esc / H).**
+- **Esc** pauses (freezing the fixed-step simulation *and* the beat clock without eating buffered
+  inputs); **H** opens the move list without pausing.
+- The overlay lists the full set — Jab, BOX, Sparta Kick (`tump`), Upper Box, Mic Defence / Static
+  Parry, Grab / Speaker Throw, Skank Taunt — with the 132 BPM on-beat rules and the Crowd Hype Surge
+  rules, in Chakra Petch with Bungee headers.
+- Owner-visible requirement: read-only, no combat input accepted while open, and no phantom on-beat
+  judgement or Hyped damage while the clock is frozen.
+- Exit evidence: headless check of the freeze/resume tick budget, a beat-clock rebase after resume,
+  and that a pause during startup/active windows resumes into the same state.
+
+**B4. Visual on-beat hit sparks — implemented (2026-11-16).** See decisions item 21.
+- Distinct contact bursts: white/gold for a normal contact, vibrant Jamaican green/gold for a contact
+  whose **input** was judged on-beat (§9 item 1 — contact quality is judged separately from the beat).
+- Owner-visible requirement: built on the existing `ParrySpark` / `_add_spark()` path inside the
+  Chromebook caps from §9 item 17 (4 sparks, 16 particles) — no per-hit allocation and no new texture
+  group; the burst must stay readable with the sound muted (**M**).
+- Exit evidence: headless check that an on-beat contact emits the green/gold variant and an off-beat
+  contact the white/gold one, with the live spark count still capped at 4.
+
+**[TODO] B5. Branch consolidation (`stage/sound-clash-sand` → `main`).**
+- Merge only after the Chromebook playtest sign-off, not before.
+- Owner-visible requirement: history preserved (no squash-rewrite of the sand branch), the TypeScript
+  prototype untouched, `/docs` still rebuildable, and the import/headless/export checks re-run on the
+  merged tree; record the merge commit in §9.
+
+#### Agent recommendations — additions from this sprint's build work (2026-11-16)
+
+**B6. Round timer and time-out rules — implemented (2026-11-16).** Owner decision: **60 seconds** of
+live FIGHTING per round (not the prototype's 90 s, so clashes stay intense and rounds cycle). See
+decisions item 20. `RoundController.clock` starts at `round_seconds` each round and drains only in
+`Phase.FIGHTING`; on zero `_finish_round_on_time()` gives the round to the higher remaining health under
+a `TIME!` banner, and an exact HP tie calls `_replay_round()` — `WHEEL AND COME AGAIN!`, no pip, the
+same round number and lighting, clock back to 60. The HUD draws it top-centre between the health bars
+(Bungee digits, Chakra Petch `ROUND n` caption, red under 10 s). [TODO] The `TIME!` wording, the
+red-under-10 s styling and the 0.05–2.4 s transition timings are agent defaults.
+
+**B7. Fighter push-separation — implemented (2026-11-16).** `TestArena` enforces a shared **64 px**
+minimum horizontal gap after both bodies have moved each physics tick: `_physics_process` queues a
+deferred `_separate_fighters()` because the arena is the parent node and would otherwise run before the
+fighters. The correction splits evenly and lets the speaker-stack walls absorb what one body cannot
+take, so a cornered pair still opens a full gap without pushing anyone through a stack. Separation is
+skipped while either body is `GRABBED`, `THROWN`, `KNOCKDOWN` or `KO`, and while either body is
+airborne — jumps over an opponent, throws, spinbacks and knockdowns pass through cleanly. Positions are
+corrected, speeds are not, so walking into an opponent slides you apart instead of stopping dead.
+[TODO] 64 px is an agent default; it needs checking against the 96 px grab range and the 60 px body on
+the real machine.
+
+**B8. Procedural arcade SFX — implemented (2026-11-16).** `godot/scripts/audio/SfxPlayer.gd` (autoload
+`Sfx`) synthesises every cue at start-up with `AudioStreamGenerator`: four voices, 22.05 kHz mono, 0.35 s
+buffers — no audio files, no samples, no extra licences and nothing added to the `.pck`. Cues: `hit`
+(pitch-swept thud plus noise transient), `hit_onbeat` (the same with a 55 Hz sub-bass punch), `block`
+and `clank` (inharmonic metallic knocks), `parry` (gated vinyl-static crackle over a 2.4 kHz ring),
+`slam` (808 cone boom), `whoosh` (low-passed noise swell), `airhorn` (detuned saw fanfare on the 100 %
+Hype Surge) and `ko` (descending arcade drop). Wiring lives entirely in `TestArena` off signals that
+already existed — `strike_resolved`, `static_parry_triggered`, `speaker_slam_triggered`,
+`throw_connected`, `throw_broken`, `hype_surge_started`, `died` — so no combat code knows about audio.
+**M** now mutes the Master bus (click track and SFX together) instead of pausing the stream, which keeps
+the 132 BPM clock running so unmuting never desyncs beat judgement. `clear_buffer()` is never called:
+it asserts when no device is mixing, so a voice restarts with `stop()`/`play()`.
+[TODO] Every cue is an agent default — none has been listened to, the mix balance is unset, and voice
+stealing drops the oldest cue rather than ducking it.
+
+**[TODO] B9. Web loading progress UI and a Chromebook performance readout.** The `/docs` build spends
+several seconds on wasm and `.pck` before the first frame with only the bare engine splash screen, and
+the 50 MB texture set has never been timed on the real machine. Proposal: a branded Bungee/Chakra
+Petch loading screen driven by real download and decode progress, plus a dev-only readout (F3) for
+frame time and texture memory so the playtest produces numbers instead of impressions. Exit evidence:
+the loading screen advances on a throttled connection, and the readout reports frame time plus memory
+while staying out of a release build.
+
+**[TODO] B10. Patois voice-line pipeline.** Every callout is text today because no recorded audio
+exists anywhere in the repository; the subtitle pill is the whole delivery. Proposal: when the owner's
+lines are recorded, keep the pill as the accessibility layer and drive an `AudioStreamPlayer` from the
+same `announce_subtitle()` call site, filing each line under its §8 lexicon entry (Patois verbatim,
+gloss in a separate field, no film/TV samples and no generated voice). Exit evidence: one approved
+line plays with its subtitle, and the callout cooldown applies to the audio exactly as it already does
+to the text.
+
+**Dependencies worth knowing before picking these up:** B6, B7 and B8 are closed, so the two
+combat-feel items now in the plan (B4 sparks and the B3 pause/beat-clock decision) land before the
+January 14, 2027 core-mechanics lock (§2, mandatory rule 2). B1 and B3 still wait on B3's pause decision;
+B2's P2 layout and B4's mute-readability need the Chromebook in hand; B5 waits on the playtest sign-off,
+which is now also the first chance to hear B8's cues and feel B7's separation.
+
 Implementation status: written into `/godot`; **not played**. Until 2026-11-15 the port had never
 been opened in an engine. The sand-stage and round-lighting slices were then imported and run headless
 in Godot 4.3.stable (no GPU, no audio device, no on-screen look), which proves the project imports
@@ -558,8 +999,197 @@ For Godot, once created: [TODO] pin exact import/headless launch/test/export com
 | Birthday release / May Jamaica trip | Launch target Apr 21, 2027; final QA Apr 2–21; trip May 2027. |
 | Sound Clash Sand Stage (art + foot dust + shadows + atmosphere + speaker thump + rare bird) | Implemented 2026-11-15 on branch `stage/sound-clash-sand`; headless Godot 4.3 import/run clean; **on-screen playtest [TODO]**. |
 | Round-based day → sunset → night lighting | Implemented 2026-11-15 on branch `stage/sound-clash-sand`; headless checks of all three phases, tween and N cycle pass; round-controller driving and **on-screen look [TODO]**. |
+| Smart Sparring AI modes (P2) | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 4 modes cycle on **Y**, HUD banner, **G** guard override; headless Godot 4.5 runs pass for every mode; **on-screen/feel playtest [TODO]**. |
+| Dancehall crowd line + 100% Hype Surge | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 6 sliced spectators (Queen centre) + 2 record crates at the stacks, beat bob, FORWARD!/PULL UP! banner, 5 s 1.20× / faster-recovery boost; headless checks pass; **on-screen look and balance [TODO]**. |
+| 15-character two-row rotating crowd + contact shadows | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 9 new slices (pool 15), front/back rows, 12–18 s and 50 %/100 % hype reshuffles, GroundShadow on crowd and crates; headless checks pass; **on-screen look [TODO]**. |
+| Family-friendly crowd policy + locked-in move/mechanic roster | Recorded 2026-11-15 in §9 items 12–13 and §8. Documentation only: no move, mechanic, voice line or banner beyond the existing surge banner is implemented. |
+| Record Static Parry | Implemented 2026-11-15 on `stage/sound-clash-sand`: on-beat guard negates the hit, +20 hype, 18-tick attacker stun, ParrySpark; headless parry/block checks pass; **on-screen look and tuning [TODO]**. |
+| Best-of-3 round lifecycle | Implemented 2026-11-15: RoundController announce → K.O. → rematch, day → sunset → night per round, fighter resets, HUD banners + win pips; headless three-round run passes; **no timer/draw rule, on-screen layout [TODO]**. |
+| Chromebook Web export | Implemented 2026-11-15: committed Web preset (GL Compatibility, single-threaded, VRAM compression off) exporting to `/docs`; headless export clean and the build rendered on WebGL2 in a browser; **not yet tried on the 4 GB Chromebook, not deployed [TODO]**. |
+| Chromebook crash/freeze safeguards | Implemented 2026-11-15: committed `.import` `size_limit=512` (149.6 → 50.0 MB decoded, pck 10.3 MB) with offset/scale compensation, off-screen effect pre-warm, and 1 bird / 4 spark / 16 particle caps; headless guard checks and WebGL2 boot pass; **on-device timing unmeasured and the 40 MB goal not reached [TODO]**. |
+| Grab / throw / tech / speaker bounce | Implemented 2026-11-15: `GRAB`/`GRABBED`/`THROWN` states, 96 px grab, 8-tick throw break, forward 14/+15 and back 12/+18 throws, +4 speaker-stack bounce with `speaker_slam_triggered`, AI grabs a turtling P1 and techs ~55 %; headless chain passes and the Web build rebuilds; **values unplayed, no throw art [TODO]**. |
 
 Next agent: finish the isolated walk review, reconcile asset/engine branches, close the minimal rhythm reference gap, freeze the TypeScript baseline and complete the first Godot port inside Nov 13–26. Then follow Section 2 date gates. Keep costs at zero; preserve the April 21, 2027 target and six-selector commitment while reporting scope risks promptly.
+
+### Smart Sparring AI — headless verification, 2026-11-15
+
+Written into `/godot` on branch `stage/sound-clash-sand`. Engine: **Godot 4.5.stable** headless (no
+GPU, no audio device, no on-screen look), imported with
+`Godot_v4.5-stable_linux.x86_64 --headless --path godot --import` (clean, 50 assets). Each mode was
+then run through a **temporary** harness that instantiated `TestArena.tscn`, stopped the click so
+`BeatService` used its wall-clock dev fallback, drove a scripted P1 (walk in → jab/BOX → retreat),
+and ticked 480 physics frames (~8 s) per mode. The harness was deleted before the commit; it is not
+part of the project. Results:
+
+| Mode | P2 attacks started | Guard ticks | Taunts | P1 HP left | Result |
+| --- | --- | --- | --- | --- | --- |
+| 0 Workshop Dummy | 0 | 0 | 0 | 100 | pass |
+| 1 Counter-Puncher | 5 | 83 | 0 | 34 | pass |
+| 2 Riddim Rusher | 4 | 0 | 0 | 48 | pass |
+| 3 Spacing & Skank Baiter | 2 | 0 | 3 | 85 | pass |
+
+The **G manual-guard override** was checked separately (mode 2 with `manual_guard = true` → P2
+guarding in `IDLE`: pass), and `TestArena.tscn` booted for 150 frames on the Dummy default. No
+script, resource, missing-node or illegal-transition warning was printed by any of those runs. The
+`--quit-after` main-scene run does print Godot's exit-time "ObjectDB instances leaked / 1 resources
+still in use" cleanup notice; the identical notice appears with the pre-change `TestArena.tscn`,
+`TestArena.gd` and `TestHud.gd` restored, so it is a forced-quit artefact and not an AI regression.
+
+**Not verified:** frame data, hitbox reach, HUD banner placement or AI feel — nothing was watched on
+screen and no mode has been played by the owner. These runs prove the modes tick, guard, punish,
+step, attack on the beat and taunt without errors; they do not prove any of it feels right.
+
+### Crowd line + Hype Surge — headless verification, 2026-11-15
+
+Godot 4.5.stable headless; the import is clean apart from the container's missing fontconfig. A
+temporary harness instantiated `TestArena.tscn` and asserted: 6 crowd sprites and both crates load
+with non-null textures; a synthetic P1 jab resolves 8 damage before the surge and 10 (8 × 1.20)
+while it is live; `_add_hype(100)` fires `hype_surge_started`, holds the bar at 100, drives the
+crowd (peak 30.6 px of travel) and then resets hype to 0 after the 5 s boost with the crowd settled
+and no residual tween. The harness was deleted before the commit and `TestArena.tscn` booted for
+150 frames with no script, resource or node errors.
+
+**Not verified:** the on-screen composition — checked only with an offline composite of the stage,
+crowd, crates and one idle sprite at the same coordinates and z-order — plus the banner flash,
+readability behind the fighters, and the balance of a 5 s 1.20× / faster-recovery window.
+
+### Rotating crowd + contact shadows — headless verification, 2026-11-15
+
+Godot 4.5.stable headless; import clean. A temporary harness on the real `TestArena.tscn` asserted:
+15 members splitting 5 front / 6 back / 4 pooled; the Queen at x 640, unshaded and still centred after
+36 swaps; the back-row Elder at 0.85 × its scene scale and tinted; a `GroundShadow` on every crowd
+member at its own row's y (556 / 516) and on both crates at 592; `rotate_now(2)` swapping members and
+emitting `crowd_rotated`; the automatic timer swapping on its own once accelerated to 0.25–0.35 s for
+the test; 50 % hype firing `hype_milestone_reached` and reshuffling; and 100 % hype surging both the
+fighter and the crowd, holding hype at 100 then resetting it to 0 after 5 s with row counts intact.
+The harness was deleted before the commit; `TestArena.tscn` also booted for 150 frames clean.
+
+**Not verified:** the on-screen look — the two-row composition was checked only with an offline
+composite of the stage, the 11 visible members, the crates and an idle fighter at the shipped
+coordinates, scales, tint and z-order. The shipping 12–18 s cadence was not waited out (the test
+accelerated it), and none of it has been played.
+
+Re-verified 2026-11-15 with the §9 owner-decision update applied (no runtime change): the import is
+clean, the same harness passed again (15 members at 5/6/4, 36 swaps, Queen still at x 640, shadows at
+556/516/592, the 50 % and 100 % hype paths) and `TestArena.tscn` booted for 150 frames.
+
+### Record Static Parry + Best-of-3 rounds — headless verification, 2026-11-15
+
+Godot 4.5.stable headless; import clean. Temporary harnesses on the real `TestArena.tscn` asserted:
+**parry** — an on-beat guard press followed by a jab resolved `parried` with 0 damage, exactly one
+`static_parry_triggered`, one `ParrySpark` spawned, +20 hype and the attacker left in `HITSTUN`; the
+same jab against an off-beat guard stayed an ordinary block (2 chip damage, defender in blockstun).
+**rounds** — Round 1 announced `ROUND 1 — AFTERNOON CLASH` on phase 0 with input locked; a K.O. gave
+the `K.O.!` banner and 1-0, then Round 2 `ROUND 2 — SUNSET HEAT` on phase 1 with both fighters back
+at 100 hp and their start positions; a P2 win levelled 1-1 and opened `FINAL ROUND — LATE-NIGHT
+DUBPLATE` on phase 2; a third K.O. reached `MATCH_OVER` with `WHEEL AND COME AGAIN!`, after which the
+match restarted at Round 1, 0-0, phase 0. Both harnesses were deleted before the commit, and the
+shipping scene booted 200 frames clean.
+
+**Not verified:** no engine render, so the banner boxes, win pips and parry spark were never seen;
+the ±70 ms parry window, +20 hype and 18-tick stun are unplayed; and there is still no round timer,
+time-out or draw path.
+
+### Chromebook Web build — export verification, 2026-11-15
+
+Godot 4.5.stable exported the **Web** preset headless (`--export-release`, exit 0) into `/docs` with no
+export errors. Served from a plain `python3 -m http.server` (which returns the correct
+`application/wasm` MIME type) and opened in a browser: `index.wasm` and `index.pck` both returned
+200, there were **no script or engine errors** in the console (only the expected autoplay-policy
+audio warning and a benign WebGL `ReadPixels` performance notice), a **WebGL2 context was live**, and
+the arena, crowd, HUD and both fighters rendered inside the letterboxed frame. Build sizes: wasm
+38.1 MB, pck 17.1 MB, `/docs` 53 MB.
+
+Runtime texture budget, measured from the two scenes: **57 referenced PNGs = 149.6 MB decoded RGBA**
+(22.6 MB as stored PNGs) load with `BaseFighter.tscn`; that is the bulk of the tab's texture memory,
+so the large 1024×1536 / 1536×1024 fighter frames matter far more than the download size. The nine
+art files no scene references (a further 62.8 MB decoded) are left out of the pack by the preset's
+exclude filter. `art-source/` and every original PNG are untouched and no texture was resized.
+
+**Not verified:** the build was never opened on the actual 4 GB Dell Chromebook or
+`editor.godotengine.org`, GitHub Pages was not enabled, nothing was deployed, and the 149.6 MB figure
+is computed from the source image dimensions rather than measured inside the browser tab.
+
+### Chromebook safeguards — verification, 2026-11-15
+
+Temporary headless harness on the real `TestArena.tscn`: the arena loads 59 textures totalling
+**50.0 MB** decoded (from 149.6 MB); every `CPUParticles2D` reports amount 16; the pre-warm nodes are
+gone two frames later; eight rapid parries leave exactly **4** live `ParrySpark`s; six rapid bird
+triggers leave exactly **1** bird in the air; and the compensation keeps the authored sizes — P1's
+idle renders 255.8 world px tall (a 3× capped 341 px frame at 0.75) and the pinned Queen 123.6 px,
+both matching the pre-cap build. The harness was deleted before the commit and `TestArena.tscn`
+booted 200 frames clean. The Web export rebuilt headless (exit 0, `.pck` 10.3 MB, `/docs` 47 MB) and
+the browser run showed no script or engine errors, a live WebGL2 context, and the same fighter/crowd
+sizes and layout as the pre-cap build.
+
+**Not verified:** nothing was measured on the actual 4 GB Chromebook — no frame timings, no tab
+memory reading, no long demo session — so the pre-warm is a structural fix rather than a demonstrated
+stall removal.
+
+### Grab / throw chain — verification, 2026-11-15
+
+Temporary headless harness on the real `TestArena.tscn`, all six cases on the shipping scene: a grab
+inside 96 px held a **guarding** P2; a Grab press inside the 8-tick window fired `throw_broken`, dealt
+**0 damage** and shoved the fighters apart; a neutral hold threw forward for **14 damage, +15 Hype**,
+`throw_connected(&"forward")`, the victim leaving at ~478 px/s and reaching the knockdown pose; a throw
+from x 1150 into the right stack fired `speaker_slam_triggered` with side +1, total damage **18**
+(14 + 4) and bounced the body back at −220 px/s; holding back threw for **12 damage, +18 Hype**,
+`throw_connected(&"back")`, and dropped the victim behind the attacker (760 → 651, i.e. 700 − 46);
+and in Mode 1 the AI grabbed a turtling P1 on its own and broke **5 of 10** scripted grabs. Harness
+deleted before the commit; `TestArena.tscn` booted 200 frames clean; the Web export rebuilt headless
+(`.pck` 10.3 MB) and the browser run had no script errors, a live WebGL2 context, and the updated
+`U grab/tech` legend.
+
+**Not verified:** no throw of any kind was watched on screen, and none of the damage, Hype, timing or
+arc values have been playtested — they are hand-set defaults.
+
+
+### Push separation, 60-second clock and procedural SFX — verification, 2026-11-16
+
+Temporary headless harness on the real `TestArena.tscn` (deleted before the commit). **Separation:**
+two fighters placed 8 px apart opened to exactly **64.00 px** with the midpoint held at 504.00; a pair
+pinned against the left stack opened to **64.00 px** with the pinned body at 70.06 — inside the wall,
+not through it; bodies in `GRABBED`, `THROWN`, `KNOCKDOWN` and `KO` each kept their 8.00 px overlap; and
+an airborne body was not pushed sideways. **Clock:** the round started on 60.00 s, still read 60.00
+after 0.2 s of announce, drained 60.00 → 59.70 in 0.3 s of live play, awarded the round to the higher
+health (80 v 40) under `TIME!`, and on an exact 50 v 50 tie showed `WHEEL AND COME AGAIN!`, awarded
+**no pip** (wins stayed `[1, 0]`) and replayed round index **1 → 1** with the clock back at 60.00.
+**SFX:** all nine cues synthesised non-silent buffers with peaks inside [-1, 1] — hit 3528 frames /
+0.91, hit_onbeat 6174 / 1.00, block 2205 / 0.41, parry 3969 / 0.77, slam 12127 / 1.00, whoosh 5292 /
+0.39, clank 4851 / 0.71, airhorn 18742 / 0.61, ko 20947 / 1.00 — each of the seven combat signals
+routed to its own cue, and **M** muted both the Master bus and the cue queue, refusing new cues until
+unmuted. A 240-frame boot printed no script errors beyond the known exit-time resource notice; the Web
+export rebuilt headless (exit 0, `.pck` 10.6 MB, `/docs` 47 MB) and the browser run drew the
+`59 / ROUND 1` clock between the health bars with the fighters separated.
+
+**Not verified:** nobody has heard any of these cues — headless Godot has no audio device, so
+"non-silent, unclipped buffers" is arithmetic, not a listen. Separation was not felt in motion (walking
+into an opponent, being cornered, grabbing at 96 px), and the browser run proved the clock's placement
+but not that a full 60 s round reaches zero on a real tab. The silence of a muted build was verified by
+bus state, not by ear. All three need the Chromebook playtest.
+
+**Fixed during that run:** `AudioStreamGeneratorPlayback.clear_buffer()` asserts when no audio device is
+mixing (headless), and `AudioStreamPlayer.set_stream_paused(true)` is refused while stopped — the mute
+path now mutes the Master bus and a recycled voice restarts with `stop()`/`play()`.
+
+### Arcade typography + callout subtitles — verification, 2026-11-15
+
+Temporary headless harness on the real `TestArena.tscn` (deleted before the commit): all four faces
+load as real `FontFile`s reporting their own family names — `Bungee`, `Bungee Inline`, `Bungee
+Shade`, `Chakra Petch` — so nothing fell back to `ThemeDB.fallback_font`, and a 200-frame boot
+printed no `fallback` / `unable to load font` warning. The subtitle state machine passed: the first
+`announce_subtitle()` was accepted, a second one inside the 4.0 s cooldown was refused without
+replacing the live line, the pill was gone 2.0 s after its trigger and the cooldown read 0.0 s at
+4.2 s; `static_parry_triggered`, `taunt_finished(true)`, `speaker_slam_triggered` and
+`hype_surge_started` each produced their exact Patois line; an off-beat `taunt_finished(false)`
+stayed silent; the **V** toggle refused callouts while off and cleared the pill; and re-enabling kept
+a single slot, the newest line replacing the older one. The Web export rebuilt headless (exit 0,
+`.pck` 10.6 MB, `/docs` 47 MB) and the browser run drew the Bungee fighter tags and the Chakra Petch
+legend and mode labels with no script errors.
+
+**Not verified:** no callout pill was caught on screen (the browser taunt attempts landed off-beat
+and headless Godot cannot draw), the banner/Shade faces and the outline weight were not judged on the
+actual Chromebook, and none of the sizes or timings have been playtested.
 
 
 ### Newer knee-lift BOX in main handoff — November 14, 2026 (Toronto)

@@ -12,6 +12,7 @@ enum State {
 	IDLE, WALK, JUMP, CROUCH,
 	ATTACK_STARTUP, ATTACK_ACTIVE, ATTACK_RECOVERY,
 	TAUNT, HITSTUN, KNOCKDOWN, KO,
+	GRAB, GRABBED, THROWN,
 }
 
 signal state_changed(old_state: State, new_state: State)
@@ -19,8 +20,18 @@ signal health_changed(current: int, maximum: int)
 signal hype_changed(current: int, maximum: int)
 signal strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dictionary)
 signal taunt_started(beat: Dictionary)
+signal taunt_finished(on_beat: bool)     # the subtitle callout only fires on the beat
+signal static_parry_triggered(defender: BaseFighter, attacker: BaseFighter)
+signal hype_milestone_reached(percent: int)
+signal hype_surge_started(seconds: float)
 signal camera_shake_requested(intensity: float, duration: float)
 signal died
+# Grab / throw chain (§9 item 18). No new art: the victim is thrown into the existing
+# launched -> tumble -> knockdown poses.
+signal grab_connected(attacker: BaseFighter, defender: BaseFighter)
+signal throw_broken(attacker: BaseFighter, defender: BaseFighter)
+signal throw_connected(attacker: BaseFighter, defender: BaseFighter, kind: StringName)
+signal speaker_slam_triggered(victim: BaseFighter, side: int)   # -1 left stack, +1 right stack
 
 ## One tick of input. Local keyboard fills it; AI/dummy/replay can set it instead.
 class Command:
@@ -33,6 +44,7 @@ class Command:
 	var tump: bool = false        # just pressed (L)
 	var upper_box: bool = false   # just pressed (I)
 	var taunt: bool = false       # just pressed
+	var grab: bool = false        # just pressed (U) — also the throw-break input
 
 # ---- Config ----------------------------------------------------------------
 @export var input_prefix: String = "p1_"
@@ -72,6 +84,43 @@ const SPLATTER_STUN_TICKS := 12     # comedic bird-splatter flinch, no damage
 const HYPE_MAX := 100
 const ON_BEAT_HYPE := 15               # [TODO] amount is a placeholder value
 const ON_BEAT_DAMAGE_MULT := 1.15
+
+# 100% Crowd Hype Surge (owner decision, AGENTS.md §9 item 10): a full meter buys ~5 s
+# of momentum — 1.20x damage and 25% faster attack recovery — then the meter resets to 0.
+const HYPE_SURGE_TICKS := 300
+const SURGE_DAMAGE_MULT := 1.20
+const SURGE_RECOVERY_MULT := 0.75
+
+# Record Static Parry (§9 item 13): guard tapped on the beat negates the strike.
+const PARRY_WINDOW_TICKS := 10        # ~167 ms after the on-beat guard press
+const PARRY_HYPE := 20
+const PARRY_ATTACKER_STUN_TICKS := 18 # long enough to punish
+
+# Grab / directional throw / throw break (AGENTS.md §9 item 18, Def Jam-inspired).
+const GRAB_RANGE := 96.0              # centre-to-centre, owner-specified close range
+const GRAB_STARTUP_TICKS := 5         # fast: beats a held guard before it can react
+const GRAB_TECH_TICKS := 8            # defender's break window, in ticks
+const GRAB_HOLD_TICKS := 16           # how long the attacker holds before committing
+const GRAB_RECOVERY_TICKS := 12
+const GRAB_HOLD_GAP := 46.0           # victim stands this far in front of the attacker
+const THROW_FORWARD_DAMAGE := 14
+const THROW_FORWARD_HYPE := 15
+const THROW_BACK_DAMAGE := 12
+const THROW_BACK_HYPE := 18
+const THROW_LAUNCH := Vector2(520.0, -420.0)
+const THROW_BACK_LAUNCH := Vector2(160.0, -260.0)
+const THROW_SPIN_TICKS := 18          # launched pose -> tumble pose
+const THROW_BREAK_PUSH := 200.0       # mutual shove-apart
+const THROW_BREAK_STUN := 10          # no damage, just the standoff
+const WALL_SLAM_BONUS := 4            # extra damage off a speaker stack
+const WALL_SLAM_BOUNCE := 0.62        # how much horizontal speed comes back
+## Sand stage speaker stacks: 40-wide walls at x 20 / 1260, so a 60-wide fighter's
+## centre can reach 70 / 1210. Those are the points a thrown body slams the stack.
+const STAGE_LEFT := 70.0
+const STAGE_RIGHT := 1210.0
+
+# Best-of-3 round flow (§9 item 14): the match controller freezes input while it resets.
+var input_locked: bool = false
 
 # Hitstop, in ticks. KO uses its own value.
 const HITSTOP_TICKS := {&"jab": 4, &"strong": 7, &"tump": 7, &"upper_box": 7}
@@ -123,6 +172,18 @@ const ANIM_SCALE := {
 	"box_active": 0.1013,
 }
 const ANIM_OFFSET_DEFAULT := Vector2(0, -388)
+
+# Import-cache cap compensation (AGENTS.md §9 item 17). `process/size_limit=512` in the
+# .import files decodes the big frames smaller, so the pixel-space ANIM_OFFSET/ANIM_SCALE
+# above are divided/multiplied by the same factor. Values are the longest side of the
+# original art, so an uncapped import (ratio 1.0) behaves exactly as before.
+const ANIM_SOURCE_MAX := {
+	"walk": 620.0,
+	"guard_entry": 512.0, "block": 512.0, "guard_recovery": 512.0,
+	"sparta_startup": 512.0, "sparta_active": 512.0, "sparta_recovery": 512.0,
+	"skank": 512.0, "lightah": 512.0,
+}
+const ANIM_SOURCE_MAX_DEFAULT := 1536.0
 
 # Attack data. [TODO] move to data-driven move resources (§5). Damage values are from §3.
 # Active window is polled from the tick after the hitbox is enabled (one-tick lag).
@@ -176,21 +237,26 @@ const DEFAULT_P1_KEYS := {
 	"upper_box": [KEY_I],
 	"crouch": [KEY_C],
 	"taunt": [KEY_T],
+	"grab": [KEY_U],
 }
 
 # Single transition authority (§5). Anything not listed is rejected.
 const LEGAL := {
-	State.IDLE: [State.WALK, State.JUMP, State.CROUCH, State.ATTACK_STARTUP, State.TAUNT, State.HITSTUN, State.KNOCKDOWN, State.KO],
-	State.WALK: [State.IDLE, State.JUMP, State.CROUCH, State.ATTACK_STARTUP, State.TAUNT, State.HITSTUN, State.KNOCKDOWN, State.KO],
-	State.JUMP: [State.IDLE, State.HITSTUN, State.KNOCKDOWN, State.KO],                      # air attacks [TODO]
-	State.CROUCH: [State.IDLE, State.HITSTUN, State.KNOCKDOWN, State.KO],                    # low moves [TODO]
-	State.ATTACK_STARTUP: [State.ATTACK_ACTIVE, State.HITSTUN, State.KNOCKDOWN, State.KO],
-	State.ATTACK_ACTIVE: [State.ATTACK_RECOVERY, State.HITSTUN, State.KNOCKDOWN, State.KO],
-	State.ATTACK_RECOVERY: [State.IDLE, State.ATTACK_STARTUP, State.HITSTUN, State.KNOCKDOWN, State.KO],
-	State.TAUNT: [State.IDLE, State.HITSTUN, State.KNOCKDOWN, State.KO],
-	State.HITSTUN: [State.IDLE, State.KNOCKDOWN, State.KO],
+	State.IDLE: [State.WALK, State.JUMP, State.CROUCH, State.ATTACK_STARTUP, State.TAUNT, State.HITSTUN, State.KNOCKDOWN, State.KO, State.GRAB, State.GRABBED],
+	State.WALK: [State.IDLE, State.JUMP, State.CROUCH, State.ATTACK_STARTUP, State.TAUNT, State.HITSTUN, State.KNOCKDOWN, State.KO, State.GRAB, State.GRABBED],
+	State.JUMP: [State.IDLE, State.HITSTUN, State.KNOCKDOWN, State.KO, State.GRABBED],       # air attacks [TODO]
+	State.CROUCH: [State.IDLE, State.HITSTUN, State.KNOCKDOWN, State.KO, State.GRABBED],     # low moves [TODO]
+	State.ATTACK_STARTUP: [State.ATTACK_ACTIVE, State.HITSTUN, State.KNOCKDOWN, State.KO, State.GRABBED],
+	State.ATTACK_ACTIVE: [State.ATTACK_RECOVERY, State.HITSTUN, State.KNOCKDOWN, State.KO, State.GRABBED],
+	State.ATTACK_RECOVERY: [State.IDLE, State.ATTACK_STARTUP, State.HITSTUN, State.KNOCKDOWN, State.KO, State.GRABBED],
+	State.TAUNT: [State.IDLE, State.HITSTUN, State.KNOCKDOWN, State.KO, State.GRABBED],
+	State.HITSTUN: [State.IDLE, State.KNOCKDOWN, State.KO, State.GRABBED],
 	State.KNOCKDOWN: [State.IDLE, State.KO],
 	State.KO: [],
+	# The grab chain: attacker holds, victim waits out the tech window, then flies.
+	State.GRAB: [State.IDLE, State.HITSTUN, State.KNOCKDOWN, State.KO, State.GRABBED],
+	State.GRABBED: [State.IDLE, State.HITSTUN, State.THROWN, State.KNOCKDOWN, State.KO],
+	State.THROWN: [State.IDLE, State.KNOCKDOWN, State.KO],
 }
 
 # ---- Runtime state -----------------------------------------------------------
@@ -215,8 +281,43 @@ var _buffered: Dictionary = {}
 var _stun_frames: int = 0
 var _stun_is_block: bool = false
 var _hitstop_frames: int = 0
+
+## Impact flash (AGENTS.md §9 item 21, closes backlog item B4). Presentation only: on a
+## resolved contact the struck sprite brightens for two physics ticks. The base colour is
+## kept as an HDR-ish over-bright so it reads as a rim flash against the sand, not a
+## washed-out white card. Nothing in the FSM, the hit registry or the hitboxes reads this.
+const IMPACT_FLASH_TICKS := 2
+const IMPACT_FLASH_PLAIN := Color(2.10, 1.94, 1.52)
+const IMPACT_FLASH_ONBEAT := Color(1.55, 1.92, 1.30)
+var _impact_flash_ticks: int = 0
+
+## Visual polish (AGENTS.md §9 item 22): a 132 BPM idle groove plus attack lunge and
+## squash/stretch. Presentation only: the sprite's draw scale and its own local position
+## move, while the collision body, hurtbox and hitbox never read any of it. `_anim_base_scale`
+## is the scale `_play_state_anim()` authored for the current animation, so the polish always
+## composes on top of the per-animation scale instead of fighting it.
+const GROOVE_LIFT := 2.0                  # px the body pops up on each eighth note
+const GROOVE_SQUASH := 0.018              # ±1.8 % vertical squash on the same pop
+const GROOVE_DECAY := 3.4                 # how fast the pop settles (higher = snappier)
+const LUNGE_ATTACK_PX := 6.0              # forward micro-lunge at the active frame
+const LUNGE_WINDUP_PX := 2.5              # the tiny pull-back during startup
+const SQUASH_STARTUP := 0.93              # anticipation: shorter and wider
+const SQUASH_ACTIVE := 1.055              # contact: stretched forward
+const SQUASH_JUMP := 1.05
+var _anim_base_scale := Vector2(0.25, 0.25)
+var _surge_ticks: int = 0
+var _half_hype_awarded: bool = false
+var _guard_beat: Dictionary = {}
+var _guard_pressed_tick: int = -999
 var _guard_ticks: int = 0
 var _guard_recovering: bool = false
+# Grab / throw runtime.
+var _grab_target: BaseFighter = null
+var _grab_hold: int = 0
+var _grab_recovery: int = 0
+var _grabbed_by: BaseFighter = null
+var _grab_tech_ticks: int = 0
+var _wall_bounced: bool = false
 var _was_on_floor: bool = true
 var _fall_speed: float = 0.0
 var _step_ticks: int = 0
@@ -245,6 +346,21 @@ func _ready() -> void:
 # Tick
 # =========================================================================
 func _physics_process(_delta: float) -> void:
+	# The impact flash counts down before the hitstop early-return, so a frozen contact
+	# still releases it on the second tick instead of holding a bright frame.
+	if _impact_flash_ticks > 0:
+		_impact_flash_ticks -= 1
+		if _impact_flash_ticks == 0 and sprite != null:
+			sprite.modulate = Color.WHITE
+
+	# The surge runs on the wall clock: hitstop must not extend the boost.
+	if _surge_ticks > 0:
+		_surge_ticks -= 1
+		if _surge_ticks == 0:
+			hype = 0
+			_half_hype_awarded = false
+			hype_changed.emit(hype, HYPE_MAX)
+
 	# Hitstop freezes state logic but keeps the body moving so nothing tunnels.
 	if _hitstop_frames > 0:
 		_hitstop_frames -= 1
@@ -255,6 +371,8 @@ func _physics_process(_delta: float) -> void:
 	state_frame += 1
 	if use_local_input:
 		command = _poll_local_input()
+	if input_locked:
+		command = Command.new()     # round announce / KO: no actions, physics still runs
 
 	match state:
 		State.IDLE, State.WALK: _tick_grounded()
@@ -267,6 +385,9 @@ func _physics_process(_delta: float) -> void:
 		State.HITSTUN: _tick_hitstun()
 		State.KNOCKDOWN: _tick_knockdown()
 		State.KO: _tick_ko()
+		State.GRAB: _tick_grab()
+		State.GRABBED: _tick_grabbed()
+		State.THROWN: _tick_thrown()
 
 	# Guard presentation phases: refresh the animation when a phase expires.
 	if guarding or _guard_recovering:
@@ -338,6 +459,8 @@ func _exit_state(s: State) -> void:
 			_set_hitbox_active(false)
 		State.CROUCH:
 			_apply_stance(false)
+		State.GRAB:
+			_release_grab_target()    # interrupted mid-hold: never leave a victim frozen
 
 
 func _apply_gravity() -> void:
@@ -352,6 +475,9 @@ func _tick_grounded() -> void:
 	_apply_gravity()
 	if not is_on_floor():
 		change_state(State.JUMP)
+		return
+	if command.grab:
+		_start_grab()             # beats a held guard: the grab never enters receive_strike
 		return
 	if command.light:
 		_start_attack(&"jab", _judge_beat())
@@ -447,7 +573,11 @@ func _tick_attack_active() -> void:
 func _tick_attack_recovery() -> void:
 	_apply_gravity()
 	_buffer_attack_input()
-	if state_frame >= int(_attack["recovery"]):
+	# A surging fighter shakes off recovery 25% faster (integer ticks, never below 1).
+	var recovery: int = int(_attack["recovery"])
+	if is_hype_surging():
+		recovery = maxi(1, int(round(float(recovery) * SURGE_RECOVERY_MULT)))
+	if state_frame >= recovery:
 		var next := _take_buffered_attack()
 		if next.is_empty():
 			change_state(State.IDLE)
@@ -550,6 +680,14 @@ func _apply_hitstop(ticks: int) -> void:
 	_hitstop_frames = maxi(_hitstop_frames, ticks)
 
 
+## Two-tick white/gold (or green/gold, on-beat) brighten on the struck body.
+## Called by the arena from `strike_resolved`; presentation only.
+func flash_impact(on_beat: bool) -> void:
+	_impact_flash_ticks = IMPACT_FLASH_TICKS
+	if sprite != null:
+		sprite.modulate = IMPACT_FLASH_ONBEAT if on_beat else IMPACT_FLASH_PLAIN
+
+
 # =========================================================================
 # Sand stage presentation (cosmetic — AGENTS.md §9)
 # =========================================================================
@@ -586,10 +724,33 @@ func receive_splatter(source_x: float) -> bool:
 
 
 func _add_hype(amount: int) -> void:
+	if _surge_ticks > 0:
+		return                          # the meter is held full until the surge expires
 	var before := hype
 	hype = clampi(hype + amount, 0, HYPE_MAX)
 	if hype != before:
 		hype_changed.emit(hype, HYPE_MAX)
+	# 50 % is a crowd reaction of its own; 100 % escalates into the surge.
+	if not _half_hype_awarded and hype >= int(HYPE_MAX * 0.5):
+		_half_hype_awarded = true
+		hype_milestone_reached.emit(50)
+	if hype >= HYPE_MAX:
+		_start_hype_surge()
+
+
+## A full Crowd Hype meter: boost now, hold the bar at 100, reset to 0 when it expires.
+func _start_hype_surge() -> void:
+	_surge_ticks = HYPE_SURGE_TICKS
+	hype_surge_started.emit(HYPE_SURGE_TICKS / 60.0)
+	camera_shake_requested.emit(SHAKE_LIGHT, SHAKE_SECONDS)
+
+
+func is_hype_surging() -> bool:
+	return _surge_ticks > 0
+
+
+func hype_surge_seconds_left() -> float:
+	return _surge_ticks / 60.0
 
 
 # =========================================================================
@@ -598,10 +759,247 @@ func _add_hype(amount: int) -> void:
 func _tick_taunt() -> void:
 	_apply_gravity()
 	if state_frame >= TAUNT_TICKS:
-		if bool(_taunt_beat.get("on_beat", false)):
+		var on_beat := bool(_taunt_beat.get("on_beat", false))
+		if on_beat:
 			_add_hype(ON_BEAT_HYPE)       # [TODO] amount and interruptibility
 		_taunt_beat = {}
 		change_state(State.IDLE)
+		taunt_finished.emit(on_beat)
+
+
+# =========================================================================
+# Grab / directional throw / throw break (AGENTS.md §9 item 18)
+# =========================================================================
+## Grab start: a 5-tick reach window, then the 96 px check. The attempt is fast enough
+## that a held guard has no answer — nothing in this path enters receive_strike.
+func _start_grab() -> void:
+	_grab_target = null
+	_grab_hold = 0
+	_grab_recovery = 0
+	velocity.x = 0.0
+	change_state(State.GRAB)
+
+
+func _tick_grab() -> void:
+	_apply_gravity()
+	if _grab_recovery > 0:
+		# Recovery keeps the break shove: it decays instead of snapping to zero.
+		velocity.x = move_toward(velocity.x, 0.0, STUN_FRICTION * get_physics_process_delta_time())
+		_grab_recovery -= 1
+		if _grab_recovery == 0:
+			change_state(State.IDLE)
+		return
+	velocity.x = 0.0
+	if _grab_target == null or not is_instance_valid(_grab_target) \
+			or _grab_target.state != State.GRABBED:
+		_grab_target = null              # the hold ended by other means (reset, break, KO)
+		if state_frame >= GRAB_STARTUP_TICKS:
+			var victim := _find_grab_target()
+			if victim != null:
+				_begin_grab_hold(victim)
+			else:
+				_grab_recovery = GRAB_RECOVERY_TICKS   # a whiffed grab still commits
+		return
+	_grab_hold += 1
+	_hold_target_in_place()
+	if _grab_hold >= GRAB_HOLD_TICKS:
+		_throw_target()
+
+
+## Closest standing, in-front opponent inside the grab reach.
+func _find_grab_target() -> BaseFighter:
+	var best: BaseFighter = null
+	for node in get_tree().get_nodes_in_group("fighters"):
+		var other := node as BaseFighter
+		if other == null or other == self:
+			continue
+		if other.state in [State.KO, State.KNOCKDOWN, State.THROWN, State.GRABBED]:
+			continue
+		if not other.is_on_floor():
+			continue
+		var offset := other.global_position.x - global_position.x
+		if offset * float(facing) < -12.0 or absf(offset) > GRAB_RANGE:
+			continue
+		return other
+	return best
+
+
+func _begin_grab_hold(victim: BaseFighter) -> void:
+	if not victim.begin_grabbed(self):
+		_grab_recovery = GRAB_RECOVERY_TICKS
+		return
+	_grab_target = victim
+	_grab_hold = 0
+	grab_connected.emit(self, victim)
+
+
+func _hold_target_in_place() -> void:
+	var victim := _grab_target
+	victim.global_position.x = clampf(global_position.x + float(facing) * GRAB_HOLD_GAP,
+		STAGE_LEFT, STAGE_RIGHT)
+	victim.global_position.y = global_position.y
+	victim.velocity = Vector2.ZERO
+	victim._set_facing(-facing)
+
+
+## Holding back spins them behind (corner escape); forward or neutral hurls them across
+## the sand towards the speaker stacks.
+func _throw_target() -> void:
+	var victim := _grab_target
+	_grab_target = null
+	_grab_recovery = GRAB_RECOVERY_TICKS
+	if victim == null or not is_instance_valid(victim):
+		return
+	var holding_back := absf(command.move_x) > 0.1 and signf(command.move_x) != float(facing)
+	if holding_back:
+		_add_hype(THROW_BACK_HYPE)
+		victim.receive_back_throw(self, THROW_BACK_DAMAGE)
+		throw_connected.emit(self, victim, &"back")
+	else:
+		_add_hype(THROW_FORWARD_HYPE)
+		victim.receive_forward_throw(self, THROW_FORWARD_DAMAGE)
+		throw_connected.emit(self, victim, &"forward")
+
+
+func _release_grab_target() -> void:
+	var victim := _grab_target
+	_grab_target = null
+	if victim != null and is_instance_valid(victim) and victim.state == State.GRABBED:
+		victim.released_from_grab()
+
+
+# ---- victim side -------------------------------------------------------------
+## Called by the attacker. Refuses when the victim cannot be held.
+func begin_grabbed(attacker: BaseFighter) -> bool:
+	if state in [State.KO, State.KNOCKDOWN, State.THROWN, State.GRABBED]:
+		return false
+	_set_hitbox_active(false)
+	_buffered = {}
+	_grabbed_by = attacker
+	_grab_tech_ticks = GRAB_TECH_TICKS
+	velocity = Vector2.ZERO
+	guarding = false
+	if not change_state(State.GRABBED):
+		_grabbed_by = null
+		return false
+	return true
+
+
+func _tick_grabbed() -> void:
+	velocity = Vector2.ZERO
+	if _grab_tech_ticks > 0:
+		_grab_tech_ticks -= 1
+		if command.grab:
+			_tech_throw()
+			return
+	if _grabbed_by == null or not is_instance_valid(_grabbed_by) \
+			or _grabbed_by.state != State.GRAB:
+		_grabbed_by = null
+		change_state(State.IDLE)
+
+
+## Throw break: both fighters shove apart with no damage. The arena flashes the spark.
+func _tech_throw() -> void:
+	var attacker := _grabbed_by
+	_grabbed_by = null
+	_grab_tech_ticks = 0
+	if attacker != null and is_instance_valid(attacker):
+		attacker._on_throw_broken()
+		throw_broken.emit(attacker, self)
+	velocity.x = -float(facing) * THROW_BREAK_PUSH
+	_begin_stun(THROW_BREAK_STUN, false)
+
+
+func _on_throw_broken() -> void:
+	_grab_target = null
+	_grab_recovery = GRAB_RECOVERY_TICKS
+	velocity.x = -float(facing) * THROW_BREAK_PUSH
+	camera_shake_requested.emit(SHAKE_LIGHT, SHAKE_SECONDS)
+
+
+func released_from_grab() -> void:
+	_grabbed_by = null
+	_grab_tech_ticks = 0
+	if state == State.GRABBED:
+		change_state(State.IDLE)
+
+
+func receive_forward_throw(attacker: BaseFighter, damage: int) -> void:
+	var dir := _throw_dir_from(attacker)
+	_grabbed_by = null
+	_grab_tech_ticks = 0
+	_wall_bounced = false
+	var ko := _take_throw_damage(damage)
+	global_position.x = clampf(global_position.x, STAGE_LEFT, STAGE_RIGHT)
+	velocity = Vector2(THROW_LAUNCH.x * dir, THROW_LAUNCH.y)
+	if ko:
+		change_state(State.KO)
+		return
+	change_state(State.THROWN)
+
+
+func receive_back_throw(attacker: BaseFighter, damage: int) -> void:
+	var dir := _throw_dir_from(attacker)
+	_grabbed_by = null
+	_grab_tech_ticks = 0
+	_wall_bounced = true           # a spinback is a corner escape, not a wall slam
+	var ko := _take_throw_damage(damage)
+	# Spun around and dropped behind the attacker.
+	global_position.x = clampf(attacker.global_position.x - dir * GRAB_HOLD_GAP,
+		STAGE_LEFT, STAGE_RIGHT)
+	velocity = Vector2(-dir * THROW_BACK_LAUNCH.x, THROW_BACK_LAUNCH.y)
+	if ko:
+		change_state(State.KO)
+		return
+	change_state(State.THROWN)
+
+
+func _throw_dir_from(attacker: BaseFighter) -> float:
+	var dir := float(attacker.facing)
+	return dir if dir != 0.0 else 1.0
+
+
+func _take_throw_damage(amount: int) -> bool:
+	health = maxi(0, health - amount)
+	health_changed.emit(health, max_health)
+	return health == 0
+
+
+func _tick_thrown() -> void:
+	_apply_gravity()
+	velocity.x = move_toward(velocity.x, 0.0, 120.0 * get_physics_process_delta_time())
+	_check_speaker_wall()
+	if state_frame == THROW_SPIN_TICKS:
+		_play_state_anim()        # launched -> tumble
+	if state_frame > 4 and is_on_floor():
+		change_state(State.KNOCKDOWN)
+
+
+## Speaker-Stack Bounce: an airborne thrown fighter that reaches a stack slams it,
+## takes the bonus damage, shakes the camera and comes back onto the sand.
+func _check_speaker_wall() -> void:
+	if _wall_bounced or is_on_floor():
+		return
+	# The body stops a fraction short of the collision face, so allow a small margin.
+	var side := 0
+	if global_position.x <= STAGE_LEFT + 2.0:
+		side = -1
+	elif global_position.x >= STAGE_RIGHT - 2.0:
+		side = 1
+	if side == 0:
+		return
+	_wall_bounced = true
+	global_position.x = clampf(global_position.x, STAGE_LEFT, STAGE_RIGHT)
+	# The wall collision may already have zeroed velocity.x, so bounce off the side that
+	# was hit rather than off the incoming sign.
+	var speed := absf(velocity.x)
+	velocity.x = -float(side) * maxf(speed * WALL_SLAM_BOUNCE, 220.0)
+	velocity.y = minf(velocity.y, -200.0)      # pop back up off the stack
+	var ko := _take_throw_damage(WALL_SLAM_BONUS)
+	speaker_slam_triggered.emit(self, side)
+	camera_shake_requested.emit(SHAKE_HEAVY * 1.5, 0.26)
+	if ko:
+		change_state(State.KO)
 
 
 # =========================================================================
@@ -618,17 +1016,23 @@ func receive_strike(attacker: BaseFighter, strike: Dictionary) -> Dictionary:
 	# Directional guard, decided from the pre-resolution snapshot.
 	var blocked := _snap_guarding \
 		and signf(attacker.global_position.x - global_position.x) == float(facing)
+	# Record Static Parry: the guard was tapped on the beat, so the strike is negated.
+	if blocked and _parry_window_open():
+		return _resolve_static_parry(attacker, strike)
 
 	var base: int = int(a["blocked_damage"]) if blocked else int(a["damage"])
 	var on_beat := bool((strike["input_beat"] as Dictionary).get("on_beat", false))
-	# On-beat bonus applies to chip damage too (owner decision, AGENTS.md §9).
-	var dmg: int = roundi(base * ON_BEAT_DAMAGE_MULT) if on_beat else base
+	# The 100% Hype Surge multiplies the attacker's damage before the on-beat bonus, so a
+	# surging on-beat strike is 1.20 x 1.15. On-beat still applies to chip damage too.
+	var surge_mult: float = SURGE_DAMAGE_MULT if attacker.is_hype_surging() else 1.0
+	var dmg: int = roundi(base * surge_mult * (ON_BEAT_DAMAGE_MULT if on_beat else 1.0))
 	health = maxi(0, health - dmg)
 	health_changed.emit(health, max_health)
 
 	var kb: Vector2 = a["knockback"]
 	var result := {
 		"blocked": blocked, "damage": dmg, "ko": false, "on_beat": on_beat,
+		"attacker_surge": attacker.is_hype_surging(),
 		"attack_id": strike["attack_id"],
 		"input_beat": strike["input_beat"],
 		"contact_beat": strike["contact_beat"],
@@ -648,6 +1052,35 @@ func receive_strike(attacker: BaseFighter, strike: Dictionary) -> Dictionary:
 		velocity = Vector2(kb.x * away, kb.y)
 		_begin_stun(int(a["hitstun"]), false)
 	return result
+
+
+## True while the current guard was pressed inside the beat judgement window.
+func _parry_window_open() -> bool:
+	if not bool(_guard_beat.get("on_beat", false)):
+		return false
+	return _tick_count - _guard_pressed_tick <= PARRY_WINDOW_TICKS
+
+
+## Record Static Parry: no chip damage, no blockstun for the defender; the attacker is
+## left stunned and the defender gains hype.
+func _resolve_static_parry(attacker: BaseFighter, strike: Dictionary) -> Dictionary:
+	_add_hype(PARRY_HYPE)
+	camera_shake_requested.emit(SHAKE_HEAVY, SHAKE_SECONDS)
+	static_parry_triggered.emit(self, attacker)
+	attacker._take_parry_stun(PARRY_ATTACKER_STUN_TICKS)
+	return {
+		"blocked": true, "parried": true, "damage": 0, "ko": false, "on_beat": false,
+		"attacker_surge": attacker.is_hype_surging(),
+		"attack_id": strike.get("attack_id", &""),
+		"input_beat": strike.get("input_beat", {}),
+		"contact_beat": strike.get("contact_beat", {}),
+	}
+
+
+func _take_parry_stun(ticks: int) -> void:
+	velocity.x = 0.0
+	_buffered = {}
+	_begin_stun(ticks, false)
 
 
 func _begin_stun(frames: int, is_block: bool) -> void:
@@ -690,6 +1123,50 @@ func _judge_beat() -> Dictionary:
 	return j
 
 
+## Match-controller reset for a new round. This is deliberately not a gameplay transition,
+## so it clears a KO/hitstun state without going through the LEGAL table; no combat tick can
+## reach it because the round controller owns the call.
+func reset_for_round(at: Vector2) -> void:
+	_set_hitbox_active(false)
+	_hit_targets.clear()
+	_pending_strikes.clear()
+	_resolve_queued = false
+	_buffered = {}
+	_stun_frames = 0
+	_stun_is_block = false
+	_hitstop_frames = 0
+	_impact_flash_ticks = 0
+	if sprite != null:
+		sprite.modulate = Color.WHITE
+	_surge_ticks = 0
+	_half_hype_awarded = false
+	_guard_beat = {}
+	_guard_pressed_tick = -999
+	guarding = false
+	_guard_ticks = 0
+	_guard_recovering = false
+	_grab_target = null
+	_grab_hold = 0
+	_grab_recovery = 0
+	_grabbed_by = null
+	_grab_tech_ticks = 0
+	_wall_bounced = false
+	velocity = Vector2.ZERO
+	global_position = at
+	health = max_health
+	hype = 0
+	var old := state
+	if old != State.IDLE:
+		_exit_state(old)
+		state = State.IDLE
+		state_frame = 0
+		_enter_state(State.IDLE)
+		_play_state_anim()
+		state_changed.emit(old, State.IDLE)
+	health_changed.emit(health, max_health)
+	hype_changed.emit(hype, HYPE_MAX)
+
+
 ## For a match controller (auto-face is not implemented here). Ignored mid-attack.
 func face_toward(x: float) -> void:
 	if state in [State.IDLE, State.WALK, State.CROUCH]:
@@ -710,6 +1187,10 @@ func _set_guarding(v: bool) -> void:
 	guarding = v
 	_guard_ticks = 0
 	_guard_recovering = not v      # releasing the guard plays the mic-defence recovery
+	if v:
+		# Remember the beat quality of this guard press for the Record Static Parry.
+		_guard_beat = _judge_beat()
+		_guard_pressed_tick = _tick_count
 	_play_state_anim()
 
 
@@ -750,16 +1231,87 @@ func _play_state_anim() -> void:
 		State.HITSTUN: anim = &"block" if _stun_is_block else &"hitstun"
 		State.KNOCKDOWN: anim = &"knockdown"
 		State.KO: anim = &"ko"
+		State.GRAB: anim = &"jab"           # reaching grab frames, no new art
+		State.GRABBED: anim = &"hitstun"    # held: the recoil pose reads as being wrenched
+		State.THROWN: anim = &"tumble" if state_frame >= THROW_SPIN_TICKS else &"launched"
 	if sprite.sprite_frames == null:
 		return
 	if facing < 0 and sprite.sprite_frames.has_animation("%s_left" % anim):
 		anim = StringName("%s_left" % anim)
 	if sprite.sprite_frames.has_animation(anim):
 		var key := String(anim).trim_suffix("_left")
-		sprite.offset = ANIM_OFFSET.get(StringName(key), ANIM_OFFSET_DEFAULT)
-		var s: float = float(ANIM_SCALE.get(key, BASE_SPRITE_SCALE))
+		var k := _import_cap_ratio(key, anim)
+		sprite.offset = ANIM_OFFSET.get(StringName(key), ANIM_OFFSET_DEFAULT) / k
+		var s: float = float(ANIM_SCALE.get(key, BASE_SPRITE_SCALE)) * k
 		sprite.scale = Vector2(s, s)
+		_anim_base_scale = sprite.scale
 		sprite.play(anim)
+
+
+# =========================================================================
+# Visual polish — idle groove, attack lunge, squash & stretch (§9 item 22)
+# =========================================================================
+func _process(_delta: float) -> void:
+	_apply_visual_polish()
+
+
+func _apply_visual_polish() -> void:
+	if sprite == null:
+		return
+	var squash := 1.0
+	var lift := 0.0
+	var lunge := 0.0
+	match state:
+		State.IDLE, State.CROUCH:
+			# One pop per eighth note at 132 BPM: a fast attack, then an exponential settle,
+			# so the body breathes on the grid instead of looking frozen between hits.
+			var pop := exp(-_groove_phase() * GROOVE_DECAY)
+			lift = -GROOVE_LIFT * pop
+			squash = 1.0 - GROOVE_SQUASH * pop
+		State.ATTACK_STARTUP:
+			var t := clampf(float(state_frame) / maxf(float(_attack.get("startup", 6)), 1.0), 0.0, 1.0)
+			squash = lerpf(1.0, SQUASH_STARTUP, t)
+			lunge = lerpf(0.0, -LUNGE_WINDUP_PX, t)
+		State.ATTACK_ACTIVE:
+			squash = SQUASH_ACTIVE
+			lunge = LUNGE_ATTACK_PX
+		State.ATTACK_RECOVERY:
+			var t_rec := clampf(float(state_frame) / maxf(float(_attack.get("recovery", 8)), 1.0), 0.0, 1.0)
+			squash = lerpf(1.04, 1.0, t_rec)
+			lunge = lerpf(LUNGE_ATTACK_PX * 0.83, 0.0, t_rec)
+		State.JUMP:
+			squash = SQUASH_JUMP if velocity.y < -120.0 else (1.045 if velocity.y > 160.0 else 1.0)
+		_:
+			pass
+	# `2.0 - squash` widens the body by exactly as much as it shortens it: cheap, convincing
+	# squash-and-stretch with volume preserved, and no per-frame scale race with the anim.
+	sprite.scale = Vector2(_anim_base_scale.x * (2.0 - squash), _anim_base_scale.y * squash)
+	sprite.position = Vector2(lunge * float(facing), lift)
+
+
+## 0..1 inside the current eighth note. Uses the audio-clock beat service when the arena
+## wired one, and a tick-based fallback (132 BPM ≈ 13.6 ticks per eighth at 60 Hz) when it
+## did not, so a standalone fighter still grooves.
+func _groove_phase() -> float:
+	if beat_service != null:
+		return fposmod(beat_service.beat_phase() * 2.0, 1.0)
+	return fposmod(float(_tick_count) / 13.64, 1.0)
+
+
+## How much the import cap shrank this animation's frames (1.0 when uncapped). The
+## offset is authored in texture pixels, so it shrinks with the texture and the scale
+## has to grow by the same factor to keep the fighter's on-screen size.
+func _import_cap_ratio(key: String, anim: StringName) -> float:
+	var frames := sprite.sprite_frames
+	if frames == null or not frames.has_animation(anim) or frames.get_frame_count(anim) == 0:
+		return 1.0
+	var tex := frames.get_frame_texture(anim, 0)
+	if tex == null:
+		return 1.0
+	var decoded := float(maxi(tex.get_width(), tex.get_height()))
+	if decoded <= 0.0:
+		return 1.0
+	return float(ANIM_SOURCE_MAX.get(key, ANIM_SOURCE_MAX_DEFAULT)) / decoded
 
 
 func _poll_local_input() -> Command:
@@ -773,6 +1325,7 @@ func _poll_local_input() -> Command:
 	c.tump = Input.is_action_just_pressed(input_prefix + "tump")
 	c.upper_box = Input.is_action_just_pressed(input_prefix + "upper_box")
 	c.taunt = Input.is_action_just_pressed(input_prefix + "taunt")
+	c.grab = Input.is_action_just_pressed(input_prefix + "grab")
 	return c
 
 

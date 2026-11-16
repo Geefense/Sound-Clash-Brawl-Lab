@@ -426,6 +426,8 @@ Generated Flow speech such as `yo, check this out`, `I'm bringing it to the stag
 
 11. **Keep Spriteriffic sprite sheet grid dimensions consistent across all fighters for fast Godot slicing.** Use a shared cell width/height, consistent margins and spacing, and documented row/column layouts. Preserve each fighter’s intended proportions and frame anchors within that grid. Record frame order and animation timing for import into `AnimatedSprite2D`/`SpriteFrames`; do not stretch characters to fit cells.
 
+12. **Ask about reasoning effort before heavy multi-file work.** Before starting a multi-file combat state change, a physics refactor, or a new fighter integration that would benefit from Max reasoning effort, tell the owner **“Recommend switching to Max for this step”** first, so they can flip the reasoning-effort selector manually if needed. Also use the owner’s connected ChatGPT advisor subagent for high-level design verification when appropriate.
+
 ### §9 Owner Decisions Log
 
 Decisions the owner approved on 2026-11-16, recorded so the port stops re-litigating them. Nothing

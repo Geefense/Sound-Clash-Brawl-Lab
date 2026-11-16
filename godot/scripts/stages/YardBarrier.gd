@@ -35,6 +35,10 @@ const POST_EVERY := 6
 @export var rail_hi: Color = Color(0.52, 0.55, 0.54, 1.0)
 @export var nail_colour: Color = Color(0.17, 0.12, 0.09, 1.0)
 @export var sand_shadow: Color = Color(0.20, 0.11, 0.06, 0.30)
+## Sturdy corner post the arms-crossed spectator leans on (AGENTS.md §9 item 22). It stands
+## proud of the rail so the lean has something to land on at x = `CrowdLine.EDGE_SLOT_X`.
+@export var corner_post_x: float = 1032.0
+@export var corner_post_top: float = 492.0
 
 
 func _ready() -> void:
@@ -90,3 +94,18 @@ func _draw() -> void:
 		draw_line(Vector2(cx, TOP_Y + 2.0), Vector2(cx, TOP_Y + RAIL_H - 3.0),
 			Color(0.28, 0.30, 0.30, 0.45), 1.0)
 		cx += 17.0
+
+	# Corner post the edge spectator leans into: drawn last so it stands in front of the rail.
+	if corner_post_top < BASE_Y:
+		var px := corner_post_x - 7.0
+		draw_rect(Rect2(px, corner_post_top, 14.0, BASE_Y - corner_post_top), post_colour)
+		# Two lighter faces give the post a squared edge instead of a flat stripe.
+		draw_rect(Rect2(px + 1.0, corner_post_top + 3.0, 4.0, BASE_Y - corner_post_top - 3.0),
+			Color(0.30, 0.20, 0.13, 0.75))
+		draw_rect(Rect2(px + 10.0, corner_post_top + 3.0, 2.0, BASE_Y - corner_post_top - 3.0),
+			Color(0.10, 0.07, 0.05, 0.7))
+		# Cap and a warm rim so it reads as a separate, nearer upright.
+		draw_rect(Rect2(px - 2.0, corner_post_top, 18.0, 6.0), wood_dark)
+		draw_line(Vector2(px + 1.5, corner_post_top + 6.0), Vector2(px + 1.5, BASE_Y - 3.0),
+			Color(1.0, 0.88, 0.62, 0.18), 1.4)
+		draw_rect(Rect2(px - 3.0, BASE_Y - 3.0, 20.0, 4.0), Color(0.12, 0.08, 0.05, 0.55))

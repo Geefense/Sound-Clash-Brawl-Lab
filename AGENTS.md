@@ -787,6 +787,56 @@ here is gameplay-verified; implementation status is stated per item.
       cooldown, flash colours and burst life remain hand-set agent defaults for Garfield's eye on the
       Chromebook build.
 
+22. **Framing + visual-polish pass — implemented (2026-11-16).** Second owner-directed pass on the
+    sand arena after the first screenshot. Zero new art credits: everything is code, primitives and
+    existing sprites. Presentation only — no combat rule, hitbox, hurtbox or movement value changed.
+
+    - **Camera framing.** `CAMERA_FIT_DISTANCE = 820` replaces the inline `1100`: at the neutral
+      440 px fighter spacing the zoom is now **1.041** (was ~1.39) and the visible world is
+      **x 25…1255**, so the left flag stack (82–204) and the right lion stack (1075–1201) both sit
+      fully inside the frame. The 1.0 floor is unchanged, so the single-layer stage art still always
+      covers the view.
+    - **Milk crates.** Both scaled to **55 %** (0.22 and 0.209 from 0.4/0.38) and tucked against the
+      inner speaker bases at **(215, 568)** and **(1065, 568)**; the `offset` values were already
+      exactly half the texture height, so the base still sits on the sand with no re-authoring. Their
+      `GroundShadow`s follow (radius 19 / 18 at ground y 568).
+    - **Anchored leaning member.** `crowd_05_arms_crossed_man` (`ArmsCrossed`) now owns a dedicated
+      **edge slot** at **x 1032, slot −1**, with a permanent **7° lean**, and is excluded from
+      `_random_visible()`, so no rotation can ever drop him mid-line leaning on air. `YardBarrier`
+      grew a **corner post** at the same x (top y 492) for him to lean on. The front line is
+      therefore **6 bodies** (5 slots + the post) and the pool holds 3; the crowd is still 15.
+    - **Key legend** moved out of the sky to `LEGEND_Y = 698`, below the subtitle pill (630–680).
+    - **Depth and fighter pop.** New `CrowdHaze.gd` lays a cool wash (12 strips, sine falloff, peak
+      alpha 0.26) over **y 404–566** at **z −4**: the crowd and midground lose a value step while the
+      fighters keep full contrast. Fighter contact shadows widened to **radius 46** and
+      **strength 1.35** (from the 32 default), so both leads sit on a heavier grounded shadow.
+    - **Foreground corner.** The flat hat-and-shoulders primitive is gone: the corner is now an
+      **existing illustrated spectator** (`crowd_03_hypeman_bucket_hat`) at 0.34 scale, darkened to
+      `(0.26, 0.28, 0.36, 0.92)`, in the screen-space `Foreground` CanvasLayer at **z +10**, with
+      `ForegroundCorner.gd` drawing a soft radial wash behind it. The card's top sits at screen y
+      ≈ 620, below the fighters' feet band (576–600 at every zoom), so it still cannot cover the lane.
+    - **Idle groove and squash/stretch.** `BaseFighter` gains a presentation-only `_process` polish
+      layer that composes on `_anim_base_scale`: IDLE/CROUCH pop **2 px** up with **1.8 % squash** on
+      every **eighth note at 132 BPM** (exponential settle, so it breathes on the grid instead of
+      drifting); attacks get a **0.93 squash + 2.5 px** wind-up during startup, a **1.055 stretch +
+      6 px** micro-lunge at the active frame and an eased return through recovery; JUMP stretches on
+      the way up and compresses on the way down. `BeatService.beat_phase()` was added for the grid
+      position only — judgement still reads the input, per item 1.
+    - **Checks actually run** (Godot 4.5.stable headless, temporary harness deleted after the run):
+      **25/25** — zoom 1.041 with the view at 25…1255 (both stacks inside), crates at (215,568) and
+      (1065,568) at 55 % with matching shadows, the leaner on row 0 / slot −1 / x 1032 / 0.122 rad
+      lean, front line 6 of 15, eight forced rotations never moved him, haze and corner post present,
+      foreground card using the real texture at z +10 and darkened, legend at 698, idle groove bobbing
+      **1.86 px** with a **3.4 %** squash ratio. `--export-release "Web"` rebuilt `docs/` at
+      **10,651,400 B**.
+    - **Looked at on screen:** `…/frames/07-godot-build-framing-polish.png` — both full stacks framed,
+      knee-high crates beside them, clear sky, bottom-edge legend, illustrated corner spectator and
+      heavier fighter shadows all confirmed in the running Web build.
+    - **[TODO] Still unverified / open:** motion at speed (groove snap, lunge, squash on a real
+      exchange), whether a sixth front-line body crowds the right end once the stack is in frame, and
+      none of this has been seen under the Round 2 sunset or Round 3 night tint. The 820 fit
+      distance, 6 px lunge, 2 px groove, 0.26 haze and card tint are agent defaults for Garfield's eye.
+
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 
 Recorded at build `ad27516` (`stage/sound-clash-sand`); §9 items 1–19 above are the decisions that

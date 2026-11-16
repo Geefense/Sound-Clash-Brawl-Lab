@@ -38,6 +38,11 @@ extends Node2D
 const CLICK_LOOP_SECONDS := 10.0      # 22 beats at 132 BPM
 const CAMERA_MIN_DISTANCE := 420.0
 const CAMERA_MAX_DISTANCE := 1100.0
+## Framing constant (§9 item 22). At the neutral 440 px fighter spacing this puts the zoom at
+## ~1.03, which fits both full speaker stacks (left 82–204, right 1075–1201) inside the view
+## instead of cropping their outer edges. The 1.0 floor still guarantees the single-layer
+## stage art always covers the frame.
+const CAMERA_FIT_DISTANCE := 820.0
 const STAGE_SIZE := Vector2(1280, 720)
 const CAMERA_MIN_ZOOM := 1.0          # keep the 1280x720 stage art covering the view
 const CAMERA_MAX_ZOOM := 1.6
@@ -516,7 +521,7 @@ func _follow_action() -> void:
 	var mid := (p1.global_position + p2.global_position) * 0.5
 	var span := clampf(absf(p1.global_position.x - p2.global_position.x) * 1.8,
 		CAMERA_MIN_DISTANCE, CAMERA_MAX_DISTANCE)
-	var z := clampf(1100.0 / span, CAMERA_MIN_ZOOM, CAMERA_MAX_ZOOM)
+	var z := clampf(CAMERA_FIT_DISTANCE / span, CAMERA_MIN_ZOOM, CAMERA_MAX_ZOOM)
 	var half := STAGE_SIZE * 0.5 / z
 	var target := mid + Vector2(0.0, -CAMERA_FOCUS_LIFT)
 	target.x = clampf(target.x, half.x, STAGE_SIZE.x - half.x)

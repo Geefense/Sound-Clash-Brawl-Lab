@@ -1,4 +1,4 @@
-[gd_scene load_steps=41 format=3]
+[gd_scene load_steps=42 format=3]
 
 [ext_resource type="Script" path="res://scripts/TestArena.gd" id="1_arena"]
 [ext_resource type="PackedScene" path="res://scenes/BaseFighter.tscn" id="2_fighter"]
@@ -30,7 +30,8 @@
 [ext_resource type="Script" path="res://scripts/stages/GroundShadow.gd" id="28_shadow"]
 [ext_resource type="Script" path="res://scripts/match/RoundController.gd" id="29_rounds"]
 [ext_resource type="Script" path="res://scripts/stages/YardBarrier.gd" id="30_barrier"]
-[ext_resource type="Script" path="res://scripts/stages/ForegroundSpectator.gd" id="31_foreground"]
+[ext_resource type="Script" path="res://scripts/stages/ForegroundCorner.gd" id="31_foreground"]
+[ext_resource type="Script" path="res://scripts/stages/CrowdHaze.gd" id="32_haze"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_floor"]
 size = Vector2(1280, 40)
@@ -149,30 +150,34 @@ shape = SubResource("RectangleShape2D_wall")
 z_index = -5
 
 [node name="LeftCrate" type="Sprite2D" parent="RecordCrates"]
-position = Vector2(300, 592)
-scale = Vector2(0.4, 0.4)
+position = Vector2(215, 568)
+scale = Vector2(0.22, 0.22)
 texture = ExtResource("16_crate_red")
 offset = Vector2(0, -120.5)
 
 [node name="RightCrate" type="Sprite2D" parent="RecordCrates"]
-position = Vector2(1025, 592)
-scale = Vector2(0.38, 0.38)
+position = Vector2(1065, 568)
+scale = Vector2(0.209, 0.209)
 texture = ExtResource("17_crate_black")
 offset = Vector2(0, -118.5)
 
 [node name="Shadow" type="Node2D" parent="RecordCrates/LeftCrate"]
 z_index = -1
 script = ExtResource("28_shadow")
-ground_y = 592.0
-radius = 34.0
+ground_y = 568.0
+radius = 19.0
 squash = 0.28
 
 [node name="Shadow" type="Node2D" parent="RecordCrates/RightCrate"]
 z_index = -1
 script = ExtResource("28_shadow")
-ground_y = 592.0
-radius = 32.0
+ground_y = 568.0
+radius = 18.0
 squash = 0.28
+
+[node name="CrowdHaze" type="Node2D" parent="."]
+z_index = -4
+script = ExtResource("32_haze")
 
 [node name="YardBarrier" type="Node2D" parent="."]
 z_index = -4
@@ -303,9 +308,15 @@ zoom = Vector2(1.2, 1.2)
 [node name="Foreground" type="CanvasLayer" parent="."]
 layer = 1
 
-[node name="Spectator" type="Node2D" parent="Foreground"]
-position = Vector2(0, 604)
+[node name="CornerWash" type="Node2D" parent="Foreground"]
 script = ExtResource("31_foreground")
+
+[node name="BottomCard" type="Sprite2D" parent="Foreground"]
+position = Vector2(95, 749)
+z_index = 10
+scale = Vector2(0.34, 0.34)
+modulate = Color(0.26, 0.28, 0.36, 0.92)
+texture = ExtResource("12_hat")
 
 [node name="HUD" type="CanvasLayer" parent="."]
 

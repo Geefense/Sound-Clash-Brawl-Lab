@@ -290,6 +290,21 @@ const IMPACT_FLASH_TICKS := 2
 const IMPACT_FLASH_PLAIN := Color(2.10, 1.94, 1.52)
 const IMPACT_FLASH_ONBEAT := Color(1.55, 1.92, 1.30)
 var _impact_flash_ticks: int = 0
+
+## Visual polish (AGENTS.md §9 item 22): a 132 BPM idle groove plus attack lunge and
+## squash/stretch. Presentation only: the sprite's draw scale and its own local position
+## move, while the collision body, hurtbox and hitbox never read any of it. `_anim_base_scale`
+## is the scale `_play_state_anim()` authored for the current animation, so the polish always
+## composes on top of the per-animation scale instead of fighting it.
+const GROOVE_LIFT := 2.0                  # px the body pops up on each eighth note
+const GROOVE_SQUASH := 0.018              # ±1.8 % vertical squash on the same pop
+const GROOVE_DECAY := 3.4                 # how fast the pop settles (higher = snappier)
+const LUNGE_ATTACK_PX := 6.0              # forward micro-lunge at the active frame
+const LUNGE_WINDUP_PX := 2.5              # the tiny pull-back during startup
+const SQUASH_STARTUP := 0.93              # anticipation: shorter and wider
+const SQUASH_ACTIVE := 1.055              # contact: stretched forward
+const SQUASH_JUMP := 1.05
+var _anim_base_scale := Vector2(0.25, 0.25)
 var _surge_ticks: int = 0
 var _half_hype_awarded: bool = false
 var _guard_beat: Dictionary = {}
@@ -1229,7 +1244,58 @@ func _play_state_anim() -> void:
 		sprite.offset = ANIM_OFFSET.get(StringName(key), ANIM_OFFSET_DEFAULT) / k
 		var s: float = float(ANIM_SCALE.get(key, BASE_SPRITE_SCALE)) * k
 		sprite.scale = Vector2(s, s)
+		_anim_base_scale = sprite.scale
 		sprite.play(anim)
+
+
+# =========================================================================
+# Visual polish — idle groove, attack lunge, squash & stretch (§9 item 22)
+# =========================================================================
+func _process(_delta: float) -> void:
+	_apply_visual_polish()
+
+
+func _apply_visual_polish() -> void:
+	if sprite == null:
+		return
+	var squash := 1.0
+	var lift := 0.0
+	var lunge := 0.0
+	match state:
+		State.IDLE, State.CROUCH:
+			# One pop per eighth note at 132 BPM: a fast attack, then an exponential settle,
+			# so the body breathes on the grid instead of looking frozen between hits.
+			var pop := exp(-_groove_phase() * GROOVE_DECAY)
+			lift = -GROOVE_LIFT * pop
+			squash = 1.0 - GROOVE_SQUASH * pop
+		State.ATTACK_STARTUP:
+			var t := clampf(float(state_frame) / maxf(float(_attack.get("startup", 6)), 1.0), 0.0, 1.0)
+			squash = lerpf(1.0, SQUASH_STARTUP, t)
+			lunge = lerpf(0.0, -LUNGE_WINDUP_PX, t)
+		State.ATTACK_ACTIVE:
+			squash = SQUASH_ACTIVE
+			lunge = LUNGE_ATTACK_PX
+		State.ATTACK_RECOVERY:
+			var t_rec := clampf(float(state_frame) / maxf(float(_attack.get("recovery", 8)), 1.0), 0.0, 1.0)
+			squash = lerpf(1.04, 1.0, t_rec)
+			lunge = lerpf(LUNGE_ATTACK_PX * 0.83, 0.0, t_rec)
+		State.JUMP:
+			squash = SQUASH_JUMP if velocity.y < -120.0 else (1.045 if velocity.y > 160.0 else 1.0)
+		_:
+			pass
+	# `2.0 - squash` widens the body by exactly as much as it shortens it: cheap, convincing
+	# squash-and-stretch with volume preserved, and no per-frame scale race with the anim.
+	sprite.scale = Vector2(_anim_base_scale.x * (2.0 - squash), _anim_base_scale.y * squash)
+	sprite.position = Vector2(lunge * float(facing), lift)
+
+
+## 0..1 inside the current eighth note. Uses the audio-clock beat service when the arena
+## wired one, and a tick-based fallback (132 BPM ≈ 13.6 ticks per eighth at 60 Hz) when it
+## did not, so a standalone fighter still grooves.
+func _groove_phase() -> float:
+	if beat_service != null:
+		return fposmod(beat_service.beat_phase() * 2.0, 1.0)
+	return fposmod(float(_tick_count) / 13.64, 1.0)
 
 
 ## How much the import cap shrank this animation's frames (1.0 when uncapped). The

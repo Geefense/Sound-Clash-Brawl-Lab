@@ -23,6 +23,8 @@ const FONT_SUB := preload("res://assets/fonts/ChakraPetch-Bold.ttf")
 const SUBTITLE_SECONDS := 1.8
 const SUBTITLE_COOLDOWN_SECONDS := 4.0
 const SUBTITLE_Y := 655.0
+## Bottom-edge key legend (below the subtitle pill at 630–680, inside the 720 canvas).
+const LEGEND_Y := 698.0
 const SUBTITLE_FADE := 0.45
 
 var subtitles_enabled: bool = true
@@ -94,7 +96,9 @@ func _draw() -> void:
 	_hype_bar(Vector2(MARGIN, MARGIN + BAR_H + 8.0))
 	_beat_pulse(Vector2(width * 0.5, MARGIN + BAR_H * 0.5))
 	_ai_banner(Vector2(width * 0.5 - 150.0, MARGIN + 40.0))
-	_legend(Vector2(width * 0.5 - 210.0, MARGIN + 96.0))
+	# Owner direction (§9 item 22): the workshop key strip belongs at the bottom edge, not
+	# across the sky/ocean where it fought the stage art.
+	_legend(Vector2(width * 0.5 - 210.0, LEGEND_Y))
 	_round_clock(width)
 	_round_pips(width)
 	_surge_banner(Vector2(width * 0.5, size.y * 0.34))

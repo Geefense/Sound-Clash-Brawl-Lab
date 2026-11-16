@@ -20,6 +20,12 @@ const FRONT_SLOTS := [340.0, 470.0, 640.0, 810.0, 940.0]
 const BACK_SLOTS := [300.0, 428.0, 556.0, 724.0, 852.0, 980.0]
 const PINNED_NAME := "Queen"
 const PINNED_SLOT := 2
+## Owner direction (§9 item 22): the arms-crossed man is anchored at the edge of the line,
+## leaning on the yard barrier's corner post beside the right-hand speaker stack, and is never
+## swapped out — so he can never end up leaning on thin air.
+const PINNED_EDGE_NAME := "ArmsCrossed"
+const EDGE_SLOT_X := 1032.0
+const EDGE_LEAN_DEG := 7.0
 
 @export var bob_pixels: float = 4.0           # subtle off-beat sway during normal play
 @export var surge_hop_pixels: float = 18.0    # surge jubilation
@@ -84,6 +90,7 @@ class Member:
 	var swapping: bool = false
 	var phase: float = 0.0                  # own ambient sway phase (radians)
 	var rate: float = 1.0                   # own ambient sway rate (radians/s)
+	var lean: float = 0.0                   # permanent body lean (radians), e.g. against a post
 	var flinch: float = 0.0                 # 0–1.4, decays over flinch_seconds
 	var flinch_dir: float = 1.0             # −1 away to the left, +1 away to the right
 
@@ -155,6 +162,10 @@ func _layout() -> void:
 	if queen != null:
 		_assign(queen, 0, PINNED_SLOT)
 		free.erase(queen)
+	var leaner := _member_named(PINNED_EDGE_NAME)
+	if leaner != null:
+		_assign_edge(leaner)
+		free.erase(leaner)
 	for slot in [0, 1, 3, 4]:
 		if free.is_empty():
 			break
@@ -167,9 +178,25 @@ func _layout() -> void:
 		_pool(m)
 
 
+## The edge leaner owns its own slot: front row, far right, tilted into the corner post.
+func _assign_edge(m: Member) -> void:
+	m.row = 0
+	m.slot = -1
+	m.lean = deg_to_rad(EDGE_LEAN_DEG)     # positive rotation leans the head toward +x
+	m.home = Vector2(EDGE_SLOT_X, FRONT_ROW_Y)
+	m.sprite.position = m.home
+	m.sprite.scale = m.front_scale
+	m.sprite.z_index = 0
+	m.sprite.modulate = Color(1.0, 1.0, 1.0, 1.0)
+	m.sprite.rotation = m.lean
+	m.sprite.visible = true
+	_update_shadow(m)
+
+
 func _assign(m: Member, row: int, slot: int) -> void:
 	m.row = row
 	m.slot = slot
+	m.lean = 0.0
 	m.home = Vector2(_slot_x(row, slot), _row_y(row))
 	m.sprite.position = m.home
 	m.sprite.scale = _row_scale(m, row)
@@ -285,7 +312,8 @@ func _rotate_one() -> bool:
 func _random_visible() -> Member:
 	var candidates: Array[Member] = []
 	for m in _members:
-		if m.row >= 0 and not m.swapping and m.sprite.name != PINNED_NAME:
+		if m.row >= 0 and not m.swapping \
+				and m.sprite.name != PINNED_NAME and m.sprite.name != PINNED_EDGE_NAME:
 			candidates.append(m)
 	if candidates.is_empty():
 		return null
@@ -384,7 +412,7 @@ func _update_sway(delta: float) -> void:
 			m.sprite.position.y)
 		# While a surge hop is animating, the tween owns rotation; hands off.
 		if not surging:
-			m.sprite.rotation = sin(m.phase * 0.85) * tilt + lean * flinch_tilt
+			m.sprite.rotation = m.lean + sin(m.phase * 0.85) * tilt + lean * flinch_tilt
 
 
 ## Nearby spectators flinch away from a body that dashes, is thrown or lands beside them.
@@ -449,11 +477,11 @@ func _bounce(m: Member, amp: float, duration: float, delay: float, tilt: float =
 	tw.tween_property(m.sprite, "position:y", m.home.y - amp, duration * 0.45) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	if tilt != 0.0:
-		tw.parallel().tween_property(m.sprite, "rotation", tilt, duration * 0.45)
+		tw.parallel().tween_property(m.sprite, "rotation", m.lean + tilt, duration * 0.45)
 	tw.tween_property(m.sprite, "position:y", m.home.y, duration * 0.55) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
 	if tilt != 0.0:
-		tw.parallel().tween_property(m.sprite, "rotation", 0.0, duration * 0.55)
+		tw.parallel().tween_property(m.sprite, "rotation", m.lean, duration * 0.55)
 	m.bounce = tw
 
 
@@ -465,4 +493,4 @@ func _settle() -> void:
 		if tw != null and tw.is_valid():
 			tw.kill()
 		m.sprite.position = m.home
-		m.sprite.rotation = 0.0
+		m.sprite.rotation = m.lean

@@ -59,11 +59,13 @@ with sand in front and behind them. Nothing was cropped, repainted or offset.
 | Coastal wind motes (CPUParticles2D) | `WindMotes` | −5 |
 | Dancehall crowd, back row | `CrowdLine` children | −6 |
 | Dancehall crowd, front row | `CrowdLine` children | −5 |
-| Low yard barrier (`YardBarrier.gd`) | `YardBarrier` | −4 |
+| Cool crowd haze (`CrowdHaze.gd`) | `CrowdHaze` | −4 |
+| Low yard barrier + corner post (`YardBarrier.gd`) | `YardBarrier` | −4 |
 | Fighter contact shadows | `Shadow` in `BaseFighter.tscn` | −2 |
 | Sand foot dust (CPUParticles2D) | `Dust` in `BaseFighter.tscn` | −1 |
 | Fighters | `P1`, `P2` | 0 |
-| Near-camera spectator (`ForegroundSpectator.gd`) | `Foreground/Spectator` (CanvasLayer 1) | 10 |
+| Corner wash behind the near-camera spectator | `Foreground/CornerWash` (`ForegroundCorner.gd`, CanvasLayer 1) | 9 |
+| Near-camera spectator card (real crowd sprite) | `Foreground/BottomCard` (CanvasLayer 1) | 10 |
 | Splatter on a hit fighter | runtime `StageSplat` child | 6 |
 | Bird fly-by | `BirdHazard` | 20 |
 
@@ -85,6 +87,19 @@ contact bursts alongside the existing electric parry static. Headless 4.5 check:
 passed (barrier z −4, spectator z +10, crowd 15/5/6/4, sway moved 9 of 11, flinch reached 7, flash
 cleared after 2 ticks, on-beat burst + green flash, spark cap still 4). **Not looked at on screen —
 no GPU in the authoring environment**, so colour, occlusion and feel are unverified.
+
+**Framing and visual polish (2026-11-16, `AGENTS.md` §9 item 22).** The camera fit distance became
+`CAMERA_FIT_DISTANCE = 820`, so the neutral zoom is **~1.04** instead of ~1.39 and both full speaker
+stacks are inside the frame (visible world x 25–1255). Both vinyl crates are 55 % of their old size and
+tucked against the inner speaker bases at (215, 568) and (1065, 568) with matching shadows; the arms-crossed
+spectator is pinned to an edge slot at x 1032 leaning on a new corner post and never joins a rotation; the
+key legend moved to y 698. For depth, `CrowdHaze.gd` washes y 404–566 cool at z −4 while fighter contact
+shadows widened (radius 46, strength 1.35), and the old primitive foreground silhouette was replaced by a
+darkened real crowd sprite on a soft corner wash. Animation gained a 132 BPM eighth-note idle groove
+(2 px pop, 1.8 % squash) plus attack wind-up, micro-lunge and squash/stretch, all composing on the
+per-animation sprite scale and never touching collision. Headless 4.5 check: 25/25 assertions passed.
+Confirmed on screen in the Web build (`frames/07-godot-build-framing-polish.png`); motion at speed and
+the sunset/night tints remain unseen.
 
 Stage mechanics, all presentation-only (no combat rule, hit registry or round state was changed):
 

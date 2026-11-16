@@ -23,12 +23,16 @@ const RAIL_H := 10.0
 const PLANK_W := 45.5
 const POST_EVERY := 6
 
-@export var wood_dark: Color = Color(0.31, 0.20, 0.13, 1.0)
-@export var wood_mid: Color = Color(0.40, 0.27, 0.17, 1.0)
-@export var wood_light: Color = Color(0.49, 0.35, 0.22, 1.0)
-@export var post_colour: Color = Color(0.24, 0.15, 0.10, 1.0)
-@export var rail_colour: Color = Color(0.55, 0.58, 0.58, 1.0)
-@export var rail_hi: Color = Color(0.78, 0.82, 0.80, 1.0)
+## Kept deliberately dark and low-saturation: the barrier is an occluder, not a subject.
+## The first on-screen check showed the earlier mid-brown plank tones reading as a bright
+## straw-yellow band that pulled the eye off the fighters at default zoom, so every value
+## here sits roughly 30 % lower and the zinc rail lost its bright highlight.
+@export var wood_dark: Color = Color(0.19, 0.12, 0.08, 1.0)
+@export var wood_mid: Color = Color(0.25, 0.16, 0.10, 1.0)
+@export var wood_light: Color = Color(0.30, 0.20, 0.13, 1.0)
+@export var post_colour: Color = Color(0.14, 0.09, 0.06, 1.0)
+@export var rail_colour: Color = Color(0.36, 0.39, 0.39, 1.0)
+@export var rail_hi: Color = Color(0.52, 0.55, 0.54, 1.0)
 @export var nail_colour: Color = Color(0.17, 0.12, 0.09, 1.0)
 @export var sand_shadow: Color = Color(0.20, 0.11, 0.06, 0.30)
 
@@ -75,11 +79,14 @@ func _draw() -> void:
 
 	# Zinc cap rail: one flat band, a darker underside and a bright top edge.
 	draw_rect(Rect2(LEFT, TOP_Y, width, RAIL_H), rail_colour)
-	draw_rect(Rect2(LEFT, TOP_Y + RAIL_H - 3.0, width, 3.0), Color(0.34, 0.37, 0.37, 1.0))
-	draw_line(Vector2(LEFT, TOP_Y + 1.0), Vector2(RIGHT, TOP_Y + 1.0), rail_hi, 1.6)
+	draw_rect(Rect2(LEFT, TOP_Y + RAIL_H - 3.0, width, 3.0), Color(0.22, 0.24, 0.24, 1.0))
+	draw_line(Vector2(LEFT, TOP_Y + 1.0), Vector2(RIGHT, TOP_Y + 1.0), rail_hi, 1.2)
+	# Contact darkening where the rail meets the planks, so the cap does not read as a
+	# bright horizontal stripe across the frame.
+	draw_rect(Rect2(LEFT, TOP_Y + RAIL_H, width, 2.0), Color(0.10, 0.07, 0.05, 0.55))
 	# Corrugation marks, cheap and even.
 	var cx := LEFT
 	while cx < RIGHT:
 		draw_line(Vector2(cx, TOP_Y + 2.0), Vector2(cx, TOP_Y + RAIL_H - 3.0),
-			Color(0.45, 0.48, 0.48, 0.45), 1.0)
+			Color(0.28, 0.30, 0.30, 0.45), 1.0)
 		cx += 17.0

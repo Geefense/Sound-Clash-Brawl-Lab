@@ -773,11 +773,19 @@ here is gameplay-verified; implementation status is stated per item.
       cleared to white after 2 ticks, an on-beat contact produced a `hit_onbeat` burst **and** the
       green flash `(1.55, 1.92, 1.3)`, and six forced sparks still capped at **4**.
       `--export-release "Web"` rebuilt `docs/` successfully.
-    - **[TODO] Not verified:** nothing was looked at on screen — this environment has no GPU, so no
-      colour, readability, occlusion or feel judgement is claimed for the barrier, the corner
-      silhouette, the sway/flinch amplitude or the burst colours. Sway, flinch, speed threshold,
-      cooldown, flash colours and burst life are hand-set agent defaults and need Garfield's eye on
-      the Chromebook build.
+    - **Looked at on screen (one still, Web build).** The rebuilt `docs/` export was served and
+      captured in a browser: `artifacts/sound-clash/art-source/references/2026-11-16-scr-review/frames/06-godot-build-after-upgrade.png`.
+      It confirms the five-plane composition, the barrier occluding the crowd's ankles along the
+      whole line, the front/back rows at the right scale, and the corner silhouette sitting below
+      both fighters' feet. The first capture also showed the barrier reading as a bright straw band
+      that pulled the eye, so every plank/rail value was dropped roughly 30 % and the bright rail
+      highlight removed; the shipped plank is **rgb(77, 50, 31)** against **rgb(234, 167, 78)** sand,
+      the zinc cap **rgb(58, 54, 48)**. That is a sampled pixel measurement, not an impression.
+    - **[TODO] Still unverified:** motion and feel — the sway, the proximity flinch, the two-tick
+      flash and the on-beat burst cannot be judged from one still, and the crowd/flash colours have
+      not been seen under the Round 2 sunset or Round 3 night tint. Sway, flinch, speed threshold,
+      cooldown, flash colours and burst life remain hand-set agent defaults for Garfield's eye on the
+      Chromebook build.
 
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 

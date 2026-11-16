@@ -56,3 +56,6 @@ Thumbs.db
 
 # Local Godot engine + export-template downloads (never committed)
 .tools/
+
+# Python bytecode from the art-prep scripts
+__pycache__/

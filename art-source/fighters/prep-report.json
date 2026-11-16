@@ -9,18 +9,18 @@
     "crop_box": [
       102,
       13,
-      1085,
-      1383
+      1089,
+      1384
     ],
     "frame": [
-      367,
+      369,
       512
     ],
-    "downscale": 0.3737,
+    "downscale": 0.3735,
     "sole_row": 511,
-    "sole_centre_x": 307.7,
+    "sole_centre_x": 322.2,
     "offset": [
-      -124.2,
+      -137.8,
       -255.0
     ],
     "figure_height": 512,

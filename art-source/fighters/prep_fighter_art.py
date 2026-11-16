@@ -41,9 +41,20 @@ MIN_ISLAND = 400        # px area a detached blob needs to be kept
 #                border fill cannot reach (between the arm and the stand, between the
 #                legs). None disables the pass.
 JOBS = [
+    # The Dubplate portrait is the one image whose backdrop is a painted vignette with
+    # a cast shadow. The mic cable seals that shadow into a pocket the border fill can
+    # never enter, so it is cleared by a smooth-area growth seeded inside the pocket
+    # ("pocket_seeds"), then any remaining uniform-backdrop fragment is dropped and the
+    # art's own enclosed flecks are restored. See the options block below.
     ("dubplate/dubplate-selector-portrait_original.png",
      "dubplate/portrait.png", (40, 170), None, "Dubplate portrait",
-     {"keep_frac": 0.15, "ground_cut": 1395, "shadow_cut": (0.55, 1.35, 90)}),
+     {"keep_frac": 0.15, "ground_cut": 1395, "shadow_cut": (0.55, 1.35, 90),
+      "pocket_seeds": [(200, 900), (250, 1050), (150, 1100), (350, 1150),
+                       (300, 950), (400, 1000), (540, 1100), (520, 1050),
+                       (560, 1180), (500, 1000), (500, 1150)],
+      "pocket_gradient": 12,
+      "uniform_pockets": (400, 20, 14),   # (min_area, backdrop tolerance, max std)
+      "fill_holes_max": 2000}),
     ("young-selecta/01_idle-backpack_original.png",
      "young-selecta/idle.png", (16, 255), (240, 6), "Young Selecta idle",
      {"big_holes": (3000, 10), "rim": (4, 232)}),
@@ -126,6 +137,81 @@ def fill_holes(mask: np.ndarray, rgb: np.ndarray, min_area: int, tol: int) -> np
     return out
 
 
+def clear_smooth_pocket(mask: np.ndarray, rgb: np.ndarray, seeds, gradient: int) -> np.ndarray:
+    """Clear a background pocket that the border fill cannot reach.
+
+    The Dubplate backdrop is a painted vignette with a cast shadow, and the mic cable
+    closes a loop around part of it. A plain colour fill leaks across the artwork's own
+    soft shading, so the growth is limited to low-gradient pixels: it travels the flat
+    backdrop and the flat shadow, then stops at the drawing's ink outlines. `seeds` are
+    points inside the pocket (source pixels).
+    """
+    from scipy import ndimage
+    lum = rgb @ np.array([0.299, 0.587, 0.114])
+    grad = np.hypot(ndimage.sobel(lum, 0), ndimage.sobel(lum, 1))
+    allowed = (grad < gradient) & mask
+    grown = np.zeros_like(mask)
+    for x, y in seeds:
+        if 0 <= y < grown.shape[0] and 0 <= x < grown.shape[1]:
+            grown[y, x] = True
+    structure = ndimage.generate_binary_structure(2, 1)
+    for _ in range(800):
+        nxt = ndimage.binary_dilation(grown, structure, 1) & allowed
+        if nxt.sum() == grown.sum():
+            break
+        grown = nxt
+    return mask & ~grown
+
+
+def drop_uniform_pockets(mask: np.ndarray, rgb: np.ndarray, min_area: int, tol: int,
+                         max_std: float) -> np.ndarray:
+    """Drop detached components that are flat studio backdrop.
+
+    A cast shadow's leftovers and the gaps between the legs are uniform backdrop with a
+    near-zero deviation, while the trousers and shoes are textured. Requiring both a
+    backdrop-matching median colour and a low deviation is what keeps this from punching
+    holes in the character, so never replace it with a per-pixel colour test.
+    """
+    from scipy import ndimage
+    labels, count = ndimage.label(mask)
+    if count <= 1:
+        return mask
+    sizes = ndimage.sum(mask, labels, range(1, count + 1))
+    border_cols = np.concatenate([rgb[0, :], rgb[-1, :], rgb[:, 0], rgb[:, -1]])
+    bg_colour = np.median(border_cols, axis=0)
+    out = mask.copy()
+    for index in range(1, count + 1):
+        if sizes[index - 1] < min_area:
+            continue
+        component = labels == index
+        pixels = rgb[component]
+        median = np.median(pixels, axis=0)
+        if np.abs(median - bg_colour).max() <= tol and pixels.std(axis=0).max() < max_std:
+            out[component] = False
+    return out
+
+
+def restore_small_holes(mask: np.ndarray, max_area: int) -> np.ndarray:
+    """Re-seal the art's own tiny enclosed flecks after the pocket passes.
+
+    The border flood fill and the pocket growth both leave pinprick holes inside the
+    trousers' texture. Anything enclosed and smaller than `max_area` is drawing, not
+    backdrop, so it goes back to opaque.
+    """
+    from scipy import ndimage
+    filled = ndimage.binary_fill_holes(mask)
+    holes = filled & ~mask
+    if not holes.any():
+        return mask
+    labels, count = ndimage.label(holes)
+    sizes = ndimage.sum(holes, labels, range(1, count + 1))
+    out = mask.copy()
+    for index in range(1, count + 1):
+        if sizes[index - 1] < max_area:
+            out |= labels == index
+    return out
+
+
 def keep_largest(mask: np.ndarray, fraction: float) -> np.ndarray:
     """Keep only the character: the biggest blob, plus anything close to its size."""
     from scipy import ndimage
@@ -166,6 +252,9 @@ def prepare(src: Path, dst: Path, tolerance, hole, options) -> dict:
     rgb = np.asarray(im.convert("RGB")).astype(np.int16)
     if hole is not None:
         fg = fill_holes(fg, rgb, hole[0], hole[1])
+    if options.get("pocket_seeds"):
+        fg = clear_smooth_pocket(fg, rgb, options["pocket_seeds"],
+                                 int(options.get("pocket_gradient", 12)))
     if options.get("big_holes"):
         fg = clear_big_pockets(fg, rgb, options["big_holes"][0], options["big_holes"][1])
     if options.get("keep_frac"):
@@ -193,6 +282,10 @@ def prepare(src: Path, dst: Path, tolerance, hole, options) -> dict:
         reddish = (red > min_red) & (red > green * ratio)
         band &= ~reddish
         fg[start:] = band
+    if options.get("uniform_pockets"):
+        fg = drop_uniform_pockets(fg, rgb, *options["uniform_pockets"])
+    if options.get("fill_holes_max"):
+        fg = restore_small_holes(fg, int(options["fill_holes_max"]))
 
     # Bite one pixel in (no white rim from the antialiased studio edge), then feather.
     from scipy import ndimage

@@ -54,7 +54,7 @@ const FIGHTERS := {
 			&"idle": ["res://assets/sprites/dubplate/portrait.png"],
 		},
 		"anim_offset": {
-			"idle": Vector2(-124.2, -255.0),
+			"idle": Vector2(-137.8, -255.0),
 		},
 		"anim_scale": {
 			"idle": 0.2378,             # 121.75 px target / 512 px frame

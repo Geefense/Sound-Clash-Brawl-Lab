@@ -1342,6 +1342,18 @@ frame. Outputs are `godot/assets/sprites/dubplate/portrait.png` and
 `anim_source_max` is 512 and the existing `_import_cap_ratio()` compensation resolves to 1.0, so no
 scale is applied twice.
 
+**Dubplate cut-out correction, 2026-11-16 (Freebuff).** The first pass kept the portrait's painted
+cast shadow: the mic cable closes a loop around it, so the edge-seeded fill could never reach that
+backdrop, and the portrait shipped with a large dark slab behind the mic hand. The pipeline now
+clears such a pocket with a gradient-limited growth seeded inside it (`pocket_seeds`), drops any
+remaining flat-backdrop fragment by median colour plus low deviation (never by single pixels - a
+per-pixel backdrop test punches holes through the trousers' shadow tone), and re-seals the art's own
+enclosed flecks smaller than 2,000 px. Regenerated output is 369x512; `FighterRoster`'s Dubplate
+`anim_offset` moved from `(-124.2, -255.0)` to `(-137.8, -255.0)` because the crop changed, and
+`docs/` was re-exported. The 27 headless checks were re-run after the change and still pass. The
+owner's original upload is unchanged, and this is still one static placeholder portrait, not an
+animation set.
+
 **Roster** (`godot/scripts/fighters/FighterRoster.gd` — data only, one shared FSM):
 
 | Key | Name | Walk | Reach | Body | Frames |
@@ -1382,7 +1394,7 @@ godot --headless --path godot --script res://tools/headless_roster_check.gd
 godot --headless --path godot --export-release "Web" docs/index.html
 ```
 
-`tools/headless_roster_check.gd` prints 28 checks and ends `ALL CHECKS PASSED`: title scene boots as
+`tools/headless_roster_check.gd` prints 27 checks and ends `ALL CHECKS PASSED`: title scene boots as
 the main scene, MatchSetup defaults and roster cycling, the arena applies both fighters and the AI
 style / subtitle flag, Dubplate's frames build and render at the adult scale, Young Selecta walks at
 250 px/s with a 109 px (84 + 25) jab box and a 131 px hurtbox, the AI drives the shared FSM through

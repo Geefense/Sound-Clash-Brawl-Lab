@@ -304,7 +304,7 @@ zoom = Vector2(1.2, 1.2)
 layer = 1
 
 [node name="Spectator" type="Node2D" parent="Foreground"]
-position = Vector2(0, 560)
+position = Vector2(0, 604)
 script = ExtResource("31_foreground")
 
 [node name="HUD" type="CanvasLayer" parent="."]

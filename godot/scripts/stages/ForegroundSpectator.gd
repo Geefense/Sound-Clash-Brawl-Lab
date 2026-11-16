@@ -8,6 +8,11 @@ extends Node2D
 ##
 ## Lives in its own `CanvasLayer` (layer 1, below the HUD's) so the tracking camera never
 ## drags or scales it — it behaves like the corner of a camera lens, not a stage prop.
+##
+## It is anchored at screen y 604 on purpose. With `Camera2D` zoom 1.0–1.6 and the arena's
+## focus lift, both fighters' feet land between screen y 576 and 600, so the silhouette's
+## hat (local y 0) starts below that band at every zoom: it can never cover a foot, a
+## hitbox or the fighting lane.
 ## Drawn with primitives only: no texture, no export weight, alpha 0.85.
 
 const ALPHA := 0.85

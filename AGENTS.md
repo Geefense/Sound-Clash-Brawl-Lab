@@ -727,11 +727,64 @@ here is gameplay-verified; implementation status is stated per item.
     tie-replay length are agent defaults; only the 60 s length and the time-out/tie rules are owner
     decisions.
 
+21. **Crowd staging + impact juice from the screen-recording review — implemented (2026-11-16).**
+    Owner direction: apply the 2026-11-16 reference findings directly to the live Godot build, on top
+    of the existing 15 sliced Dancehall crowd characters and 2 vinyl milk crates, without touching the
+    approved Feedback art. Everything below is presentation-only.
+
+    - **Reference relocation.** The three screen recordings moved out of the repository root into
+      `artifacts/sound-clash/art-source/references/2026-11-16-scr-review/` beside
+      `CROWD-AND-MOVEMENT-REVIEW-2026-11-16.md` and five evidence stills, under their real names
+      (`ScreenRecording_11-15-2026-{17-34-45,23-25-15,23-26-04}_1.mov`; byte-identical to the root
+      blobs from `596ae3a`). They live outside `/godot` and `/docs`, so the Web pack never carries
+      them: `docs/index.pck` is **10,648,048 B (10.16 MiB)** after this build, still under the 11 MB
+      budget, and `index.wasm` is unchanged at 38,057,390 B.
+    - **`YardBarrier.gd`** draws a low wooden/zinc yard barrier with primitives across y **524–558**
+      at **z −4** — over the crowd rows (−5 front, −6 back), under the fighters (0) — so the 15
+      sprites stand behind something instead of being cut off onto the sand. No texture, no export
+      weight. The pinned Dancehall Queen and both milk crates are untouched and stay crisp; the crates
+      sit at y 592, in front of and below the barrier band.
+    - **`ForegroundSpectator.gd`** puts one cropped shoulder/bucket-hat silhouette in its own
+      `Foreground` **CanvasLayer (layer 1, below the HUD's)** at **z +10**, bottom-left, alpha 0.85.
+      It is screen-space, so the tracking camera never drags or scales it, and it sits below the
+      fighters' feet band so it cannot hide the lane. This is the fifth depth plane the arena was
+      missing.
+    - **`CrowdLine` ambient sway + proximity ebb.** Each member gets its own phase and rate
+      (0.15–0.29 Hz, ±2.6 px, 1.3° tilt) written into `position.x` only, so the existing beat bounce,
+      surge hop and 12–18 s reshuffle keep owning `position.y`/`rotation` unchanged. `flinch(at_x,
+      strength)` pulls spectators within **240 px** away from a body (9 px, 6°, 0.55 s decay);
+      `TestArena` fires it when a fighter is **THROWN / KNOCKDOWN** (strength 1.25) or moving at
+      **≥ 320 px/s** (0.55 — walking is 220, so walking never triggers it), rate-limited to one per
+      fighter per **0.85 s**. This is the live-action yard-brawl beat: they lean out of the way and
+      close back in.
+    - **Impact juice (closes backlog item B4).** `BaseFighter.flash_impact(on_beat)` brightens the
+      struck `Sprite` for **2 physics ticks** — `(2.10, 1.94, 1.52)` off the beat, `(1.55, 1.92,
+      1.30)` on it — counted before the hitstop early-return so a frozen contact still releases it,
+      and cleared in `reset_for_round()`. `ParrySpark` gained `parry` / `hit` / `hit_onbeat` styles:
+      the existing electric static plus a crisp four-point contact burst (white/gold, or vibrant
+      green/gold when the **input** was judged on-beat), primitives only, 0.24 s life. `TestArena`
+      spawns the burst from `_on_strike_resolved`, and the speaker-stack slam uses the `hit` style.
+      Caps unchanged: **4 sparks, 16 particles**, no per-hit allocation, no new texture group.
+    - **Checks actually run** (Godot 4.5.stable, headless, temporary harness created then deleted):
+      `--import` clean; an 18-check run of `TestArena.tscn` passed **18/18** — barrier present at
+      z −4, `Foreground` CanvasLayer with the spectator at z +10, crowd 15 / front 5 / back 6 /
+      pooled 4, crowd line y 556, ambient sway moved **9 of 11** visible members off their home x,
+      flinch reached **7** members and set a visible lean, the flash tinted `(2.1, 1.94, 1.52)` and
+      cleared to white after 2 ticks, an on-beat contact produced a `hit_onbeat` burst **and** the
+      green flash `(1.55, 1.92, 1.3)`, and six forced sparks still capped at **4**.
+      `--export-release "Web"` rebuilt `docs/` successfully.
+    - **[TODO] Not verified:** nothing was looked at on screen — this environment has no GPU, so no
+      colour, readability, occlusion or feel judgement is claimed for the barrier, the corner
+      silhouette, the sway/flinch amplitude or the burst colours. Sway, flinch, speed threshold,
+      cooldown, flash colours and burst life are hand-set agent defaults and need Garfield's eye on
+      the Chromebook build.
+
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 
 Recorded at build `ad27516` (`stage/sound-clash-sand`); §9 items 1–19 above are the decisions that
 produced that build. **Everything below is [TODO] — none of it is implemented**, and this section is
-documentation only: no code was changed for it. The order is the owner's sprint order followed by the
+documentation only: no code was changed for it — with the single exception of **B4**, implemented
+later under decisions item 21. The order is the owner's sprint order followed by the
 agent's recommendations, not a delivery promise; each item records its scope and the evidence that
 would close it so a later session can pick one up without re-deciding the design. Re-read §2 before
 scheduling any of it against the April 21, 2027 target, and §8 before writing any new Patois copy.
@@ -770,7 +823,7 @@ scheduling any of it against the April 21, 2027 target, and §8 before writing a
 - Exit evidence: headless check of the freeze/resume tick budget, a beat-clock rebase after resume,
   and that a pause during startup/active windows resumes into the same state.
 
-**[TODO] B4. Visual on-beat hit sparks.**
+**B4. Visual on-beat hit sparks — implemented (2026-11-16).** See decisions item 21.
 - Distinct contact bursts: white/gold for a normal contact, vibrant Jamaican green/gold for a contact
   whose **input** was judged on-beat (§9 item 1 — contact quality is judged separately from the beat).
 - Owner-visible requirement: built on the existing `ParrySpark` / `_add_spark()` path inside the

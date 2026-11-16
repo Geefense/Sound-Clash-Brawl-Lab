@@ -57,15 +57,34 @@ with sand in front and behind them. Nothing was cropped, repainted or offset.
 | 132 BPM speaker rings | `SpeakerRings` (`SpeakerPulse.gd`) | −8 |
 | Sand splats (dodged bird drops) | runtime `StageSplat` children | −6 |
 | Coastal wind motes (CPUParticles2D) | `WindMotes` | −5 |
+| Dancehall crowd, back row | `CrowdLine` children | −6 |
+| Dancehall crowd, front row | `CrowdLine` children | −5 |
+| Low yard barrier (`YardBarrier.gd`) | `YardBarrier` | −4 |
 | Fighter contact shadows | `Shadow` in `BaseFighter.tscn` | −2 |
 | Sand foot dust (CPUParticles2D) | `Dust` in `BaseFighter.tscn` | −1 |
 | Fighters | `P1`, `P2` | 0 |
+| Near-camera spectator (`ForegroundSpectator.gd`) | `Foreground/Spectator` (CanvasLayer 1) | 10 |
 | Splatter on a hit fighter | runtime `StageSplat` child | 6 |
 | Bird fly-by | `BirdHazard` | 20 |
 
 Because the background is a single 1280 × 720 layer, the camera now clamps its zoom to **1.0–1.6**
 and its position to the stage rectangle (`TestArena.STAGE_SIZE`). Zooming in only ever shrinks the
 visible area, so the art always covers the view and the sand line never drifts.
+
+**Crowd staging and impact juice (2026-11-16, `AGENTS.md` §9 item 21).** Three presentation-only
+additions on top of the 15-character crowd: `YardBarrier.gd` draws a low wooden/zinc barrier across
+y 524–558 at z −4 (primitives, no texture) so the front row stands behind something instead of being
+cut off onto the sand; `ForegroundSpectator.gd` puts one cropped shoulder/bucket-hat silhouette in a
+`Foreground` CanvasLayer below the HUD at z +10, bottom-left, alpha 0.85, for the fifth depth plane
+screen-space (the camera never drags it); and `CrowdLine` now runs a per-member ambient sway
+(0.15–0.29 Hz, ±2.6 px, `position.x` only, so the beat bounce and surge tweens are untouched) plus a
+proximity `flinch()` that pulls spectators within 240 px away from a body that is thrown, knocked down
+or moving at ≥ 320 px/s. Impact presentation: `BaseFighter.flash_impact(on_beat)` brightens the struck
+sprite for 2 physics ticks, and `ParrySpark` gained `hit` (white/gold) and `hit_onbeat` (green/gold)
+contact bursts alongside the existing electric parry static. Headless 4.5 check: 18/18 assertions
+passed (barrier z −4, spectator z +10, crowd 15/5/6/4, sway moved 9 of 11, flinch reached 7, flash
+cleared after 2 ticks, on-beat burst + green flash, spark cap still 4). **Not looked at on screen —
+no GPU in the authoring environment**, so colour, occlusion and feel are unverified.
 
 Stage mechanics, all presentation-only (no combat rule, hit registry or round state was changed):
 

@@ -281,6 +281,15 @@ var _buffered: Dictionary = {}
 var _stun_frames: int = 0
 var _stun_is_block: bool = false
 var _hitstop_frames: int = 0
+
+## Impact flash (AGENTS.md §9 item 21, closes backlog item B4). Presentation only: on a
+## resolved contact the struck sprite brightens for two physics ticks. The base colour is
+## kept as an HDR-ish over-bright so it reads as a rim flash against the sand, not a
+## washed-out white card. Nothing in the FSM, the hit registry or the hitboxes reads this.
+const IMPACT_FLASH_TICKS := 2
+const IMPACT_FLASH_PLAIN := Color(2.10, 1.94, 1.52)
+const IMPACT_FLASH_ONBEAT := Color(1.55, 1.92, 1.30)
+var _impact_flash_ticks: int = 0
 var _surge_ticks: int = 0
 var _half_hype_awarded: bool = false
 var _guard_beat: Dictionary = {}
@@ -322,6 +331,13 @@ func _ready() -> void:
 # Tick
 # =========================================================================
 func _physics_process(_delta: float) -> void:
+	# The impact flash counts down before the hitstop early-return, so a frozen contact
+	# still releases it on the second tick instead of holding a bright frame.
+	if _impact_flash_ticks > 0:
+		_impact_flash_ticks -= 1
+		if _impact_flash_ticks == 0 and sprite != null:
+			sprite.modulate = Color.WHITE
+
 	# The surge runs on the wall clock: hitstop must not extend the boost.
 	if _surge_ticks > 0:
 		_surge_ticks -= 1
@@ -647,6 +663,14 @@ func _resolve_pending_strikes() -> void:
 
 func _apply_hitstop(ticks: int) -> void:
 	_hitstop_frames = maxi(_hitstop_frames, ticks)
+
+
+## Two-tick white/gold (or green/gold, on-beat) brighten on the struck body.
+## Called by the arena from `strike_resolved`; presentation only.
+func flash_impact(on_beat: bool) -> void:
+	_impact_flash_ticks = IMPACT_FLASH_TICKS
+	if sprite != null:
+		sprite.modulate = IMPACT_FLASH_ONBEAT if on_beat else IMPACT_FLASH_PLAIN
 
 
 # =========================================================================
@@ -1096,6 +1120,9 @@ func reset_for_round(at: Vector2) -> void:
 	_stun_frames = 0
 	_stun_is_block = false
 	_hitstop_frames = 0
+	_impact_flash_ticks = 0
+	if sprite != null:
+		sprite.modulate = Color.WHITE
 	_surge_ticks = 0
 	_half_hype_awarded = false
 	_guard_beat = {}

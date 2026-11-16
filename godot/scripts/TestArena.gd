@@ -28,6 +28,12 @@ extends Node2D
 ##
 ## Sound (backlog item B8): every impact cue comes from `Sfx`, which synthesises its
 ## samples at run time — the build ships no audio files.
+##
+## Crowd staging (AGENTS.md §9 item 21): `YardBarrier` closes the base of the crowd line so
+## the 15 sprites stand behind something instead of being pinned onto the sand, the
+## `Foreground` CanvasLayer carries one cropped near-camera silhouette for the fifth depth
+## plane, and `CrowdLine` runs an unsynchronised per-person sway plus the proximity ebb.
+## All three are presentation only.
 
 const CLICK_LOOP_SECONDS := 10.0      # 22 beats at 132 BPM
 const CAMERA_MIN_DISTANCE := 420.0
@@ -72,6 +78,12 @@ const TIME_TRANSITION_SEC := 3.0
 const MAX_ACTIVE_BIRDS := 1           # one bird in the air at a time, however fast B is pressed
 const MAX_PARRY_SPARKS := 4           # oldest spark is recycled once four are alive
 const MAX_PARTICLE_AMOUNT := 16       # hard ceiling applied to every CPUParticles2D
+
+## Crowd proximity ebb (AGENTS.md §9 item 21). A body crossing the line at this speed, or
+## any thrown / landing body, pulls the nearest spectators back for a beat. Walking is 220,
+## so this only fires on a dash, a jump-in, a throw or a knockdown.
+const CROWD_FLINCH_SPEED := 320.0
+const CROWD_FLINCH_COOLDOWN := 0.85
 ## Where the pre-warm instances live: far outside the camera's clamped stage rectangle,
 ## so they are never on screen even for one frame.
 const PREWARM_OFFSCREEN := Vector2(-4000.0, -4000.0)
@@ -109,6 +121,7 @@ var _time_phase: int = 0
 var _time_tween: Tween = null
 var _muted: bool = false
 var _separation_queued: bool = false
+var _flinch_cd := [0.0, 0.0]          # per-fighter rate limit for the crowd flinch
 
 
 func _ready() -> void:
@@ -169,6 +182,7 @@ func _process(delta: float) -> void:
 	_thump = maxf(0.0, _thump - delta * THUMP_DECAY)
 	_follow_action()
 	_update_shake(delta)
+	_update_crowd_flinch(delta)
 	hud.queue_redraw()
 
 
@@ -268,15 +282,24 @@ func is_muted() -> bool:
 
 ## Impact cue. Blocked contacts knock, plain contacts thud, and a strike judged on the beat
 ## gets the sub-bass punch so timing reads with the music muted.
-func _on_strike_resolved(_attacker: BaseFighter, _target: BaseFighter, result: Dictionary) -> void:
+func _on_strike_resolved(_attacker: BaseFighter, target: BaseFighter, result: Dictionary) -> void:
 	if bool(result.get("ignored", false)) or bool(result.get("parried", false)):
 		return                    # a parry has its own cue, fired from the fighter signal
-	if bool(result.get("on_beat", false)):
+	var on_beat := bool(result.get("on_beat", false))
+	if on_beat:
 		Sfx.play(&"hit_onbeat")
 	elif bool(result.get("blocked", false)):
 		Sfx.play(&"block")
 	else:
 		Sfx.play(&"hit")
+
+	# B4 / §9 item 21: the struck body flashes for two ticks and throws a contact burst —
+	# white/gold when the input was off the beat, green/gold when it was on it.
+	if target != null and not bool(result.get("blocked", false)):
+		target.flash_impact(on_beat)
+	if target != null:
+		_add_spark(target.global_position + Vector2(0.0, -110.0),
+			&"hit_onbeat" if on_beat else &"hit")
 
 
 ## A fighter entering KO: the dramatic arcade drop (fired once per K.O.).
@@ -334,20 +357,49 @@ func _on_throw_connected(_attacker: BaseFighter, _defender: BaseFighter, kind: S
 func _on_speaker_slam(victim: BaseFighter, _side: int) -> void:
 	if victim == null:
 		return
-	_add_spark(victim.global_position + Vector2(0.0, -110.0))
+	_add_spark(victim.global_position + Vector2(0.0, -110.0), &"hit")
 	Sfx.play(&"slam")
 	hud.announce_subtitle("HOLD DAT!", "(Translation: Take that to the speakers!)")
 
 
 ## Transient sparks all share the ParrySpark cap, so a long demo can never pile up nodes.
-func _add_spark(at: Vector2) -> void:
+func _add_spark(at: Vector2, style: StringName = &"parry") -> void:
 	var live := _live_parry_sparks()
 	if live.size() >= MAX_PARRY_SPARKS:
 		# Recycle the oldest spark so the newest effect still reads.
 		live[0].queue_free()
 	var spark := ParrySpark.new()
+	spark.style = style
 	spark.global_position = at
 	add_child(spark)
+
+
+# =========================================================================
+# Crowd staging: yard barrier, foreground silhouette and the proximity ebb (§9 item 21)
+# =========================================================================
+## A body that crosses the crowd line fast, or any thrown / landing body, makes the
+## spectators it passes lean away and then close back in — the live-action yard-brawl
+## behaviour, not a sync'd animation. Rate-limited per fighter so it never strobes.
+func _update_crowd_flinch(delta: float) -> void:
+	if crowd == null:
+		return
+	for i in _flinch_cd.size():
+		_flinch_cd[i] = maxf(0.0, _flinch_cd[i] - delta)
+	_flinch_for(p1, 0)
+	_flinch_for(p2, 1)
+
+
+func _flinch_for(fighter: BaseFighter, index: int) -> void:
+	if fighter == null or _flinch_cd[index] > 0.0:
+		return
+	var thrown := fighter.state == BaseFighter.State.THROWN \
+		or fighter.state == BaseFighter.State.KNOCKDOWN
+	var fast := absf(fighter.velocity.x) >= CROWD_FLINCH_SPEED
+	if not thrown and not fast:
+		return
+	var strength := 1.25 if thrown else 0.55
+	if crowd.flinch(fighter.global_position.x, strength) > 0:
+		_flinch_cd[index] = CROWD_FLINCH_COOLDOWN
 
 
 # =========================================================================

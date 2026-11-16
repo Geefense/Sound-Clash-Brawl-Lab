@@ -53,6 +53,22 @@ const ART_MAX_SIDE := {
 @export var swap_max: int = 2
 @export var swap_seconds: float = 0.34
 
+## Unsynchronised ambient life (AGENTS.md §9 item 21). The beat bounce below is locked to
+## BeatService; these slow sways run on each member's own phase and rate so fifteen people
+## never move as one chorus line — the Fatal Fury reference crowd is individual, not unison.
+@export var sway_pixels: float = 2.6          # side-to-side drift at the shoulders, floor-level
+@export var sway_rate_min: float = 0.15       # Hz — slow enough to read as weight shifting
+@export var sway_rate_max: float = 0.29
+@export var sway_tilt_deg: float = 1.3        # lean that goes with the drift
+
+## Proximity ebb (AGENTS.md §9 item 21, from the live-action yard-brawl clip): when a body
+## dashes, is thrown or lands near the line, the spectators it passes flinch away from it and
+## then close back in. Radius/shift are screen pixels of the stage.
+@export var flinch_radius: float = 240.0
+@export var flinch_shift: float = 9.0
+@export var flinch_tilt_deg: float = 6.0
+@export var flinch_seconds: float = 0.55
+
 
 ## One crowd member: its sprite, its contact shadow and its current slot.
 class Member:
@@ -66,6 +82,10 @@ class Member:
 	var bounce: Tween
 	var swap: Tween
 	var swapping: bool = false
+	var phase: float = 0.0                  # own ambient sway phase (radians)
+	var rate: float = 1.0                   # own ambient sway rate (radians/s)
+	var flinch: float = 0.0                 # 0–1.4, decays over flinch_seconds
+	var flinch_dir: float = 1.0             # −1 away to the left, +1 away to the right
 
 
 var beat: BeatService
@@ -99,6 +119,8 @@ func _make_member(sprite: Sprite2D) -> Member:
 	var m := Member.new()
 	m.sprite = sprite
 	m.front_scale = sprite.scale
+	m.phase = _rng.randf_range(0.0, TAU)
+	m.rate = _rng.randf_range(sway_rate_min, sway_rate_max) * TAU
 	var shadow := GroundShadow.new()
 	shadow.name = "Shadow"
 	shadow.squash = 0.30
@@ -340,7 +362,61 @@ func pooled_count() -> int:
 	return n
 
 
+# =========================================================================
+# Ambient sway and proximity ebb (AGENTS.md §9 item 21)
+# =========================================================================
+## Per-member, unsynchronised drift. Written every frame into the sprite's x only: the
+## beat/surge tweens own `position:y` and `rotation`, so the two never fight, and the
+## `offset` the import-cap compensation divides stays untouched.
+func _update_sway(delta: float) -> void:
+	var tilt := deg_to_rad(sway_tilt_deg)
+	var flinch_tilt := deg_to_rad(flinch_tilt_deg)
+	var surging := is_surging()
+	for m in _members:
+		if m.row < 0 or m.swapping or m.sprite == null:
+			continue
+		m.phase = fposmod(m.phase + m.rate * delta, TAU)
+		if m.flinch > 0.0:
+			m.flinch = maxf(0.0, m.flinch - delta / maxf(flinch_seconds, 0.05))
+		var lean := m.flinch * m.flinch_dir
+		m.sprite.position = Vector2(
+			m.home.x + sin(m.phase) * sway_pixels + lean * flinch_shift,
+			m.sprite.position.y)
+		# While a surge hop is animating, the tween owns rotation; hands off.
+		if not surging:
+			m.sprite.rotation = sin(m.phase * 0.85) * tilt + lean * flinch_tilt
+
+
+## Nearby spectators flinch away from a body that dashes, is thrown or lands beside them.
+## Returns how many members reacted, so the caller can rate-limit itself.
+func flinch(at_x: float, strength: float = 1.0) -> int:
+	var touched := 0
+	var reach := maxf(flinch_radius, 1.0)
+	for m in _members:
+		if m.row < 0 or m.swapping:
+			continue
+		var distance := absf(m.home.x - at_x)
+		if distance > reach:
+			continue
+		var near := 1.0 - distance / reach
+		var want := near * clampf(strength, 0.2, 1.4)
+		if want > m.flinch:
+			var away := m.home.x - at_x
+			if is_zero_approx(away):
+				away = -1.0 if m.slot < PINNED_SLOT else 1.0
+			m.flinch_dir = 1.0 if away > 0.0 else -1.0
+			m.flinch = want
+		touched += 1
+	return touched
+
+
+## World y of the front rope row — the anchor the arena measures proximity against.
+func crowd_line_y() -> float:
+	return FRONT_ROW_Y
+
+
 func _process(delta: float) -> void:
+	_update_sway(delta)
 	_rotate_timer -= delta
 	if _rotate_timer <= 0.0:
 		_rotate_timer = _rng.randf_range(rotate_min_seconds, rotate_max_seconds)

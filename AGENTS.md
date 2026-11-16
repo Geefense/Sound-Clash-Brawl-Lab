@@ -1,6 +1,6 @@
 # Sound Clash Brawl — Master Blueprint
 
-Last updated: 2026-11-13. Owner and final creative approver: Garfield Connell.
+Last updated: 2026-11-16. Owner and final creative approver: Garfield Connell.
 
 This is the project instruction and handoff document for all agents. It records verified repository work, recovered design decisions, and the owner's Godot migration direction. **Implemented**, **asset available**, **planned**, and **[TODO]** are different statuses. Never present a concept, imported illustration, successful upload, or old test report as a working or approved feature.
 
@@ -715,6 +715,112 @@ here is gameplay-verified; implementation status is stated per item.
     [TODO] All sizes, the 1.8 s / 4.0 s values and the pill geometry are hand-set defaults awaiting a
     look on the real Chromebook; there is no queue (a second callout inside 4 s is simply lost) and
     the rematch line reuses the round-banner slot rather than its own animation.
+
+### Approved Backlog / Roadmap — master list (2026-11-16)
+
+Recorded at build `ad27516` (`stage/sound-clash-sand`); §9 items 1–19 above are the decisions that
+produced that build. **Everything below is [TODO] — none of it is implemented**, and this section is
+documentation only: no code was changed for it. The order is the owner's sprint order followed by the
+agent's recommendations, not a delivery promise; each item records its scope and the evidence that
+would close it so a later session can pick one up without re-deciding the design. Re-read §2 before
+scheduling any of it against the April 21, 2027 target, and §8 before writing any new Patois copy.
+
+#### Owner items — approved in planning (2026-11-16)
+
+**[TODO] B1. Arcade title screen and match setup (`TitleScreen.tscn`).**
+- Bungee **Shade** start screen: `SOUND CLASH BRAWL —` over `PRESS START / CLICK TO CLASH`, then a mode
+  select (**1P vs AI** / **Local 2P**), an AI-style picker for the four `SparringController` modes that
+  **Y** already cycles in the workshop arena, and the Patois Subtitle on/off toggle that
+  `TestHud.toggle_subtitles()` (**V**) already exposes.
+- Owner-visible requirement: the title scene boots before `TestArena.tscn`, the three choices live in
+  one small autoload/resource, and the arena reads them instead of hard-coding P2 as the Workshop
+  Dummy. Esc returns to the title without losing the selection.
+- Exit evidence: title → mode select → arena carrying the chosen mode, AI style and subtitle flag;
+  keyboard-only navigation; headless boot of both scenes.
+
+**[TODO] B2. Controller support and local 2P bindings.**
+- Standard Xbox/PlayStation gamepad mappings (`InputEventJoypadButton` / `InputEventJoypadMotion`) for
+  every action the FSM already uses: move, jump, crouch, guard, jab, BOX, tump, upper box, grab, taunt.
+- A second keyboard layout (Arrow keys + Numpad) so two players share one Chromebook, P1 keeping
+  WASD/`JKLI` and P2 on Arrows/Numpad, with no key claimed by both layouts.
+- Owner-visible requirement: the same `p1_*` / `p2_*` action names, device handling kept out of
+  `BaseFighter`, hot-plug/reconnect tolerated, and the stick deadzone plus axis signs written down.
+- Exit evidence: headless check that every action resolves on both layouts and for a synthetic pad
+  event; then a real 2P check on the Chromebook.
+
+**[TODO] B3. Pause and move-list overlay (Esc / H).**
+- **Esc** pauses (freezing the fixed-step simulation *and* the beat clock without eating buffered
+  inputs); **H** opens the move list without pausing.
+- The overlay lists the full set — Jab, BOX, Sparta Kick (`tump`), Upper Box, Mic Defence / Static
+  Parry, Grab / Speaker Throw, Skank Taunt — with the 132 BPM on-beat rules and the Crowd Hype Surge
+  rules, in Chakra Petch with Bungee headers.
+- Owner-visible requirement: read-only, no combat input accepted while open, and no phantom on-beat
+  judgement or Hyped damage while the clock is frozen.
+- Exit evidence: headless check of the freeze/resume tick budget, a beat-clock rebase after resume,
+  and that a pause during startup/active windows resumes into the same state.
+
+**[TODO] B4. Visual on-beat hit sparks.**
+- Distinct contact bursts: white/gold for a normal contact, vibrant Jamaican green/gold for a contact
+  whose **input** was judged on-beat (§9 item 1 — contact quality is judged separately from the beat).
+- Owner-visible requirement: built on the existing `ParrySpark` / `_add_spark()` path inside the
+  Chromebook caps from §9 item 17 (4 sparks, 16 particles) — no per-hit allocation and no new texture
+  group; the burst must stay readable with the sound muted (**M**).
+- Exit evidence: headless check that an on-beat contact emits the green/gold variant and an off-beat
+  contact the white/gold one, with the live spark count still capped at 4.
+
+**[TODO] B5. Branch consolidation (`stage/sound-clash-sand` → `main`).**
+- Merge only after the Chromebook playtest sign-off, not before.
+- Owner-visible requirement: history preserved (no squash-rewrite of the sand branch), the TypeScript
+  prototype untouched, `/docs` still rebuildable, and the import/headless/export checks re-run on the
+  merged tree; record the merge commit in §9.
+
+#### Agent recommendations — additions from this sprint's build work (2026-11-16)
+
+**[TODO] B6. Round timer and time-out rules.** *Recommended first among the additions.* The port has
+rounds, K.O. and best-of-3 scoring but **no round clock** — the TypeScript prototype's 90-second
+rounds (§4) were never carried over, so a turtle or the Workshop Dummy can never lose. Proposal: 90 s
+per round counting live play only, higher health wins on time-out, an exact tie replays the round
+without consuming a win (or sudden death — owner's call), and the clock drawn in Chakra Petch beside
+the round pips. Exit evidence: headless time-out win, draw and tie cases, and the clock proven to stop
+during K.O., banner and pause.
+
+**[TODO] B7. Fighter push-separation.** `BaseFighter` has **no body-to-body separation**: the two
+fighters can stand inside each other, which makes the 96 px grab range ambiguous and lets a thrown
+body land on the same pixel as the attacker. The TypeScript prototype separated bodies, so this is a
+port gap rather than a new mechanic. Proposal: one shared minimum horizontal gap resolved in the match
+controller after both fighters have moved, never applied while grabbed, thrown or knocked down. Exit
+evidence: headless check that overlapping fighters separate symmetrically, that a grab still connects
+at 96 px, and that a speaker-stack bounce lands clear of the wall body.
+
+**[TODO] B8. Audio and hit-feel hooks.** The repository has **no approved audio** beyond the 22-beat
+dev click (`assets/audio/dev/click_132bpm.wav`), so every hit is silent and impact reads only through
+camera shake. Proposal, still zero-cost: one `SfxPlayer` autoload keyed off the signals that already
+exist (`strike_landed`, `static_parry_triggered`, `speaker_slam_triggered`, `throw_connected`,
+`throw_broken`, `hype_surge_started`, KO), with a small procedural or owner-supplied cue per event and
+hitstop exposed as data so tuning is one file. Voice lines stay [TODO] until the owner records them —
+§8 rejects generated speech. Exit evidence: headless check that each signal fires one cue (no
+double-hits on trades), that **M** silences everything, and that no cue breaks the Chromebook budget.
+
+**[TODO] B9. Web loading progress UI and a Chromebook performance readout.** The `/docs` build spends
+several seconds on wasm and `.pck` before the first frame with only the bare engine splash screen, and
+the 50 MB texture set has never been timed on the real machine. Proposal: a branded Bungee/Chakra
+Petch loading screen driven by real download and decode progress, plus a dev-only readout (F3) for
+frame time and texture memory so the playtest produces numbers instead of impressions. Exit evidence:
+the loading screen advances on a throttled connection, and the readout reports frame time plus memory
+while staying out of a release build.
+
+**[TODO] B10. Patois voice-line pipeline.** Every callout is text today because no recorded audio
+exists anywhere in the repository; the subtitle pill is the whole delivery. Proposal: when the owner's
+lines are recorded, keep the pill as the accessibility layer and drive an `AudioStreamPlayer` from the
+same `announce_subtitle()` call site, filing each line under its §8 lexicon entry (Patois verbatim,
+gloss in a separate field, no film/TV samples and no generated voice). Exit evidence: one approved
+line plays with its subtitle, and the callout cooldown applies to the audio exactly as it already does
+to the text.
+
+**Dependencies worth knowing before picking these up:** B1 and B3 both want the pause/beat-clock
+decision in B3 first; B2's P2 layout and B4's mute-readability are the two items that need the Chromebook
+in hand; B5 waits on that playtest; B6 and B7 change combat feel and therefore must land **before** the
+January 14, 2027 core-mechanics lock (§2, §9 item 2 in the mandatory rules).
 
 Implementation status: written into `/godot`; **not played**. Until 2026-11-15 the port had never
 been opened in an engine. The sand-stage and round-lighting slices were then imported and run headless

@@ -91,8 +91,8 @@ func _draw() -> void:
 	var width := size.x
 	_bar(Vector2(MARGIN, MARGIN), BAR_W, p1.health, float(p1.max_health), Color(0.35, 0.85, 0.45), false)
 	_bar(Vector2(width - MARGIN - BAR_W, MARGIN), BAR_W, p2.health, float(p2.max_health), Color(0.9, 0.4, 0.4), true)
-	_fighter_name(Vector2(MARGIN, MARGIN), BAR_W, "P1", false)
-	_fighter_name(Vector2(width - MARGIN - BAR_W, MARGIN), BAR_W, "P2", true)
+	_fighter_name(Vector2(MARGIN, MARGIN), BAR_W, _name_of(p1, "P1"), false)
+	_fighter_name(Vector2(width - MARGIN - BAR_W, MARGIN), BAR_W, _name_of(p2, "P2"), true)
 	_hype_bar(Vector2(MARGIN, MARGIN + BAR_H + 8.0))
 	_beat_pulse(Vector2(width * 0.5, MARGIN + BAR_H * 0.5))
 	_ai_banner(Vector2(width * 0.5 - 150.0, MARGIN + 40.0))
@@ -142,11 +142,18 @@ func _bar(pos: Vector2, w: float, value: int, maximum: float, colour: Color, rig
 
 ## Bungee fighter tag inside the health bar (above it clips the viewport edge).
 func _fighter_name(bar_pos: Vector2, bar_w: float, name: String, right_aligned: bool) -> void:
-	var w := 70.0
+	var w := 170.0
 	var x := bar_pos.x + bar_w - w - 8.0 if right_aligned else bar_pos.x + 8.0
-	_text(Vector2(x, bar_pos.y + BAR_H - 5.0), name, FONT_BUNGEE, 13,
-		Color(1.0, 0.99, 0.94, 0.95),
+	_text(Vector2(x, bar_pos.y + BAR_H - 5.0), name, FONT_BUNGEE,
+		_fit_size(FONT_BUNGEE, name, 13, w), Color(1.0, 0.99, 0.94, 0.95),
 		HORIZONTAL_ALIGNMENT_RIGHT if right_aligned else HORIZONTAL_ALIGNMENT_LEFT, w)
+
+
+## Roster name from the fighter profile, with the old side label as the fallback.
+func _name_of(fighter: BaseFighter, fallback: String) -> String:
+	if fighter == null or fighter.display_name == "":
+		return fallback
+	return fighter.display_name
 
 
 func _hype_bar(pos: Vector2) -> void:

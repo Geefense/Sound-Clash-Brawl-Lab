@@ -430,7 +430,7 @@ Generated Flow speech such as `yo, check this out`, `I'm bringing it to the stag
 
 11. **Keep Spriteriffic sprite sheet grid dimensions consistent across all fighters for fast Godot slicing.** Use a shared cell width/height, consistent margins and spacing, and documented row/column layouts. Preserve each fighter’s intended proportions and frame anchors within that grid. Record frame order and animation timing for import into `AnimatedSprite2D`/`SpriteFrames`; do not stretch characters to fit cells.
 
-12. **Ask about reasoning effort before heavy multi-file work.** Before starting a multi-file combat state change, a physics refactor, or a new fighter integration that would benefit from Max reasoning effort, tell the owner **“Recommend switching to Max for this step”** first, so they can flip the reasoning-effort selector manually if needed. Also use the owner’s connected ChatGPT advisor subagent for high-level design verification when appropriate.
+12. **Ask about reasoning effort before heavy multi-file work.** Before starting a multi-file combat state change, a physics refactor, or a new fighter integration that would benefit from Max reasoning effort, tell the owner **“Recommend switching to Max for this step”** first, so they can flip the reasoning-effort selector manually if needed.
 
 ### §9 Owner Decisions Log
 
@@ -851,7 +851,10 @@ scheduling any of it against the April 21, 2027 target, and §8 before writing a
 
 #### Owner items — approved in planning (2026-11-16)
 
-**[TODO] B1. Arcade title screen and match setup (`TitleScreen.tscn`).**
+**[DONE 2026-11-16] B1. Arcade title screen and match setup (`TitleScreen.tscn`).** Closed by
+the 2026-11-16 roster/title build — see “Playable roster #2/#3 and the arcade title screen” at
+the end of §9 for the files, the headless evidence and the part left open (a real 1P/2P mode
+line belongs with B2’s bindings; the shipped setup picks the AI style instead).
 - Bungee **Shade** start screen: `SOUND CLASH BRAWL —` over `PRESS START / CLICK TO CLASH`, then a mode
   select (**1P vs AI** / **Local 2P**), an AI-style picker for the four `SparringController` modes that
   **Y** already cycles in the workshop arena, and the Patois Subtitle on/off toggle that
@@ -1310,3 +1313,90 @@ GDScript where `Color(r, g, b)` is fine.
 
 **Next:** owner playtests **N** through all three phases on the target device and rules on tint
 strength and floodlight amount before any round controller is wired to it.
+
+### Playable roster #2/#3 and the arcade title screen — November 16, 2026 (Toronto)
+
+`stage/sound-clash-sand`. `freebuff/scr-crowd-stage` was merged in first because the Record Static
+Parry, grabs / directional throws / throw breaks / speaker-stack bounces, the 60-second round clock,
+the four-mode Smart Sparring AI and the Chromebook Web export preset all lived on that branch and
+not on this one. Backlog item **B1 is closed** for the AI path; see the note on the B1 entry.
+
+**Owner uploads, 2026-11-16.** Four of the twelve files uploaded to `main` are fighters; the other
+eight are crowd/dance sheets and a reference still and stay untouched at the repository root.
+The originals were moved with `git mv` and no byte was modified:
+
+| Upload | Now at | Role |
+| --- | --- | --- |
+| `06BF8997-254D-4975-BE48-B69AF05A3DC4.png` | `art-source/fighters/dubplate/dubplate-selector-portrait_original.png` | Fighter #2 portrait |
+| `8204ED3A-0BEC-4F86-B9B7-A0A9F9787230.png` | `art-source/fighters/young-selecta/01_idle-backpack_original.png` | #3 idle |
+| `69CDB409-52C0-4889-94FC-45C8D1926B98.png` | `art-source/fighters/young-selecta/02_boom-mic-thrust_original.png` | #3 jab / BOX |
+| `IMG_6546.jpeg` | `art-source/fighters/young-selecta/03_mic-stand-slam_original.jpeg` | #3 heavy / upper |
+
+`art-source/fighters/prep_fighter_art.py` is the reproducible slicer: edge-seeded flood fill for the
+studio backdrop (white or the Dubplate vignette), big enclosed pocket removal, white-keyline trim,
+island drop, 1 px erosion plus 0.5 px feather, crop to the alpha bounding box, then downscale to the
+512 px cap. `prep-report.json` records crop box, sole row, sole centre, offset and downscale per
+frame. Outputs are `godot/assets/sprites/dubplate/portrait.png` and
+`godot/assets/sprites/young-selecta/{idle,thrust,slam}.png`. All four `.import` files carry
+`process/size_limit=512`; because the processed frames are already ≤512 px, their
+`anim_source_max` is 512 and the existing `_import_cap_ratio()` compensation resolves to 1.0, so no
+scale is applied twice.
+
+**Roster** (`godot/scripts/fighters/FighterRoster.gd` — data only, one shared FSM):
+
+| Key | Name | Walk | Reach | Body | Frames |
+| --- | --- | --- | --- | --- | --- |
+| `feedback` | FEEDBACK | 220 | standard | 60×160 | the existing 17-pose pack in `BaseFighter.tscn` |
+| `dubplate` | DUBPLATE | 205 | standard | 62×162 | one portrait, reused by every state |
+| `young_selecta` | YOUNG SELECTA | 250 | **+25 px** on every attack | 52×131 (82 %) | idle / thrust / slam mapped onto the existing animation slots |
+
+* Adult fighters render 121.75 px tall (Feedback idle: 487 px × 0.25). Young Selecta is scaled
+  to 82 % of that (≈99.8 px), per the owner's kid-prodigy direction; his hurtbox follows the
+  drawing, so his spacing is genuinely shorter rather than cosmetically so.
+* The +25 px boom-mic reach grows each hitbox forward only: the near edge stays put, so the spacing
+  change does not move the art or the startup timing.
+* `BaseFighter` gained `fighter_key`, `apply_fighter_profile()`, per-instance
+  `anim_offset` / `anim_scale` / `anim_source_max`, and `_apply_reach_bonus()`. No state machine,
+  frame data, parry, grab or throw logic is duplicated per fighter. Nothing mirrors art (`flip_h`
+  is still never set).
+
+**Title screen (B1).** `godot/scenes/TitleScreen.tscn` is now the main scene: a Bungee Shade
+`SOUND CLASH` / Bungee Inline `BRAWL` splash with a blinking `PRESS START / CLICK TO CLASH`, then a
+Character & Match Setup panel with four rows — P1 fighter, P2 opponent, AI style (Dummy /
+Counter-Puncher / Riddim Rusher / Spacing Baiter) and the Patois subtitle toggle. Up/Down selects,
+Left/Right changes, Enter fights, V toggles subtitles, Esc goes back to the splash. The choices live
+in the `MatchSetup` autoload; `TestArena` applies them, shows the roster names in the health bars,
+and **Esc returns to Character Select with the selection intact**. **Y** still cycles the AI style
+mid-match and **V** still toggles subtitles in the arena.
+
+Files: `godot/scripts/MatchSetup.gd`, `godot/scripts/fighters/FighterRoster.gd`,
+`godot/scenes/TitleScreen.tscn`, `godot/scripts/ui/TitleScreen.gd`, plus edits to
+`BaseFighter.gd`, `TestArena.gd`, `TestHud.gd`, `project.godot` and the rebuilt `docs/`.
+
+**Checks actually run** — Godot 4.5.stable.official (876b29033), headless, templates installed
+locally (never committed; `.tools/` is ignored):
+
+```bash
+godot --headless --path godot --import
+godot --headless --path godot --script res://tools/headless_roster_check.gd
+godot --headless --path godot --export-release "Web" docs/index.html
+```
+
+`tools/headless_roster_check.gd` prints 28 checks and ends `ALL CHECKS PASSED`: title scene boots as
+the main scene, MatchSetup defaults and roster cycling, the arena applies both fighters and the AI
+style / subtitle flag, Dubplate's frames build and render at the adult scale, Young Selecta walks at
+250 px/s with a 109 px (84 + 25) jab box and a 131 px hurtbox, the AI drives the shared FSM through
+several states in 240 physics ticks, no `flip_h`, and Esc returns to TitleScreen in the setup phase
+with the selection kept. The Web export completed and `docs/index.pck` grew from 10.65 MB to 11.2 MB
+with the new sprites included.
+
+**Not verified — no render happened.** This environment has no display, GPU or Xvfb, so nothing was
+looked at on screen: the title layout, the 82 % kid height, the per-frame baselines and how much of
+the mic-stand prop is worth keeping in frame are all arithmetic, not eyes. Dubplate has a single
+portrait (every state reuses it) and Young Selecta has three poses (no walk, guard, hit or KO art);
+their mic-hand and cable continuity has not been audited against §1. Owner approval of the new art
+is likewise outstanding. A real 1P/2P mode line and gamepad/numpad bindings stay under B2; the pause
+and move-list overlay stays B3.
+
+**Next:** open `docs/index.html` (or the editor) on the target device, play each fighter against each
+AI style, and rule on proportions, spacing and whether the stand prop reads at gameplay size.

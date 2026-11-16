@@ -17,9 +17,10 @@ extends Node2D
 ## K.O., next round with the day → sunset → night lighting, then a rematch banner and restart.
 ## R reloads the scene and starts a fresh match; N still overrides the lighting by hand.
 ##
-## Workshop keys: R reset · G dummy guard (manual guard override in every AI mode) ·
-## Y cycle P2's sparring AI mode · M mute (click track + procedural SFX) · B bird hazard ·
-## N time of day · V subtitles · J/K/L/I attacks · T taunt · C crouch · WASD/arrows move.
+## Workshop keys: Esc back to Character & Match Setup · R reset · G dummy guard (manual
+## guard override in every AI mode) · Y cycle P2's sparring AI mode · M mute (click track
+## + procedural SFX) · B bird hazard · N time of day · V subtitles · J/K/L/I attacks ·
+## T taunt · U grab/throw · C crouch · WASD/arrows move.
 ##
 ## Push separation (AGENTS.md §9 backlog item B7): bodies keep a shared minimum gap so the
 ## fighters cannot occupy the same pixel, which also keeps the 96 px grab range meaningful.
@@ -134,10 +135,17 @@ func _ready() -> void:
 	p2.beat_service = beat
 	beat.audio_player = music
 
+	# Roster + match setup from TitleScreen.tscn (AGENTS.md §9 backlog item B1). Same FSM,
+	# same move table, same beat clock: only the fighter data and the AI style change.
+	p1.apply_fighter_profile(MatchSetup.p1_fighter)
+	p2.apply_fighter_profile(MatchSetup.p2_fighter)
+
 	p2.use_local_input = false          # P2 is driven by the sparring controller only
 	p2.input_prefix = "p2_"
 	sparring.setup(p1, p2, beat)
+	sparring.set_mode(MatchSetup.ai_mode)
 	sparring.manual_guard = _dummy_guard
+	hud.set("subtitles_enabled", MatchSetup.subtitles)
 
 	p1.camera_shake_requested.connect(_on_shake)
 	p2.camera_shake_requested.connect(_on_shake)
@@ -195,6 +203,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey) or not event.pressed or event.echo:
 		return
 	match (event as InputEventKey).physical_keycode:
+		KEY_ESCAPE:
+			# Back to Character & Match Setup with the selection intact (B1).
+			MatchSetup.escape_to_setup()
 		KEY_R:
 			get_tree().reload_current_scene()
 		KEY_G:

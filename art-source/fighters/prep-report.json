@@ -1,0 +1,110 @@
+[
+  {
+    "source": "art-source/fighters/dubplate/dubplate-selector-portrait_original.png",
+    "output": "godot/assets/sprites/dubplate/portrait.png",
+    "source_size": [
+      1123,
+      1401
+    ],
+    "crop_box": [
+      102,
+      13,
+      1085,
+      1383
+    ],
+    "frame": [
+      367,
+      512
+    ],
+    "downscale": 0.3737,
+    "sole_row": 511,
+    "sole_centre_x": 307.7,
+    "offset": [
+      -124.2,
+      -255.0
+    ],
+    "figure_height": 512,
+    "label": "Dubplate portrait"
+  },
+  {
+    "source": "art-source/fighters/young-selecta/01_idle-backpack_original.png",
+    "output": "godot/assets/sprites/young-selecta/idle.png",
+    "source_size": [
+      1024,
+      1536
+    ],
+    "crop_box": [
+      91,
+      11,
+      820,
+      1512
+    ],
+    "frame": [
+      249,
+      512
+    ],
+    "downscale": 0.3411,
+    "sole_row": 511,
+    "sole_centre_x": 91.5,
+    "offset": [
+      33.0,
+      -255.0
+    ],
+    "figure_height": 512,
+    "label": "Young Selecta idle"
+  },
+  {
+    "source": "art-source/fighters/young-selecta/02_boom-mic-thrust_original.png",
+    "output": "godot/assets/sprites/young-selecta/thrust.png",
+    "source_size": [
+      1536,
+      1024
+    ],
+    "crop_box": [
+      223,
+      11,
+      1110,
+      1011
+    ],
+    "frame": [
+      454,
+      512
+    ],
+    "downscale": 0.512,
+    "sole_row": 510,
+    "sole_centre_x": 273.8,
+    "offset": [
+      -46.8,
+      -254.0
+    ],
+    "figure_height": 510,
+    "label": "Young Selecta boom-mic thrust"
+  },
+  {
+    "source": "art-source/fighters/young-selecta/03_mic-stand-slam_original.jpeg",
+    "output": "godot/assets/sprites/young-selecta/slam.png",
+    "source_size": [
+      1170,
+      606
+    ],
+    "crop_box": [
+      339,
+      25,
+      832,
+      589
+    ],
+    "frame": [
+      448,
+      512
+    ],
+    "downscale": 0.9078,
+    "sole_row": 510,
+    "sole_centre_x": 241.0,
+    "offset": [
+      -17.0,
+      -254.0
+    ],
+    "figure_height": 510,
+    "label": "Young Selecta mic-stand slam"
+  }
+]

@@ -61,6 +61,19 @@ class Command:
 @export var stand_size: Vector2 = Vector2(60, 160)
 @export var crouch_size: Vector2 = Vector2(60, 96)
 
+## Roster identity (AGENTS.md §9 backlog item B1). The FSM, move table and beat hooks are
+## shared; FighterRoster only supplies this fighter's numbers and sprite frames.
+@export var fighter_key: StringName = &"feedback"
+var display_name: String = "FEEDBACK"
+
+## Per-fighter animation data. Defaults are the Feedback pack authored in the constants
+## above; FighterRoster replaces these copies for Fighters #2/#3.
+var anim_offset: Dictionary = {}
+var anim_scale: Dictionary = {}
+var anim_source_max: Dictionary = {}
+var anim_source_max_default: float = ANIM_SOURCE_MAX_DEFAULT
+var _reach_applied: bool = false
+
 # 60 Hz tick counts. [TODO] PLACEHOLDERS unless noted: port from combatRules.ts.
 const KNOCKDOWN_FALL_TICKS := 36       # KO fall constant from AGENTS.md §3; nonlethal get-up [TODO]
 # One full 5-frame skank cycle at 4.4 fps = 2.5 beats at 132 BPM, so each pose lands
@@ -332,6 +345,7 @@ var _step_ticks: int = 0
 
 func _ready() -> void:
 	add_to_group("fighters")          # geometric strike checks find opponents through this group
+	apply_fighter_profile(fighter_key)
 	health = max_health
 	if use_local_input:
 		_ensure_default_actions()
@@ -340,6 +354,70 @@ func _ready() -> void:
 	_play_state_anim()
 	health_changed.emit(health, max_health)
 	hype_changed.emit(hype, HYPE_MAX)
+
+
+# =========================================================================
+# Roster profile (Fighters #1–#3 all run this same FSM)
+# =========================================================================
+## Apply a FighterRoster entry: display name, walk speed, body size, boom-mic reach and
+## the sprite frames + per-animation offset/scale. Safe to call again at runtime (the arena
+## does, once the title screen has chosen the fighters); the reach bonus is applied once.
+func apply_fighter_profile(key: StringName) -> void:
+	if not FighterRoster.has_fighter(key):
+		push_warning("BaseFighter: unknown fighter '%s', using Feedback" % key)
+		key = &"feedback"
+	fighter_key = key
+	var data := FighterRoster.profile(key)
+	display_name = String(data["name"])
+	walk_speed = float(data["walk_speed"])
+	stand_size = data["stand_size"]
+	crouch_size = data["crouch_size"]
+	_apply_reach_bonus(float(data["reach_bonus"]))
+
+	var overrides: Dictionary = data["attack_anims"]
+	for id in overrides:
+		if not attacks.has(id):
+			continue
+		var entry: Dictionary = attacks[id]
+		for field in overrides[id]:
+			entry[field] = overrides[id][field]
+
+	if not bool(data["uses_scene_frames"]):
+		var frames := FighterRoster.build_frames(key)
+		if frames != null and sprite != null:
+			sprite.sprite_frames = frames
+
+	# Start from the Feedback pack's tables, then let the roster replace entries.
+	anim_offset = (ANIM_OFFSET as Dictionary).duplicate()
+	anim_scale = (ANIM_SCALE as Dictionary).duplicate()
+	anim_source_max = (ANIM_SOURCE_MAX as Dictionary).duplicate()
+	anim_source_max_default = ANIM_SOURCE_MAX_DEFAULT
+	var offsets: Dictionary = data["anim_offset"]
+	for k in offsets:
+		anim_offset[StringName(k)] = offsets[k]
+	var scales: Dictionary = data["anim_scale"]
+	for k in scales:
+		anim_scale[k] = scales[k]
+	var source: Dictionary = data["anim_source_max"]
+	for k in source:
+		anim_source_max[k] = source[k]
+
+	_apply_stance(state == State.CROUCH)
+	_play_state_anim()
+
+
+## Owner direction: Young Selecta's boom-mic thrust reaches 25 px further. The hitbox
+## grows forward (near edge stays put), so spacing changes without moving the animation.
+func _apply_reach_bonus(bonus: float) -> void:
+	if _reach_applied or is_zero_approx(bonus):
+		return
+	_reach_applied = true
+	for id in attacks:
+		var a: Dictionary = attacks[id]
+		var size: Vector2 = a["hitbox_size"]
+		var pos: Vector2 = a["hitbox_pos"]
+		a["hitbox_size"] = Vector2(size.x + bonus, size.y)
+		a["hitbox_pos"] = Vector2(pos.x + bonus * 0.5, pos.y)
 
 
 # =========================================================================
@@ -1241,8 +1319,8 @@ func _play_state_anim() -> void:
 	if sprite.sprite_frames.has_animation(anim):
 		var key := String(anim).trim_suffix("_left")
 		var k := _import_cap_ratio(key, anim)
-		sprite.offset = ANIM_OFFSET.get(StringName(key), ANIM_OFFSET_DEFAULT) / k
-		var s: float = float(ANIM_SCALE.get(key, BASE_SPRITE_SCALE)) * k
+		sprite.offset = anim_offset.get(StringName(key), ANIM_OFFSET_DEFAULT) / k
+		var s: float = float(anim_scale.get(key, BASE_SPRITE_SCALE)) * k
 		sprite.scale = Vector2(s, s)
 		_anim_base_scale = sprite.scale
 		sprite.play(anim)
@@ -1311,7 +1389,7 @@ func _import_cap_ratio(key: String, anim: StringName) -> float:
 	var decoded := float(maxi(tex.get_width(), tex.get_height()))
 	if decoded <= 0.0:
 		return 1.0
-	return float(ANIM_SOURCE_MAX.get(key, ANIM_SOURCE_MAX_DEFAULT)) / decoded
+	return float(anim_source_max.get(key, anim_source_max_default)) / decoded
 
 
 func _poll_local_input() -> Command:

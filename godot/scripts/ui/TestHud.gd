@@ -95,6 +95,7 @@ func _draw() -> void:
 	_beat_pulse(Vector2(width * 0.5, MARGIN + BAR_H * 0.5))
 	_ai_banner(Vector2(width * 0.5 - 150.0, MARGIN + 40.0))
 	_legend(Vector2(width * 0.5 - 210.0, MARGIN + 96.0))
+	_round_clock(width)
 	_round_pips(width)
 	_surge_banner(Vector2(width * 0.5, size.y * 0.34))
 	_round_banner(width)
@@ -176,6 +177,25 @@ func _ai_banner(pos: Vector2) -> void:
 		_fit_size(FONT_SUB, title, 13, 280.0), Color(0.95, 0.95, 1.0))
 	_text(pos + Vector2(10, 31), "%s · Y switch · G guard" % sparring.mode_tag(), FONT_SUB, 11,
 		Color(0.7, 0.78, 0.9))
+
+
+## 60-second round clock (AGENTS.md §9 backlog item B6) centred between the health bars.
+## Bungee for the digits so they read at a glance, Chakra Petch for the round caption.
+func _round_clock(width: float) -> void:
+	if rounds == null or not rounds.enabled:
+		return
+	if rounds.phase == RoundController.Phase.IDLE or rounds.phase == RoundController.Phase.MATCH_OVER:
+		return
+	var seconds := int(ceil(maxf(rounds.clock, 0.0)))
+	var urgent := rounds.clock_running() and rounds.clock <= 10.0
+	var box := Rect2(Vector2(width * 0.5 - 62.0, MARGIN - 6.0), Vector2(124.0, 42.0))
+	draw_rect(box, Color(0.06, 0.05, 0.08, 0.7), true)
+	draw_rect(box, Color(1.0, 0.86, 0.32, 0.95 if urgent else 0.5), false, 2.0)
+	var colour := Color(1.0, 0.42, 0.34) if urgent else Color(1.0, 0.96, 0.86)
+	_text(Vector2(box.position.x, box.position.y + 27.0), "%02d" % seconds, FONT_BUNGEE, 24,
+		colour, HORIZONTAL_ALIGNMENT_CENTER, box.size.x)
+	_text(Vector2(box.position.x, box.position.y + 39.0), "ROUND %d" % rounds.round_number(),
+		FONT_SUB, 9, Color(0.8, 0.84, 0.92), HORIZONTAL_ALIGNMENT_CENTER, box.size.x)
 
 
 ## Round-win pips: two per fighter, filled as rounds are taken.

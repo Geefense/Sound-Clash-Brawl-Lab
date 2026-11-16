@@ -9,6 +9,12 @@ config/name="Sound Clash Brawl"
 config/description="Fighter #1 (Feedback) — ported from the TypeScript reference."
 run/main_scene="res://scenes/TestArena.tscn"
 
+[autoload]
+
+; Procedural arcade SFX (AGENTS.md §9 backlog item B8): every cue is synthesised with
+; AudioStreamGenerator, so the build ships no audio files.
+Sfx="*res://scripts/audio/SfxPlayer.gd"
+
 [display]
 
 window/size/viewport_width=1280

@@ -18,8 +18,16 @@ extends Node2D
 ## R reloads the scene and starts a fresh match; N still overrides the lighting by hand.
 ##
 ## Workshop keys: R reset · G dummy guard (manual guard override in every AI mode) ·
-## Y cycle P2's sparring AI mode · M mute · B bird hazard · N time of day · V subtitles
-## · J/K/L/I attacks · T taunt · C crouch · WASD/arrows move.
+## Y cycle P2's sparring AI mode · M mute (click track + procedural SFX) · B bird hazard ·
+## N time of day · V subtitles · J/K/L/I attacks · T taunt · C crouch · WASD/arrows move.
+##
+## Push separation (AGENTS.md §9 backlog item B7): bodies keep a shared minimum gap so the
+## fighters cannot occupy the same pixel, which also keeps the 96 px grab range meaningful.
+## It is skipped while a body is held, airborne, thrown or knocked down, so jumps over an
+## opponent, throws, spinbacks and knockdowns pass through cleanly instead of snagging.
+##
+## Sound (backlog item B8): every impact cue comes from `Sfx`, which synthesises its
+## samples at run time — the build ships no audio files.
 
 const CLICK_LOOP_SECONDS := 10.0      # 22 beats at 132 BPM
 const CAMERA_MIN_DISTANCE := 420.0
@@ -68,6 +76,16 @@ const MAX_PARTICLE_AMOUNT := 16       # hard ceiling applied to every CPUParticl
 ## so they are never on screen even for one frame.
 const PREWARM_OFFSCREEN := Vector2(-4000.0, -4000.0)
 
+## Push separation (AGENTS.md §9 backlog item B7). 64 px is wider than the 60 px body, so
+## the fighters never visually overlap; grabs (96 px) still reach comfortably.
+const BODY_GAP := 64.0
+## These states must be able to pass through the other body: a held or thrown fighter is
+## positioned by the throw, and a knockdown/KO body must be allowed to land where it lands.
+const NO_SEPARATION_STATES := [
+	BaseFighter.State.GRABBED, BaseFighter.State.THROWN,
+	BaseFighter.State.KNOCKDOWN, BaseFighter.State.KO,
+]
+
 @onready var p1: BaseFighter = $P1
 @onready var p2: BaseFighter = $P2
 @onready var beat: BeatService = $BeatService
@@ -89,6 +107,8 @@ var _shake_intensity: float = 0.0
 var _thump: float = 0.0
 var _time_phase: int = 0
 var _time_tween: Tween = null
+var _muted: bool = false
+var _separation_queued: bool = false
 
 
 func _ready() -> void:
@@ -126,6 +146,10 @@ func _ready() -> void:
 	p2.throw_connected.connect(_on_throw_connected)
 	p1.speaker_slam_triggered.connect(_on_speaker_slam)
 	p2.speaker_slam_triggered.connect(_on_speaker_slam)
+	p1.strike_resolved.connect(_on_strike_resolved)
+	p2.strike_resolved.connect(_on_strike_resolved)
+	p1.died.connect(_on_fighter_died)
+	p2.died.connect(_on_fighter_died)
 
 	rounds.setup(p1, p2, self)
 	if rounds.enabled:
@@ -162,7 +186,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			if sparring != null:
 				sparring.cycle_mode()
 		KEY_M:
-			music.stream_paused = not music.stream_paused
+			_set_muted(not _muted)
 		KEY_B:
 			_spawn_bird()
 		KEY_N:
@@ -171,10 +195,100 @@ func _unhandled_input(event: InputEvent) -> void:
 			hud.toggle_subtitles()
 
 
+# =========================================================================
+# Push separation (AGENTS.md §9 backlog item B7)
+# =========================================================================
+## Deferred so it runs after both fighters have finished their own `move_and_slide()`
+## this physics tick — the arena is the parent node, so its `_physics_process` runs first.
+func _physics_process(_delta: float) -> void:
+	if _separation_queued:
+		return
+	_separation_queued = true
+	call_deferred("_separate_fighters")
+
+
+func _separate_fighters() -> void:
+	_separation_queued = false
+	if not _separation_allowed():
+		return
+	var pos1 := p1.global_position
+	var pos2 := p2.global_position
+	var distance := pos2.x - pos1.x
+	if absf(distance) >= BODY_GAP:
+		return
+	var dir := 1.0 if distance >= 0.0 else -1.0
+	# Split the correction evenly, then let the speaker-stack walls absorb what they can.
+	var half := (BODY_GAP - absf(distance)) * 0.5
+	var x1 := pos1.x - dir * half
+	var x2 := pos2.x + dir * half
+	x1 = clampf(x1, BaseFighter.STAGE_LEFT, BaseFighter.STAGE_RIGHT)
+	x2 = clampf(x2, BaseFighter.STAGE_LEFT, BaseFighter.STAGE_RIGHT)
+	if absf(x2 - x1) < BODY_GAP:
+		# One body is pinned against a stack: the free one takes the whole remainder.
+		if x1 <= BaseFighter.STAGE_LEFT + 0.5:
+			x2 = minf(x1 + BODY_GAP, BaseFighter.STAGE_RIGHT)
+		elif x2 >= BaseFighter.STAGE_RIGHT - 0.5:
+			x1 = maxf(x2 - BODY_GAP, BaseFighter.STAGE_LEFT)
+	if is_equal_approx(x1, pos1.x) and is_equal_approx(x2, pos2.x):
+		return
+	pos1.x = x1
+	pos2.x = x2
+	p1.global_position = pos1
+	p2.global_position = pos2
+
+
+## Separation only exists for two grounded bodies that are in control of their position.
+func _separation_allowed() -> bool:
+	if p1 == null or p2 == null:
+		return false
+	if p1.state in NO_SEPARATION_STATES or p2.state in NO_SEPARATION_STATES:
+		return false
+	# Airborne bodies pass over each other: jumping across is part of the movement feel.
+	if not p1.is_on_floor() or not p2.is_on_floor():
+		return false
+	return true
+
+
+# =========================================================================
+# Sound (AGENTS.md §9 backlog item B8)
+# =========================================================================
+## Mute toggle for everything: the dev click loop and the procedural SFX together, so one
+## key never leaves half the game talking. The Master bus carries both, and muting the bus
+## (rather than pausing the stream) keeps the 132 BPM clock running, so unmuting never
+## desyncs the beat judgement from the music.
+func _set_muted(value: bool) -> void:
+	_muted = value
+	AudioServer.set_bus_mute(AudioServer.get_bus_index(&"Master"), value)
+	Sfx.set_muted(value)
+
+
+func is_muted() -> bool:
+	return _muted
+
+
+## Impact cue. Blocked contacts knock, plain contacts thud, and a strike judged on the beat
+## gets the sub-bass punch so timing reads with the music muted.
+func _on_strike_resolved(_attacker: BaseFighter, _target: BaseFighter, result: Dictionary) -> void:
+	if bool(result.get("ignored", false)) or bool(result.get("parried", false)):
+		return                    # a parry has its own cue, fired from the fighter signal
+	if bool(result.get("on_beat", false)):
+		Sfx.play(&"hit_onbeat")
+	elif bool(result.get("blocked", false)):
+		Sfx.play(&"block")
+	else:
+		Sfx.play(&"hit")
+
+
+## A fighter entering KO: the dramatic arcade drop (fired once per K.O.).
+func _on_fighter_died() -> void:
+	Sfx.play(&"ko")
+
+
 ## 100% Crowd Hype Surge: the crowd jumps and the HUD banner flashes for the same
 ## window the fighter's momentum boost lasts.
 func _on_hype_surge(seconds: float) -> void:
 	crowd.surge(seconds)
+	Sfx.play(&"airhorn")
 	hud.announce_subtitle("WHEEL AND COME AGAIN!", "(Translation: Rewind the track — rematch!)")
 
 
@@ -189,6 +303,7 @@ func _on_static_parry(defender: BaseFighter, attacker: BaseFighter) -> void:
 		return
 	_add_spark((defender.global_position + attacker.global_position) * 0.5 + Vector2(0.0, -110.0))
 	_on_shake(0.5, 0.12)
+	Sfx.play(&"parry")
 	hud.announce_subtitle("BIG TUNE!", "(Translation: Cleanest block in the dance!)")
 
 
@@ -205,10 +320,12 @@ func _on_throw_broken(attacker: BaseFighter, defender: BaseFighter) -> void:
 		return
 	_add_spark((attacker.global_position + defender.global_position) * 0.5 + Vector2(0.0, -110.0))
 	_on_shake(0.55, 0.14)
+	Sfx.play(&"clank")
 
 
 ## A landed throw: the spinback pops the crowd (the slam's shake comes from the fighter).
 func _on_throw_connected(_attacker: BaseFighter, _defender: BaseFighter, kind: StringName) -> void:
+	Sfx.play(&"whoosh")
 	if kind == &"back":
 		crowd.celebrate()
 
@@ -218,6 +335,7 @@ func _on_speaker_slam(victim: BaseFighter, _side: int) -> void:
 	if victim == null:
 		return
 	_add_spark(victim.global_position + Vector2(0.0, -110.0))
+	Sfx.play(&"slam")
 	hud.announce_subtitle("HOLD DAT!", "(Translation: Take that to the speakers!)")
 
 

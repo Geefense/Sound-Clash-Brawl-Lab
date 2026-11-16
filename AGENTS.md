@@ -716,6 +716,17 @@ here is gameplay-verified; implementation status is stated per item.
     look on the real Chromebook; there is no queue (a second callout inside 4 s is simply lost) and
     the rematch line reuses the round-banner slot rather than its own animation.
 
+20. **60-second round clock — approved (2026-11-16).** Owner decision: a round lasts **60 seconds**
+    of live play, not the TypeScript prototype's 90 s — shorter rounds keep the clashes intense and
+    cycle faster. The clock drains only in `RoundController.Phase.FIGHTING`, so the announce, the K.O.
+    banner, the rematch banner and a future pause never consume it. At zero the higher remaining health
+    wins the round under a `TIME!` banner; an **exact HP tie** replays the round with the
+    `WHEEL AND COME AGAIN!` banner and awards **no** win pip (`round_ended(round, -1)`), keeping the
+    same round number and lighting with a fresh clock. Implementation and evidence: backlog item B6 and
+    its verification section below. [TODO] The `TIME!` wording, the red-under-10 s styling and the
+    tie-replay length are agent defaults; only the 60 s length and the time-out/tie rules are owner
+    decisions.
+
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 
 Recorded at build `ad27516` (`stage/sound-clash-sand`); §9 items 1–19 above are the decisions that
@@ -776,30 +787,40 @@ scheduling any of it against the April 21, 2027 target, and §8 before writing a
 
 #### Agent recommendations — additions from this sprint's build work (2026-11-16)
 
-**[TODO] B6. Round timer and time-out rules.** *Recommended first among the additions.* The port has
-rounds, K.O. and best-of-3 scoring but **no round clock** — the TypeScript prototype's 90-second
-rounds (§4) were never carried over, so a turtle or the Workshop Dummy can never lose. Proposal: 90 s
-per round counting live play only, higher health wins on time-out, an exact tie replays the round
-without consuming a win (or sudden death — owner's call), and the clock drawn in Chakra Petch beside
-the round pips. Exit evidence: headless time-out win, draw and tie cases, and the clock proven to stop
-during K.O., banner and pause.
+**B6. Round timer and time-out rules — implemented (2026-11-16).** Owner decision: **60 seconds** of
+live FIGHTING per round (not the prototype's 90 s, so clashes stay intense and rounds cycle). See
+decisions item 20. `RoundController.clock` starts at `round_seconds` each round and drains only in
+`Phase.FIGHTING`; on zero `_finish_round_on_time()` gives the round to the higher remaining health under
+a `TIME!` banner, and an exact HP tie calls `_replay_round()` — `WHEEL AND COME AGAIN!`, no pip, the
+same round number and lighting, clock back to 60. The HUD draws it top-centre between the health bars
+(Bungee digits, Chakra Petch `ROUND n` caption, red under 10 s). [TODO] The `TIME!` wording, the
+red-under-10 s styling and the 0.05–2.4 s transition timings are agent defaults.
 
-**[TODO] B7. Fighter push-separation.** `BaseFighter` has **no body-to-body separation**: the two
-fighters can stand inside each other, which makes the 96 px grab range ambiguous and lets a thrown
-body land on the same pixel as the attacker. The TypeScript prototype separated bodies, so this is a
-port gap rather than a new mechanic. Proposal: one shared minimum horizontal gap resolved in the match
-controller after both fighters have moved, never applied while grabbed, thrown or knocked down. Exit
-evidence: headless check that overlapping fighters separate symmetrically, that a grab still connects
-at 96 px, and that a speaker-stack bounce lands clear of the wall body.
+**B7. Fighter push-separation — implemented (2026-11-16).** `TestArena` enforces a shared **64 px**
+minimum horizontal gap after both bodies have moved each physics tick: `_physics_process` queues a
+deferred `_separate_fighters()` because the arena is the parent node and would otherwise run before the
+fighters. The correction splits evenly and lets the speaker-stack walls absorb what one body cannot
+take, so a cornered pair still opens a full gap without pushing anyone through a stack. Separation is
+skipped while either body is `GRABBED`, `THROWN`, `KNOCKDOWN` or `KO`, and while either body is
+airborne — jumps over an opponent, throws, spinbacks and knockdowns pass through cleanly. Positions are
+corrected, speeds are not, so walking into an opponent slides you apart instead of stopping dead.
+[TODO] 64 px is an agent default; it needs checking against the 96 px grab range and the 60 px body on
+the real machine.
 
-**[TODO] B8. Audio and hit-feel hooks.** The repository has **no approved audio** beyond the 22-beat
-dev click (`assets/audio/dev/click_132bpm.wav`), so every hit is silent and impact reads only through
-camera shake. Proposal, still zero-cost: one `SfxPlayer` autoload keyed off the signals that already
-exist (`strike_landed`, `static_parry_triggered`, `speaker_slam_triggered`, `throw_connected`,
-`throw_broken`, `hype_surge_started`, KO), with a small procedural or owner-supplied cue per event and
-hitstop exposed as data so tuning is one file. Voice lines stay [TODO] until the owner records them —
-§8 rejects generated speech. Exit evidence: headless check that each signal fires one cue (no
-double-hits on trades), that **M** silences everything, and that no cue breaks the Chromebook budget.
+**B8. Procedural arcade SFX — implemented (2026-11-16).** `godot/scripts/audio/SfxPlayer.gd` (autoload
+`Sfx`) synthesises every cue at start-up with `AudioStreamGenerator`: four voices, 22.05 kHz mono, 0.35 s
+buffers — no audio files, no samples, no extra licences and nothing added to the `.pck`. Cues: `hit`
+(pitch-swept thud plus noise transient), `hit_onbeat` (the same with a 55 Hz sub-bass punch), `block`
+and `clank` (inharmonic metallic knocks), `parry` (gated vinyl-static crackle over a 2.4 kHz ring),
+`slam` (808 cone boom), `whoosh` (low-passed noise swell), `airhorn` (detuned saw fanfare on the 100 %
+Hype Surge) and `ko` (descending arcade drop). Wiring lives entirely in `TestArena` off signals that
+already existed — `strike_resolved`, `static_parry_triggered`, `speaker_slam_triggered`,
+`throw_connected`, `throw_broken`, `hype_surge_started`, `died` — so no combat code knows about audio.
+**M** now mutes the Master bus (click track and SFX together) instead of pausing the stream, which keeps
+the 132 BPM clock running so unmuting never desyncs beat judgement. `clear_buffer()` is never called:
+it asserts when no device is mixing, so a voice restarts with `stop()`/`play()`.
+[TODO] Every cue is an agent default — none has been listened to, the mix balance is unset, and voice
+stealing drops the oldest cue rather than ducking it.
 
 **[TODO] B9. Web loading progress UI and a Chromebook performance readout.** The `/docs` build spends
 several seconds on wasm and `.pck` before the first frame with only the bare engine splash screen, and
@@ -817,10 +838,11 @@ gloss in a separate field, no film/TV samples and no generated voice). Exit evid
 line plays with its subtitle, and the callout cooldown applies to the audio exactly as it already does
 to the text.
 
-**Dependencies worth knowing before picking these up:** B1 and B3 both want the pause/beat-clock
-decision in B3 first; B2's P2 layout and B4's mute-readability are the two items that need the Chromebook
-in hand; B5 waits on that playtest; B6 and B7 change combat feel and therefore must land **before** the
-January 14, 2027 core-mechanics lock (§2, §9 item 2 in the mandatory rules).
+**Dependencies worth knowing before picking these up:** B6, B7 and B8 are closed, so the two
+combat-feel items now in the plan (B4 sparks and the B3 pause/beat-clock decision) land before the
+January 14, 2027 core-mechanics lock (§2, mandatory rule 2). B1 and B3 still wait on B3's pause decision;
+B2's P2 layout and B4's mute-readability need the Chromebook in hand; B5 waits on the playtest sign-off,
+which is now also the first chance to hear B8's cues and feel B7's separation.
 
 Implementation status: written into `/godot`; **not played**. Until 2026-11-15 the port had never
 been opened in an engine. The sand-stage and round-lighting slices were then imported and run headless
@@ -1008,6 +1030,34 @@ deleted before the commit; `TestArena.tscn` booted 200 frames clean; the Web exp
 **Not verified:** no throw of any kind was watched on screen, and none of the damage, Hype, timing or
 arc values have been playtested — they are hand-set defaults.
 
+
+### Push separation, 60-second clock and procedural SFX — verification, 2026-11-16
+
+Temporary headless harness on the real `TestArena.tscn` (deleted before the commit). **Separation:**
+two fighters placed 8 px apart opened to exactly **64.00 px** with the midpoint held at 504.00; a pair
+pinned against the left stack opened to **64.00 px** with the pinned body at 70.06 — inside the wall,
+not through it; bodies in `GRABBED`, `THROWN`, `KNOCKDOWN` and `KO` each kept their 8.00 px overlap; and
+an airborne body was not pushed sideways. **Clock:** the round started on 60.00 s, still read 60.00
+after 0.2 s of announce, drained 60.00 → 59.70 in 0.3 s of live play, awarded the round to the higher
+health (80 v 40) under `TIME!`, and on an exact 50 v 50 tie showed `WHEEL AND COME AGAIN!`, awarded
+**no pip** (wins stayed `[1, 0]`) and replayed round index **1 → 1** with the clock back at 60.00.
+**SFX:** all nine cues synthesised non-silent buffers with peaks inside [-1, 1] — hit 3528 frames /
+0.91, hit_onbeat 6174 / 1.00, block 2205 / 0.41, parry 3969 / 0.77, slam 12127 / 1.00, whoosh 5292 /
+0.39, clank 4851 / 0.71, airhorn 18742 / 0.61, ko 20947 / 1.00 — each of the seven combat signals
+routed to its own cue, and **M** muted both the Master bus and the cue queue, refusing new cues until
+unmuted. A 240-frame boot printed no script errors beyond the known exit-time resource notice; the Web
+export rebuilt headless (exit 0, `.pck` 10.6 MB, `/docs` 47 MB) and the browser run drew the
+`59 / ROUND 1` clock between the health bars with the fighters separated.
+
+**Not verified:** nobody has heard any of these cues — headless Godot has no audio device, so
+"non-silent, unclipped buffers" is arithmetic, not a listen. Separation was not felt in motion (walking
+into an opponent, being cornered, grabbing at 96 px), and the browser run proved the clock's placement
+but not that a full 60 s round reaches zero on a real tab. The silence of a muted build was verified by
+bus state, not by ear. All three need the Chromebook playtest.
+
+**Fixed during that run:** `AudioStreamGeneratorPlayback.clear_buffer()` asserts when no audio device is
+mixing (headless), and `AudioStreamPlayer.set_stream_paused(true)` is refused while stopped — the mute
+path now mutes the Master bus and a recycled voice restarts with `stop()`/`play()`.
 
 ### Arcade typography + callout subtitles — verification, 2026-11-15
 

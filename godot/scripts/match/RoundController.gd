@@ -9,6 +9,11 @@ extends Node
 ## entry point, and only between rounds.
 ##
 ## R still reloads the whole scene; this controller restarts the match after a result.
+##
+## Round clock (AGENTS.md §9 backlog item B6): **60 seconds** of live FIGHTING only — frozen
+## through the announce, the K.O. banner, the rematch banner and (later) the pause menu. On
+## zero the higher remaining health takes the round; an exact health tie replays the round
+## with the `WHEEL AND COME AGAIN!` banner and awards no pip.
 
 signal round_started(round_index: int)
 signal round_ended(round_index: int, winner: int)
@@ -22,11 +27,13 @@ const ROUND_BANNERS := [
 	"FINAL ROUND — LATE-NIGHT DUBPLATE",
 ]
 const KO_BANNER := "K.O.!"
+const TIME_BANNER := "TIME!"
 const REMATCH_BANNER := "WHEEL AND COME AGAIN!"
 const START_POSITIONS := [Vector2(420, 600), Vector2(860, 600)]
 
 @export var enabled: bool = true
 @export var rounds_to_win: int = 2
+@export var round_seconds: float = 60.0      # owner decision: 60 s, not the prototype's 90 s
 @export var announce_seconds: float = 1.8
 @export var round_over_seconds: float = 2.4
 @export var match_over_seconds: float = 3.2
@@ -40,6 +47,9 @@ var round_index: int = 0
 var wins: Array[int] = [0, 0]
 var banner: String = ""
 var banner_alpha: float = 0.0
+var clock: float = 60.0                     # seconds left in the current round
+
+var _replay: bool = false                   # the next transition replays, it does not advance
 
 var _timer: float = 0.0
 var _banner_life: float = 0.0
@@ -66,6 +76,7 @@ func start_match() -> void:
 
 func _begin_round() -> void:
 	round_index = clampi(round_index, 0, ROUND_BANNERS.size() - 1)
+	clock = round_seconds
 	var phase_index: int = mini(round_index, 2)
 	# Round 1 snaps straight to afternoon; later rounds cross-fade for 3 s.
 	if arena != null and arena.has_method("set_time_of_day"):
@@ -103,18 +114,42 @@ func _on_p2_died() -> void:
 	_finish_round(0)
 
 
-func _finish_round(winner: int) -> void:
+func _finish_round(winner: int, banner_text: String = KO_BANNER) -> void:
 	if phase != Phase.FIGHTING:
 		return
 	wins[winner] += 1
 	_lock(true)
-	_show_banner(KO_BANNER, round_over_seconds)
+	_show_banner(banner_text, round_over_seconds)
 	phase = Phase.ROUND_OVER
 	_timer = round_over_seconds
 	round_ended.emit(round_index, winner)
 
 
+## 60-second clock expired. Higher remaining health takes it; an exact tie wheels the
+## tune back and replays the round without touching either fighter's win count.
+func _finish_round_on_time() -> void:
+	if phase != Phase.FIGHTING:
+		return
+	if p1.health == p2.health:
+		_replay_round()
+		return
+	_finish_round(0 if p1.health > p2.health else 1, TIME_BANNER)
+
+
+func _replay_round() -> void:
+	_lock(true)
+	_show_banner(REMATCH_BANNER, round_over_seconds)
+	phase = Phase.ROUND_OVER
+	_timer = round_over_seconds
+	_replay = true
+	round_ended.emit(round_index, -1)       # -1 = tie, no pip awarded
+
+
 func _next_round_or_match() -> void:
+	if _replay:
+		_replay = false
+		_begin_round()                      # same round number, same lighting, fresh clock
+		return
 	if wins[0] >= rounds_to_win or wins[1] >= rounds_to_win:
 		var winner := 0 if wins[0] > wins[1] else 1
 		_show_banner(REMATCH_BANNER, match_over_seconds)
@@ -135,6 +170,11 @@ func _process(delta: float) -> void:
 			_timer -= delta
 			if _timer <= 0.0:
 				_start_fighting()
+		Phase.FIGHTING:
+			# The clock only runs during live play, so announce/K.O./rematch never eat it.
+			clock = maxf(0.0, clock - delta)
+			if clock <= 0.0:
+				_finish_round_on_time()
 		Phase.ROUND_OVER:
 			_timer -= delta
 			if _timer <= 0.0:
@@ -165,6 +205,15 @@ func _tick_banner(delta: float) -> void:
 	if _banner_age >= _banner_life:
 		banner = ""
 		banner_alpha = 0.0
+
+
+## Seconds left on the round clock, and whether it is currently draining (HUD/test hooks).
+func time_left() -> float:
+	return clock
+
+
+func clock_running() -> bool:
+	return enabled and phase == Phase.FIGHTING
 
 
 ## Test/debug helper: the round number a human would read (1-based).

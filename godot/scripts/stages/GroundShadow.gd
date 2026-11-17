@@ -15,6 +15,12 @@ extends Node2D
 ## the fighters can sit on a heavier grounded contact shadow without a second draw pass.
 @export var strength: float = 1.0
 
+## Time-of-day light (AGENTS.md §9 item 23). `light_dir` is which way the shadow falls
+## (+1 right, −1 left) and `stretch` is how far it is dragged out: a high afternoon sun gives
+## a compact patch, a low sunset sun a long one, and the night floodlight a short soft one.
+@export var light_dir: float = -1.0
+@export var stretch: float = 1.0
+
 
 func _ready() -> void:
 	top_level = true
@@ -25,9 +31,12 @@ func _process(_delta: float) -> void:
 	if fighter == null:
 		return
 	var air := clampf((ground_y - fighter.global_position.y) / maxf(jump_apex_height, 1.0), 0.0, 1.0)
-	global_position = Vector2(fighter.global_position.x, ground_y)
+	var cast := maxf(stretch, 0.4)
+	# A long shadow leans away from the light instead of only widening under the body.
+	global_position = Vector2(
+		fighter.global_position.x + light_dir * radius * (cast - 1.0) * 0.55, ground_y)
 	var shrink := lerpf(1.0, air_shrink, air)
-	scale = Vector2(shrink, shrink * squash)
+	scale = Vector2(shrink * cast, shrink * squash)
 	modulate.a = lerpf(1.0, air_fade, air)
 
 

@@ -5,8 +5,11 @@ extends CharacterBody2D
 ## Origin = feet. Sprite is presentation only; it never decides combat.
 ## Frame origins come from feedback.poses.json: grounded poses anchor at y 900,
 ## pelvis-anchored poses at y 610, the walk keys at their pinned sole y 566.
-## Canonical mic hand (owner decision): never mirror the art. A left-facing fighter
-## looks for <anim>_left and falls back to the right-facing frames until that art exists.
+## Facing (owner playtest, 2026-11-17): both fighters must read as facing each other and must
+## turn when they swap sides. `<anim>_left` art still wins when it exists; until it does the
+## sprite is mirrored at run time. That mirror is presentation only and provisional — it also
+## mirrors the rendered mic hand, so real left-facing frames remain the production fix.
+## Supersedes §9 item 2's "no flip_h anywhere" for display turnaround.
 
 enum State {
 	IDLE, WALK, JUMP, CROUCH,
@@ -151,12 +154,21 @@ const ANIM_OFFSET := {
 	&"jab": Vector2(0, -388), &"box_startup": Vector2(0, -388),
 	&"box_recovery": Vector2(0, -388),
 	&"fire_ground": Vector2(0, -388),
-	&"launched": Vector2(0, -98), &"tumble": Vector2(0, -98), &"hitstun": Vector2(0, -98),
+	# Hit-reaction and fall poses are aligned by their own lowest drawn pixel, not by the pack's
+	# shared sole row (owner playtest, 2026-11-17: Feedback's sprite dropped through the sand on
+	# hitstun/knockdown). `16_gut_punch` is a folded body whose art ends at row 835 — well above
+	# the 900 sole line — so the old pelvis anchor (-98) pushed him ~70 px below the floor.
+	# Each value below is (486 − that pose's measured alpha-bottom row), which puts the bottom
+	# edge at world y 592: 8 px above the y = 600 floor line the fighter stands on, and never
+	# below the sand. Rows were measured from the PNG alpha bounds, not estimated.
+	&"launched": Vector2(0, -255),     # 03_c_recoil, alpha bottom 741
+	&"tumble": Vector2(0, -427),       # 04_inverted_c, alpha bottom 913
+	&"hitstun": Vector2(0, -349),      # 16_gut_punch, alpha bottom 835
 	&"salute": Vector2(0, -98), &"fire_air": Vector2(0, -98),
 	&"jump": Vector2(0, -98),          # pelvis-anchored airborne pose, 10_fire_airborne
 	&"walk": Vector2(0, -256),
-	&"knockdown": Vector2(0, -399),    # 17_seated_landing, bottom 911
-	&"ko": Vector2(0, -426),           # 02_knockout, bottom 938
+	&"knockdown": Vector2(0, -417),    # 17_seated_landing, alpha bottom 903
+	&"ko": Vector2(0, -442),           # 02_knockout, alpha bottom 928
 	# Selected 512x512 frames (offset = 256 - median sole row of that animation).
 	# Soles measured per frame: 488-494, so each animation keeps its own baseline.
 	&"guard_entry": Vector2(0, -235),  # mic-defence 01-02, soles 491-492
@@ -276,6 +288,9 @@ const LEGAL := {
 var state: State = State.IDLE
 var state_frame: int = 0
 var facing: int = 1
+## The fighter this one faces. TestArena wires both sides; standalone scenes leave it null
+## and facing then follows the walk direction instead.
+var duel_opponent: BaseFighter = null
 var health: int = 0
 var hype: int = 0
 var guarding: bool = false                 # defensive flag (no BLOCK in the state enum, per §5)
@@ -317,6 +332,23 @@ const LUNGE_WINDUP_PX := 2.5              # the tiny pull-back during startup
 const SQUASH_STARTUP := 0.93              # anticipation: shorter and wider
 const SQUASH_ACTIVE := 1.055              # contact: stretched forward
 const SQUASH_JUMP := 1.05
+## Attack body lean, in radians, pivoting on the feet. It is what makes a strike readable on
+## a fighter whose sheet has no attack frames (a portrait-only roster entry): the body leans
+## back on startup and drives through on contact.
+const LEAN_WINDUP := 0.055
+const LEAN_STRIKE := 0.115
+## Slide puffs: a body skidding on the sand (blockstun, hitstun, knockdown, thrown landing)
+## kicks up a short trail instead of only stepping dust.
+const SLIDE_PUFF_SPEED := 210.0
+const SLIDE_PUFF_TICKS := 7
+## Overall fighter art scale (owner playtest, 2026-11-17: "larger, more detailed fighters").
+## 0.25 -> 0.31 renders the 487 px Feedback idle at ~151 px instead of 121.75 px. The sprite
+## offset is authored in texture pixels, so a uniform scale keeps every sole anchor planted.
+const FIGHTER_ART_SCALE := 1.24
+## World y the hit-reaction / knockdown art is aligned to. The fighter origin sits on the floor
+## line at y 600 and the sand reads a few pixels above it, so reaction poses bottom out here:
+## on the sand, never through it. `ANIM_OFFSET` values below are derived from this number.
+const REACTION_FLOOR_Y := 592.0
 var _anim_base_scale := Vector2(0.25, 0.25)
 var _surge_ticks: int = 0
 var _half_hype_awarded: bool = false
@@ -334,8 +366,10 @@ var _wall_bounced: bool = false
 var _was_on_floor: bool = true
 var _fall_speed: float = 0.0
 var _step_ticks: int = 0
+var _slide_puff_ticks: int = 0
 
 @onready var sprite: AnimatedSprite2D = $Sprite
+@onready var shadow: GroundShadow = get_node_or_null("Shadow") as GroundShadow
 @onready var body_shape: CollisionShape2D = $Body
 @onready var hurt_shape: CollisionShape2D = $Hurtbox/Shape
 @onready var hitbox: Area2D = $Hitbox
@@ -591,8 +625,11 @@ func _tick_grounded() -> void:
 		return
 
 	_set_guarding(false)
-	if absf(command.move_x) > 0.1:
+	# Always face the opponent; walking away backs up without turning your back, which is how
+	# a 2D fighter reads. A lone fighter (no duel_opponent) still turns into its walk.
+	if not _face_opponent() and absf(command.move_x) > 0.1:
 		_set_facing(int(signf(command.move_x)))
+	if absf(command.move_x) > 0.1:
 		velocity.x = command.move_x * walk_speed
 		_step_ticks += 1
 		if _step_ticks % STEP_PUFF_TICKS == 0:
@@ -607,12 +644,15 @@ func _tick_grounded() -> void:
 func _tick_crouch() -> void:
 	_apply_gravity()
 	velocity.x = 0.0
+	_face_opponent()
 	if not command.crouch:
 		change_state(State.IDLE)
 
 
 func _tick_jump() -> void:
 	_apply_gravity()
+	# Turning in the air is allowed: a jump over an opponent should land facing them.
+	_face_opponent()
 	if state_frame > 1 and velocity.y >= 0.0 and is_on_floor():
 		change_state(State.IDLE)
 
@@ -696,6 +736,12 @@ func _configure_hitbox(a: Dictionary) -> void:
 func _set_hitbox_active(on: bool) -> void:
 	hitbox.set_deferred("monitoring", on)
 	hit_shape.set_deferred("disabled", not on)
+
+
+## Strike volume in world space. Public so the arena can draw the strike smear exactly over
+## the volume that resolves contact (presentation only; never read by combat).
+func attack_volume() -> Rect2:
+	return _hitbox_rect()
 
 
 ## Strike volume, in world space, from the attack data and the latched facing.
@@ -787,6 +833,18 @@ func _emit_landing_dust() -> void:
 	if grounded and not _was_on_floor and _fall_speed > LANDING_PUFF_MIN_SPEED:
 		_puff(clampf(_fall_speed / 1200.0, 0.5, 1.8))
 	_was_on_floor = grounded
+
+
+## Sand dragged up by a body sliding on the ground (blockstun shove, hitstun skid, thrown
+## landing, knockdown). Rate-limited in ticks so a 36-tick skid leaves a short trail.
+func _slide_puff() -> void:
+	if _slide_puff_ticks > 0:
+		_slide_puff_ticks -= 1
+		return
+	if not is_on_floor() or absf(velocity.x) < SLIDE_PUFF_SPEED:
+		return
+	_slide_puff_ticks = SLIDE_PUFF_TICKS
+	_puff(clampf(absf(velocity.x) / 900.0, 0.35, 1.2))
 
 
 ## Rare bird splatter (AGENTS.md §9). A brief comedic flinch only: no damage and no
@@ -1046,6 +1104,7 @@ func _take_throw_damage(amount: int) -> bool:
 func _tick_thrown() -> void:
 	_apply_gravity()
 	velocity.x = move_toward(velocity.x, 0.0, 120.0 * get_physics_process_delta_time())
+	_slide_puff()
 	_check_speaker_wall()
 	if state_frame == THROW_SPIN_TICKS:
 		_play_state_anim()        # launched -> tumble
@@ -1174,6 +1233,7 @@ func _begin_stun(frames: int, is_block: bool) -> void:
 func _tick_hitstun() -> void:
 	_apply_gravity()
 	velocity.x = move_toward(velocity.x, 0.0, STUN_FRICTION * get_physics_process_delta_time())
+	_slide_puff()
 	if state_frame >= _stun_frames:
 		change_state(State.IDLE)
 
@@ -1181,6 +1241,7 @@ func _tick_hitstun() -> void:
 func _tick_knockdown() -> void:
 	_apply_gravity()
 	velocity.x = move_toward(velocity.x, 0.0, STUN_FRICTION * get_physics_process_delta_time())
+	_slide_puff()
 	if state_frame >= KNOCKDOWN_FALL_TICKS and is_on_floor():
 		change_state(State.IDLE)
 
@@ -1245,18 +1306,41 @@ func reset_for_round(at: Vector2) -> void:
 	hype_changed.emit(hype, HYPE_MAX)
 
 
-## For a match controller (auto-face is not implemented here). Ignored mid-attack.
+## For a match controller or the arena's auto-face step. Ignored mid-attack: the attack's
+## facing is latched at `_configure_hitbox()` and must never flip once the strike is armed.
 func face_toward(x: float) -> void:
-	if state in [State.IDLE, State.WALK, State.CROUCH]:
+	if state in [State.IDLE, State.WALK, State.CROUCH, State.JUMP]:
 		_set_facing(1 if x >= global_position.x else -1)
 
 
-## Canonical mic hand: never mirror. Left-facing art would be <anim>_left.
+## Face `duel_opponent` while in a neutral, turnable state. Returns false when there is
+## nobody to face, so the caller can fall back to its walk direction.
+func _face_opponent() -> bool:
+	if duel_opponent == null or not is_instance_valid(duel_opponent):
+		return false
+	if state in [State.ATTACK_STARTUP, State.ATTACK_ACTIVE, State.ATTACK_RECOVERY, State.TAUNT,
+			State.HITSTUN, State.KNOCKDOWN, State.KO, State.GRAB, State.GRABBED, State.THROWN]:
+		return true                     # committed: keep the latching state's own facing
+	face_toward(duel_opponent.global_position.x)
+	return true
+
+
+## Facing turn. `<anim>_left` art wins when it exists; otherwise `_play_state_anim()` mirrors
+## the sprite so the turn is still visible (owner playtest, 2026-11-17).
 func _set_facing(dir: int) -> void:
 	if dir == 0 or dir == facing:
 		return
 	facing = dir
 	_play_state_anim()
+
+
+## Time-of-day shadows: the arena points every contact shadow away from the light source and
+## stretches it for a low sun. Presentation only.
+func set_light(dir: float, stretch: float) -> void:
+	if shadow == null:
+		return
+	shadow.light_dir = dir
+	shadow.stretch = stretch
 
 
 func _set_guarding(v: bool) -> void:
@@ -1295,6 +1379,16 @@ func _apply_stance(crouching: bool) -> void:
 ## The scene also carries the pack's unused poses (launched, tumble, salute, dizzy,
 ## fire_air, fire_ground) and the lightah prototype for later wiring.
 ## Left-facing attempts <name>_left first; no such art exists yet, so it falls back.
+## Fallback for a roster fighter whose sheet has no art for this state (Dubplate ships one
+## portrait). Without it the sprite silently keeps the previous frame and a CPU attack reads
+## as a ghost hit.
+func _fallback_anim() -> StringName:
+	for candidate in [&"idle", &"walk", &"jump", &"block"]:
+		if sprite.sprite_frames.has_animation(candidate):
+			return candidate
+	return &""
+
+
 func _play_state_anim() -> void:
 	var anim: StringName = &"idle"
 	match state:
@@ -1314,16 +1408,26 @@ func _play_state_anim() -> void:
 		State.THROWN: anim = &"tumble" if state_frame >= THROW_SPIN_TICKS else &"launched"
 	if sprite.sprite_frames == null:
 		return
+	# Left-facing art is the production target. Until it lands the frame is mirrored at run
+	# time so both fighters visibly turn; a real `<anim>_left` sheet switches the mirror off.
 	if facing < 0 and sprite.sprite_frames.has_animation("%s_left" % anim):
 		anim = StringName("%s_left" % anim)
-	if sprite.sprite_frames.has_animation(anim):
-		var key := String(anim).trim_suffix("_left")
-		var k := _import_cap_ratio(key, anim)
-		sprite.offset = anim_offset.get(StringName(key), ANIM_OFFSET_DEFAULT) / k
-		var s: float = float(anim_scale.get(key, BASE_SPRITE_SCALE)) * k
-		sprite.scale = Vector2(s, s)
-		_anim_base_scale = sprite.scale
-		sprite.play(anim)
+		sprite.flip_h = false
+	else:
+		sprite.flip_h = facing < 0
+	var key := String(anim).trim_suffix("_left")
+	if not sprite.sprite_frames.has_animation(anim):
+		var fallback := _fallback_anim()
+		if fallback == &"":
+			return
+		anim = fallback
+		key = String(anim)
+	var k := _import_cap_ratio(key, anim)
+	sprite.offset = anim_offset.get(StringName(key), ANIM_OFFSET_DEFAULT) / k
+	var s: float = float(anim_scale.get(key, BASE_SPRITE_SCALE)) * k * FIGHTER_ART_SCALE
+	sprite.scale = Vector2(s, s)
+	_anim_base_scale = sprite.scale
+	sprite.play(anim)
 
 
 # =========================================================================
@@ -1339,6 +1443,7 @@ func _apply_visual_polish() -> void:
 	var squash := 1.0
 	var lift := 0.0
 	var lunge := 0.0
+	var lean := 0.0
 	match state:
 		State.IDLE, State.CROUCH:
 			# One pop per eighth note at 132 BPM: a fast attack, then an exponential settle,
@@ -1349,14 +1454,17 @@ func _apply_visual_polish() -> void:
 		State.ATTACK_STARTUP:
 			var t := clampf(float(state_frame) / maxf(float(_attack.get("startup", 6)), 1.0), 0.0, 1.0)
 			squash = lerpf(1.0, SQUASH_STARTUP, t)
-			lunge = lerpf(0.0, -LUNGE_WINDUP_PX, t)
+			lunge = lerpf(0.0, -LUNGE_WINDUP_PX, t * 2.4)
+			lean = -LEAN_WINDUP * t * float(facing)
 		State.ATTACK_ACTIVE:
 			squash = SQUASH_ACTIVE
 			lunge = LUNGE_ATTACK_PX
+			lean = LEAN_STRIKE * float(facing)
 		State.ATTACK_RECOVERY:
 			var t_rec := clampf(float(state_frame) / maxf(float(_attack.get("recovery", 8)), 1.0), 0.0, 1.0)
 			squash = lerpf(1.04, 1.0, t_rec)
 			lunge = lerpf(LUNGE_ATTACK_PX * 0.83, 0.0, t_rec)
+			lean = lerpf(LEAN_STRIKE * 0.6, 0.0, t_rec) * float(facing)
 		State.JUMP:
 			squash = SQUASH_JUMP if velocity.y < -120.0 else (1.045 if velocity.y > 160.0 else 1.0)
 		_:
@@ -1365,6 +1473,8 @@ func _apply_visual_polish() -> void:
 	# squash-and-stretch with volume preserved, and no per-frame scale race with the anim.
 	sprite.scale = Vector2(_anim_base_scale.x * (2.0 - squash), _anim_base_scale.y * squash)
 	sprite.position = Vector2(lunge * float(facing), lift)
+	# Feet stay planted: the lean pivots on the node origin, which is the fighter's sole line.
+	sprite.rotation = lean
 
 
 ## 0..1 inside the current eighth note. Uses the audio-clock beat service when the arena

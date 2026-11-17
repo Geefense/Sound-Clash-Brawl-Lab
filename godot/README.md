@@ -54,24 +54,28 @@ with sand in front and behind them. Nothing was cropped, repainted or offset.
 | --- | --- | --- |
 | Stage art (1280 × 720) | `Stage` | −10 |
 | Warm-sun / cool-shade gradient + sun bloom | `Atmosphere`, `SunGlow` | −9 |
+| Sunset / night sky washes | `SunsetWash`, `NightWash` | −9 |
+| Directional sun shaft | `SunShaft` (additive) | −8 |
 | 132 BPM speaker rings | `SpeakerRings` (`SpeakerPulse.gd`) | −8 |
 | Sand splats (dodged bird drops) | runtime `StageSplat` children | −6 |
 | Coastal wind motes (CPUParticles2D) | `WindMotes` | −5 |
 | Dancehall crowd, back row | `CrowdLine` children | −6 |
 | Dancehall crowd, front row | `CrowdLine` children | −5 |
 | Cool crowd haze (`CrowdHaze.gd`) | `CrowdHaze` | −4 |
-| Low yard barrier + corner post (`YardBarrier.gd`) | `YardBarrier` | −4 |
+| Low yard barrier (`YardBarrier.gd`) | `YardBarrier` | −4 |
+| Record crates | `RecordCrates` | −3 |
 | Fighter contact shadows | `Shadow` in `BaseFighter.tscn` | −2 |
 | Sand foot dust (CPUParticles2D) | `Dust` in `BaseFighter.tscn` | −1 |
 | Fighters | `P1`, `P2` | 0 |
-| Corner wash behind the near-camera spectator | `Foreground/CornerWash` (`ForegroundCorner.gd`, CanvasLayer 1) | 9 |
-| Near-camera spectator card (real crowd sprite) | `Foreground/BottomCard` (CanvasLayer 1) | 10 |
+| Strike smear over an active hitbox | runtime `StrikeTell` child (`StrikeTell.gd`) | 3 |
 | Splatter on a hit fighter | runtime `StageSplat` child | 6 |
 | Bird fly-by | `BirdHazard` | 20 |
 
-Because the background is a single 1280 × 720 layer, the camera now clamps its zoom to **1.0–1.6**
+Because the background is a single 1280 × 720 layer, the camera clamps its zoom to **1.0–1.12**
 and its position to the stage rectangle (`TestArena.STAGE_SIZE`). Zooming in only ever shrinks the
-visible area, so the art always covers the view and the sand line never drifts.
+visible area, so the art always covers the view and the sand line never drifts. The 1.12 ceiling
+replaced the old 1.6 after the 2026-11-17 playtest: close-range fights were cropping most of the
+yard away. Both full speaker stacks stay inside the frame at 1.12.
 
 **Crowd staging and impact juice (2026-11-16, `AGENTS.md` §9 item 21).** Three presentation-only
 additions on top of the 15-character crowd: `YardBarrier.gd` draws a low wooden/zinc barrier across
@@ -101,13 +105,45 @@ per-animation sprite scale and never touching collision. Headless 4.5 check: 25/
 Confirmed on screen in the Web build (`frames/07-godot-build-framing-polish.png`); motion at speed and
 the sunset/night tints remain unseen.
 
+**Owner playtest pass (2026-11-17, `AGENTS.md` §9 item 23).** Fixes, in the owner's order: both
+fighters now track and face each other for the whole match (`BaseFighter.duel_opponent` +
+`_face_opponent()`), and because no left-facing sheet exists the sprite is mirrored at run time so
+the turn is visible — a real `<anim>_left` sheet switches the mirror off. Every strike spawns a
+`StrikeTell` smear over its own hit volume on the active tick, so a fighter whose sheet has no attack
+frames (Dubplate ships one portrait) no longer lands invisible damage; `_play_state_anim()` also falls
+back to a real animation instead of silently keeping the previous frame, and attack states lean the
+body through the swing. The bottom-left cropped spectator card and its radial wash were removed with
+`ForegroundCorner.gd`, the leaning arms-crossed spectator was retired from the line (his only drawing
+is a lean and there is nothing to lean on), the `YardBarrier` corner post went with him, and both record
+crates shrank to 0.128/0.124 at y 606 on the sand line at z −3. Fighters render 24 % larger
+(`BaseFighter.FIGHTER_ART_SCALE = 1.24`, ~151 px), the camera ceiling dropped to 1.12, and skids add
+sand puffs (`BaseFighter._slide_puff()`). The crowd now performs acts on individual clocks — flag-wave,
+rag-wave, raise-and-blow horn, skank, dance, cheer — instead of one beat-locked bounce for all fifteen.
+Time of day gained its own sky (`SunsetWash`, `NightWash`), a directional `SunShaft`, a moving/scaling
+sun bloom, phase-driven contact-shadow length (`GroundShadow.light_dir` / `stretch`) and a night crowd
+silhouette (`CrowdLine.set_night()`). Headless 4.5 check: **47/47 assertions passed** (see below).
+
+**Follow-up from the same pass (2026-11-17).** The default matchup is now **Feedback vs Feedback**
+(`MatchSetup.p2_fighter`); Dubplate and Young Selecta stay selectable and the roster order is
+unchanged, so combat, visible blocks, hit reactions and the upcoming Dancehall move set can be
+tuned with full animation on both sides first. Hit-reaction art was also mis-aligned: `16_gut_punch`
+ends at row 835, well above the pack's 900 sole row, so the old pelvis anchor (-98) pushed Feedback
+~70 px through the sand (tumble and launch had the same problem). Hitstun, launch, tumble,
+knockdown and KO offsets are now derived from each pose's measured alpha bottom and place it at
+`BaseFighter.REACTION_FLOOR_Y` (world y 592): on the sand and never through it, while idle keeps its
+authored sole anchor at 600.2.
+**Still not seen on screen** — no GPU renderer in the authoring environment, so colour, occlusion,
+the mirrored mic hand and how the acts read at speed are unverified.
+
 Stage mechanics, all presentation-only (no combat rule, hit registry or round state was changed):
 
 - **Sand underfoot** — `Dust` (`CPUParticles2D`, `local_coords = false`, one-shot) puffs on walking
   footfalls (every 8 ticks), jump takeoff, landings above 260 px/s fall speed, and heavy knockdown
   (`17_seated_landing`). Driven by `BaseFighter._puff()`.
 - **Contact shadows** — `GroundShadow.gd`, `top_level` so it stays glued to the sand at y = 600 while
-  the fighter is airborne; it shrinks to 0.6 and fades to 0.35 over the ~178 px jump apex.
+  the fighter is airborne; it shrinks to 0.6 and fades to 0.35 over the ~178 px jump apex. The time
+  of day also sets its `light_dir`/`stretch`: compact in the afternoon (0.95×), long and cast to the
+  right at sunset (1.95×), short and soft under the night floodlight (1.1×).
 - **Wind motes** — `WindMotes` drifts 34 slow specks across the sky/upper stage.
 - **Bird hazard** — `BirdHazard.gd`: 5 % chance every 15 s, or **B** on demand. The bird crosses the
   upper screen relative to the camera view, drops one splatter on a fighter's lane; a standing
@@ -118,11 +154,13 @@ Stage mechanics, all presentation-only (no combat rule, hit registry or round st
   1099, 425) plus a 0.8 % camera zoom micro-pulse that decays in ~0.14 s.
 - **Round lighting** — `TimeOfDay` (`CanvasModulate`) tints the world canvas; the HUD is in a
   `CanvasLayer` so it stays readable. `TestArena.set_time_of_day(phase, duration = 3.0)` cross-fades
-  the tint, the `Floodlight` (warm additive gradient over the centre lane, night only) and the
-  `SunGlow` alpha with one 3 s sine tween. Phase 0 Afternoon Sun `(1.0, 0.98, 0.94)` · phase 1 Golden
-  Hour `(1.0, 0.78, 0.58)` · phase 2 Late-Night `(0.48, 0.55, 0.80)` with floodlight 0.34. **N**
-  cycles the phases; Round 1 is applied instantly on load. [TODO] Nothing calls it per round yet —
-  the arena has no round lifecycle, so the round controller must drive `set_time_of_day(round - 1)`.
+  the tint, the two sky washes, the `SunShaft`, the `Floodlight` and the `SunGlow` (alpha, position
+  and scale) with one 3 s sine tween, and drives the shadow length and the night crowd silhouette
+  through `tween_method`. Phase 0 Afternoon Sun: clean daylight, no washes, compact shadows. Phase 1
+  Golden Hour: `SunsetWash` 0.62, the sun drops to y 300 and grows to 3.1×, `SunShaft` 0.36, 1.95×
+  shadows cast right. Phase 2 Late-Night: `NightWash` 0.74 (sky and surf subdued), floodlight 0.46
+  over the centre lane, sun gone, crowd at 0.85 silhouette. **N** cycles the phases; the round
+  controller drives `set_time_of_day(round - 1)`.
 
 **Checks actually run** (Godot 4.3.stable.official headless, Linux, temp harness deleted afterwards):
 `--import` then a physics run of `TestArena.tscn`. Results: project imports with no script or

@@ -444,11 +444,13 @@ here is gameplay-verified; implementation status is stated per item.
    damage too, blocked hits still get hitstop, and a taunt that completes on-beat awards the same
    +15. [TODO] The ±70 ms window, both +15 amounts, taunt length and risk/reward rules remain
    placeholders; blocked chip multiplier and taunt amount are owner-visible defaults.
-2. **Canonical mic hand — approved.** The port never mirrors art: no `flip_h` anywhere. A
-   left-facing fighter looks for `<anim>_left` and falls back to the right-facing frames until that
-   art exists, so a left-facing fighter currently shows right-facing frames. This does **not**
-   resolve the source pack's cross-set handedness, which stays [TODO]; it stops the port inventing
-   a different hand by mirroring.
+2. **Canonical mic hand — approved; display turnaround amended 2026-11-17.** The pack stays
+   right-handed and its cross-set handedness is still [TODO]. A left-facing fighter still looks for
+   `<anim>_left` first. **Changed by the 2026-11-17 playtest** (item 23): with no left-facing art the
+   sprite is now mirrored at run time, because both fighters were drawn facing right while the CPU was
+   logically facing left — the owner called that out as a fight-breaking defect. Mirroring stays
+   provisional and presentation-only: it flips the *rendered* mic hand and cable, it never mirrors or
+   rewrites a PNG, and a real `<anim>_left` sheet switches the mirror off automatically.
 3. **Skank taunt — approved.** `State.TAUNT` plays the `skank` pose (`15_skank`) and an on-beat
    completion awards hype. This resolves the §5 taunt-animation TODO.
 4. **Move keys as wired in the workshop arena:** J jab, K box, L tump, I upper box, T taunt,
@@ -839,6 +841,101 @@ here is gameplay-verified; implementation status is stated per item.
       none of this has been seen under the Round 2 sunset or Round 3 night tint. The 820 fit
       distance, 6 px lunge, 2 px groove, 0.26 haze and card tint are agent defaults for Garfield's eye.
 
+23. **Owner playtest pass — facing, visible strikes, crowd acting, lighting, framing — implemented
+    (2026-11-17).** Owner feedback from the Chromebook build, worked in the order the owner asked for.
+    Presentation only: no combat rule, hitbox, hurtbox, frame data, beat window or movement value was
+    changed, and **no new art was generated, purchased or mirrored on disk**.
+
+    - **Fighter facing (fixed first).** `BaseFighter` gained `duel_opponent` and `_face_opponent()`;
+      `TestArena` wires P1 to P2 at start-up. Both fighters turn toward each other on every neutral,
+      crouch and airborne tick, an attack keeps the facing latched by `_configure_hitbox()`, and
+      walking away backs up instead of turning your back. `face_toward()` now also accepts JUMP, so a
+      cross-up lands facing the opponent. With no `<anim>_left` sheet the sprite is mirrored
+      (`flip_h`) — see the item 2 amendment; that mirror is the port's only deviation from the old
+      "no flip_h" rule and it is provisional.
+    - **Invisible CPU attacks (fixed second).** Root cause was the roster, not the FSM: the CPU
+      defaults to **Dubplate**, whose only art is one portrait, so every attack state played no frame
+      at all while the hitbox still resolved damage. Three changes: `_play_state_anim()` falls back
+      through `idle/walk/jump/block` instead of silently keeping the previous frame; attack states lean
+      the body through the swing (`LEAN_WINDUP` 0.055 rad back, `LEAN_STRIKE` 0.115 rad through
+      contact) on top of the existing wind-up, lunge and squash; and every `ATTACK_ACTIVE` entry spawns
+      a `StrikeTell` smear (`StrikeTell.gd`, primitives, z 3, capped at 4 like the sparks) drawn over
+      exactly the rect `BaseFighter.attack_volume()` resolves contact with — same shape, same tick.
+      [TODO] Dubplate still has **no attack art**; he needs a startup/contact/recovery sheet before his
+      strikes read as a punch or kick rather than a shove.
+    - **Stray bottom-left character (removed).** The `Foreground` CanvasLayer, its `CornerWash` radial
+      wash and the cropped `BottomCard` spectator are gone, together with `ForegroundCorner.gd`/`.uid`.
+    - **Unsupported leaning spectator (removed).** `ArmsCrossed`'s only drawing is a lean and there is
+      nothing at the crowd line to lean on, so he is retired from the line (`CrowdLine.RETIRED_NAMES`:
+      never placed, never rotated, never returned by the pool) and the `YardBarrier` corner post that
+      existed only for him was deleted. His sprite, texture and scene node stay in the repo. Rows are
+      still 5 front / 6 back. [TODO] A redrawn standing pose would let him return.
+    - **Crowd acts instead of unison bouncing.** Each member is cast into an act from its node name —
+      `FlagWaver` waves the flag, `TowelWaver` waves the rag, `AirhornHypeman` raises and blows,
+      skankers skank, the queen and hypemen dance, the rest cheer — and performs it from its own seeded
+      phase and rate (0.20–1.05 Hz per act). The beat only drops a small accent on each member's own
+      beat of the bar (`beat_div` 1–3, `beat_offset` 0–2), so the line no longer hops in lockstep.
+      Motion is whole-sprite lift, tilt and volume-preserving squash, because each character is one
+      frozen drawing. [TODO] Real waving, a raised horn and dance cycles need **multi-frame crowd
+      sheets** (2–4 frames per active character) — art preparation, not code.
+    - **Time of day is a scene change, not a filter.** Added `SunsetWash` and `NightWash` (1280×720
+      vertical gradients at z −9), a directional `SunShaft` at z −8 and a per-phase sun bloom position
+      and scale. **Afternoon:** clean daylight, no washes, compact 0.95× shadows. **Sunset:** 0.62
+      orange wash, sun down at y 300 and 3.1×, 0.36 shaft, long 1.95× shadows cast to the right.
+      **Night:** 0.74 deep-blue wash over sky, clouds and surf, floodlight 0.46 over the centre lane, no
+      sun, crowd at a 0.85 silhouette through `CrowdLine.set_night()` (written on `self_modulate`, so it
+      never fights the swap fades). `GroundShadow` gained `light_dir`/`stretch`, applied to fighters and
+      crowd together, so the cast direction can never disagree.
+    - **Scale, framing and props.** `BaseFighter.FIGHTER_ART_SCALE = 1.24` renders every fighter about
+      24 % larger (~151 px against 121.75 px) with the feet still planted, since the sprite offset is in
+      texture pixels. The camera ceiling dropped **1.6 → 1.12** and the minimum follow distance rose
+      420 → 620, so close-range fights keep the yard in frame; the neutral zoom stays ~1.04 and both
+      speaker stacks stay inside the view at 1.12. Both record crates shrank to 0.128/0.124, moved onto
+      the sand line at (192, 606) / (1090, 606), z −3, with matching shadows.
+    - **Sand interaction.** Beside walking footfalls, takeoff, landings and knockdowns, a body skidding
+      on the sand (blockstun shove, hitstun, thrown landing, knockdown) now trails sand puffs through
+      `BaseFighter._slide_puff()`, rate-limited to one every 7 ticks.
+    - **Checks actually run** (Godot 4.5.stable headless, Linux: `--import`, then
+      `--script res://tools/headless_roster_check.gd`): **45/45** — P1 facing right and the CPU facing
+      left and mirrored, both turn after a forced side swap, Dubplate at the enlarged adult scale,
+      Feedback's figure over 140 px, each phase's washes / floodlight / sun, 1.95× sunset and 0.95×
+      afternoon shadows, crowd silhouette 0.85 at night, crates at 0.128 / y 606, front 5 / back 6 with
+      the leaner invisible, flag/rag/horn acts assigned, 11 distinct crowd phases, and a real jab
+      reaching `ATTACK_ACTIVE` with a live `StrikeTell` in the tree.
+    - **Not verified:** there is no GPU renderer in the authoring environment, so **nothing in this
+      pass has been looked at on screen** — colour and contrast per phase, the mirrored mic hand,
+      whether the acts read as dancing at speed, and the strike smear at full frame rate all need
+      Garfield's eye on the Chromebook build.
+    - **Still needs art (Sprite Arific / Flow prep):** left-facing Feedback, so the mirror can be
+      retired; Dubplate attack frames; a standing replacement for `ArcsCrossed`; multi-frame
+      flag/rag/horn/dance crowd loops; and a dedicated night sky/cloud plate if the gradient wash is
+      not enough.
+
+24. **Default matchup is Feedback vs Feedback; reaction poses aligned to the sand — owner decision,
+    implemented (2026-11-17).** Two follow-ups from the same playtest, landed before this branch merges
+    into `stage/sound-clash-sand`.
+
+    - **Default matchup.** `MatchSetup.p2_fighter` now defaults to `feedback`, so the game opens on
+      **Feedback vs Feedback**; Dubplate and Young Selecta stay fully selectable on the title screen and
+      `FighterRoster.ORDER` is unchanged. Owner rationale: refine combat, visible blocks, hit reactions
+      and the upcoming Dancehall move set — **The Bogle**, **Log On**, **Signal Di Plane** — with full
+      animation on both sides before building the other fighters' unique movesets. This supersedes item
+      23's note that the CPU defaults to Dubplate; the portrait-fighter problem found there (missing
+      attack frames) is unchanged and still needs art.
+    - **Ground alignment.** `16_gut_punch` (hitstun) is a folded body whose art ends at row 835, far
+      above the pack's 900 sole row, so the old pelvis anchor (-98) pushed Feedback ~70 px below the
+      sand; `04_inverted_c` (tumble) and `03_c_recoil` (launch) had the same problem. Hit-reaction,
+      launch, tumble, knockdown and KO offsets are now derived from each pose's own measured
+      alpha-bottom row and place it at `BaseFighter.REACTION_FLOOR_Y = 592` — on the sand, never
+      through it (8 px above the fighter origin / floor line at y 600). Idle keeps its authored sole
+      anchor and still measures 600.2 on the floor.
+    - **Checks actually run** (Godot 4.5.stable headless, same harness): **47/47** — P2 default and the
+      three-cycle wrap are Feedback, idle sole at 600.2, and the lowest of
+      hitstun/launched/tumble/knockdown/ko measured at **591.2** (above the 592 line) from the real
+      texture alpha bounds rather than from the offset table.
+    - **Still not verified:** none of the reaction alignment has been seen on screen. The check proves
+      the art cannot cross the sand line; it does not prove the poses look planted in motion.
+
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 
 Recorded at build `ad27516` (`stage/sound-clash-sand`); §9 items 1–19 above are the decisions that
@@ -1002,6 +1099,7 @@ For Godot, once created: [TODO] pin exact import/headless launch/test/export com
 | Birthday release / May Jamaica trip | Launch target Apr 21, 2027; final QA Apr 2–21; trip May 2027. |
 | Sound Clash Sand Stage (art + foot dust + shadows + atmosphere + speaker thump + rare bird) | Implemented 2026-11-15 on branch `stage/sound-clash-sand`; headless Godot 4.3 import/run clean; **on-screen playtest [TODO]**. |
 | Round-based day → sunset → night lighting | Implemented 2026-11-15 on branch `stage/sound-clash-sand`; headless checks of all three phases, tween and N cycle pass; round-controller driving and **on-screen look [TODO]**. |
+| Owner playtest pass: facing, visible CPU strikes, crowd acts, stage lighting, framing, props | Implemented 2026-11-17; headless 4.5 check 47/47; **on-screen look and feel [TODO]**; Dubplate attack art, left-facing frames and multi-frame crowd loops still need art prep. |
 | Smart Sparring AI modes (P2) | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 4 modes cycle on **Y**, HUD banner, **G** guard override; headless Godot 4.5 runs pass for every mode; **on-screen/feel playtest [TODO]**. |
 | Dancehall crowd line + 100% Hype Surge | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 6 sliced spectators (Queen centre) + 2 record crates at the stacks, beat bob, FORWARD!/PULL UP! banner, 5 s 1.20× / faster-recovery boost; headless checks pass; **on-screen look and balance [TODO]**. |
 | 15-character two-row rotating crowd + contact shadows | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 9 new slices (pool 15), front/back rows, 12–18 s and 50 %/100 % hype reshuffles, GroundShadow on crowd and crates; headless checks pass; **on-screen look [TODO]**. |

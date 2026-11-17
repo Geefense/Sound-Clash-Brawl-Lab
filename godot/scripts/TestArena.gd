@@ -37,16 +37,17 @@ extends Node2D
 ## All three are presentation only.
 
 const CLICK_LOOP_SECONDS := 10.0      # 22 beats at 132 BPM
-const CAMERA_MIN_DISTANCE := 420.0
+const CAMERA_MIN_DISTANCE := 620.0
 const CAMERA_MAX_DISTANCE := 1100.0
-## Framing constant (§9 item 22). At the neutral 440 px fighter spacing this puts the zoom at
-## ~1.03, which fits both full speaker stacks (left 82–204, right 1075–1201) inside the view
-## instead of cropping their outer edges. The 1.0 floor still guarantees the single-layer
-## stage art always covers the frame.
+## Framing (§9 item 23, owner playtest: "reduce the excessive zoom — I want to appreciate the
+## scenery"). At the neutral 440 px spacing this frames at ~1.04 and, with both fighters up
+## close, tops out at 1.12 instead of the old 1.6 — the old close-range crop threw away most of
+## the yard. Both full speaker stacks (left 82–204, right 1075–1201) stay inside the view at
+## 1.12, and the 1.0 floor still guarantees the single-layer stage art covers the frame.
 const CAMERA_FIT_DISTANCE := 820.0
 const STAGE_SIZE := Vector2(1280, 720)
 const CAMERA_MIN_ZOOM := 1.0          # keep the 1280x720 stage art covering the view
-const CAMERA_MAX_ZOOM := 1.6
+const CAMERA_MAX_ZOOM := 1.12
 const CAMERA_FOCUS_LIFT := 140.0
 const THUMP_ZOOM := 0.008             # 132 BPM speaker thump: 0.8% micro-pulse
 const THUMP_DECAY := 7.0
@@ -57,24 +58,58 @@ const THUMP_DECAY := 7.0
 ## only rises at night so both fighters stay crisp against the dark sky.
 ## [TODO] Phase-to-round mapping is exposed as an API, not driven: this workshop arena
 ## has no round lifecycle yet. The match controller calls set_time_of_day(round - 1).
+## Each phase now changes the *scene*, not just a screen filter (owner playtest, 2026-11-17).
+##   tint    — CanvasModulate over the world canvas (the HUD is a CanvasLayer, so it stays clean)
+##   sunset  — warm sky wash alpha (`SunsetWash`, orange over the top of the frame)
+##   night   — deep-blue sky/beach wash alpha (`NightWash`), so the clouds and surf go subdued
+##   sun/sun_pos/sun_scale — the sun bloom: high and white at noon, low and big at sunset, gone
+##             at night
+##   shaft   — warm directional light from the sun side (`SunShaft`, additive)
+##   flood   — warm arena floodlight over the centre lane; only the night really lights it
+##   crowd   — 0–1 crowd silhouette for the night
+##   shadow  — contact-shadow stretch / cast direction (long low sun, short night flood)
 const TIME_PHASES := [
 	{
 		"name": "Afternoon Sun",
-		"tint": Color(1.0, 0.98, 0.94),
-		"flood": 0.0,
+		"tint": Color(1.0, 0.99, 0.96),
+		"sunset": 0.0,
+		"night": 0.0,
 		"sun": 1.0,
+		"sun_pos": Vector2(1010, 205),
+		"sun_scale": 2.4,
+		"shaft": 0.1,
+		"flood": 0.0,
+		"crowd": 0.0,
+		"shadow_stretch": 0.95,
+		"shadow_dir": -1.0,
 	},
 	{
 		"name": "Golden Hour / Sunset Clash",
-		"tint": Color(1.0, 0.78, 0.58),
-		"flood": 0.1,
-		"sun": 0.6,
+		"tint": Color(1.0, 0.84, 0.68),
+		"sunset": 0.62,
+		"night": 0.0,
+		"sun": 1.2,
+		"sun_pos": Vector2(1046, 300),
+		"sun_scale": 3.1,
+		"shaft": 0.36,
+		"flood": 0.12,
+		"crowd": 0.18,
+		"shadow_stretch": 1.95,     # low sun: long shadows cast to the right
+		"shadow_dir": 1.0,
 	},
 	{
 		"name": "Late-Night Sound Clash",
-		"tint": Color(0.48, 0.55, 0.80),
-		"flood": 0.34,
-		"sun": 0.22,
+		"tint": Color(0.44, 0.52, 0.78),
+		"sunset": 0.0,
+		"night": 0.74,
+		"sun": 0.0,
+		"sun_pos": Vector2(1010, 150),
+		"sun_scale": 1.7,
+		"shaft": 0.0,
+		"flood": 0.46,              # the stage lights, not the sun, carry this round
+		"crowd": 0.85,              # crowd drops to silhouette
+		"shadow_stretch": 1.1,
+		"shadow_dir": -1.0,
 	},
 ]
 const TIME_TRANSITION_SEC := 3.0
@@ -84,6 +119,7 @@ const TIME_TRANSITION_SEC := 3.0
 const MAX_ACTIVE_BIRDS := 1           # one bird in the air at a time, however fast B is pressed
 const MAX_PARRY_SPARKS := 4           # oldest spark is recycled once four are alive
 const MAX_PARTICLE_AMOUNT := 16       # hard ceiling applied to every CPUParticles2D
+const MAX_STRIKE_TELLS := 4           # attack smears, same cap policy as the sparks
 
 ## Crowd proximity ebb (AGENTS.md §9 item 21). A body crossing the line at this speed, or
 ## any thrown / landing body, pulls the nearest spectators back for a beat. Walking is 220,
@@ -118,6 +154,9 @@ const NO_SEPARATION_STATES := [
 @onready var time_modulate: CanvasModulate = $TimeOfDay
 @onready var floodlight: Sprite2D = $Floodlight
 @onready var sun_glow: Sprite2D = $SunGlow
+@onready var sunset_wash: Sprite2D = $SunsetWash
+@onready var night_wash: Sprite2D = $NightWash
+@onready var sun_shaft: Sprite2D = $SunShaft
 
 var _dummy_guard: bool = false
 var _shake_time: float = 0.0
@@ -128,6 +167,9 @@ var _time_tween: Tween = null
 var _muted: bool = false
 var _separation_queued: bool = false
 var _flinch_cd := [0.0, 0.0]          # per-fighter rate limit for the crowd flinch
+var _crowd_night: float = 0.0
+var _shadow_stretch: float = 1.0
+var _shadow_dir: float = -1.0
 
 
 func _ready() -> void:
@@ -149,6 +191,19 @@ func _ready() -> void:
 
 	p1.camera_shake_requested.connect(_on_shake)
 	p2.camera_shake_requested.connect(_on_shake)
+
+	# Facing (owner playtest, 2026-11-17): both fighters track each other for the whole match
+	# and turn when they swap sides. RoundController resets it between rounds.
+	p1.duel_opponent = p2
+	p2.duel_opponent = p1
+	p1.face_toward(p2.global_position.x)
+	p2.face_toward(p1.global_position.x)
+
+	# Visible attacks: every strike draws a smear over its own hit volume for the whole active
+	# window, so a fighter whose sheet has no attack frames (a portrait-only roster entry)
+	# no longer lands invisible damage.
+	p1.state_changed.connect(_on_fighter_state_changed.bind(p1))
+	p2.state_changed.connect(_on_fighter_state_changed.bind(p2))
 
 	hud.set("p1", p1)
 	hud.set("p2", p2)
@@ -493,13 +548,30 @@ func set_time_of_day(phase: int, duration: float = TIME_TRANSITION_SEC) -> void:
 	var tint: Color = target["tint"]
 	var flood: float = target["flood"]
 	var sun: float = target["sun"]
+	var sunset: float = target["sunset"]
+	var night: float = target["night"]
+	var shaft: float = target["shaft"]
+	var crowd_night: float = target["crowd"]
+	var sun_pos: Vector2 = target["sun_pos"]
+	var sun_scale: float = target["sun_scale"]
+	var stretch: float = target["shadow_stretch"]
 
 	if _time_tween != null and _time_tween.is_valid():
 		_time_tween.kill()
+	# The cast direction is a switch, not a blend: shadows flip to the sunset side at once and
+	# the stretch carries the eye through the transition.
+	_shadow_dir = float(target["shadow_dir"])
 	if duration <= 0.0:
 		time_modulate.color = tint
 		floodlight.modulate.a = flood
 		sun_glow.modulate.a = sun
+		sun_glow.position = sun_pos
+		sun_glow.scale = Vector2(sun_scale, sun_scale)
+		sunset_wash.modulate.a = sunset
+		night_wash.modulate.a = night
+		sun_shaft.modulate.a = shaft
+		_set_crowd_night(crowd_night)
+		_set_shadow_light(stretch)
 		return
 
 	_time_tween = create_tween()
@@ -509,6 +581,66 @@ func set_time_of_day(phase: int, duration: float = TIME_TRANSITION_SEC) -> void:
 	_time_tween.tween_property(time_modulate, "color", tint, duration)
 	_time_tween.tween_property(floodlight, "modulate:a", flood, duration)
 	_time_tween.tween_property(sun_glow, "modulate:a", sun, duration)
+	_time_tween.tween_property(sun_glow, "position", sun_pos, duration)
+	_time_tween.tween_property(sun_glow, "scale", Vector2(sun_scale, sun_scale), duration)
+	_time_tween.tween_property(sunset_wash, "modulate:a", sunset, duration)
+	_time_tween.tween_property(night_wash, "modulate:a", night, duration)
+	_time_tween.tween_property(sun_shaft, "modulate:a", shaft, duration)
+	_time_tween.tween_method(_set_crowd_night, _crowd_night, crowd_night, duration)
+	_time_tween.tween_method(_set_shadow_light, _shadow_stretch, stretch, duration)
+
+
+## Crowd silhouette level for the current phase (0 daylight, ~0.85 night).
+func _set_crowd_night(amount: float) -> void:
+	_crowd_night = clampf(amount, 0.0, 1.0)
+	if crowd != null:
+		crowd.set_night(_crowd_night)
+
+
+## Contact-shadow shape for the current phase: fighters and the crowd move together.
+func _set_shadow_light(stretch: float) -> void:
+	_shadow_stretch = stretch
+	for fighter in [p1, p2]:
+		if fighter != null:
+			fighter.set_light(_shadow_dir, _shadow_stretch)
+	if crowd != null:
+		crowd.apply_light(_shadow_dir, _shadow_stretch)
+
+
+# =========================================================================
+# Visible strikes (AGENTS.md §9 item 23)
+# =========================================================================
+## Fired on every FSM transition for both fighters. ATTACK_ACTIVE is the tick the hitbox is
+## armed, so the smear appears exactly with the contact window instead of on the input.
+func _on_fighter_state_changed(_old_state: int, new_state: int, fighter: BaseFighter) -> void:
+	if new_state != BaseFighter.State.ATTACK_ACTIVE or fighter == null:
+		return
+	_add_strike_tell(fighter)
+
+
+func _add_strike_tell(fighter: BaseFighter) -> void:
+	var volume := fighter.attack_volume()
+	if volume.size == Vector2.ZERO:
+		return
+	var live := _live_strike_tells()
+	if live.size() >= MAX_STRIKE_TELLS:
+		live[0].queue_free()
+	var tell := StrikeTell.new()
+	tell.global_position = Vector2(volume.get_center().x, volume.get_center().y)
+	tell.facing = fighter.facing
+	tell.reach = volume.size.x * 0.5 + 26.0
+	tell.radius = maxf(volume.size.y * 0.5, 14.0)
+	tell.heavy = volume.size.x > 90.0
+	add_child(tell)
+
+
+func _live_strike_tells() -> Array[StrikeTell]:
+	var found: Array[StrikeTell] = []
+	for child in get_children():
+		var tell := child as StrikeTell
+		if tell != null and not tell.is_queued_for_deletion():
+			found.append(tell)
+	return found
 
 
 func cycle_time_of_day(duration: float = TIME_TRANSITION_SEC) -> void:

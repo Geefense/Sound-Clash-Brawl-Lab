@@ -11,6 +11,13 @@ extends Node2D
 ##
 ## The Dancehall Queen ("Queen") is pinned to the centre front slot and never swapped out.
 ## Each member gets a grounded contact shadow from the shared GroundShadow script.
+##
+## Crowd acting (owner playtest, 2026-11-17). The line no longer bounces in unison on the beat:
+## every member is cast into an *act* — flag-holder waves, rag-holder waves, horn-holder raises
+## and blows, skankers skank, dancers dance, everyone else cheers — and runs it on its own phase
+## and rate, so fifteen people never move together. The acts are whole-sprite motion
+## (lift / tilt / squash) because the current art is one frozen drawing per character; real
+## waving and horn-blowing need multi-frame sprite sheets (see the art TODO in §9 item 23).
 
 signal crowd_rotated(moved: int)
 
@@ -20,14 +27,48 @@ const FRONT_SLOTS := [340.0, 470.0, 640.0, 810.0, 940.0]
 const BACK_SLOTS := [300.0, 428.0, 556.0, 724.0, 852.0, 980.0]
 const PINNED_NAME := "Queen"
 const PINNED_SLOT := 2
-## Owner direction (§9 item 22): the arms-crossed man is anchored at the edge of the line,
-## leaning on the yard barrier's corner post beside the right-hand speaker stack, and is never
-## swapped out — so he can never end up leaning on thin air.
-const PINNED_EDGE_NAME := "ArmsCrossed"
-const EDGE_SLOT_X := 1032.0
-const EDGE_LEAN_DEG := 7.0
+## Owner direction (2026-11-17): the arms-crossed man's only drawing is a lean, and there is
+## nothing at the crowd line for him to lean on — bouncing that pose read as a mistake. He is
+## retired from the line until a standing pose is drawn; the sprite, its texture and the scene
+## node stay in the repo so no art is lost.
+const RETIRED_NAMES := ["ArmsCrossed"]
 
-@export var bob_pixels: float = 4.0           # subtle off-beat sway during normal play
+## Acts. A member's act decides which motion it performs and how fast.
+const ACT_FLAG := &"flag"
+const ACT_RAG := &"rag"
+const ACT_HORN := &"horn"
+const ACT_SKANK := &"skank"
+const ACT_DANCE := &"dance"
+const ACT_CHEER := &"cheer"
+const ACT_FOR := {
+	"FlagWaver": ACT_FLAG,
+	"TowelWaver": ACT_RAG,
+	"AirhornHypeman": ACT_HORN,
+	"FloralSkanker": ACT_SKANK,
+	"RastaElder": ACT_SKANK,
+	"CapElder": ACT_SKANK,
+	"CheerWoman": ACT_CHEER,
+	"HeadscarfClapper": ACT_CHEER,
+	"HypeWoman": ACT_CHEER,
+	"CupYouth": ACT_CHEER,
+	"Queen": ACT_DANCE,
+	"ManeQueen": ACT_DANCE,
+	"Hypeman": ACT_DANCE,
+	"Elder": ACT_DANCE,
+}
+## Cycles per second per act (Hz): cloth works slowly, skankers are the fastest in the yard.
+const ACT_RATE_HZ := {
+	ACT_FLAG: Vector2(0.30, 0.44),
+	ACT_RAG: Vector2(0.36, 0.52),
+	ACT_HORN: Vector2(0.20, 0.28),
+	ACT_SKANK: Vector2(0.75, 1.05),
+	ACT_DANCE: Vector2(0.58, 0.90),
+	ACT_CHEER: Vector2(0.48, 0.78),
+}
+const ACCENT_DECAY := 4.5               # how fast a beat accent settles (per second)
+## Night: the crowd drops towards silhouette so the lit fighters stay the subject.
+const NIGHT_SILHOUETTE := Color(0.20, 0.24, 0.42)
+
 @export var surge_hop_pixels: float = 18.0    # surge jubilation
 @export var surge_hop_interval: float = 0.16  # ~6 hops/s spread across the line
 @export var back_scale_mult: float = 0.85
@@ -59,18 +100,17 @@ const ART_MAX_SIDE := {
 @export var swap_max: int = 2
 @export var swap_seconds: float = 0.34
 
-## Unsynchronised ambient life (AGENTS.md §9 item 21). The beat bounce below is locked to
-## BeatService; these slow sways run on each member's own phase and rate so fifteen people
-## never move as one chorus line — the Fatal Fury reference crowd is individual, not unison.
+## Unsynchronised ambient life (AGENTS.md §9 item 21 / item 23). The beat accent below is
+## scattered across the bar per member; these act cycles run on each member's own phase and
+## rate so fifteen people never move as one chorus line — the Fatal Fury reference crowd is
+## individual, not unison.
 @export var sway_pixels: float = 2.6          # side-to-side drift at the shoulders, floor-level
-@export var sway_rate_min: float = 0.15       # Hz — slow enough to read as weight shifting
-@export var sway_rate_max: float = 0.29
-@export var sway_tilt_deg: float = 1.3        # lean that goes with the drift
 
 ## Proximity ebb (AGENTS.md §9 item 21, from the live-action yard-brawl clip): when a body
 ## dashes, is thrown or lands near the line, the spectators it passes flinch away from it and
 ## then close back in. Radius/shift are screen pixels of the stage.
 @export var flinch_radius: float = 240.0
+
 @export var flinch_shift: float = 9.0
 @export var flinch_tilt_deg: float = 6.0
 @export var flinch_seconds: float = 0.55
@@ -88,11 +128,16 @@ class Member:
 	var bounce: Tween
 	var swap: Tween
 	var swapping: bool = false
-	var phase: float = 0.0                  # own ambient sway phase (radians)
-	var rate: float = 1.0                   # own ambient sway rate (radians/s)
-	var lean: float = 0.0                   # permanent body lean (radians), e.g. against a post
+	var act: StringName = ACT_DANCE         # what this person actually does in the yard
+	var phase: float = 0.0                  # own act phase (radians)
+	var rate: float = 1.0                   # own act rate (radians/s)
+	var beat_div: int = 2                   # answers every 1st/2nd/3rd beat of the bar
+	var beat_offset: int = 0
+	var accent: float = 0.0                 # 0–1 beat accent, decays over ~0.2 s
+	var lean: float = 0.0                   # permanent body lean (radians); retired leaner only
 	var flinch: float = 0.0                 # 0–1.4, decays over flinch_seconds
 	var flinch_dir: float = 1.0             # −1 away to the left, +1 away to the right
+	var retired: bool = false               # kept in the scene, never placed on the line
 
 
 var beat: BeatService
@@ -102,6 +147,7 @@ var _surge_left: float = 0.0
 var _hop_timer: float = 0.0
 var _hop_index: int = 0
 var _rotate_timer: float = 0.0
+var _night: float = 0.0
 var _rng := RandomNumberGenerator.new()
 
 
@@ -126,8 +172,13 @@ func _make_member(sprite: Sprite2D) -> Member:
 	var m := Member.new()
 	m.sprite = sprite
 	m.front_scale = sprite.scale
-	m.phase = _rng.randf_range(0.0, TAU)
-	m.rate = _rng.randf_range(sway_rate_min, sway_rate_max) * TAU
+	m.act = StringName(ACT_FOR.get(String(sprite.name), ACT_DANCE))
+	m.phase = _rng.randf_range(0.0, TAU)   # seeded, so nobody starts on the same frame
+	var hz: Vector2 = ACT_RATE_HZ.get(m.act, Vector2(0.5, 0.8))
+	m.rate = _rng.randf_range(hz.x, hz.y) * TAU
+	m.beat_div = _rng.randi_range(1, 3)
+	m.beat_offset = _rng.randi_range(0, 2)
+	m.retired = String(sprite.name) in RETIRED_NAMES
 	var shadow := GroundShadow.new()
 	shadow.name = "Shadow"
 	shadow.squash = 0.30
@@ -162,10 +213,11 @@ func _layout() -> void:
 	if queen != null:
 		_assign(queen, 0, PINNED_SLOT)
 		free.erase(queen)
-	var leaner := _member_named(PINNED_EDGE_NAME)
-	if leaner != null:
-		_assign_edge(leaner)
-		free.erase(leaner)
+	for name in RETIRED_NAMES:
+		var gone := _member_named(name)
+		if gone != null:
+			_retire(gone)
+			free.erase(gone)
 	for slot in [0, 1, 3, 4]:
 		if free.is_empty():
 			break
@@ -178,19 +230,15 @@ func _layout() -> void:
 		_pool(m)
 
 
-## The edge leaner owns its own slot: front row, far right, tilted into the corner post.
-func _assign_edge(m: Member) -> void:
-	m.row = 0
+## Keep a member in the scene but off the line (a pose that no longer works, kept as art).
+func _retire(m: Member) -> void:
+	m.retired = true
+	m.row = -1
 	m.slot = -1
-	m.lean = deg_to_rad(EDGE_LEAN_DEG)     # positive rotation leans the head toward +x
-	m.home = Vector2(EDGE_SLOT_X, FRONT_ROW_Y)
-	m.sprite.position = m.home
-	m.sprite.scale = m.front_scale
-	m.sprite.z_index = 0
-	m.sprite.modulate = Color(1.0, 1.0, 1.0, 1.0)
-	m.sprite.rotation = m.lean
-	m.sprite.visible = true
-	_update_shadow(m)
+	m.lean = 0.0
+	m.sprite.visible = false
+	m.sprite.rotation = 0.0
+	m.sprite.self_modulate = Color.WHITE
 
 
 func _assign(m: Member, row: int, slot: int) -> void:
@@ -210,6 +258,8 @@ func _pool(m: Member) -> void:
 	m.row = -1
 	m.slot = -1
 	m.sprite.visible = false
+	if m.retired:
+		return
 	# Park the shadow at the front line; _assign re-grounds it when the member returns.
 	m.shadow.ground_y = FRONT_ROW_Y
 	m.shadow.radius = clampf(m.shadow_radius, 8.0, 24.0)
@@ -312,8 +362,8 @@ func _rotate_one() -> bool:
 func _random_visible() -> Member:
 	var candidates: Array[Member] = []
 	for m in _members:
-		if m.row >= 0 and not m.swapping \
-				and m.sprite.name != PINNED_NAME and m.sprite.name != PINNED_EDGE_NAME:
+		if m.row >= 0 and not m.swapping and not m.retired \
+				and m.sprite.name != PINNED_NAME:
 			candidates.append(m)
 	if candidates.is_empty():
 		return null
@@ -323,7 +373,7 @@ func _random_visible() -> Member:
 func _random_pooled() -> Member:
 	var candidates: Array[Member] = []
 	for m in _members:
-		if m.row < 0 and not m.swapping:
+		if m.row < 0 and not m.swapping and not m.retired:
 			candidates.append(m)
 	if candidates.is_empty():
 		return null
@@ -333,16 +383,17 @@ func _random_pooled() -> Member:
 # =========================================================================
 # Beat bounce, hype surge
 # =========================================================================
-func on_beat(_beat_index: int) -> void:
-	var surging := is_surging()
-	for i in _members.size():
-		var m := _members[i]
-		if m.row < 0 or m.swapping:
+## 132 BPM accent. The old version hopped all fifteen people on the same frame — the
+## "frozen drawings bouncing together" note from the 2026-11-17 playtest. Each member now
+## answers a different beat of the bar (`beat_div` / `beat_offset`), and the act cycle below
+## carries the motion in between, so the line pulses without marching in step.
+func on_beat(beat_index: int) -> void:
+	for m in _members:
+		if m.row < 0 or m.swapping or m.retired:
 			continue
-		if surging:
-			_bounce(m, surge_hop_pixels, 0.16, float(i) * 0.015)
-		else:
-			_bounce(m, bob_pixels, 0.24, float(i) * 0.02)
+		if (beat_index + m.beat_offset) % maxi(m.beat_div, 1) != 0:
+			continue
+		m.accent = 1.0
 
 
 ## Called when a fighter's Hype Meter fills. `seconds` is the fighter's boost length, so
@@ -393,26 +444,79 @@ func pooled_count() -> int:
 # =========================================================================
 # Ambient sway and proximity ebb (AGENTS.md §9 item 21)
 # =========================================================================
-## Per-member, unsynchronised drift. Written every frame into the sprite's x only: the
-## beat/surge tweens own `position:y` and `rotation`, so the two never fight, and the
-## `offset` the import-cap compensation divides stays untouched.
-func _update_sway(delta: float) -> void:
-	var tilt := deg_to_rad(sway_tilt_deg)
+## Per-member act performance. Every value is written straight from each member's own clock:
+## no tween per beat, so nothing collides with the surge tweens and nothing lands in unison.
+## Whole-sprite lift/tilt/squash only — the art is one frozen drawing per character.
+func _update_acts(delta: float) -> void:
 	var flinch_tilt := deg_to_rad(flinch_tilt_deg)
 	var surging := is_surging()
 	for m in _members:
-		if m.row < 0 or m.swapping or m.sprite == null:
+		if m.row < 0 or m.swapping or m.retired or m.sprite == null:
 			continue
 		m.phase = fposmod(m.phase + m.rate * delta, TAU)
+		if m.accent > 0.0:
+			m.accent = maxf(0.0, m.accent - delta * ACCENT_DECAY)
 		if m.flinch > 0.0:
 			m.flinch = maxf(0.0, m.flinch - delta / maxf(flinch_seconds, 0.05))
-		var lean := m.flinch * m.flinch_dir
-		m.sprite.position = Vector2(
-			m.home.x + sin(m.phase) * sway_pixels + lean * flinch_shift,
-			m.sprite.position.y)
-		# While a surge hop is animating, the tween owns rotation; hands off.
-		if not surging:
-			m.sprite.rotation = m.lean + sin(m.phase * 0.85) * tilt + lean * flinch_tilt
+		var away := m.flinch * m.flinch_dir
+		var x := m.home.x + sin(m.phase) * sway_pixels + away * flinch_shift
+		if surging:
+			# The surge hop tween owns y and rotation; drift and the shadow stay live.
+			m.sprite.position = Vector2(x, m.sprite.position.y)
+			continue
+		var t := m.phase
+		var lift := 0.0
+		var tilt_deg := 0.0
+		var squash := 1.0
+		var boost := m.accent
+		match m.act:
+			ACT_FLAG, ACT_RAG:
+				# Cloth worked overhead: a slow sweep with a snap, plus a little body bob.
+				var amp := 6.5 if m.act == ACT_FLAG else 5.0
+				tilt_deg = sin(t) * amp + sin(t * 2.0) * 1.8
+				lift = -absf(sin(t)) * 1.8 - boost * 2.5
+			ACT_HORN:
+				# Raise it, lean back, blow, lower: one horn call per cycle.
+				var raise := pow(maxf(0.0, sin(t)), 1.6)
+				lift = -raise * 7.0 - boost * 2.0
+				tilt_deg = -1.0 - raise * 4.5
+				squash = 1.0 + raise * 0.015
+			ACT_SKANK:
+				lift = -absf(sin(t)) * 9.0 - boost * 5.0
+				tilt_deg = sin(t * 0.5) * 2.2
+				squash = 1.0 - absf(sin(t)) * 0.035
+			ACT_DANCE:
+				lift = -absf(sin(t)) * 6.0 - boost * 4.0
+				tilt_deg = sin(t * 0.5) * 3.0
+				squash = 1.0 - absf(sin(t * 2.0)) * 0.02
+			_:
+				# Cheer: shoulders back, head up, short hop on the accent.
+				lift = -absf(sin(t)) * 5.0 - boost * 6.5
+				tilt_deg = -1.5 + sin(t * 0.7) * 2.0
+		var base := _row_scale(m, m.row)
+		m.sprite.position = Vector2(x, m.home.y + lift)
+		m.sprite.rotation = m.lean + deg_to_rad(tilt_deg) + away * flinch_tilt
+		m.sprite.scale = Vector2(base.x * (2.0 - squash), base.y * squash)
+
+
+## Night: drop the crowd towards silhouette so the floodlit fighters stay the subject.
+## Uses `self_modulate`, so it never fights the swap tweens that animate `modulate:a`.
+func set_night(amount: float) -> void:
+	_night = clampf(amount, 0.0, 1.0)
+	var shade := Color.WHITE.lerp(NIGHT_SILHOUETTE, _night)
+	for m in _members:
+		if m.retired:
+			continue
+		m.sprite.self_modulate = shade
+
+
+## Time-of-day shadows for the whole line (see `GroundShadow.light_dir` / `stretch`).
+func apply_light(dir: float, stretch: float) -> void:
+	for m in _members:
+		if m.retired:
+			continue
+		m.shadow.light_dir = dir
+		m.shadow.stretch = stretch
 
 
 ## Nearby spectators flinch away from a body that dashes, is thrown or lands beside them.
@@ -444,7 +548,7 @@ func crowd_line_y() -> float:
 
 
 func _process(delta: float) -> void:
-	_update_sway(delta)
+	_update_acts(delta)
 	_rotate_timer -= delta
 	if _rotate_timer <= 0.0:
 		_rotate_timer = _rng.randf_range(rotate_min_seconds, rotate_max_seconds)
@@ -492,5 +596,7 @@ func _settle() -> void:
 		var tw := m.bounce
 		if tw != null and tw.is_valid():
 			tw.kill()
+		m.accent = 0.0
 		m.sprite.position = m.home
 		m.sprite.rotation = m.lean
+		m.sprite.scale = _row_scale(m, m.row)

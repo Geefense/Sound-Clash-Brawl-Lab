@@ -1379,7 +1379,7 @@ func _apply_stance(crouching: bool) -> void:
 ## The scene also carries the pack's unused poses (launched, tumble, salute, dizzy,
 ## fire_air, fire_ground) and the lightah prototype for later wiring.
 ## Left-facing attempts <name>_left first; no such art exists yet, so it falls back.
-## Fallback for a roster fighter whose sheet has no art for this state (Dubplate ships one
+## Fallback for a roster fighter whose sheet has no art for this state (Lickshot ships one
 ## portrait). Without it the sprite silently keeps the previous frame and a CPU attack reads
 ## as a ghost hit.
 func _fallback_anim() -> StringName:

@@ -6,7 +6,7 @@ config_version=5
 [application]
 
 config/name="Sound Clash Brawl"
-config/description="Sound Clash Brawl — arcade title screen plus the Feedback/Dubplate/Young Selecta roster."
+config/description="Sound Clash Brawl — arcade title screen plus the Feedback/Lickshot/Young Selecta roster."
 run/main_scene="res://scenes/TitleScreen.tscn"
 
 [autoload]

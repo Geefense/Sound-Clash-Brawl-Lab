@@ -2,7 +2,7 @@ class_name StrikeTell
 extends Node2D
 ## Strike smear over the attack's own hit volume (AGENTS.md §9 item 23).
 ##
-## Why it exists: a roster fighter can ship with a single portrait (Dubplate), so its jab, BOX
+## Why it exists: a roster fighter can ship with a single portrait (Lickshot), so his jab, BOX
 ## and kick played no pose at all — the CPU dealt damage out of a standing frame. The smear is
 ## drawn for exactly the volume `BaseFighter._hitbox_rect()` resolves contact with, so what the
 ## player sees and what lands are the same shape and the same moment. It is spawned by

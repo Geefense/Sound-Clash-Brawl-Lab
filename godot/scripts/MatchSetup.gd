@@ -11,7 +11,7 @@ const ARENA_SCENE := "res://scenes/TestArena.tscn"
 ## Fighter keys are FighterRoster keys.
 ## Owner decision (2026-11-17, AGENTS.md §9 item 24): the default matchup is **Feedback vs
 ## Feedback**, so combat, blocking, hit reactions and the upcoming Dancehall move set can be
-## refined with full animation on both sides. Dubplate and Young Selecta stay selectable.
+## refined with full animation on both sides. Lickshot and Young Selecta stay selectable.
 var p1_fighter: StringName = &"feedback"
 var p2_fighter: StringName = &"feedback"
 ## SparringController.Mode index: 0 Dummy, 1 Counter-Puncher, 2 Riddim Rusher, 3 Baiter.

@@ -121,7 +121,7 @@ sand puffs (`BaseFighter._slide_puff()`). The crowd now performs acts on individ
 rag-wave, raise-and-blow horn, skank, dance, cheer — instead of one beat-locked bounce for all fifteen.
 Time of day gained its own sky (`SunsetWash`, `NightWash`), a directional `SunShaft`, a moving/scaling
 sun bloom, phase-driven contact-shadow length (`GroundShadow.light_dir` / `stretch`) and a night crowd
-silhouette (`CrowdLine.set_night()`). Headless 4.5 check: **47/47 assertions passed** (see below).
+silhouette (`CrowdLine.set_night()`). Headless 4.5 check: **49/49 assertions passed** (see below).
 
 **Follow-up from the same pass (2026-11-17).** The default matchup is now **Feedback vs Feedback**
 (`MatchSetup.p2_fighter`); Dubplate and Young Selecta stay selectable and the roster order is

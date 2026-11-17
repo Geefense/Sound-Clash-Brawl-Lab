@@ -13,7 +13,7 @@ extends RefCounted
 ## `_import_cap_ratio()` compensation is 1.0 rather than the Feedback pack's 1536 → 512.
 ##
 ## Sizes are the owner's proportions, not measured precision:
-##   * adult fighters (Feedback, Dubplate) render 121.75 px tall — the Feedback idle
+##   * adult fighters (Feedback, Lickshot) render 121.75 px tall — the Feedback idle
 ##     reference (487 px at BASE_SPRITE_SCALE 0.25),
 ##   * Young Selecta renders at 82 % of that (≈ 99.8 px) for kid-prodigy spacing.
 ## Per-frame scales differ only because each frame's canvas contains different props
@@ -23,7 +23,7 @@ const ADULT_RENDER_HEIGHT := 121.75     # Feedback idle: 487 px × 0.25
 const KID_HEIGHT_FRACTION := 0.82       # owner direction: ~82 % of an adult fighter
 
 ## Order shown on the title screen.
-const ORDER: Array[StringName] = [&"feedback", &"dubplate", &"young_selecta"]
+const ORDER: Array[StringName] = [&"feedback", &"lickshot", &"young_selecta"]
 
 const FIGHTERS := {
 	&"feedback": {
@@ -40,10 +40,13 @@ const FIGHTERS := {
 		"anim_source_max": {},
 		"attack_anims": {},
 	},
-	# Fighter #2 — the Rasta-stripe veteran selector. One approved portrait so far, so every
-	# state shows it until Dubplate's own animation set exists (§9 art TODO, not invented here).
-	&"dubplate": {
-		"name": "DUBPLATE",
+	# Fighter #2 — Lickshot, renamed from Dubplate (AGENTS.md §9 item 26). The Rasta-stripe veteran
+	# selector and record thief. One approved portrait so far, so every state shows it until his own
+	# animation set exists (§9 art TODO, not invented here). The key is `lickshot`; no `dubplate`
+	# roster entry may come back — the word survives only as the music term (Dubplate meter, the
+	# late-night-dubplate round banner), never as this fighter's name.
+	&"lickshot": {
+		"name": "LICKSHOT",
 		"tagline": "Fighter #2 · veteran selector, rasta-stripe jacket",
 		"walk_speed": 205.0,            # heavier, more deliberate than Feedback
 		"reach_bonus": 0.0,
@@ -51,7 +54,7 @@ const FIGHTERS := {
 		"crouch_size": Vector2(62, 98),
 		"uses_scene_frames": false,
 		"frames": {
-			&"idle": ["res://assets/sprites/dubplate/portrait.png"],
+			&"idle": ["res://assets/sprites/lickshot/portrait.png"],
 		},
 		"anim_offset": {
 			"idle": Vector2(-137.8, -255.0),

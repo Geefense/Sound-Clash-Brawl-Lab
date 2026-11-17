@@ -26,7 +26,7 @@ The fighters must feel like personalities at a dance, not interchangeable boxers
 
 **Mic continuity requires version-specific care.** Earlier pose work used the left hand; the later four-key walk study explicitly uses the right hand. Never silently flip or normalize one set into the other. Each sequence must keep one mic in its declared anatomical hand and one continuous cable, including forearm wraps. A mic cannot disappear while adjusting the hat or reappear in another hand. [TODO] Owner resolves the canonical cross-set hand before final fighter integration. Mirroring art changes apparent handedness and is provisional only.
 
-**Other concepts:** Lickshot is retained; Sky Juice is a tall-fighter concept. Lickshot / Disc Jock Lickshot / Booyaka Lickshot are recorded name options, with final naming [TODO]. Do not build Fighter #2 before the Godot migration gate.
+**Other concepts:** **Lickshot is now Fighter #2's display name** (renamed from Dubplate, 2026-11-17 — §9 item 26); `Disc Jock Lickshot` and `Booyaka Lickshot` stay recorded alternates and the owner says the name may still evolve. The off-screen selecta record-theft gag belongs to Fighter #2 accordingly. The Godot migration gate for Fighter #2 is passed — he is in the roster, though still art-poor (one portrait). **Working name pool for Fighters #4–#6 (owner, 2026-11-17): Fling Stone, Rum Punch, Sky Juice** — working names only, with no slot assigned and no design implied (§2, §9 item 26).
 
 ### Owner clarification — cross-animation consistency (2026-11-13)
 
@@ -63,7 +63,7 @@ Calendar clarification: November 13, 2026 to April 21, 2027 is 159 days (~22.7 w
 | **Weeks 18–20** | **Mar 12 – Apr 1, 2027** | Build 2–3 distinct Sound Clash venues, Character Select and Arcade mode. Add stretch Fighters #7–#8 only if genuinely ahead. | Six-fighter roster selectable; Arcade run completes and restarts; venues work with hazards/party transitions. Stretch scope cannot consume final QA time. |
 | **Weeks 21–22 / closing partial week** | **Apr 2 – Apr 21, 2027** | Final balance, audio mixing, input/beat responsiveness checks, regression fixes, clean export and birthday launch. | Versioned release build tested on the chosen target; no critical blocker; credits/controls included; reproducible export instructions. |
 
-Roster slots: #1 Feedback; #2 Dubplate; #3 Young Selecta (§9 items 22–25); #4–#6 **[TODO]** assign final names/order. Lickshot and Sky Juice remain candidate concepts; do not silently assign them slots or finalize their designs. The owner named #2 and #3 explicitly; only #4–#6 are still open. #7–#8 remain optional.
+Roster slots: #1 Feedback; #2 **Lickshot** (renamed from Dubplate on 2026-11-17, §9 item 26 — the name may still evolve); #3 Young Selecta (§9 items 22–25); #4–#6 **[TODO]** assign final names/order from the owner's working **name pool: Fling Stone, Rum Punch, Sky Juice** (2026-11-17). Those three are working names, not assignments: nothing says #4 is Fling Stone, and a name is not a design — do not build a fighter from a name alone or treat the pool as final. The owner named #1–#3 explicitly; #4–#6 remain open. #7–#8 remain optional.
 
 Suggested content slots within the supplied eight-week roster block: #3 Jan 15–28; #4 Jan 29–Feb 11; #5 Feb 12–25; #6 Feb 26–Mar 11. Each slot covers stance/move definition, approved exports, data/hitboxes, voices, integration and a playable check. Templates and placeholders should be prepared before the slot, not used to claim finished art.
 
@@ -387,7 +387,7 @@ This register includes all phrases recoverable from the visible conversation, su
 
 - **`cricket box`**: owner-proposed name for a cricket-bowling-inspired BOX/slap, potentially for another character. No fighter assigned; concept/backlog only, not an implemented move or added launch requirement. Preserve the owner's name. Keep separate from Feedback's current BOX direction: original rear three-quarter camera, right-knee lift, plant/turn into the existing slap/follow-through. The earlier raised-knee illustration changed the camera/build and is not approved production art.
 
-- `Rum Punch`: candidate fighter name, powerful move/hit name, or both; Caribbean punch/fighting wordplay. Keep options open, not finalized.
+- `Rum Punch`: candidate fighter name, powerful move/hit name, or both; Caribbean punch/fighting wordplay. Now one of the three names in the owner's working pool for Fighters #4–#6 alongside `Fling Stone` and `Sky Juice` (§2, §9 item 26). Keep options open, not finalized.
 - Later Three Piece polish: launched opponent lands comically on their head (stylized, non-graphic), with hard landing/dust/shake; defer until the working baseline is stable.
 - Mr. Bean versus Mike Tyson reference backlog: exaggerated recoil/stagger, humorous personality contrast and venue knockdowns such as stumbling into a speaker stack. Not immediate implementation.
 - UI feedback: avoid oversized `ROUND OVER` lettering; it was called out as too huge/weird. Preserve readable, restrained overlays.
@@ -854,14 +854,14 @@ here is gameplay-verified; implementation status is stated per item.
       (`flip_h`) — see the item 2 amendment; that mirror is the port's only deviation from the old
       "no flip_h" rule and it is provisional.
     - **Invisible CPU attacks (fixed second).** Root cause was the roster, not the FSM: the CPU
-      defaults to **Dubplate**, whose only art is one portrait, so every attack state played no frame
+      defaults to **Dubplate** (now **Lickshot**, item 26), whose only art is one portrait, so every attack state played no frame
       at all while the hitbox still resolved damage. Three changes: `_play_state_anim()` falls back
       through `idle/walk/jump/block` instead of silently keeping the previous frame; attack states lean
       the body through the swing (`LEAN_WINDUP` 0.055 rad back, `LEAN_STRIKE` 0.115 rad through
       contact) on top of the existing wind-up, lunge and squash; and every `ATTACK_ACTIVE` entry spawns
       a `StrikeTell` smear (`StrikeTell.gd`, primitives, z 3, capped at 4 like the sparks) drawn over
       exactly the rect `BaseFighter.attack_volume()` resolves contact with — same shape, same tick.
-      [TODO] Dubplate still has **no attack art**; he needs a startup/contact/recovery sheet before his
+      [TODO] Lickshot still has **no attack art**; he needs a startup/contact/recovery sheet before his
       strikes read as a punch or kick rather than a shove.
     - **Stray bottom-left character (removed).** The `Foreground` CanvasLayer, its `CornerWash` radial
       wash and the cropped `BottomCard` spectator are gone, together with `ForegroundCorner.gd`/`.uid`.
@@ -896,7 +896,7 @@ here is gameplay-verified; implementation status is stated per item.
       on the sand (blockstun shove, hitstun, thrown landing, knockdown) now trails sand puffs through
       `BaseFighter._slide_puff()`, rate-limited to one every 7 ticks.
     - **Checks actually run** (Godot 4.5.stable headless, Linux: `--import`, then
-      `--script res://tools/headless_roster_check.gd`): **45/45** — P1 facing right and the CPU facing
+      `--script res://tools/headless_roster_check.gd`): **47/47** — P1 facing right and the CPU facing
       left and mirrored, both turn after a forced side swap, Dubplate at the enlarged adult scale,
       Feedback's figure over 140 px, each phase's washes / floodlight / sun, 1.95× sunset and 0.95×
       afternoon shadows, crowd silhouette 0.85 at night, crates at 0.128 / y 606, front 5 / back 6 with
@@ -907,7 +907,7 @@ here is gameplay-verified; implementation status is stated per item.
       whether the acts read as dancing at speed, and the strike smear at full frame rate all need
       Garfield's eye on the Chromebook build.
     - **Still needs art (Sprite Arific / Flow prep):** left-facing Feedback, so the mirror can be
-      retired; Dubplate attack frames; a standing replacement for `ArcsCrossed`; multi-frame
+      retired; Lickshot attack frames; a standing replacement for `ArcsCrossed`; multi-frame
       flag/rag/horn/dance crowd loops; and a dedicated night sky/cloud plate if the gradient wash is
       not enough.
 
@@ -916,7 +916,7 @@ here is gameplay-verified; implementation status is stated per item.
     into `stage/sound-clash-sand`.
 
     - **Default matchup.** `MatchSetup.p2_fighter` now defaults to `feedback`, so the game opens on
-      **Feedback vs Feedback**; Dubplate and Young Selecta stay fully selectable on the title screen and
+      **Feedback vs Feedback**; Lickshot (named that since item 26) and Young Selecta stay fully selectable on the title screen and
       `FighterRoster.ORDER` is unchanged. Owner rationale: refine combat, visible blocks, hit reactions
       and the upcoming Dancehall move set — **The Bogle**, **Log On**, **Signal Di Plane** — with full
       animation on both sides before building the other fighters' unique movesets. This supersedes item
@@ -929,7 +929,7 @@ here is gameplay-verified; implementation status is stated per item.
       alpha-bottom row and place it at `BaseFighter.REACTION_FLOOR_Y = 592` — on the sand, never
       through it (8 px above the fighter origin / floor line at y 600). Idle keeps its authored sole
       anchor and still measures 600.2 on the floor.
-    - **Checks actually run** (Godot 4.5.stable headless, same harness): **47/47** — P2 default and the
+    - **Checks actually run** (Godot 4.5.stable headless, same harness): **49/49** — P2 default and the
       three-cycle wrap are Feedback, idle sole at 600.2, and the lowest of
       hitstun/launched/tumble/knockdown/ko measured at **591.2** (above the 592 line) from the real
       texture alpha bounds rather than from the offset table.
@@ -941,7 +941,7 @@ here is gameplay-verified; implementation status is stated per item.
     was added for this entry.** It exists so the design survives the current combat work, not as a claim
     that any of it runs. The owner's production order puts it behind Feedback: refine Feedback's combat,
     blocking and hit reactions and build his **Dancehall dance-move attacks — The Bogle, Log On, Signal
-    Di Plane** — first, then Young Selecta's projectiles and bat swings, then Dubplate's unique moveset.
+    Di Plane** — first, then Young Selecta's projectiles and bat swings, then Lickshot's unique moveset.
 
     - **Attribution.** The moveset was designed directly by the owner's **10-year-old son**, a named
       co-designer of Fighter #3. Preserve his move names and props (`Mic Toss`, the microphone-stand
@@ -982,10 +982,49 @@ here is gameplay-verified; implementation status is stated per item.
       young selecta actually carries — a mic, a mic stand and a school bag — so he reads as comically
       dangerous without a martial-arts sheet. Keep the props literal and the arcs exaggerated.
     - **Production order (owner, 2026-11-17).** 1) Feedback's combat, blocking and Dancehall move attacks
-      (The Bogle, Log On, Signal Di Plane). 2) Young Selecta's projectiles and bat swings. 3) Dubplate's
+      (The Bogle, Log On, Signal Di Plane). 2) Young Selecta's projectiles and bat swings. 3) Lickshot's
       unique moveset. This is the owner's sequence, not a build order of convenience.
     - **Status:** design recorded, **nothing implemented, nothing verified**; no headless or on-screen
       check exists for any of it.
+
+26. **Fighter #2 renamed Dubplate → Lickshot, and the roster name pool recorded — owner decision,
+    implemented (2026-11-17).** Unlike item 25, this one reaches code, so it was carried through the
+    roster table, the UI and the checks rather than only the docs.
+
+    - **What changed.** Roster key `dubplate` → **`lickshot`** and display name `DUBPLATE` →
+      **`LICKSHOT`** in `FighterRoster.ORDER` and `FighterRoster.FIGHTERS`, so nothing stale can resolve to a
+      dead key; the art folder moved `assets/sprites/dubplate/` → `assets/sprites/lickshot/` (`git mv`,
+      `.import` `source_file` updated, texture UID unchanged, `process/size_limit=512` and his per-frame
+      offset untouched); the title-screen line now reads **FEEDBACK · LICKSHOT · YOUNG SELECTA**;
+      `project.godot`'s description and the comments in `MatchSetup.gd`, `BaseFighter.gd`, `StrikeTell.gd`
+      and `FighterRoster.gd` follow. `TestHud.gd` needed no edit — it draws `display_name()`, so the name
+      plate follows the table by itself.
+    - **The name may still evolve.** The owner records it with that caveat; `Disc Jock Lickshot` and
+      `Booyaka Lickshot` stay recorded alternates. If it changes again, change the key, display name, art
+      folder and guards together — a display-name-only rename leaves saved keys pointing at a fighter that
+      no longer exists.
+    - **Deliberately not renamed: the music term.** "Dubplate" the record/mechanic survives in §7's
+      **Dubplate meter** and in `RoundController.gd`'s `FINAL ROUND — LATE-NIGHT DUBPLATE` banner. Those are
+      about an exclusive dub, not the fighter; that banner is not a missed rename. Changing it would be a
+      separate decision.
+    - **Provenance kept.** `art-source/fighters/dubplate/…` and the 2026-11-16 cut-out notes keep the old
+      name: they record the uploaded file's original identity and are cited by the asset-inventory table.
+      The game asset moved; the art's source trail did not.
+    - **Checks actually run** (Godot 4.5.stable headless: `--import`, then
+      `--script res://tools/headless_roster_check.gd`): **50/50 assertions, exit 0**, including a new rename
+      guard that fails if `dubplate` returns to `FIGHTERS` or `ORDER`, P2 resolving to `LICKSHOT` with his
+      frames built, and his enlarged adult render height intact (0.2992 = 0.2378 × 1.24). Counts here are
+      measured by counting `PASS` lines: the figures recorded in items 23 and 24 (45 and 47) were undercounts
+      by two, and those same runs print **47** and **49** — corrected in place.
+    - **Roster name pool for Fighters #4–#6 (owner, 2026-11-17): Fling Stone, Rum Punch, Sky Juice.**
+      Working names for the open slots, recorded in §2 and cross-referenced in §8. They are **not
+      assignments** — nothing says #4 is Fling Stone, #5 Rum Punch or #6 Sky Juice — and not designs: no
+      silhouette, stance, move set, height, voice or art exists behind any of the three. `Rum Punch` also
+      stays a possible move/hit name. Do not start a fighter from a name, and do not promote one of them into
+      a slot without the owner.
+    - **Still unverified:** there is no GPU here, so the renamed lettering has never been seen on screen. The
+      checks prove the table, the frames and the HUD name plate resolve; they cannot prove the longer word
+      fits the title layout without clipping, and nobody has looked.
 
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 
@@ -1112,7 +1151,7 @@ mic-stand uppercut** (anti-air pop-fly launch), `L` **arcing oversized textbook/
 the blue backpack (heavy impact, fluttering page particles). Those keys collide with the live `light` /
 `heavy` / `tump` / `upper_box` layout and must be resolved deliberately, not overwritten.
 - Ordered behind the Feedback pass by the owner: Feedback's combat, blocking, hit reactions and Dancehall
-  move attacks (The Bogle, Log On, Signal Di Plane) first, then this, then Dubplate's unique moveset.
+  move attacks (The Bogle, Log On, Signal Di Plane) first, then this, then Lickshot's unique moveset.
 - Owner-visible requirement: his four moves read as *his* — the mic, the mic stand and the school bag stay
   the weapons and his names stay the names — and the §1 mic-continuity rule is either satisfied or waived
   in writing.
@@ -1172,7 +1211,7 @@ For Godot, once created: [TODO] pin exact import/headless launch/test/export com
 | Birthday release / May Jamaica trip | Launch target Apr 21, 2027; final QA Apr 2–21; trip May 2027. |
 | Sound Clash Sand Stage (art + foot dust + shadows + atmosphere + speaker thump + rare bird) | Implemented 2026-11-15 on branch `stage/sound-clash-sand`; headless Godot 4.3 import/run clean; **on-screen playtest [TODO]**. |
 | Round-based day → sunset → night lighting | Implemented 2026-11-15 on branch `stage/sound-clash-sand`; headless checks of all three phases, tween and N cycle pass; round-controller driving and **on-screen look [TODO]**. |
-| Owner playtest pass: facing, visible CPU strikes, crowd acts, stage lighting, framing, props | Implemented 2026-11-17; headless 4.5 check 47/47; **on-screen look and feel [TODO]**; Dubplate attack art, left-facing frames and multi-frame crowd loops still need art prep. |
+| Owner playtest pass: facing, visible CPU strikes, crowd acts, stage lighting, framing, props | Implemented 2026-11-17; headless 4.5 check 49/49; **on-screen look and feel [TODO]**; Lickshot attack art, left-facing frames and multi-frame crowd loops still need art prep. |
 | Smart Sparring AI modes (P2) | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 4 modes cycle on **Y**, HUD banner, **G** guard override; headless Godot 4.5 runs pass for every mode; **on-screen/feel playtest [TODO]**. |
 | Dancehall crowd line + 100% Hype Surge | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 6 sliced spectators (Queen centre) + 2 record crates at the stacks, beat bob, FORWARD!/PULL UP! banner, 5 s 1.20× / faster-recovery boost; headless checks pass; **on-screen look and balance [TODO]**. |
 | 15-character two-row rotating crowd + contact shadows | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 9 new slices (pool 15), front/back rows, 12–18 s and 50 %/100 % hype reshuffles, GroundShadow on crowd and crates; headless checks pass; **on-screen look [TODO]**. |

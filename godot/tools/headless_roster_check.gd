@@ -2,7 +2,7 @@ extends SceneTree
 ## Headless roster + title-screen check (AGENTS.md §9 backlog item B1).
 ## Run with: godot --headless --path godot --script res://tools/headless_roster_check.gd
 ##
-## Boots TitleScreen, verifies the MatchSetup defaults, boots TestArena with Dubplate as
+## Boots TitleScreen, verifies the MatchSetup defaults, boots TestArena with Lickshot as
 ## P2, then rebuilds the arena with Young Selecta and checks the shared FSM, the sprite
 ## frames, the +25 px reach, the AI mode and the Esc return path. Prints one line per
 ## check and exits non-zero if any check fails.
@@ -78,9 +78,9 @@ func _run() -> void:
 	_check(setup.p1_fighter == &"feedback", "three cycles wrap P1 back to Feedback")
 	_check(setup.p2_fighter == &"feedback", "three cycles wrap P2 back to Feedback")
 
-	# ---- Arena with Dubplate ----------------------------------------------
+	# ---- Arena with Lickshot -----------------------------------------------
 	setup.p1_fighter = &"feedback"
-	setup.p2_fighter = &"dubplate"
+	setup.p2_fighter = &"lickshot"
 	setup.ai_mode = 2
 	setup.subtitles = false
 	change_scene_to_file("res://scenes/TestArena.tscn")
@@ -93,18 +93,24 @@ func _run() -> void:
 	var hud: Control = arena.get_node("HUD/Ui/Hud")
 
 	_check(p1.display_name == "FEEDBACK", "P1 is Feedback", p1.display_name)
-	_check(p2.display_name == "DUBPLATE", "P2 is Dubplate", p2.display_name)
-	_check(p2.fighter_key == &"dubplate", "P2 fighter_key applied", str(p2.fighter_key))
+	_check(p2.display_name == "LICKSHOT", "P2 is Lickshot", p2.display_name)
+	_check(p2.fighter_key == &"lickshot", "P2 fighter_key applied", str(p2.fighter_key))
+	# Rename guard (AGENTS.md §9 item 26): Fighter #2 is Lickshot everywhere, and the old key must
+	# not linger in the roster table, or a saved selection would quietly resolve to a dead fighter.
+	_check(not FighterRoster.FIGHTERS.has(&"dubplate") and FighterRoster.FIGHTERS.has(&"lickshot")
+		and FighterRoster.ORDER.count(&"lickshot") == 1 and FighterRoster.ORDER.count(&"dubplate") == 0,
+		"Dubplate is fully renamed to Lickshot",
+		"order %s" % [FighterRoster.ORDER])
 	_check(sparring.mode_index() == 2, "AI mode carried from setup", sparring.mode_name())
 	_check(hud.subtitles_enabled == false, "subtitle flag carried from setup")
 	_check(p2.sprite.sprite_frames != null
 		and p2.sprite.sprite_frames.has_animation(&"idle"),
-		"Dubplate sprite frames built")
+		"Lickshot sprite frames built")
 	# The idle groove squash/stretch rides on top of the base scale, so allow a few %.
 	# 0.2378 × BaseFighter.FIGHTER_ART_SCALE (1.24) — the 2026-11-17 "larger fighters" pass.
 	var adult_scale := 0.2378 * BaseFighter.FIGHTER_ART_SCALE
 	_check(absf(p2.sprite.scale.x - adult_scale) <= adult_scale * 0.05,
-		"Dubplate renders at the enlarged adult height", "%.4f" % p2.sprite.scale.x)
+		"Lickshot renders at the enlarged adult height", "%.4f" % p2.sprite.scale.x)
 	# Import-cap compensation means the raw node scale is not the figure's on-screen size:
 	# divide the cap back out before comparing against the 121.75 px reference height.
 	var idle_cap := p1._import_cap_ratio("idle", &"idle")

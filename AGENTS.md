@@ -63,7 +63,7 @@ Calendar clarification: November 13, 2026 to April 21, 2027 is 159 days (~22.7 w
 | **Weeks 18–20** | **Mar 12 – Apr 1, 2027** | Build 2–3 distinct Sound Clash venues, Character Select and Arcade mode. Add stretch Fighters #7–#8 only if genuinely ahead. | Six-fighter roster selectable; Arcade run completes and restarts; venues work with hazards/party transitions. Stretch scope cannot consume final QA time. |
 | **Weeks 21–22 / closing partial week** | **Apr 2 – Apr 21, 2027** | Final balance, audio mixing, input/beat responsiveness checks, regression fixes, clean export and birthday launch. | Versioned release build tested on the chosen target; no critical blocker; credits/controls included; reproducible export instructions. |
 
-Roster slots: #1 Feedback; #2–#6 **[TODO]** assign final names/order. Lickshot and Sky Juice remain candidate concepts; do not silently assign them slots or finalize their designs. #7–#8 remain optional.
+Roster slots: #1 Feedback; #2 Dubplate; #3 Young Selecta (§9 items 22–25); #4–#6 **[TODO]** assign final names/order. Lickshot and Sky Juice remain candidate concepts; do not silently assign them slots or finalize their designs. The owner named #2 and #3 explicitly; only #4–#6 are still open. #7–#8 remain optional.
 
 Suggested content slots within the supplied eight-week roster block: #3 Jan 15–28; #4 Jan 29–Feb 11; #5 Feb 12–25; #6 Feb 26–Mar 11. Each slot covers stance/move definition, approved exports, data/hitboxes, voices, integration and a playable check. Templates and placeholders should be prepared before the slot, not used to claim finished art.
 
@@ -936,6 +936,57 @@ here is gameplay-verified; implementation status is stated per item.
     - **Still not verified:** none of the reaction alignment has been seen on screen. The check proves
       the art cannot cross the sand line; it does not prove the poses look planted in motion.
 
+25. **Fighter #3 — Young Selecta's signature moveset, designed by the owner's son — recorded, not built
+    (2026-11-17).** Documentation only: **no code, scene, input action, frame data, hitbox, SFX cue or art
+    was added for this entry.** It exists so the design survives the current combat work, not as a claim
+    that any of it runs. The owner's production order puts it behind Feedback: refine Feedback's combat,
+    blocking and hit reactions and build his **Dancehall dance-move attacks — The Bogle, Log On, Signal
+    Di Plane** — first, then Young Selecta's projectiles and bat swings, then Dubplate's unique moveset.
+
+    - **Attribution.** The moveset was designed directly by the owner's **10-year-old son**, a named
+      co-designer of Fighter #3. Preserve his move names and props (`Mic Toss`, the microphone-stand
+      baseball swing, the school backpack). Do not silently rename, merge or reassign one of his moves to
+      another fighter when implementing.
+    - **1. Mic Toss (`J`) — fast projectile.** Throws a microphone horizontally across the arena: a fast
+      straight shot with a short cooldown. Open: cooldown length, travel speed, whether an on-beat throw
+      earns a rhythm bonus, and **mic continuity** — §1 requires one mic in one declared hand on one
+      continuous cable, so a thrown mic needs either a tether/recovery or a written exception (the cable
+      unplugs and a fresh mic is drawn). `/godot` has **no player projectile system** yet — crowd hazards
+      and the bird are stage-side — so this is new code, not a data row.
+    - **2. Microphone-stand bat swing (`K`) — heavy line drive.** Swings the mic stand horizontally like a
+      baseball bat, knocking the opponent back with heavy hitstop and a metallic bat clang. `Sfx` already
+      synthesises a `clank` cue (backlog B8) that can be reused or retuned; hitstop and knockback are
+      unset and must be deliberate written values, not a copy of the jab's.
+    - **3. Uppercut mic-stand swing (`I`) — anti-air pop-fly.** Swings the stand upward in a steep rising
+      arc to launch airborne or close-range opponents skyward. Needs two hit volumes (a close-range scoop
+      plus a rising column), an explicit decision on whether it genuinely beats a jump-in, and a launch
+      arc that comes back down to the sand — any new launch art must honour item 24's floor alignment.
+    - **4. Textbook & dictionary backpack throw (`L`) — arcing heavy projectile.** Reaches into his blue
+      backpack and lobs an oversized hardcover dictionary or textbook in a high arc across the sand, with
+      heavy impact and fluttering page particles. Open: which book (the design allows either), arc and
+      flight time, whether it is a real thrown object with a landing hazard or a single impact, and a
+      particle budget for the pages — the existing Chromebook caps (4 sparks, 16 particles, item 17)
+      were sized for contact bursts, so page flutter needs its own measured allowance.
+    - **Key collision to settle before coding.** `J`, `K`, `L` and `I` are already the live attack keys in
+      `BaseFighter.KEY_LAYOUT`: `light`/jab (J), `heavy`/BOX (K), `tump` (L) and `upper_box` (I). The design
+      above reassigns all four on Young Selecta. Decide explicitly whether these four moves **replace** his
+      normals, are **held-modifier or stance** variants, or take new keys; do not silently overwrite the
+      shared layout, because P1, P2 and the CPU all read it.
+    - **Art and audio needed.** Young Selecta ships **three frames today** — `idle.png`, `thrust.png` and
+      `slam.png` in `assets/sprites/young-selecta/` — so none of these moves has a frame. Required art:
+      the mic stand in both swing arcs (startup/contact/recovery), a mic projectile with a readable spin,
+      an oversized hardcover book, page-flutter frames or a particle, and the backpack reach. Nothing here
+      is drawn, generated or purchased yet, and every open value above stays **[TODO]** until the owner
+      approves art.
+    - **Design intent worth keeping.** All four moves share one identity: a schoolyard kid using what a
+      young selecta actually carries — a mic, a mic stand and a school bag — so he reads as comically
+      dangerous without a martial-arts sheet. Keep the props literal and the arcs exaggerated.
+    - **Production order (owner, 2026-11-17).** 1) Feedback's combat, blocking and Dancehall move attacks
+      (The Bogle, Log On, Signal Di Plane). 2) Young Selecta's projectiles and bat swings. 3) Dubplate's
+      unique moveset. This is the owner's sequence, not a build order of convenience.
+    - **Status:** design recorded, **nothing implemented, nothing verified**; no headless or on-screen
+      check exists for any of it.
+
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 
 Recorded at build `ad27516` (`stage/sound-clash-sand`); §9 items 1–19 above are the decisions that
@@ -1050,6 +1101,28 @@ same `announce_subtitle()` call site, filing each line under its §8 lexicon ent
 gloss in a separate field, no film/TV samples and no generated voice). Exit evidence: one approved
 line plays with its subtitle, and the callout cooldown applies to the audio exactly as it already does
 to the text.
+
+#### Owner item — Fighter #3 moveset (2026-11-17)
+
+**[TODO] B11. Fighter #3 — Young Selecta's signature moveset (designed by the owner's son).** Full
+design, open values and attribution: decisions item 25. Four moves sitting on the four attack keys he
+currently shares with every fighter — `J` **Mic Toss** (fast horizontal mic projectile, short cooldown),
+`K` **horizontal mic-stand bat swing** (heavy knockback, heavy hitstop, metallic clang), `I` **rising
+mic-stand uppercut** (anti-air pop-fly launch), `L` **arcing oversized textbook/dictionary throw** from
+the blue backpack (heavy impact, fluttering page particles). Those keys collide with the live `light` /
+`heavy` / `tump` / `upper_box` layout and must be resolved deliberately, not overwritten.
+- Ordered behind the Feedback pass by the owner: Feedback's combat, blocking, hit reactions and Dancehall
+  move attacks (The Bogle, Log On, Signal Di Plane) first, then this, then Dubplate's unique moveset.
+- Owner-visible requirement: his four moves read as *his* — the mic, the mic stand and the school bag stay
+  the weapons and his names stay the names — and the §1 mic-continuity rule is either satisfied or waived
+  in writing.
+- Prerequisites that do not exist yet: any player projectile or arc-throw system in `/godot`, a mic-stand
+  prop sheet, a book, throwable-page particles, and startup/contact/recovery art for all four moves
+  (`assets/sprites/young-selecta/` holds three frames today: `idle`, `thrust`, `slam`).
+- Exit evidence: each of the four moves reaches a real active window against a live opponent, both
+  projectiles spawn, travel and resolve **through** the existing strike pipeline instead of bypassing it,
+  page/flutter particles stay inside their measured budget, and a headless check plus one on-screen look
+  confirm the arcs and a landing that respects the y 592 sand line.
 
 **Dependencies worth knowing before picking these up:** B6, B7 and B8 are closed, so the two
 combat-feel items now in the plan (B4 sparks and the B3 pause/beat-clock decision) land before the

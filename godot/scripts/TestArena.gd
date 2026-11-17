@@ -615,6 +615,8 @@ func _set_shadow_light(stretch: float) -> void:
 func _on_fighter_state_changed(_old_state: int, new_state: int, fighter: BaseFighter) -> void:
 	if new_state != BaseFighter.State.ATTACK_ACTIVE or fighter == null:
 		return
+	if not fighter.shows_strike_tell():
+		return              # this attack has its own drawn pose (AGENTS.md §9 item 27)
 	_add_strike_tell(fighter)
 
 

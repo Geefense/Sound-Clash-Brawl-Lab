@@ -110,7 +110,7 @@ fighters now track and face each other for the whole match (`BaseFighter.duel_op
 `_face_opponent()`), and because no left-facing sheet exists the sprite is mirrored at run time so
 the turn is visible — a real `<anim>_left` sheet switches the mirror off. Every strike spawns a
 `StrikeTell` smear over its own hit volume on the active tick, so a fighter whose sheet has no attack
-frames (Dubplate ships one portrait) no longer lands invisible damage; `_play_state_anim()` also falls
+frames (Lickshot only had a portrait at the time) no longer lands invisible damage; `_play_state_anim()` also falls
 back to a real animation instead of silently keeping the previous frame, and attack states lean the
 body through the swing. The bottom-left cropped spectator card and its radial wash were removed with
 `ForegroundCorner.gd`, the leaning arms-crossed spectator was retired from the line (his only drawing
@@ -289,6 +289,19 @@ regenerated; `skank/06.png` is copied for provenance but not animated. Wiring:
   copy is byte-identical. [TODO] The contact box is still the old 108×54 at x 96 — the new frame's
   raised-palm silhouette has no forward extension, so the reach needs a playtest. Pose
   `13_box_palm` stays in the pack but is no longer animated.
+
+## Lickshot's four-pose set — 2026-11-17 (AGENTS.md §9 item 27)
+
+`assets/sprites/lickshot/` now holds four keyed 512 px frames prepared from the owner's uploads by
+`art-source/fighters/prep_lickshot_poses.py`: `idle.png` (mic stance), `high_kick.png`,
+`sonic_clap_windup.png` and `sonic_clap_impact.png`. `FighterRoster` maps the mic stance onto every
+neutral/guard/reaction state, the high kick onto L (TUMP) and the Sonic Clap windup → impact onto K
+(BOX); those two attacks are listed in `no_strike_tell`, so the generic `StrikeTell` smear is no
+longer drawn over them. Every pose's measured alpha bottom lands on world y 592
+(`BaseFighter.REACTION_FLOOR_Y`) and the character is authored at the shared adult height — 121.75 px
+crown-to-sole before the 1.24 art scale, ~151 px on screen. The old placeholder portrait is kept at
+`assets/sprites/lickshot/_archive/` and excluded from the Web preset. **Not seen on screen** — no GPU
+here — so silhouette, the kick's head-height hitbox and the clap's reach still need a playtest.
 
 ## Still missing ([TODO] in the blueprint)
 

@@ -1,0 +1,102 @@
+[
+  {
+    "label": "Lickshot mic stance / idle",
+    "source": "art-source/fighters/lickshot/01_mic-stance-idle_original.png",
+    "output": "godot/assets/sprites/lickshot/idle.png",
+    "source_size": [
+      1122,
+      1402
+    ],
+    "crop_box": [
+      96,
+      13,
+      899,
+      1353
+    ],
+    "frame": [
+      307,
+      512
+    ],
+    "downscale": 0.3821,
+    "crown_row": 5,
+    "sole_row": 511,
+    "sole_centre_x": 146.0,
+    "crown_to_sole": 507,
+    "sole_row_source": 1363
+  },
+  {
+    "label": "Lickshot high kick",
+    "source": "art-source/fighters/lickshot/02_high-kick_original.png",
+    "output": "godot/assets/sprites/lickshot/high_kick.png",
+    "source_size": [
+      1122,
+      1402
+    ],
+    "crop_box": [
+      42,
+      52,
+      1122,
+      1341
+    ],
+    "frame": [
+      429,
+      512
+    ],
+    "downscale": 0.3972,
+    "crown_row": 2,
+    "sole_row": 511,
+    "sole_centre_x": 87.0,
+    "crown_to_sole": 510,
+    "sole_row_source": 1363
+  },
+  {
+    "label": "Lickshot Sonic Clap windup",
+    "source": "art-source/fighters/lickshot/03_sonic-clap-windup_original.png",
+    "output": "godot/assets/sprites/lickshot/sonic_clap_windup.png",
+    "source_size": [
+      1672,
+      941
+    ],
+    "crop_box": [
+      23,
+      56,
+      789,
+      914
+    ],
+    "frame": [
+      457,
+      512
+    ],
+    "downscale": 0.5967,
+    "crown_row": 2,
+    "sole_row": 510,
+    "sole_centre_x": 257.0,
+    "crown_to_sole": 509,
+    "sole_row_source": 910
+  },
+  {
+    "label": "Lickshot Sonic Clap impact",
+    "source": "art-source/fighters/lickshot/04_sonic-clap-impact_original.png",
+    "output": "godot/assets/sprites/lickshot/sonic_clap_impact.png",
+    "source_size": [
+      1672,
+      941
+    ],
+    "crop_box": [
+      110,
+      3,
+      1629,
+      914
+    ],
+    "frame": [
+      512,
+      307
+    ],
+    "downscale": 0.3371,
+    "crown_row": 24,
+    "sole_row": 306,
+    "sole_centre_x": 115.0,
+    "crown_to_sole": 283,
+    "sole_row_source": 910
+  }
+]

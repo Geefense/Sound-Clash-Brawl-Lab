@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cjdkfr8pp0pad"
-path="res://.godot/imported/portrait.png-4c04fb7635bc495044bcf0e2f29dba54.ctex"
+uid="uid://dwkxqs332bnn7"
+path="res://.godot/imported/idle.png-93cf0019151a2b19970a0fe2108859a4.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/sprites/lickshot/portrait.png"
-dest_files=["res://.godot/imported/portrait.png-4c04fb7635bc495044bcf0e2f29dba54.ctex"]
+source_file="res://assets/sprites/lickshot/idle.png"
+dest_files=["res://.godot/imported/idle.png-93cf0019151a2b19970a0fe2108859a4.ctex"]
 
 [params]
 
@@ -36,5 +36,5 @@ process/premult_alpha=false
 process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
-process/size_limit=512
+process/size_limit=0
 detect_3d/compress_to=1

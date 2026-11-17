@@ -107,8 +107,8 @@ func _run() -> void:
 		and p2.sprite.sprite_frames.has_animation(&"idle"),
 		"Lickshot sprite frames built")
 	# The idle groove squash/stretch rides on top of the base scale, so allow a few %.
-	# 0.2378 × BaseFighter.FIGHTER_ART_SCALE (1.24) — the 2026-11-17 "larger fighters" pass.
-	var adult_scale := 0.2378 * BaseFighter.FIGHTER_ART_SCALE
+	# 0.24014 × BaseFighter.FIGHTER_ART_SCALE (1.24) — measured from the 2026-11-17 pose pack.
+	var adult_scale := 0.24014 * BaseFighter.FIGHTER_ART_SCALE
 	_check(absf(p2.sprite.scale.x - adult_scale) <= adult_scale * 0.05,
 		"Lickshot renders at the enlarged adult height", "%.4f" % p2.sprite.scale.x)
 	# Import-cap compensation means the raw node scale is not the figure's on-screen size:
@@ -117,6 +117,54 @@ func _run() -> void:
 	var feedback_px := 487.0 * p1.sprite.scale.x / maxf(idle_cap, 0.001)
 	_check(feedback_px > 140.0, "Feedback's figure grew past the old 121.75 px",
 		"%.1f px" % feedback_px)
+
+	# ---- Lickshot's four new poses (AGENTS.md §9 item 27) -------------------
+	var lick_poses: Array[StringName] = [&"idle", &"high_kick", &"sonic_clap_windup", &"sonic_clap_impact"]
+	var missing_poses := []
+	for key in lick_poses:
+		if not p2.sprite.sprite_frames.has_animation(key):
+			missing_poses.append(String(key))
+	_check(missing_poses.is_empty(), "all four Lickshot poses are registered",
+		"missing %s" % [missing_poses] if not missing_poses.is_empty() else "idle, high kick, clap windup, clap impact")
+	# The acceptance rule: each pose's real alpha bottom lands on world y 592, measured from
+	# the decoded texture, so a Wallabee never sinks into the sand.
+	var off_floor := []
+	for key in lick_poses:
+		var floor_y := _anim_floor_y(p2, key)
+		if absf(floor_y - 592.0) > 0.75:
+			off_floor.append("%s %.1f" % [key, floor_y])
+	_check(off_floor.is_empty(), "every Lickshot pose plants on the y 592 sand line",
+		"off-floor %s" % [off_floor] if not off_floor.is_empty() else "592.0")
+	# Character height: the three full-body frames are exactly the drawing (crown row 2–5), so
+	# frame height × authored scale must land on the ~151 px adult render.
+	var heights := []
+	for key in [&"idle", &"high_kick", &"sonic_clap_windup"]:
+		var tex := p2.sprite.sprite_frames.get_frame_texture(key, 0)
+		var s: float = float(p2.anim_scale[String(key)]) * BaseFighter.FIGHTER_ART_SCALE
+		heights.append(float(tex.get_height()) * s)
+	var height_ok := true
+	for px in heights:
+		if px < 148.0 or px > 157.0:
+			height_ok = false
+	_check(height_ok, "Lickshot's poses match Feedback's ~151 px height",
+		"%s" % [heights.map(func(v): return "%.1f" % v)])
+	# The impact frame is taller than the fighter because of its shockwave; its scale is the
+	# one that puts the *character* (crown 24 → sole 306) at the same height.
+	var impact_tex := p2.sprite.sprite_frames.get_frame_texture(&"sonic_clap_impact", 0)
+	var impact_scale: float = float(p2.anim_scale["sonic_clap_impact"]) * BaseFighter.FIGHTER_ART_SCALE
+	var impact_character_px := 283.0 * impact_scale
+	_check(absf(impact_character_px - 151.0) <= 4.0,
+		"the Sonic Clap impact character is the same height", "%.1f px" % impact_character_px)
+	_check(impact_tex.get_height() * impact_scale > 155.0,
+		"the impact frame keeps its shockwave above the cap")
+	# Smear policy: a drawn move must not also get the generic strike tell.
+	p2._attack_id = &"strong"
+	_check(not p2.shows_strike_tell(), "the Sonic Clap replaces the generic strike smear")
+	p2._attack_id = &"tump"
+	_check(not p2.shows_strike_tell(), "the high kick replaces the generic strike smear")
+	p2._attack_id = &"jab"
+	_check(p2.shows_strike_tell(), "Lickshot's unposed jab still gets the strike smear")
+	p2._attack_id = &""
 
 	# ---- Arena with Young Selecta -----------------------------------------
 	setup.p2_fighter = &"young_selecta"

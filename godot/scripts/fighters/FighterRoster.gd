@@ -40,32 +40,110 @@ const FIGHTERS := {
 		"anim_source_max": {},
 		"attack_anims": {},
 	},
-	# Fighter #2 — Lickshot, renamed from Dubplate (AGENTS.md §9 item 26). The Rasta-stripe veteran
-	# selector and record thief. One approved portrait so far, so every state shows it until his own
-	# animation set exists (§9 art TODO, not invented here). The key is `lickshot`; no `dubplate`
-	# roster entry may come back — the word survives only as the music term (Dubplate meter, the
-	# late-night-dubplate round banner), never as this fighter's name.
+	# Fighter #2 — Lickshot, renamed from Dubplate (AGENTS.md §9 item 26) and given his own
+	# four-pose set on 2026-11-17 (§9 item 27): mic stance, high kick, Sonic Clap windup and
+	# Sonic Clap impact. The old single portrait is archived under
+	# assets/sprites/lickshot/_archive/ and is no longer wired. The key is `lickshot`; no
+	# `dubplate` roster entry may come back — the word survives only as the music term
+	# (Dubplate meter, the late-night-dubplate round banner), never as this fighter's name.
+	#
+	# Art: the four poses were keyed, floor-cut and capped to 512 px by
+	# `art-source/fighters/prep_lickshot_poses.py`. Offsets and scales come from that script's
+	# report, not from eyeballing: the character crown-to-sole is authored at 121.75 px (× 1.24
+	# = ~151 px on screen) and each pose's measured alpha bottom lands on world y 592
+	# (`BaseFighter.REACTION_FLOOR_Y`), so the Wallabees never sink into the sand.
+	# `no_strike_tell` lists the attacks that now have real pose art, so the arena stops
+	# painting the generic strike smear over them.
 	&"lickshot": {
 		"name": "LICKSHOT",
-		"tagline": "Fighter #2 · veteran selector, rasta-stripe jacket",
+		"tagline": "Fighter #2 · rasta mesh vest, Wallabees and a corded mic",
 		"walk_speed": 205.0,            # heavier, more deliberate than Feedback
 		"reach_bonus": 0.0,
 		"stand_size": Vector2(62, 162),
 		"crouch_size": Vector2(62, 98),
 		"uses_scene_frames": false,
 		"frames": {
-			&"idle": ["res://assets/sprites/lickshot/portrait.png"],
+			# Mic stance carries every neutral and defensive state until more poses exist.
+			&"idle": ["res://assets/sprites/lickshot/idle.png"],
+			&"walk": ["res://assets/sprites/lickshot/idle.png"],
+			&"jump": ["res://assets/sprites/lickshot/idle.png"],
+			&"crouch": ["res://assets/sprites/lickshot/idle.png"],
+			&"block": ["res://assets/sprites/lickshot/idle.png"],
+			&"guard_entry": ["res://assets/sprites/lickshot/idle.png"],
+			&"guard_recovery": ["res://assets/sprites/lickshot/idle.png"],
+			&"skank": ["res://assets/sprites/lickshot/idle.png"],
+			&"jab": ["res://assets/sprites/lickshot/idle.png"],
+			&"hitstun": ["res://assets/sprites/lickshot/idle.png"],
+			&"knockdown": ["res://assets/sprites/lickshot/idle.png"],
+			&"ko": ["res://assets/sprites/lickshot/idle.png"],
+			&"launched": ["res://assets/sprites/lickshot/idle.png"],
+			&"tumble": ["res://assets/sprites/lickshot/idle.png"],
+			# K = BOX is the Sonic Clap: arms spread wide, then the oversized hands meet with a
+			# golden shockwave. L = TUMP is the extended high left kick.
+			&"high_kick": ["res://assets/sprites/lickshot/high_kick.png"],
+			&"sonic_clap_windup": ["res://assets/sprites/lickshot/sonic_clap_windup.png"],
+			&"sonic_clap_impact": ["res://assets/sprites/lickshot/sonic_clap_impact.png"],
 		},
 		"anim_offset": {
-			"idle": Vector2(-137.8, -255.0),
+			# offset = frame centre − (stance centre x, sole row), with the sole lifted to y 592:
+			# y = H/2 − sole_row − 8 / (anim_scale × FIGHTER_ART_SCALE).
+			"idle": Vector2(7.5, -281.9),
+			"walk": Vector2(7.5, -281.9),
+			"jump": Vector2(7.5, -281.9),
+			"crouch": Vector2(7.5, -281.9),
+			"block": Vector2(7.5, -281.9),
+			"guard_entry": Vector2(7.5, -281.9),
+			"guard_recovery": Vector2(7.5, -281.9),
+			"skank": Vector2(7.5, -281.9),
+			"jab": Vector2(7.5, -281.9),
+			"hitstun": Vector2(7.5, -281.9),
+			"knockdown": Vector2(7.5, -281.9),
+			"ko": Vector2(7.5, -281.9),
+			"launched": Vector2(7.5, -281.9),
+			"tumble": Vector2(7.5, -281.9),
+			"high_kick": Vector2(127.5, -282.0),
+			"sonic_clap_windup": Vector2(-28.5, -281.0),
+			"sonic_clap_impact": Vector2(141.0, -167.5),
 		},
 		"anim_scale": {
-			"idle": 0.2378,             # 121.75 px target / 512 px frame
+			# 121.75 px crown-to-sole / that frame's measured height (the 1.24 art scale is
+			# applied once, by BaseFighter, so every fighter grows together).
+			"idle": 0.24014,
+			"walk": 0.24014, "jump": 0.24014, "crouch": 0.24014, "block": 0.24014,
+			"guard_entry": 0.24014, "guard_recovery": 0.24014, "skank": 0.24014,
+			"jab": 0.24014, "hitstun": 0.24014, "knockdown": 0.24014, "ko": 0.24014,
+			"launched": 0.24014, "tumble": 0.24014,
+			"high_kick": 0.23873,
+			"sonic_clap_windup": 0.23919,
+			"sonic_clap_impact": 0.43021,   # the shockwave sits above the cap in this frame
 		},
 		"anim_source_max": {
-			"idle": 512.0,
+			"idle": 512.0, "walk": 512.0, "jump": 512.0, "crouch": 512.0,
+			"block": 512.0, "guard_entry": 512.0, "guard_recovery": 512.0, "skank": 512.0,
+			"jab": 512.0, "hitstun": 512.0, "knockdown": 512.0, "ko": 512.0,
+			"launched": 512.0, "tumble": 512.0,
+			"high_kick": 512.0, "sonic_clap_windup": 512.0, "sonic_clap_impact": 512.0,
 		},
-		"attack_anims": {},
+		# K = BOX plays windup → impact; L = TUMP plays the high kick. The kick's contact box
+		# moves up to head height, because the art is an extended high kick and not the
+		# Sparta stomach push the shared box was authored for.
+		"attack_anims": {
+			&"strong": {
+				"anim_startup": &"sonic_clap_windup",
+				"anim_active": &"sonic_clap_impact",
+				"anim_recovery": &"sonic_clap_impact",
+			},
+			&"tump": {
+				"anim_startup": &"high_kick",
+				"anim_active": &"high_kick",
+				"anim_recovery": &"high_kick",
+				"hitbox_pos": Vector2(96, -128),
+				"hitbox_size": Vector2(112, 56),
+			},
+		},
+		# These two attacks ship their own drawn pose, so the arena must not also smear the
+		# generic strike tell over them. The jab still has no art and keeps the smear.
+		"no_strike_tell": [&"strong", &"tump"],
 	},
 	# Fighter #3 — the ten-year-old school-uniform prodigy. Faster on his feet and the
 	# boom-mic thrust reaches 25 px further than an adult's jab (owner direction).

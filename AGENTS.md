@@ -26,7 +26,7 @@ The fighters must feel like personalities at a dance, not interchangeable boxers
 
 **Mic continuity requires version-specific care.** Earlier pose work used the left hand; the later four-key walk study explicitly uses the right hand. Never silently flip or normalize one set into the other. Each sequence must keep one mic in its declared anatomical hand and one continuous cable, including forearm wraps. A mic cannot disappear while adjusting the hat or reappear in another hand. [TODO] Owner resolves the canonical cross-set hand before final fighter integration. Mirroring art changes apparent handedness and is provisional only.
 
-**Other concepts:** **Lickshot is now Fighter #2's display name** (renamed from Dubplate, 2026-11-17 — §9 item 26); `Disc Jock Lickshot` and `Booyaka Lickshot` stay recorded alternates and the owner says the name may still evolve. The off-screen selecta record-theft gag belongs to Fighter #2 accordingly. The Godot migration gate for Fighter #2 is passed — he is in the roster, though still art-poor (one portrait). **Working name pool for Fighters #4–#6 (owner, 2026-11-17): Fling Stone, Rum Punch, Sky Juice** — working names only, with no slot assigned and no design implied (§2, §9 item 26).
+**Other concepts:** **Lickshot is now Fighter #2's display name** (renamed from Dubplate, 2026-11-17 — §9 item 26); `Disc Jock Lickshot` and `Booyaka Lickshot` stay recorded alternates and the owner says the name may still evolve. The off-screen selecta record-theft gag belongs to Fighter #2 accordingly. The Godot migration gate for Fighter #2 is passed — he is in the roster with his own four-pose set since 2026-11-17 (§9 item 27): mic stance, high kick, Sonic Clap windup and Sonic Clap impact. **Working name pool for Fighters #4–#6 (owner, 2026-11-17): Fling Stone, Rum Punch, Sky Juice** — working names only, with no slot assigned and no design implied (§2, §9 item 26).
 
 ### Owner clarification — cross-animation consistency (2026-11-13)
 
@@ -854,15 +854,17 @@ here is gameplay-verified; implementation status is stated per item.
       (`flip_h`) — see the item 2 amendment; that mirror is the port's only deviation from the old
       "no flip_h" rule and it is provisional.
     - **Invisible CPU attacks (fixed second).** Root cause was the roster, not the FSM: the CPU
-      defaults to **Dubplate** (now **Lickshot**, item 26), whose only art is one portrait, so every attack state played no frame
+      defaults to **Dubplate** (now **Lickshot**, item 26), whose art at the time was one portrait, so every attack state played no frame
       at all while the hitbox still resolved damage. Three changes: `_play_state_anim()` falls back
       through `idle/walk/jump/block` instead of silently keeping the previous frame; attack states lean
       the body through the swing (`LEAN_WINDUP` 0.055 rad back, `LEAN_STRIKE` 0.115 rad through
       contact) on top of the existing wind-up, lunge and squash; and every `ATTACK_ACTIVE` entry spawns
       a `StrikeTell` smear (`StrikeTell.gd`, primitives, z 3, capped at 4 like the sparks) drawn over
       exactly the rect `BaseFighter.attack_volume()` resolves contact with — same shape, same tick.
-      [TODO] Lickshot still has **no attack art**; he needs a startup/contact/recovery sheet before his
-      strikes read as a punch or kick rather than a shove.
+      **Resolved 2026-11-17 (§9 item 27):** Lickshot now has drawn attack poses — the high kick on L
+      and the Sonic Clap windup/impact on K — so those two attacks suppress the smear and play their own
+      art. His jab still has no drawing and still uses the smear. Each move is one held pose, not an
+      interpolated startup/contact/recovery sheet.
     - **Stray bottom-left character (removed).** The `Foreground` CanvasLayer, its `CornerWash` radial
       wash and the cropped `BottomCard` spectator are gone, together with `ForegroundCorner.gd`/`.uid`.
     - **Unsupported leaning spectator (removed).** `ArmsCrossed`'s only drawing is a lean and there is
@@ -1025,6 +1027,56 @@ here is gameplay-verified; implementation status is stated per item.
     - **Still unverified:** there is no GPU here, so the renamed lettering has never been seen on screen. The
       checks prove the table, the frames and the HUD name plate resolve; they cannot prove the longer word
       fits the title layout without clipping, and nobody has looked.
+
+27. **Lickshot's four-pose set: mic stance, high kick and the Sonic Clap — owner upload, prepared and
+    wired (2026-11-17).** This supersedes the single-portrait placeholder and the "no attack art" TODO in
+    item 23's strike-smear note.
+
+    - **The uploads.** Four new owner images arrived with UUID filenames and are now stored with descriptive
+      names under `art-source/fighters/lickshot/`: `01_mic-stance-idle_original.png`,
+      `02_high-kick_original.png`, `03_sonic-clap-windup_original.png`,
+      `04_sonic-clap-impact_original.png`. The originals are untouched.
+    - **The updated design.** Red/yellow/green Rasta mesh string vest, olive cargo trousers, tan Clarks
+      Wallabees, dark flat cap over the locks, gold chain, gold watch and rings, corded mic in the right hand
+      with the cable running down to the sand. This replaces the older rasta-stripe track jacket / green
+      trousers portrait, which is archived rather than deleted.
+    - **The four poses.** *Mic stance / idle* — mic in the right hand, left hand raised with a motion arc.
+      *High kick* — mic still held, extended high left kick. *Sonic Clap windup* — arms spread wide with
+      oversized hands, mic tucked in the right cargo pocket. *Sonic Clap impact* — the oversized hands clapped
+      together in front inside golden shockwave rings.
+    - **Preparation.** `art-source/fighters/prep_lickshot_poses.py` keys the plum studio backdrop, drops the
+      soft cast shadow and the vignette pocket sealed off by the mic cable, cuts the lit sand floor while
+      protecting the cable and the tan leather, crops to alpha, caps the longest side at 512 px and reports
+      the measured alpha bounds (`art-source/fighters/lickshot/prep-report.json`). Outputs in
+      `godot/assets/sprites/lickshot/`: `idle.png` (307×512), `high_kick.png` (429×512),
+      `sonic_clap_windup.png` (457×512), `sonic_clap_impact.png` (512×307).
+    - **Placement rule.** Every pose's measured alpha bottom sits on world **y 592**
+      (`BaseFighter.REACTION_FLOOR_Y`), so the Wallabees stay planted on the sand line with zero sinking, and
+      every character is authored at 121.75 px crown-to-sole — the shared adult reference, × 1.24 =
+      **~151 px**, matching Feedback. Offsets and scales live in `FighterRoster.FIGHTERS[&"lickshot"]`.
+    - **Wiring.** K (BOX / `strong`) plays Sonic Clap windup → impact → impact, L (TUMP) plays the high kick,
+      and both are listed in the roster's `no_strike_tell`, so `TestArena` no longer paints the generic
+      `StrikeTell` smear over drawn art (`BaseFighter.shows_strike_tell()`). The jab still has no drawing and
+      keeps the smear. Every neutral, movement, guard and reaction state shows the mic stance — there is no
+      walk, jump, hit-reaction or KO drawing for him yet. The `FighterRoster` tagline used by Character Select
+      now reads "Fighter #2 · rasta mesh vest, Wallabees and a corded mic"; the HUD name plate already follows
+      `display_name`. `RoundController.gd`'s `FINAL ROUND — LATE-NIGHT DUBPLATE` is the music term and is
+      untouched.
+    - **Archive.** The placeholder portrait moved to
+      `godot/assets/sprites/lickshot/_archive/portrait_2026-11-17_placeholder.png` (with its `.import`), and
+      the Web preset excludes `assets/sprites/lickshot/_archive/*` so it never ships. `prep_fighter_art.py`'s
+      first job now writes to that archive path, so rerunning it cannot resurrect a `dubplate/` sprite folder.
+    - **Checks actually run** (Godot 4.5.stable headless: `--import`, then
+      `--script res://tools/headless_roster_check.gd`): **58/58 assertions, exit 0**. New assertions: all four
+      poses registered; every pose's real alpha bottom at **592.0**; the three full-body frames at 152.5 /
+      151.6 / 151.9 px; the impact character at 151.0 px with its shockwave frame taller; the smear
+      suppressed for K/L and still present for the jab. The pre-existing Dubplate-rename regression guard
+      still passes. `/docs/index.html` was rebuilt with
+      `godot --headless --path godot --export-release "Web" ../docs/index.html`.
+    - **Still unverified.** There is no GPU here, so the four poses have never been seen in the running game:
+      silhouette, cut-out edges at gameplay size, the kick's new head-height hitbox, the clap's reach, timing
+      feel and the mirrored left-facing version all need the owner's on-screen pass. Each pose is one drawing,
+      not an interpolated sequence, and the cable is drawn per pose rather than animated.
 
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 
@@ -1211,7 +1263,8 @@ For Godot, once created: [TODO] pin exact import/headless launch/test/export com
 | Birthday release / May Jamaica trip | Launch target Apr 21, 2027; final QA Apr 2–21; trip May 2027. |
 | Sound Clash Sand Stage (art + foot dust + shadows + atmosphere + speaker thump + rare bird) | Implemented 2026-11-15 on branch `stage/sound-clash-sand`; headless Godot 4.3 import/run clean; **on-screen playtest [TODO]**. |
 | Round-based day → sunset → night lighting | Implemented 2026-11-15 on branch `stage/sound-clash-sand`; headless checks of all three phases, tween and N cycle pass; round-controller driving and **on-screen look [TODO]**. |
-| Owner playtest pass: facing, visible CPU strikes, crowd acts, stage lighting, framing, props | Implemented 2026-11-17; headless 4.5 check 49/49; **on-screen look and feel [TODO]**; Lickshot attack art, left-facing frames and multi-frame crowd loops still need art prep. |
+| Owner playtest pass: facing, visible CPU strikes, crowd acts, stage lighting, framing, props | Implemented 2026-11-17; headless 4.5 check 49/49; **on-screen look and feel [TODO]**; left-facing frames and multi-frame crowd loops still need art prep. |
+| Lickshot four-pose set (stance, high kick, Sonic Clap windup/impact) | Implemented 2026-11-17 (§9 item 27): four keyed 512 px frames wired into `FighterRoster`, the generic smear replaced on K/L, headless 4.5 **58/58**, Web export rebuilt; **on-screen look and motion [TODO]**. |
 | Smart Sparring AI modes (P2) | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 4 modes cycle on **Y**, HUD banner, **G** guard override; headless Godot 4.5 runs pass for every mode; **on-screen/feel playtest [TODO]**. |
 | Dancehall crowd line + 100% Hype Surge | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 6 sliced spectators (Queen centre) + 2 record crates at the stacks, beat bob, FORWARD!/PULL UP! banner, 5 s 1.20× / faster-recovery boost; headless checks pass; **on-screen look and balance [TODO]**. |
 | 15-character two-row rotating crowd + contact shadows | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 9 new slices (pool 15), front/back rows, 12–18 s and 50 %/100 % hype reshuffles, GroundShadow on crowd and crates; headless checks pass; **on-screen look [TODO]**. |

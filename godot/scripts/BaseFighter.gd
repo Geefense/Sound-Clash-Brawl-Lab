@@ -76,6 +76,9 @@ var anim_scale: Dictionary = {}
 var anim_source_max: Dictionary = {}
 var anim_source_max_default: float = ANIM_SOURCE_MAX_DEFAULT
 var _reach_applied: bool = false
+## Attacks that ship their own drawn pose, so the arena's generic strike smear must not be
+## painted over them (Lickshot's Sonic Clap and high kick — FighterRoster §9 item 27).
+var _no_strike_tell: Array = []
 
 # 60 Hz tick counts. [TODO] PLACEHOLDERS unless noted: port from combatRules.ts.
 const KNOCKDOWN_FALL_TICKS := 36       # KO fall constant from AGENTS.md §3; nonlethal get-up [TODO]
@@ -407,6 +410,8 @@ func apply_fighter_profile(key: StringName) -> void:
 	stand_size = data["stand_size"]
 	crouch_size = data["crouch_size"]
 	_apply_reach_bonus(float(data["reach_bonus"]))
+
+	_no_strike_tell = data.get("no_strike_tell", [])
 
 	var overrides: Dictionary = data["attack_anims"]
 	for id in overrides:
@@ -742,6 +747,12 @@ func _set_hitbox_active(on: bool) -> void:
 ## the volume that resolves contact (presentation only; never read by combat).
 func attack_volume() -> Rect2:
 	return _hitbox_rect()
+
+
+## True when this attack should get the arena's generic strike smear. False for the moves
+## that carry their own pose art, so a drawn clap or kick is not doubled by a smear.
+func shows_strike_tell() -> bool:
+	return not (_attack_id in _no_strike_tell)
 
 
 ## Strike volume, in world space, from the attack data and the latched facing.

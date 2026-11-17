@@ -46,8 +46,12 @@ JOBS = [
     # never enter, so it is cleared by a smooth-area growth seeded inside the pocket
     # ("pocket_seeds"), then any remaining uniform-backdrop fragment is dropped and the
     # art's own enclosed flecks are restored. See the options block below.
+    # The 2026-11-17 placeholder portrait, superseded by Lickshot's four-pose set (§9 item 27)
+    # and kept only as archived provenance. Its output path follows the archive so a rerun can
+    # never resurrect a `dubplate/` sprite folder in the game tree.
     ("dubplate/dubplate-selector-portrait_original.png",
-     "dubplate/portrait.png", (40, 170), None, "Dubplate portrait",
+     "lickshot/_archive/portrait_2026-11-17_placeholder.png", (40, 170), None,
+     "Lickshot placeholder portrait (archived)",
      {"keep_frac": 0.15, "ground_cut": 1395, "shadow_cut": (0.55, 1.35, 90),
       "pocket_seeds": [(200, 900), (250, 1050), (150, 1100), (350, 1150),
                        (300, 950), (400, 1000), (540, 1100), (520, 1050),

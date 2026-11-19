@@ -15,7 +15,8 @@ extends RefCounted
 ## Sizes are the owner's proportions, not measured precision:
 ##   * adult fighters (Feedback, Lickshot) render 121.75 px tall — the Feedback idle
 ##     reference (487 px at BASE_SPRITE_SCALE 0.25),
-##   * Young Selecta renders at 82 % of that (≈ 99.8 px) for kid-prodigy spacing.
+##   * Likkle Moore (Fighter #3, key `young_selecta`) renders at 82 % of that (≈ 99.8 px) for
+##     kid-prodigy spacing.
 ## Per-frame scales differ only because each frame's canvas contains different props
 ## (mic stand, boombox); they are chosen to hold the *character* at the target height.
 
@@ -201,10 +202,13 @@ const FIGHTERS := {
 		# strike smear: the jab's placeholder smear is retired.
 		"no_strike_tell": [&"strong", &"tump", &"jab", &"upper_box"],
 	},
-	# Fighter #3 — the ten-year-old school-uniform prodigy. Faster on his feet and the
+	# Fighter #3 — Likkle Moore, the ten-year-old school-uniform prodigy (formerly Young Selecta;
+	# renamed 2026-11-19, AGENTS.md §9 item 35). The key stays `young_selecta` and the art folder
+	# stays `assets/sprites/young-selecta/`, so no texture UID or path changes. The on-screen name
+	# is styled by `styled_name()`, which renders L!KKLE MOORE. Faster on his feet and the
 	# boom-mic thrust reaches 25 px further than an adult's jab (owner direction).
 	&"young_selecta": {
-		"name": "YOUNG SELECTA",
+		"name": "LIKKLE MOORE",
 		"tagline": "Fighter #3 · school-uniform prodigy",
 		"walk_speed": 250.0,            # "slightly faster": 220 × 1.14
 		"reach_bonus": 25.0,            # +25 px boom-mic reach

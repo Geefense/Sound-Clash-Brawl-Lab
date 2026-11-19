@@ -63,7 +63,7 @@ Calendar clarification: November 13, 2026 to April 21, 2027 is 159 days (~22.7 w
 | **Weeks 18–20** | **Mar 12 – Apr 1, 2027** | Build 2–3 distinct Sound Clash venues, Character Select and Arcade mode. Add stretch Fighters #7–#8 only if genuinely ahead. | Six-fighter roster selectable; Arcade run completes and restarts; venues work with hazards/party transitions. Stretch scope cannot consume final QA time. |
 | **Weeks 21–22 / closing partial week** | **Apr 2 – Apr 21, 2027** | Final balance, audio mixing, input/beat responsiveness checks, regression fixes, clean export and birthday launch. | Versioned release build tested on the chosen target; no critical blocker; credits/controls included; reproducible export instructions. |
 
-Roster slots: #1 Feedback; #2 **L!CKSHOT** on screen, key `lickshot` (renamed from Dubplate on 2026-11-17, §9 item 26; I → ! styling rule, §9 item 32 — the name may still evolve); #3 Young Selecta (§9 items 22–25); #4–#6 **[TODO]** assign final names/order from the owner's working **name pool: FL!NG STONE, RUM PUNCH, SKY JU!CE** (2026-11-17, styled per §9 item 32). Those three are working names, not assignments: nothing says #4 is Fling Stone, and a name is not a design — do not build a fighter from a name alone or treat the pool as final. The owner named #1–#3 explicitly; #4–#6 remain open. #7–#8 remain optional.
+Roster slots: #1 Feedback; #2 **L!CKSHOT** on screen, key `lickshot` (renamed from Dubplate on 2026-11-17, §9 item 26; I → ! styling rule, §9 item 32 — the name may still evolve); #3 **Likkle Moore**, on screen **L!KKLE MOORE** (renamed from Young Selecta on 2026-11-19, §9 item 35; the roster key `young_selecta` and the sprite folder stay unchanged, and the name may still evolve) (§9 items 22–25); #4–#6 **[TODO]** assign final names/order from the owner's working **name pool: FL!NG STONE, RUM PUNCH, SKY JU!CE** (2026-11-17, styled per §9 item 32). Those three are working names, not assignments: nothing says #4 is Fling Stone, and a name is not a design — do not build a fighter from a name alone or treat the pool as final. The owner named #1–#3 explicitly; #4–#6 remain open. #7–#8 remain optional.
 
 Suggested content slots within the supplied eight-week roster block: #3 Jan 15–28; #4 Jan 29–Feb 11; #5 Feb 12–25; #6 Feb 26–Mar 11. Each slot covers stance/move definition, approved exports, data/hitboxes, voices, integration and a playable check. Templates and placeholders should be prepared before the slot, not used to claim finished art.
 
@@ -225,6 +225,16 @@ When creating a Godot project or adding `/godot` inside the existing GitHub repo
 5. Retain the TypeScript prototype as a runnable reference throughout the port. This request creates the blueprint; it does **not** start the engine migration now.
 
 **Godot folder created — November 15, 2026.** `/godot` now exists with `project.godot` (minimal; `config/features` is added the first time the project is opened), `.gitignore` (`.godot/`, `*.translation`, exports, no art ignored), `.gitattributes`, a byte-identical `AGENTS.md` copy, empty `scenes/` and `scripts/`, and `assets/` holding the verified art copies: `sprites/feedback/aligned/` (17 pose PNGs + `feedback.poses.json`), `sprites/feedback/imported-poses/` (6 studies), `sprites/feedback/walk-four-keys/poses/` (4 keys, still an unapproved movement test) and `flow_exports/walk/` (walk flow test and the approved 132 BPM reference). All 30 copies verified byte-identical by `cmp`/SHA-256; candidate and comparison-only art was deliberately left in `art-source/`. Still **[TODO]**: no audio file exists anywhere in the repository, no Spriteriffic sprite sheets, and no bottle/chair/fire-extinguisher art — so `assets/sprites/{bottles,chairs,fire_extinguishers}/` and real audio content are not created yet. Engine version, renderer and Chromebook export path remain unpinned and unverified; no scene, script or gameplay rule exists in `/godot`.
+
+### Character & art prompt templates — locked (2026-11-19)
+
+`artifacts/sound-clash/prompt-templates/README.md` holds the locked, copy-pasteable image-generation
+appearance blocks for every fighter, so a character description is never rewritten from scratch:
+**Feedback**, **L!ckshot** and **Likkle Moore**, each with its outfit, props, declared mic hand and the
+"pure #FFFFFF background, zero floor shadow" output rule. Paste the character block verbatim and append
+only the pose line. Registered here and in §9 item 36. Documentation only: it approves no art, and a
+generated frame still goes through background keying, the 512 px cap, the y 592 floor alignment and the
+owner's visual review before it is wired.
 
 ## 6. Finite State Machine (FSM) Architecture (TypeScript -> GDScript Blueprint)
 
@@ -939,12 +949,15 @@ here is gameplay-verified; implementation status is stated per item.
     - **Still not verified:** none of the reaction alignment has been seen on screen. The check proves
       the art cannot cross the sand line; it does not prove the poses look planted in motion.
 
-25. **Fighter #3 — Young Selecta's signature moveset, designed by the owner's son — recorded, not built
-    (2026-11-17).** Documentation only: **no code, scene, input action, frame data, hitbox, SFX cue or art
-    was added for this entry.** It exists so the design survives the current combat work, not as a claim
-    that any of it runs. The owner's production order puts it behind Feedback: refine Feedback's combat,
-    blocking and hit reactions and build his **Dancehall dance-move attacks — The Bogle, Log On, Signal
-    Di Plane** — first, then Young Selecta's projectiles and bat swings, then Lickshot's unique moveset.
+25. **Fighter #3 — Likkle Moore's (L!KKLE MOORE) signature moveset, designed by the owner's son — recorded,
+    not built (2026-11-17; renamed 2026-11-19, item 35).** Documentation only: **no code, scene, input
+    action, frame data, hitbox, SFX cue or art was added for this entry.** It exists so the design survives
+    the current combat work, not as a claim that any of it runs. The fighter was renamed Young Selecta →
+    **Likkle Moore** on 2026-11-19 (item 35); his roster key and asset folder remain `young_selecta`. Apart
+    from the name, this design record is unchanged. The owner's production order puts it behind Feedback:
+    refine Feedback's combat, blocking and hit reactions and build his **Dancehall dance-move attacks — The
+    Bogle, Log On, Signal Di Plane** — first, then Likkle Moore's projectiles and bat swings, then
+    Lickshot's unique moveset.
 
     - **Attribution.** The moveset was designed directly by the owner's **10-year-old son**, a named
       co-designer of Fighter #3. Preserve his move names and props (`Mic Toss`, the microphone-stand
@@ -972,10 +985,10 @@ here is gameplay-verified; implementation status is stated per item.
       were sized for contact bursts, so page flutter needs its own measured allowance.
     - **Key collision to settle before coding.** `J`, `K`, `L` and `I` are already the live attack keys in
       `BaseFighter.KEY_LAYOUT`: `light`/jab (J), `heavy`/BOX (K), `tump` (L) and `upper_box` (I). The design
-      above reassigns all four on Young Selecta. Decide explicitly whether these four moves **replace** his
+      above reassigns all four on Likkle Moore. Decide explicitly whether these four moves **replace** his
       normals, are **held-modifier or stance** variants, or take new keys; do not silently overwrite the
       shared layout, because P1, P2 and the CPU all read it.
-    - **Art and audio needed.** Young Selecta ships **three frames today** — `idle.png`, `thrust.png` and
+    - **Art and audio needed.** Likkle Moore ships **three frames today** — `idle.png`, `thrust.png` and
       `slam.png` in `assets/sprites/young-selecta/` — so none of these moves has a frame. Required art:
       the mic stand in both swing arcs (startup/contact/recovery), a mic projectile with a readable spin,
       an oversized hardcover book, page-flutter frames or a particle, and the backpack reach. Nothing here
@@ -985,7 +998,7 @@ here is gameplay-verified; implementation status is stated per item.
       young selecta actually carries — a mic, a mic stand and a school bag — so he reads as comically
       dangerous without a martial-arts sheet. Keep the props literal and the arcs exaggerated.
     - **Production order (owner, 2026-11-17).** 1) Feedback's combat, blocking and Dancehall move attacks
-      (The Bogle, Log On, Signal Di Plane). 2) Young Selecta's projectiles and bat swings. 3) Lickshot's
+      (The Bogle, Log On, Signal Di Plane). 2) Likkle Moore's projectiles and bat swings. 3) Lickshot's
       unique moveset. This is the owner's sequence, not a build order of convenience.
     - **Status:** design recorded, **nothing implemented, nothing verified**; no headless or on-screen
       check exists for any of it.
@@ -1275,6 +1288,50 @@ here is gameplay-verified; implementation status is stated per item.
       to **13,842,592 B**, `index.wasm` 38,057,390 B, `index.js` 305,185 B and `index.html` 5,449 B, so the
       playable build and the source are the same revision.
 
+35. **Fighter #3 renamed Young Selecta → Likkle Moore, displaying as L!KKLE MOORE — implemented
+    (2026-11-19).**
+
+    - **What changed.** `FighterRoster.FIGHTERS[&"young_selecta"]["name"]` is now **`LIKKLE MOORE`**. The
+      I → ! rule (item 32) renders **L!KKLE MOORE** in the title-screen roster line
+      (FEEDBACK · L!CKSHOT · L!KKLE MOORE), Character & Match Setup, the HUD health-bar plate, and any
+      future round/result announcement that reads `display_name`.
+    - **What deliberately did not change.** The roster key stays `young_selecta`, the sprite folder stays
+      `godot/assets/sprites/young-selecta/`, the source originals stay in
+      `art-source/fighters/young-selecta/`, and every texture path and UID stays as it was. This is a
+      display-name change only, so nothing is re-imported or re-pointed.
+    - **Comments and copy.** `FighterRoster.gd`, `MatchSetup.gd`, `BaseFighter.gd`, `godot/README.md`, §2,
+      §9 item 25 and Backlog B11 now say Likkle Moore / L!KKLE MOORE. Historical items (26, 28) and the
+      milestone rows keep the old name where they describe what shipped at the time.
+    - **The name may still evolve** — recorded with the same caveat as Lickshot.
+    - **Verified headless (Godot 4.5):** P2's `display_name` is `L!KKLE MOORE` while `fighter_key` is
+      `young_selecta`, and the walk-speed, +25 px reach and 82 % height checks still pass unchanged. Not
+      verified: the longer name on the real HUD plate and title layout — no GPU here. One stale assertion
+      was replaced while doing this: the check used to expect Feedback's jab to draw the generic strike
+      smear, which item 33 retired. It now asserts the drawn jab draws **no** smear and that an attack the
+      roster does not list still gets one, so the smear path stays covered without depending on CPU timing.
+    - **`/docs` rebuilt from this commit** with `--headless --path godot --export-release "Web"
+      ../docs/index.html`: `index.pck` **13,842,752 B**, `index.wasm` 38,057,390 B, `index.js` 305,185 B,
+      `index.html` 5,449 B.
+
+36. **Locked character & art prompt templates — folder registered (2026-11-19).**
+
+    - **Location.** `artifacts/sound-clash/prompt-templates/README.md`; registered in §5.
+    - **Contents.** One locked appearance block each for **Feedback** (bucket hat pulled over the eyes,
+      dreads, red striped track jacket, brown trousers, tan Clarks Wallabees, right-hand corded silver
+      mic), **L!ckshot** (brown Kangol flat cap low over the eyes, short dreads, goatee, gold tooth,
+      red/yellow/green Rasta mesh string vest with no jacket, gold chain, olive cargos, tan Clarks
+      Wallabees, right-hand corded silver mic) and **Likkle Moore** (10-year-old Black boy, crisp low fade,
+      dark-blue rectangular glasses, patterned durag/bandana, cream school-uniform button-down shirt, navy
+      trousers, crisp white sneakers, oversized blue DJ/school gadget backpack), plus the shared output
+      rules: pure #FFFFFF background, flat white, **zero floor shadow** and no scenery, one full-body
+      figure, no text or watermark.
+    - **How it is used.** Paste the character block verbatim and append one pose line. The block is the
+      consistency contract: changing an outfit word changes the fighter. Do not generate a pose that
+      already has an approved drawing.
+    - **Status.** Documentation only. It adds no art, approves no art and changes no pipeline: an upload
+      is still a candidate until the owner reviews it and it passes keying, the 512 px cap and the y 592
+      floor alignment.
+
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 
 Recorded at build `ad27516` (`stage/sound-clash-sand`); §9 items 1–19 above are the decisions that
@@ -1392,7 +1449,7 @@ to the text.
 
 #### Owner item — Fighter #3 moveset (2026-11-17)
 
-**[TODO] B11. Fighter #3 — Young Selecta's signature moveset (designed by the owner's son).** Full
+**[TODO] B11. Fighter #3 — Likkle Moore's (L!KKLE MOORE) signature moveset (designed by the owner's son).** Full
 design, open values and attribution: decisions item 25. Four moves sitting on the four attack keys he
 currently shares with every fighter — `J` **Mic Toss** (fast horizontal mic projectile, short cooldown),
 `K` **horizontal mic-stand bat swing** (heavy knockback, heavy hitstop, metallic clang), `I` **rising
@@ -1411,6 +1468,25 @@ the blue backpack (heavy impact, fluttering page particles). Those keys collide 
   projectiles spawn, travel and resolve **through** the existing strike pipeline instead of bypassing it,
   page/flutter particles stay inside their measured budget, and a headless check plus one on-screen look
   confirm the arcs and a landing that respects the y 592 sand line.
+
+#### Owner item — mobile touch controls (2026-11-19)
+
+**[TODO] B12. On-screen mobile & tablet touch controls — record only, do not implement yet.** Once the
+three-fighter combat loop (Feedback, L!ckshot, Likkle Moore) is locked on keyboard/controller, add clean,
+auto-showing arcade virtual touch buttons when the WebGL2 build runs on a phone or tablet: a D-pad /
+thumb-stick for movement, jump and crouch, plus **J / K / L / I / S / U / T** (jab, box, tump, upper box,
+guard, grab/tech, taunt). The set must appear only on touch devices and touch browsers, must not change the
+keyboard or controller bindings, and has to stay inside the 1280×720 canvas without covering the health
+bars, name plates, hype bar, round clock or subtitle pill.
+- Blocked on: the combat loop being locked (§9 mandatory rule 2, January 14, 2027) and a real phone/tablet
+  touch test of the exported Web build.
+- Open values: button size and spacing, safe-area insets for notched phones, whether the stick is fixed or
+  floating, how simultaneous multi-touch (move + attack + guard) is read from Godot's touch events, whether
+  it autohides in landscape vs portrait, and whether a "touch controls" toggle belongs in Character & Match
+  Setup.
+- Exit evidence: on a phone and a tablet the controls auto-appear on touch and not on desktop, every listed
+  action fires, a full round is playable without a keyboard, and the HUD stays legible with the buttons
+  present.
 
 **Dependencies worth knowing before picking these up:** B6, B7 and B8 are closed, so the two
 combat-feel items now in the plan (B4 sparks and the B3 pause/beat-clock decision) land before the
@@ -1820,7 +1896,7 @@ animation set.
 | --- | --- | --- | --- | --- | --- |
 | `feedback` | FEEDBACK | 220 | standard | 60×160 | the existing 17-pose pack in `BaseFighter.tscn` |
 | `dubplate` | DUBPLATE | 205 | standard | 62×162 | one portrait, reused by every state |
-| `young_selecta` | YOUNG SELECTA | 250 | **+25 px** on every attack | 52×131 (82 %) | idle / thrust / slam mapped onto the existing animation slots |
+| `young_selecta` | L!KKLE MOORE | 250 | **+25 px** on every attack | 52×131 (82 %) | idle / thrust / slam mapped onto the existing animation slots |
 
 * Adult fighters render 121.75 px tall (Feedback idle: 487 px × 0.25). Young Selecta is scaled
   to 82 % of that (≈99.8 px), per the owner's kid-prodigy direction; his hurtbox follows the

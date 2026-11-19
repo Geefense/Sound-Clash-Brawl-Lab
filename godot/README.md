@@ -126,7 +126,7 @@ sun bloom, phase-driven contact-shadow length (`GroundShadow.light_dir` / `stret
 silhouette (`CrowdLine.set_night()`). Headless 4.5 check: **49/49 assertions passed** (see below).
 
 **Follow-up from the same pass (2026-11-17).** The default matchup is now **Feedback vs Feedback**
-(`MatchSetup.p2_fighter`); Dubplate and Young Selecta stay selectable and the roster order is
+(`MatchSetup.p2_fighter`); L!CKSHOT and Likkle Moore stay selectable and the roster order is
 unchanged, so combat, visible blocks, hit reactions and the upcoming Dancehall move set can be
 tuned with full animation on both sides first. Hit-reaction art was also mis-aligned: `16_gut_punch`
 ends at row 835, well above the pack's 900 sole row, so the old pelvis anchor (-98) pushed Feedback

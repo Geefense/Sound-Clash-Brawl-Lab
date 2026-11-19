@@ -3,7 +3,7 @@ extends SceneTree
 ## Run with: godot --headless --path godot --script res://tools/headless_roster_check.gd
 ##
 ## Boots TitleScreen, verifies the MatchSetup defaults, boots TestArena with Lickshot as
-## P2, then rebuilds the arena with Young Selecta and checks the shared FSM, the sprite
+## P2, then rebuilds the arena with Likkle Moore (L!KKLE MOORE) and checks the shared FSM, the sprite
 ## frames, the +25 px reach, the AI mode and the Esc return path. Prints one line per
 ## check and exits non-zero if any check fails.
 
@@ -261,15 +261,20 @@ func _run() -> void:
 	_check(not p1.shows_strike_tell(), "Feedback's drawn upper box retires the strike smear")
 	p1._attack_id = &""
 
-	# ---- Arena with Young Selecta -----------------------------------------
+	# ---- Arena with Likkle Moore (key `young_selecta`) ----------------------
 	setup.p2_fighter = &"young_selecta"
 	change_scene_to_file("res://scenes/TestArena.tscn")
 	await process_frame
 	await process_frame
 	arena = current_scene
 	p2 = arena.get_node("P2")
-	_check(p2.display_name == "YOUNG SELECTA", "P2 is Young Selecta", p2.display_name)
-	_check(is_equal_approx(p2.walk_speed, 250.0), "Young Selecta walks faster",
+	# Rename guard (AGENTS.md §9 item 35): the display name changes to LIKKLE MOORE and the I→!
+	# rule renders L!KKLE MOORE, while the roster key and the sprite folder stay `young_selecta`.
+	_check(p2.display_name == "L!KKLE MOORE", "P2 is L!KKLE MOORE on screen", p2.display_name)
+	_check(p2.fighter_key == &"young_selecta"
+			and FighterRoster.display_name(&"young_selecta") == "L!KKLE MOORE",
+		"Likkle Moore keeps the young_selecta key and asset folder", str(p2.fighter_key))
+	_check(is_equal_approx(p2.walk_speed, 250.0), "Likkle Moore walks faster",
 		"%.0f px/s" % p2.walk_speed)
 	var jab: Dictionary = p2.attacks[&"jab"]
 	_check(int(jab["hitbox_size"].x) == 109, "boom-mic reach grew by 25 px",
@@ -402,7 +407,13 @@ func _run() -> void:
 		if saw_active and saw_tell:
 			break
 	_check(saw_active, "P1's jab reached its active window")
-	_check(saw_tell, "a strike smear is drawn over the active window")
+	# Feedback's jab now carries a drawn pose, so the arena must not paint the generic smear
+	# over it. The smear path itself is still covered below by a fighter whose roster entry
+	# does not list the attack in `no_strike_tell`.
+	_check(not saw_tell, "P1's drawn jab draws no generic strike smear")
+	p2._attack_id = &"jab"
+	_check(p2.shows_strike_tell(), "an attack without drawn art still gets the strike smear")
+	p2._attack_id = &""
 	p1b.command = BaseFighter.Command.new()
 
 	# ---- Esc back to Character Select ------------------------------------

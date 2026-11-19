@@ -485,7 +485,7 @@ func apply_fighter_profile(key: StringName) -> void:
 	_play_state_anim()
 
 
-## Owner direction: Young Selecta's boom-mic thrust reaches 25 px further. The hitbox
+## Owner direction: Likkle Moore's boom-mic thrust reaches 25 px further. The hitbox
 ## grows forward (near edge stays put), so spacing changes without moving the animation.
 func _apply_reach_bonus(bonus: float) -> void:
 	if _reach_applied or is_zero_approx(bonus):

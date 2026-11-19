@@ -39,6 +39,14 @@ const FIGHTERS := {
 		"anim_offset": {},
 		"anim_scale": {},
 		"anim_source_max": {},
+		# 3rd Strike-inspired uneven walk timing (AGENTS.md §9 item 40). Durations are
+		# RELATIVE: seconds = duration / (fps × playing speed), so the scene's 4.4 fps walk
+		# tempo is unchanged. Frames 1/3 are 01_contact_a / 03_contact_b — the grounded
+		# plant / skank dip — and hold at 1.3×; frames 2/4 are the pass/transfer and snap
+		# through at 0.75×. No art, walk speed or hitbox changes.
+		"anim_frame_duration": {
+			&"walk": [1.3, 0.75, 1.3, 0.75],
+		},
 		# 2026-11-18 pose set (AGENTS.md §9 item 33). Only the animation names change: the
 		# startup/active/recovery ticks, damage, knockback and hitboxes stay exactly as they
 		# were, so this is presentation wiring and not a combat change.
@@ -173,7 +181,7 @@ const FIGHTERS := {
 			# Clean 4-pose walk sheet: one shared 454 x 512 canvas, every sole on row 510, so the
 			# group formula holds the whole stride on 592 with 0 px vertical bob (no per-frame
 			# correction needed, unlike the clipped video frames this replaced).
-			"walk": Vector2(-5.2, -279.7),
+			"walk": Vector2(-5.2, -281.0),
 			"jump": Vector2(7.5, -281.9),
 			"crouch": Vector2(7.5, -281.9),
 			"high_kick": Vector2(127.5, -282.0),
@@ -200,7 +208,10 @@ const FIGHTERS := {
 			# 121.75 px crown-to-sole / that frame's measured height (the 1.24 art scale is
 			# applied once, by BaseFighter, so every fighter grows together).
 			"idle": 0.24014,
-			"walk": 0.25103, "jump": 0.24014, "crouch": 0.24014,
+			# Walk is calibrated on the tallest upright frame (510 px crown-to-sole), not the
+			# median of the leaning pass poses: the median made the stride render ~4% taller
+			# than idle. 121.75 / 510 = 0.23873, so the standing stride matches idle's 507 px.
+			"walk": 0.23873, "jump": 0.24014, "crouch": 0.24014,
 			"high_kick": 0.23873,
 			"sonic_clap_windup": 0.23919,
 			"sonic_clap_impact": 0.43021,   # the shockwave sits above the cap in this frame
@@ -226,6 +237,12 @@ const FIGHTERS := {
 		"anim_loop": {
 			"walk": true, "skank": true, "hitstun": false, "launched": false,
 			"tumble": true, "knockdown": false, "ko": false,
+		},
+		# Coiled Veteran Strut (AGENTS.md §9 item 40): relative durations on the 9 fps walk.
+		# 01/03 are the foot-plant stride frames and snap at 0.8×; 02/04 are the passing /
+		# coil frames and hold at 1.4×, so he lingers in the selector dip before each plant.
+		"anim_frame_duration": {
+			&"walk": [0.8, 1.4, 0.8, 1.4],
 		},
 		"anim_source_max": {
 			"idle": 512.0, "walk": 512.0, "jump": 512.0, "crouch": 512.0,
@@ -388,6 +405,39 @@ static func walk_speed_for(key: StringName) -> float:
 ## Build the frames for a fighter that does not use the scene's Feedback SpriteFrames.
 ## Textures are loaded by path so the .tscn stays readable; the Web export includes them
 ## because the preset exports all resources.
+## Apply a fighter's relative per-frame durations to an existing SpriteFrames resource.
+## Godot treats these as multipliers of the animation's fps (absolute = duration / fps),
+## so the base walk rates stay exactly what each hero was tuned at. Missing animations and
+## short tables are skipped, and fighters without the table keep the default 1.0 timing.
+static func apply_frame_durations(frames: SpriteFrames, key: StringName) -> void:
+	if frames == null:
+		return
+	var table: Dictionary = profile(key).get("anim_frame_duration", {})
+	for anim in table:
+		if not frames.has_animation(anim):
+			continue
+		var durations: Array = table[anim]
+		var frame_count := frames.get_frame_count(anim)
+		var count := mini(durations.size(), frame_count)
+		if count == 0:
+			continue
+		if frames.has_method("set_frame_duration"):
+			for i in count:
+				frames.set_frame_duration(anim, i, float(durations[i]))
+			continue
+		# Godot 4.5 has no per-frame duration setter (it was added in a later release).
+		# Rebuild the animation from its own textures and pass each relative duration to
+		# add_frame(); speed and loop mode are properties of the animation and survive.
+		var textures: Array[Texture2D] = []
+		for i in frame_count:
+			textures.append(frames.get_frame_texture(anim, i))
+		for i in frame_count:
+			frames.remove_frame(anim, 0)
+		for i in textures.size():
+			var duration := float(durations[i]) if i < durations.size() else 1.0
+			frames.add_frame(anim, textures[i], duration)
+
+
 static func build_frames(key: StringName) -> SpriteFrames:
 	var data := profile(key)
 	var frames := SpriteFrames.new()

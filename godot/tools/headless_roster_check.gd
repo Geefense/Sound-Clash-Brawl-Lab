@@ -29,6 +29,34 @@ func _check(condition: bool, label: String, detail: String = "") -> void:
 ## Reads the real texture alpha bounds and composes the same offset/scale the renderer uses
 ## (offset is divided by the import-cap ratio, scale multiplied by it), so this tests the art
 ## and the placement together instead of re-deriving the numbers in the offset table.
+## Drawn crown-to-sole height of one texture, using the prep script's crown rule: the crown
+## is the first row with a solid horizontal run (the flat cap), not a thin effect. Idle's
+## motion arc sits above the hat, so a plain alpha-top measurement would call idle 3 px
+## taller than its character; the run rule measures the drawing. Solid alpha also ignores
+## the 0.5 px feather.
+func _solid_crown_to_sole(img: Image) -> int:
+	var width := img.get_width()
+	var min_run := maxi(4, int(round(width * 0.04)))
+	var crown := -1
+	var sole := -1
+	for y in img.get_height():
+		var run := 0
+		var best := 0
+		var any := false
+		for x in width:
+			if img.get_pixel(x, y).a > 0.125:
+				any = true
+				run += 1
+				best = maxi(best, run)
+			else:
+				run = 0
+		if best >= min_run and crown < 0:
+			crown = y
+		if any:
+			sole = y
+	return 0 if crown < 0 or sole < 0 else sole - crown + 1
+
+
 func _anim_floor_y(f: BaseFighter, key: StringName, index: int = 0) -> float:
 	var frames := f.sprite.sprite_frames
 	if frames == null or not frames.has_animation(key):
@@ -283,6 +311,48 @@ func _run() -> void:
 	var walk_bob: float = walk_floors.max() - walk_floors.min()
 	_check(walk_bob <= 0.01, "the four walk frames share one sole line (0 px bob)",
 		"%.2f px" % walk_bob)
+	# Size: the tallest stride frame must render at the same height as idle. Calibrating on
+	# the median of leaning + upright poses made the stride ~4% taller than the idle stance.
+	var idle_tex := p2.sprite.sprite_frames.get_frame_texture(&"idle", 0)
+	var idle_px := float(_solid_crown_to_sole(idle_tex.get_image()))
+	idle_px *= float(p2.anim_scale["idle"]) * BaseFighter.FIGHTER_ART_SCALE
+	var walk_px := 0.0
+	for i in p2.sprite.sprite_frames.get_frame_count(&"walk"):
+		var wtex := p2.sprite.sprite_frames.get_frame_texture(&"walk", i)
+		if wtex != null:
+			walk_px = maxf(walk_px, float(_solid_crown_to_sole(wtex.get_image()))
+				* float(p2.anim_scale["walk"]) * BaseFighter.FIGHTER_ART_SCALE)
+	_check(absf(walk_px - idle_px) <= 0.5, "the tallest walk frame renders at idle height",
+		"%.2f vs %.2f px (Δ%.2f)" % [walk_px, idle_px, absf(walk_px - idle_px)])
+	# 3rd Strike-inspired uneven walk timing (AGENTS.md §9 item 40). Durations are relative
+	# to each walk's own fps, so the base rates and walk speeds must be untouched while the
+	# plants (1/3) and transfers (2/4) differ.
+	var lick_walk_durs := []
+	for i in p2.sprite.sprite_frames.get_frame_count(&"walk"):
+		lick_walk_durs.append(p2.sprite.sprite_frames.get_frame_duration(&"walk", i))
+	var lick_walk_want := [0.8, 1.4, 0.8, 1.4]
+	var lick_walk_ok := lick_walk_durs.size() == lick_walk_want.size()
+	for i in lick_walk_durs.size():
+		lick_walk_ok = lick_walk_ok \
+			and is_equal_approx(float(lick_walk_durs[i]), float(lick_walk_want[i]))
+	_check(lick_walk_ok, "L!ckshot's walk snaps the plants and holds the coil",
+		str(lick_walk_durs))
+	var fb_walk_durs := []
+	for i in p1.sprite.sprite_frames.get_frame_count(&"walk"):
+		fb_walk_durs.append(p1.sprite.sprite_frames.get_frame_duration(&"walk", i))
+	var fb_walk_want := [1.3, 0.75, 1.3, 0.75]
+	var fb_walk_ok := fb_walk_durs.size() == fb_walk_want.size()
+	for i in fb_walk_durs.size():
+		fb_walk_ok = fb_walk_ok \
+			and is_equal_approx(float(fb_walk_durs[i]), float(fb_walk_want[i]))
+	_check(fb_walk_ok, "Feedback's walk holds the skank plant and snaps the transfer",
+		str(fb_walk_durs))
+	_check(p2.sprite.sprite_frames.get_animation_speed(&"walk") == 9.0
+			and p1.sprite.sprite_frames.get_animation_speed(&"walk") == 4.4
+			and is_equal_approx(p2.walk_speed, 205.0)
+			and is_equal_approx(p1.walk_speed, 220.0),
+		"uneven walk timing leaves both base rates and walk speeds unchanged",
+		"9 / 4.4 fps · 205 / 220 px/s")
 	# Retired placeholders: the single-frame taunt/recoil poses are no longer referenced, while
 	# every approved frame from the 2026-11-17/18 sets stays wired.
 	var lick_frames_text := str(FighterRoster.FIGHTERS[&"lickshot"]["frames"])

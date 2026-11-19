@@ -1506,18 +1506,54 @@ here is gameplay-verified; implementation status is stated per item.
       shared canvas** with every sole on row 510 — measured spread **[510, 510], 0 px vertical bobbing** — then
       capped at 512 px. Frames: `godot/assets/sprites/lickshot/walk/01..04.png`; review strip
       `batch-2026-11-19/review/walk-strip.png`; measurements in `prep-report-2026-11-19.json`
-      (`anim_scale 0.25103`, `anim_offset [-5.2, -279.7]`, `anim_source_max 512`).
+      (`anim_scale 0.23873`, `anim_offset [-5.2, -281.0]`, `anim_source_max 512`).
+    - **Scale correction (same day).** The first pass derived `anim_scale` from the **median** crown-to-sole of
+      the four poses (485 px). Two of those are leaning pass poses, so the upright stride frames rendered about
+      **4 % taller than idle**. The walk is now calibrated on the tallest standing frame (510 px, giving
+      **0.23873**, offset **-281.0**), matching idle's 507 px reference. A new headless assertion measures
+      crown-to-sole with the prep script's crown rule (a thin motion arc cannot be mistaken for the hat) and
+      requires walk and idle to agree within 0.5 px: **150.68 vs 150.97 px**. A labelled 2× review loop with
+      idle beside the stride is at `batch-2026-11-19/review/walk-loop-preview.gif`.
     - **Wiring (presentation only).** `walk` = those four frames at **9 fps, looping**; `anim_scale`,
       `anim_offset` and `anim_source_max` refreshed from the report, so the single shared offset holds the whole
       stride on world y 592. `walk/05.png` and `walk/06.png` plus their `.import` sidecars are removed. Every other
       L!ckshot pose and sequence, and every combat timing, hitbox, damage value and FSM rule, is untouched.
     - **Checks actually run** — Godot **4.5.stable.official (876b29033)** headless, Web single-thread templates
       installed locally (never committed): `--import`, then `--script res://tools/headless_roster_check.gd` →
-      **100 assertions, `ALL CHECKS PASSED`, exit 0**, including the new walk frame count (4), the 9 fps loop and
-      the explicit **0.00 px** sole-bob measurement across all four frames; `--export-release "Web"
-      ../docs/index.html` rebuilt `docs/` (pck 16.0 MB).
+      **101 assertions, `ALL CHECKS PASSED`, exit 0**, including the walk frame count (4), the 9 fps loop, the
+      explicit **0.00 px** sole-bob measurement across all four frames and the walk-vs-idle height match;
+      `--export-release "Web" ../docs/index.html` rebuilt `docs/` (pck 16.0 MB).
     - **Not verified.** No display or GPU in this environment: the stride was not watched in motion and the art
       remains **UNAPPROVED**. Owner review of `review/walk-strip.png` and an on-device playtest are still required.
+
+40. **Both walks retimed with 3rd Strike-inspired uneven frame durations — zero art, speed or hitbox change (2026-11-19).**
+
+    - **Data and engine path.** `FighterRoster` now carries an optional `anim_frame_duration` table per fighter.
+      Godot's durations are **relative**: `absolute = duration / (animation fps × playing_speed)`, so the tuned
+      base rates stay in charge (L!ckshot **9 fps**, Feedback **4.4 fps**). Godot **4.5** exposes
+      `SpriteFrames.get_frame_duration()` but **not** `set_frame_duration()`, so
+      `FighterRoster.apply_frame_durations()` rebuilds each retimed animation from its own textures with
+      `add_frame(texture, duration)` — animation speed and loop mode persist — and calls the setter directly if
+      a newer engine provides it. Only `walk` is retimed.
+    - **L!ckshot — Coiled Veteran Strut.** `walk` 01..04 = **[0.8, 1.4, 0.8, 1.4]**: the foot-plant frames snap
+      at 0.8× and the passing/coil frames hold at 1.4×, so he lingers in the selector dip before each Clarks
+      shoe plants. This supersedes the even 9 fps cadence while keeping the 9 fps base rate.
+    - **Feedback — Upbeat Dancehall Skank Bounce.** `walk` 01..04 (`01_contact_a`, `02_pass_a`, `03_contact_b`,
+      `04_pass_b`) = **[1.3, 0.75, 1.3, 0.75]**: the grounded plant / skank dip holds at 1.3× and the mid-step
+      transfer snaps at 0.75×, for a weighted 132 BPM bounce instead of an even treadmill. The 4.4 fps base
+      rate is unchanged.
+    - **Isolation.** Presentation data only: no PNG, `anim_scale` or `anim_offset` changed; walk speeds remain
+      Feedback **220** / L!ckshot **205** px/s; every hitbox, damage value, attack timing and non-walk animation
+      is untouched. Feedback's `SpriteFrames` live in `BaseFighter.tscn`, so
+      `BaseFighter.apply_fighter_profile()` duplicates that resource per instance before writing durations and
+      never mutates the packed scene resource; L!ckshot's built frames are already per-instance.
+    - **Checks actually run.** Godot **4.5.stable.official (876b29033)** headless,
+      `--script res://tools/headless_roster_check.gd` → **104 assertions, `ALL CHECKS PASSED`, exit 0**, including
+      both exact duration tables, unchanged 9 / 4.4 fps base rates and 205 / 220 walk speeds, the 0 px sole bob
+      and the walk-height match (**150.68 vs 150.97 px, Δ0.29**). `--export-release "Web" ../docs/index.html`
+      rebuilt `docs/`; `review/walk-loop-preview.gif` was re-rendered with the 0.8×/1.4× timing.
+    - **Not verified.** No display or GPU: the new bounce and strut were not watched in-engine. Owner judgement
+      of the rhythm and an on-device playtest are pending; the art remains **UNAPPROVED**.
 
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 
@@ -1726,7 +1762,8 @@ For Godot, once created: [TODO] pin exact import/headless launch/test/export com
 | Owner playtest pass: facing, visible CPU strikes, crowd acts, stage lighting, framing, props | Implemented 2026-11-17; headless 4.5 check 49/49; **on-screen look and feel [TODO]**; left-facing frames and multi-frame crowd loops still need art prep. |
 | Lickshot four-pose set (stance, high kick, Sonic Clap windup/impact) | Implemented 2026-11-17 (§9 item 27): four keyed 512 px frames wired into `FighterRoster`, the generic smear replaced on K/L, headless 4.5 **58/58**, Web export rebuilt; **on-screen look and motion [TODO]**. |
 | L!ckshot 2026-11-19 batch: 8-pose skank groove, hitstun / launch / tumble / knockdown / KO sequences, C-recoil, three Patois callouts, name pool | Implemented 2026-11-19 (§9 item 38): four uploads archived off the root, sheets sliced and keyed, one shared canvas per animation, every frame on the y 592 sand line, headless 4.5 **99/99**, Web export rebuilt; **art UNAPPROVED and on-screen motion [TODO]**. The 6-frame phone-crop walk was superseded the same day by item 39. |
-| L!ckshot clean 4-pose walk sheet (full crowns and Wallabee toes) | Implemented 2026-11-19 (§9 item 39): upload archived as `16_walk-sheet-clean_original.png`, four drawings sliced in reading order onto one 454 × 512 canvas, **0 px vertical sole bobbing**, wired at 9 fps looping in place of `walk/01..06`, headless 4.5 **100/100**, Web export rebuilt; **art UNAPPROVED and on-screen stride [TODO]**. |
+| L!ckshot clean 4-pose walk sheet (full crowns and Wallabee toes) | Implemented 2026-11-19 (§9 item 39): upload archived as `16_walk-sheet-clean_original.png`, four drawings sliced in reading order onto one 454 × 512 canvas, **0 px vertical sole bobbing**, wired at 9 fps looping in place of `walk/01..06`; scale corrected to match idle height (150.68 vs 150.97 px); headless 4.5 **101/101** at that milestone, Web export rebuilt; **art UNAPPROVED and on-screen stride [TODO]** (2× review loop at `review/walk-loop-preview.gif`). |
+| Uneven walk timing for both fighters (3rd Strike-inspired) | Implemented 2026-11-19 (§9 item 40): relative `SpriteFrames` durations — L!ckshot plants 0.8× / coil 1.4×, Feedback skank plant 1.3× / transfer 0.75× — applied without touching art, 9 / 4.4 fps base rates, 205 / 220 px/s walk speeds or any hitbox; rebuilds frames via `add_frame` because 4.5 has no `set_frame_duration`; headless 4.5 **104/104**, Web export rebuilt; **rhythm feel and art [TODO]**. |
 | Smart Sparring AI modes (P2) | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 4 modes cycle on **Y**, HUD banner, **G** guard override; headless Godot 4.5 runs pass for every mode; **on-screen/feel playtest [TODO]**. |
 | Dancehall crowd line + 100% Hype Surge | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 6 sliced spectators (Queen centre) + 2 record crates at the stacks, beat bob, FORWARD!/PULL UP! banner, 5 s 1.20× / faster-recovery boost; headless checks pass; **on-screen look and balance [TODO]**. |
 | 15-character two-row rotating crowd + contact shadows | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 9 new slices (pool 15), front/back rows, 12–18 s and 50 %/100 % hype reshuffles, GroundShadow on crowd and crates; headless checks pass; **on-screen look [TODO]**. |

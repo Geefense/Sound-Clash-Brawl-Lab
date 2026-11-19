@@ -864,7 +864,10 @@ def run_batch(only: set[str] | None = None) -> None:
     if wanted("walk"):
         poses, meta = extract_walk_sheet()
         frames, record = compose_group(poses, "Lickshot bossy walk (clean 4-pose sheet)")
-        ref = int(np.median(record["crown_to_sole"]))
+        # Calibrate on the tallest upright frame, not the median: the passing poses lean and
+        # are therefore shorter, so a median height scaled the standing stride ~4% taller
+        # than idle. The tallest frame is the standing crown-to-sole reference.
+        ref = max(record["crown_to_sole"])
         _save_group(frames, OUT / "walk", [f"{i + 1:02d}.png" for i in range(len(frames))])
         _contact_sheet(frames, REVIEW / "walk-strip.png")
         if record["sole_spread"][0] != record["sole_spread"][1]:

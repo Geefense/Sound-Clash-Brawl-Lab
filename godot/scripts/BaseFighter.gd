@@ -465,6 +465,16 @@ func apply_fighter_profile(key: StringName) -> void:
 		var frames := FighterRoster.build_frames(key)
 		if frames != null and sprite != null:
 			sprite.sprite_frames = frames
+	# Uneven walk timing is presentation data (AGENTS.md §9 item 40). The scene's
+	# SpriteFrames is a shared sub-resource, so Feedback gets a per-instance copy before
+	# the durations are written; L!ckshot's built frames are already private to this node.
+	var durations: Dictionary = data.get("anim_frame_duration", {})
+	if not durations.is_empty() and sprite != null and sprite.sprite_frames != null:
+		if bool(data["uses_scene_frames"]):
+			var copy := sprite.sprite_frames.duplicate() as SpriteFrames
+			if copy != null:
+				sprite.sprite_frames = copy
+		FighterRoster.apply_frame_durations(sprite.sprite_frames, key)
 
 	# Start from the Feedback pack's tables, then let the roster replace entries.
 	anim_offset = (ANIM_OFFSET as Dictionary).duplicate()

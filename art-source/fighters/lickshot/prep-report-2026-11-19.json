@@ -555,10 +555,10 @@
         }
       }
     ],
-    "anim_scale": 0.25103,
+    "anim_scale": 0.23873,
     "anim_offset": [
       -5.2,
-      -279.7
+      -281.0
     ],
     "anim_source_max": 512.0,
     "wired": true,

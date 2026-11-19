@@ -1,6 +1,6 @@
 # Sound Clash Brawl — Master Blueprint
 
-Last updated: 2026-11-16. Owner and final creative approver: Garfield Connell.
+Last updated: 2026-11-19. Owner and final creative approver: Garfield Connell.
 
 This is the project instruction and handoff document for all agents. It records verified repository work, recovered design decisions, and the owner's Godot migration direction. **Implemented**, **asset available**, **planned**, and **[TODO]** are different statuses. Never present a concept, imported illustration, successful upload, or old test report as a working or approved feature.
 
@@ -45,6 +45,10 @@ Garfield is the visual lead and final visual approver. The same slim Feedback, f
 **Preserve work and audit before replacement.** The existing 17-pose asset pack was re-located on `assets/feedback-transparent-poses`; manifest and README inspected, not a fresh full pixel audit. Its README explicitly says the cable is baked into poses and acknowledges detail drift. Imported assets are recoverable/versioned, but this does not make correction automatic or free of rework. Keep originals and anchors, make a comparison inventory by pose, and apply only necessary local repairs. Recheck idle → walk → BOX windup/contact/recovery → guard → hurt/landing/KO as transitions, not only isolated illustrations.
 
 **Current walk approval:** owner approved the four-pose swing–bop movement reference at approximately 132 BPM with the rear free-arm swing. Added neutral-arm return pose was rejected for limp-looking arm and rushed timing. Appearance consistency remains open: cable origin/continuity, unified slim proportions, Wallabee matching and exactly one gold tooth. Recent generated tooth edits still show excess gold and are not approved. Review videos/candidates created in this chat have not been transferred into this repository by this update. No runtime or asset correction is claimed.
+
+### Core creative identity — permanent manifesto (2026-11-19)
+
+The owner's permanent creative direction is recorded in `artifacts/sound-clash/SOUND_CLASH_CULTURE.md` (§9 item 37). It is the standing reference for every future development, character, animation, sound and gameplay decision, and it states the foundation this section summarises: **Sound Clash Brawl is an original fighting game built around authentic Jamaican sound clash culture — not a generic fighter with reggae aesthetics pasted on top.** Competing sound systems, selectors, MCs, exclusive dubplates, DJ tags, musical strategy, crowd participation and intense rivalry are the base layer. Every fighter is their own sound system, and the objective is to outclass, embarrass, overpower and defeat the opposing sound through superior ammunition, performance, timing and crowd response. Fighters carry different generations of that history through fashion, swagger, movement rhythm and performance — Kangol and bucket hats, gold chains, long button-up shirts, Rasta mesh string vests, corduroy and olive cargo pants, Travel Fox, Clarks Wallabees, early-2000s streetwear and contemporary dancehall fashion — drawing research inspiration from Stone Love, Bodyguard, Silver Hawk, Bass Odyssey and Mighty Crown without implying affiliation. Established designs (Feedback, Lickshot, Likkle Moore — shown on screen as L!CKSHOT and L!KKLE MOORE under §9 item 32) stay consistent unless the creator explicitly approves a change, including the mic-hand, jacket-origin cable, Wallabee and one-gold-tooth rules above. Animation stays creator-led: the owner and the creative AI tools approve original walks and pose references first and Freebuff does not invent a character's initial walk. **[TODO] Cultural direction is not implemented mechanics:** echoing character DJ tags, a "Plenty of Dubs" bass-dizzy stun with a tune-fi-tune counter, musical-note swing trails, 2.5D rim light and impact flashes, Hype-reactive and toppling speaker stacks with an "UNPLUG THAT SOUND!" finish, and "Lightah!" crowd-judge finishes are recorded ambitions only (§9 item 37); nothing of that kind exists in `/godot` today.
 
 ## 2. Target Milestone & Production Roadmap (Goal: April 21, 2027 Launch / May Jamaica Trip)
 
@@ -235,6 +239,17 @@ appearance blocks for every fighter, so a character description is never rewritt
 only the pose line. Registered here and in §9 item 36. Documentation only: it approves no art, and a
 generated frame still goes through background keying, the 512 px cap, the y 592 floor alignment and the
 owner's visual review before it is wired.
+
+### Design documents stay beside the art, never inside the build (2026-11-19)
+
+The permanent creative manifesto lives at `artifacts/sound-clash/SOUND_CLASH_CULTURE.md` (§1, §9 item 37),
+alongside the other design records under `artifacts/sound-clash/` and the prompt templates registered
+above. Do **not** copy Markdown documentation into `/godot` or `/docs/`. `/docs/` is reserved strictly for
+the exported WebGL2 game (`index.html`, `index.js`, `index.wasm`, `index.pck` and their runtime
+assets), rebuilt with `--headless --path godot --export-release "Web" ../docs/index.html`; a design
+document added there would ship as a stray asset in the playable build. The one exception this section
+already mandates is `godot/AGENTS.md`, which stays a byte-identical mirror of this root file and must be
+refreshed whenever this document changes.
 
 ## 6. Finite State Machine (FSM) Architecture (TypeScript -> GDScript Blueprint)
 
@@ -1331,6 +1346,71 @@ here is gameplay-verified; implementation status is stated per item.
     - **Status.** Documentation only. It adds no art, approves no art and changes no pipeline: an upload
       is still a candidate until the owner reviews it and it passes keying, the 512 px cap and the y 592
       floor alignment.
+
+37. **Core Creative Identity & Development Guidelines — permanent creative direction (2026-11-19).**
+
+    The owner set the project's permanent creative foundation in
+    `artifacts/sound-clash/SOUND_CLASH_CULTURE.md`, and it now governs every future development,
+    character, animation, sound and gameplay decision. **Documentation only:** no Godot scene, script,
+    resource, hitbox, timing value or `/docs/` export file was touched for this entry, no art was added or
+    approved, and nothing in the document is a claim that a listed system exists.
+
+    - **Foundation.** Authentic Jamaican sound clash culture — competing sound systems, selectors, MCs,
+      exclusive dubplates, DJ tags, musical strategy, crowd participation and intense rivalry — is the base
+      layer, not a skin on a generic fighter. Every fighter is their own sound system; the objective is
+      outclassing and embarrassing the opposing sound through superior musical ammunition, performance,
+      timing and crowd response.
+    - **Generations.** Stone Love, Bodyguard, Silver Hawk, Bass Odyssey and Mighty Crown are research
+      inspiration only, never an implied affiliation. Fighters represent different eras through fashion,
+      swagger, movement rhythm and performance: Kangol/bucket hats, gold chains, long button-up shirts,
+      Rasta mesh string vests, corduroy and olive cargo pants, Travel Fox, Clarks Wallabees, early-2000s
+      streetwear and contemporary dancehall fashion.
+    - **Established designs stay fixed.** Feedback, Lickshot and Likkle Moore keep their approved designs
+      unless the creator explicitly approves a change — the same rule as §1's appearance, mic-hand,
+      jacket-origin cable, Wallabee and one-gold-tooth requirements, and item 36's locked prompt blocks.
+    - **Presentation references.** Marvel Tōkon (bold silhouettes, dimensional lighting, exaggerated
+      anticipation/impact/recoil), DC team-fighting concepts (long-term 2v2/3v3 crew switching), Street
+      Fighter 6 (layered stage depth and lighting) and Fatal Fury: City of the Wolves (arcade energy,
+      expressive crowd reactions). These extend item 29's direction; analysing them never licenses copying
+      proprietary assets (§1).
+    - **[TODO] Recorded ambitions — none implemented:** echoing character DJ tags on major hits and
+      counter-attacks; a "Plenty of Dubs" sub-bass dizzy stun (wobbly knees, spinning musical notes)
+      unless answered by a timed parry or counter-dub ("WHEEL AND COME AGAIN!"); multicolored, varied-size
+      musical-note swing trails on heavies, specials and on-beat strikes while light jabs stay clean; 2.5D
+      warm rim light and brief comic-ink impact flash frames; speaker cones flexing harder as Hype rises,
+      and a knocked-out fighter's stack smoking, sparking, tilting/toppling and being unplugged with a
+      power-down cue while a crew member packs up (resetting cleanly between rounds); and "Lightah!"
+      crowd-judge finishes with raised lighters, waving rags, airhorns and individualized crowd reactions
+      instead of uniform bouncing loops. **Do not implement these yet.** Item 29's presentation-only
+      boundary applies unchanged: no hitbox, damage, startup/active/recovery, guard, AI, beat-clock or
+      seeded-simulation change.
+    - **Team switching stays unbuilt.** The 2v2/3v3 crew idea is still item 30's architecture note; this
+      entry adds no tag input, assist, bench body or simultaneous multi-fighter fight.
+    - **Creator-led animation (strict workflow rule).** The owner plus Google Flow, Spriteriffic, Gemini and
+      ChatGPT develop, generate, review and approve original walking animations and pose references first.
+      **Freebuff must not invent or independently generate a character's initial walk.** Once frames are
+      approved and uploaded, Freebuff imports them, aligns baselines (y = 592), refines transitions and
+      timing, and verifies gameplay behaviour. Feedback keeps his established skanking-inspired walk,
+      132 BPM rhythmic bounce, right-hand corded mic and approved identity. L!ckshot's own signature walk
+      is the next creator-led animation task, approved by the creator and the AI tools before sprites are
+      handed to Freebuff.
+    - **Sound design is a major priority.** Original dubplate-inspired recordings, echoing character DJ
+      tags, selector/MC callouts, 132 BPM dancehall/reggae riddims, sound-system sirens and power-downs,
+      crowd forwards/whistles/laughter and character-specific voice expressions — strictly original,
+      licensed or creator-approved recordings. No paid service and no automatic credit spend (§9 item 8);
+      the existing procedural SFX and the dev 132 BPM click track are unaffected.
+    - **The 10 Permanent Development Principles.** (1) Sound clash culture is the foundation; (2) epic
+      fighting is the primary gameplay; (3) character designs stay consistent; (4) original animations are
+      creator-led; (5) cultural authenticity informs gameplay, sound and personality; (6) existing Godot
+      4.5 systems are not unnecessarily replaced; (7) major creative changes require creator approval;
+      (8) new features are added incrementally and verified; (9) preserve humour, Jamaican expressions and
+      competitive swagger; (10) avoid superficial stereotypes.
+    - **Cultural accuracy.** Primary cultural references and the creator's lived cultural knowledge come
+      first; never reduce sound clash culture to superficial stereotypes. §8's verbatim Patois rule still
+      governs every line, including the DJ tags and callouts listed above.
+    - **Where it lives.** The document sits under `artifacts/sound-clash/` with the rest of the design
+      record and is deliberately **not** copied into `/docs/` (exported WebGL2 build only) or `/godot`
+      (code and assets), per §5.
 
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 

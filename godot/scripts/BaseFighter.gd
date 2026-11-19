@@ -79,6 +79,19 @@ var _reach_applied: bool = false
 ## Attacks that ship their own drawn pose, so the arena's generic strike smear must not be
 ## painted over them (Lickshot's Sonic Clap and high kick — FighterRoster §9 item 27).
 var _no_strike_tell: Array = []
+## Optional per-state animation overrides from the roster profile: "grab", "throw_break",
+## "throw_release". Empty for a fighter with no dedicated art, so the old jab/hitstun frames
+## remain the fallback (FighterRoster).
+var _state_anims: Dictionary = {}
+## Ordered taunt poses played across TAUNT_TICKS (Feedback: lean-back groove into the skank
+## loop; Lickshot: the gun-finger lean). Empty means the single `skank` pose.
+var _taunt_sequence: Array = []
+## Round-win / 100 % Hype Surge pose. Presentation only; empty means no celebration art.
+var _celebrate_anim: StringName = &""
+var _celebrate_ticks: int = 0
+var _hitstun_anim: StringName = &""
+var _grab_anim: StringName = &""
+var _taunt_slot: int = -1
 
 # 60 Hz tick counts. [TODO] PLACEHOLDERS unless noted: port from combatRules.ts.
 const KNOCKDOWN_FALL_TICKS := 36       # KO fall constant from AGENTS.md §3; nonlethal get-up [TODO]
@@ -186,6 +199,15 @@ const ANIM_OFFSET := {
 	# 1406, planted-foot centre x 402, crown-to-sole 1202 px. y = 768 - 1406 = -638;
 	# x puts the planted foot at the +37.5 px the pack's 12/13/14 feet share.
 	&"box_active": Vector2(479, -638),
+	# 2026-11-18 pose set (AGENTS.md §9 item 33). 512-cap frames measured by
+	# `prep_feedback_poses_2026-11-18.py`: offset = frame centre - (stance centre,
+	# alpha bottom), with the drawn bottom lifted to world y 592.
+	&"palm_shove": Vector2(0.0, -280.4),     # 01, alpha bottom 509
+	&"lean_back": Vector2(-48.0, -282.0),    # 02
+	&"open_slap": Vector2(57.5, -282.0),     # 03
+	&"clarks_kick": Vector2(62.5, -282.0),   # 04
+	&"sky_fist": Vector2(-14.0, -281.9),     # 05
+	&"hand_reach": Vector2(-43.0, -250.0),   # 06
 }
 
 # Selected frames are 512x512, not 1536x1024, so they need their own display scale.
@@ -198,6 +220,9 @@ const ANIM_SCALE := {
 	"skank": 0.257, "lightah": 0.257,
 	# 121.75 px target (pack idle 487 px at 0.25) / 1202 px crown-to-sole.
 	"box_active": 0.1013,
+	# 2026-11-18 pose set: 121.75 px target / that frame's measured crown-to-sole.
+	"palm_shove": 0.23967, "lean_back": 0.23919, "open_slap": 0.23873,
+	"clarks_kick": 0.23873, "sky_fist": 0.23967, "hand_reach": 0.26936,
 }
 const ANIM_OFFSET_DEFAULT := Vector2(0, -388)
 
@@ -210,6 +235,8 @@ const ANIM_SOURCE_MAX := {
 	"guard_entry": 512.0, "block": 512.0, "guard_recovery": 512.0,
 	"sparta_startup": 512.0, "sparta_active": 512.0, "sparta_recovery": 512.0,
 	"skank": 512.0, "lightah": 512.0,
+	"palm_shove": 512.0, "lean_back": 512.0, "open_slap": 512.0,
+	"clarks_kick": 512.0, "sky_fist": 512.0, "hand_reach": 512.0,
 }
 const ANIM_SOURCE_MAX_DEFAULT := 1536.0
 
@@ -383,6 +410,7 @@ var _slide_puff_ticks: int = 0
 func _ready() -> void:
 	add_to_group("fighters")          # geometric strike checks find opponents through this group
 	apply_fighter_profile(fighter_key)
+	hype_surge_started.connect(_on_hype_surge_pose)
 	health = max_health
 	if use_local_input:
 		_ensure_default_actions()
@@ -405,13 +433,25 @@ func apply_fighter_profile(key: StringName) -> void:
 		key = &"feedback"
 	fighter_key = key
 	var data := FighterRoster.profile(key)
-	display_name = String(data["name"])
+	# The on-screen name goes through the owner's styling rule (AGENTS.md §9 item 32: an I
+	# renders as !), while the roster key and asset folders stay clean lowercase ids.
+	display_name = FighterRoster.display_name(key)
 	walk_speed = float(data["walk_speed"])
 	stand_size = data["stand_size"]
 	crouch_size = data["crouch_size"]
 	_apply_reach_bonus(float(data["reach_bonus"]))
 
 	_no_strike_tell = data.get("no_strike_tell", [])
+	_state_anims = {}
+	var states: Dictionary = data.get("state_anims", {})
+	for state_key in states:
+		_state_anims[String(state_key)] = StringName(states[state_key])
+	_taunt_sequence = data.get("taunt_sequence", [])
+	_celebrate_anim = StringName(data.get("celebrate_anim", &""))
+	_hitstun_anim = &""
+	_grab_anim = &""
+	_celebrate_ticks = 0
+	_taunt_slot = -1
 
 	var overrides: Dictionary = data["attack_anims"]
 	for id in overrides:
@@ -469,6 +509,12 @@ func _physics_process(_delta: float) -> void:
 		_impact_flash_ticks -= 1
 		if _impact_flash_ticks == 0 and sprite != null:
 			sprite.modulate = Color.WHITE
+
+	# Celebration pose window (round win / Hype Surge). Presentation only.
+	if _celebrate_ticks > 0:
+		_celebrate_ticks -= 1
+		if _celebrate_ticks == 0:
+			_play_state_anim()
 
 	# The surge runs on the wall clock: hitstop must not extend the boost.
 	if _surge_ticks > 0:
@@ -549,6 +595,10 @@ func change_state(new_state: State) -> bool:
 
 func _enter_state(s: State) -> void:
 	match s:
+		State.IDLE:
+			# One-shot reaction / release poses belong to the state that set them.
+			_hitstun_anim = &""
+			_grab_anim = &""
 		State.ATTACK_STARTUP:
 			velocity.x = 0.0
 		State.ATTACK_ACTIVE:
@@ -557,6 +607,7 @@ func _enter_state(s: State) -> void:
 			_poll_hitbox()      # immediate check: the Area2D only reports overlaps on the next physics frame
 		State.TAUNT:
 			velocity.x = 0.0
+			_taunt_slot = 0
 		State.CROUCH:
 			velocity.x = 0.0
 			_apply_stance(true)
@@ -905,6 +956,12 @@ func hype_surge_seconds_left() -> float:
 # =========================================================================
 func _tick_taunt() -> void:
 	_apply_gravity()
+	# A multi-pose taunt advances on its own beat, so the groove leans back and then settles
+	# into the skank loop instead of holding one drawing for the whole commitment.
+	var slot := _taunt_slot_for()
+	if slot != _taunt_slot:
+		_taunt_slot = slot
+		_play_state_anim()
 	if state_frame >= TAUNT_TICKS:
 		var on_beat := bool(_taunt_beat.get("on_beat", false))
 		if on_beat:
@@ -1006,6 +1063,10 @@ func _throw_target() -> void:
 		_add_hype(THROW_FORWARD_HYPE)
 		victim.receive_forward_throw(self, THROW_FORWARD_DAMAGE)
 		throw_connected.emit(self, victim, &"forward")
+		# The forward release reads as the drawn double-palm shove: the same pose as the
+		# throw break, held through the grab recovery (AGENTS.md §9 item 33).
+		_grab_anim = StringName(_state_anims.get("throw_release", &""))
+		_play_state_anim()
 
 
 func _release_grab_target() -> void:
@@ -1054,6 +1115,9 @@ func _tech_throw() -> void:
 		attacker._on_throw_broken()
 		throw_broken.emit(attacker, self)
 	velocity.x = -float(facing) * THROW_BREAK_PUSH
+	# Both fighters shove apart: the breaker plays the drawn double-palm shove if the
+	# roster has one, otherwise the old hitstun frame (AGENTS.md §9 item 33).
+	_hitstun_anim = StringName(_state_anims.get("throw_break", &""))
 	_begin_stun(THROW_BREAK_STUN, false)
 
 
@@ -1061,6 +1125,10 @@ func _on_throw_broken() -> void:
 	_grab_target = null
 	_grab_recovery = GRAB_RECOVERY_TICKS
 	velocity.x = -float(facing) * THROW_BREAK_PUSH
+	# The attacker is still in State.GRAB during recovery, so its shove pose comes from the
+	# grab-state override rather than from hitstun.
+	_grab_anim = StringName(_state_anims.get("throw_break", &""))
+	_play_state_anim()
 	camera_shake_requested.emit(SHAKE_LIGHT, SHAKE_SECONDS)
 
 
@@ -1295,6 +1363,10 @@ func reset_for_round(at: Vector2) -> void:
 	guarding = false
 	_guard_ticks = 0
 	_guard_recovering = false
+	_hitstun_anim = &""
+	_grab_anim = &""
+	_celebrate_ticks = 0
+	_taunt_slot = -1
 	_grab_target = null
 	_grab_hold = 0
 	_grab_recovery = 0
@@ -1376,6 +1448,37 @@ func _guard_anim() -> StringName:
 	return &"idle"
 
 
+## Which pose of a multi-pose taunt is showing right now, or -1 for a one-pose taunt.
+func _taunt_slot_for() -> int:
+	if _taunt_sequence.size() <= 1:
+		return -1
+	var count := _taunt_sequence.size()
+	return mini(int(float(state_frame) / float(TAUNT_TICKS) * float(count)), count - 1)
+
+
+## Taunt pose for the current tick: the roster's sequence when it has one, else `skank`.
+func _taunt_anim() -> StringName:
+	if _taunt_sequence.is_empty():
+		return &"skank"
+	var slot := maxi(_taunt_slot_for(), 0)
+	return StringName(_taunt_sequence[clampi(slot, 0, _taunt_sequence.size() - 1)])
+
+
+## Round win / 100 % Hype Surge celebration. Presentation only: the collision body, the
+## hurtbox and the FSM are untouched, and the pose only shows while the fighter is in a
+## neutral state so an attack drawing is never hidden by it.
+func play_celebration(ticks: int = 150) -> void:
+	if _celebrate_anim == &"" or sprite == null or sprite.sprite_frames == null \
+			or not sprite.sprite_frames.has_animation(_celebrate_anim):
+		return
+	_celebrate_ticks = maxi(_celebrate_ticks, ticks)
+	_play_state_anim()
+
+
+func _on_hype_surge_pose(_seconds: float) -> void:
+	play_celebration(60)
+
+
 func _apply_stance(crouching: bool) -> void:
 	var size := crouch_size if crouching else stand_size
 	(body_shape.shape as RectangleShape2D).size = size
@@ -1410,13 +1513,21 @@ func _play_state_anim() -> void:
 		State.ATTACK_STARTUP: anim = _attack.get("anim_startup", &"jab")
 		State.ATTACK_ACTIVE: anim = _attack.get("anim_active", &"jab")
 		State.ATTACK_RECOVERY: anim = _attack.get("anim_recovery", &"jab")
-		State.TAUNT: anim = &"skank"
-		State.HITSTUN: anim = &"block" if _stun_is_block else &"hitstun"
+		State.TAUNT: anim = _taunt_anim()
+		State.HITSTUN:
+			anim = _hitstun_anim if _hitstun_anim != &"" \
+				else (&"block" if _stun_is_block else &"hitstun")
 		State.KNOCKDOWN: anim = &"knockdown"
 		State.KO: anim = &"ko"
-		State.GRAB: anim = &"jab"           # reaching grab frames, no new art
+		# Reaching grab frames: the roster's own pose when it has one, else the old jab.
+		State.GRAB: anim = _grab_anim if _grab_anim != &"" \
+			else StringName(_state_anims.get("grab", &"jab"))
 		State.GRABBED: anim = &"hitstun"    # held: the recoil pose reads as being wrenched
 		State.THROWN: anim = &"tumble" if state_frame >= THROW_SPIN_TICKS else &"launched"
+	# Round-win / Hype Surge pose wins in neutral states only.
+	if _celebrate_ticks > 0 and _celebrate_anim != &"" \
+			and state in [State.IDLE, State.WALK, State.CROUCH]:
+		anim = _celebrate_anim
 	if sprite.sprite_frames == null:
 		return
 	# Left-facing art is the production target. Until it lands the frame is mirrored at run

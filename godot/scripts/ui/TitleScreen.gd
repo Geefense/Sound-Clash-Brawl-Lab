@@ -212,7 +212,12 @@ func _draw_splash(width: float, height: float) -> void:
 	_text(Vector2(0, height * 0.70), prompt, FONT_BUNGEE,
 		_fit(FONT_BUNGEE, prompt, 34, width - 260.0),
 		Color(1.0, 0.99, 0.94, pulse), HORIZONTAL_ALIGNMENT_CENTER, width)
-	_text(Vector2(0, height * 0.76), "FEEDBACK · LICKSHOT · YOUNG SELECTA", FONT_BODY, 16,
+	# Roster line comes from FighterRoster, so the owner's I→! styling rule applies here too
+	# and a rename never leaves a stale hard-coded name on the splash.
+	var names := PackedStringArray()
+	for key in FighterRoster.ORDER:
+		names.append(FighterRoster.display_name(key))
+	_text(Vector2(0, height * 0.76), " · ".join(names), FONT_BODY, 16,
 		Color(0.85, 0.80, 0.74, 0.75), HORIZONTAL_ALIGNMENT_CENTER, width)
 
 

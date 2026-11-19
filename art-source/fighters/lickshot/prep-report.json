@@ -98,5 +98,194 @@
     "sole_centre_x": 115.0,
     "crown_to_sole": 283,
     "sole_row_source": 910
+  },
+  {
+    "label": "Lickshot left-hand straight jab",
+    "wiring": "jab (J) \u2014 retires the placeholder strike smear",
+    "background": "white",
+    "source": "art-source/fighters/lickshot/05_left-jab_original.png",
+    "output": "godot/assets/sprites/lickshot/jab.png",
+    "source_size": [
+      1195,
+      1316
+    ],
+    "crop_box": [
+      29,
+      10,
+      1156,
+      1306
+    ],
+    "frame": [
+      445,
+      512
+    ],
+    "downscale": 0.3951,
+    "crown_row": 2,
+    "sole_row": 511,
+    "sole_centre_x": 257.0,
+    "crown_to_sole": 510,
+    "sole_row_source": -1
+  },
+  {
+    "label": "Lickshot heavy right-hand mic cross",
+    "wiring": "upper box (I) heavy strike",
+    "background": "white",
+    "source": "art-source/fighters/lickshot/06_mic-cross_original.png",
+    "output": "godot/assets/sprites/lickshot/upper_box.png",
+    "source_size": [
+      1195,
+      1316
+    ],
+    "crop_box": [
+      49,
+      10,
+      1155,
+      1304
+    ],
+    "frame": [
+      438,
+      512
+    ],
+    "downscale": 0.3957,
+    "crown_row": 2,
+    "sole_row": 511,
+    "sole_centre_x": 249.0,
+    "crown_to_sole": 510,
+    "sole_row_source": -1
+  },
+  {
+    "label": "Lickshot defensive mic and open-palm guard",
+    "wiring": "guard entry / held block / blockstun / guard release (S)",
+    "background": "white",
+    "source": "art-source/fighters/lickshot/07_guard-stance_original.png",
+    "output": "godot/assets/sprites/lickshot/guard_stance.png",
+    "source_size": [
+      1128,
+      1394
+    ],
+    "crop_box": [
+      113,
+      10,
+      965,
+      1378
+    ],
+    "frame": [
+      319,
+      512
+    ],
+    "downscale": 0.3743,
+    "crown_row": 2,
+    "sole_row": 511,
+    "sole_centre_x": 207.0,
+    "crown_to_sole": 510,
+    "sole_row_source": -1
+  },
+  {
+    "label": "Lickshot chin-snap hitstun recoil",
+    "wiring": "hitstun reaction",
+    "background": "white",
+    "source": "art-source/fighters/lickshot/08_hitstun-recoil_original.png",
+    "output": "godot/assets/sprites/lickshot/hitstun_recoil.png",
+    "source_size": [
+      1128,
+      1394
+    ],
+    "crop_box": [
+      109,
+      12,
+      909,
+      1366
+    ],
+    "frame": [
+      303,
+      512
+    ],
+    "downscale": 0.3781,
+    "crown_row": 1,
+    "sole_row": 511,
+    "sole_centre_x": 197.0,
+    "crown_to_sole": 511,
+    "sole_row_source": -1
+  },
+  {
+    "label": "Lickshot head-back groove / heavy recoil",
+    "wiring": "launched / heavy recoil pose",
+    "background": "white",
+    "source": "art-source/fighters/lickshot/09_head-back-recoil_original.png",
+    "output": "godot/assets/sprites/lickshot/launched_recoil.png",
+    "source_size": [
+      1128,
+      1394
+    ],
+    "crop_box": [
+      22,
+      11,
+      1069,
+      1383
+    ],
+    "frame": [
+      391,
+      512
+    ],
+    "downscale": 0.3732,
+    "crown_row": 1,
+    "sole_row": 511,
+    "sole_centre_x": 164.0,
+    "crown_to_sole": 511,
+    "sole_row_source": -1
+  },
+  {
+    "label": "Lickshot wide gun-finger / mic-point lean",
+    "wiring": "Dancehall skank / taunt (T)",
+    "background": "white",
+    "source": "art-source/fighters/lickshot/10_skank-point_original.png",
+    "output": "godot/assets/sprites/lickshot/skank_point.png",
+    "source_size": [
+      1195,
+      1316
+    ],
+    "crop_box": [
+      39,
+      7,
+      1091,
+      1304
+    ],
+    "frame": [
+      415,
+      512
+    ],
+    "downscale": 0.3948,
+    "crown_row": 2,
+    "sole_row": 511,
+    "sole_centre_x": 224.0,
+    "crown_to_sole": 510,
+    "sole_row_source": -1
+  },
+  {
+    "label": "Lickshot wide-open arms celebration (mic in cargo pocket)",
+    "wiring": "collar grab (U) and round victory / Hype Surge",
+    "background": "white",
+    "source": "art-source/fighters/lickshot/11_arms-open_celebration_original.png",
+    "output": "godot/assets/sprites/lickshot/celebration.png",
+    "source_size": [
+      1127,
+      1396
+    ],
+    "crop_box": [
+      179,
+      3,
+      882,
+      1358
+    ],
+    "frame": [
+      266,
+      512
+    ],
+    "downscale": 0.3779,
+    "crown_row": 1,
+    "sole_row": 511,
+    "sole_centre_x": 134.0,
+    "crown_to_sole": 511,
+    "sole_row_source": -1
   }
 ]

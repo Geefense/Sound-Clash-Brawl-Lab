@@ -1,0 +1,152 @@
+[
+  {
+    "label": "Double-palm forward shove",
+    "wiring": "throw break / forward throw release",
+    "source": "artifacts/sound-clash/art-source/feedback/selected-frames-2026-11-18/feedback_palm_push_approved.png",
+    "output": "godot/assets/sprites/feedback/selected-frames-2026-11-18/01_double-palm-shove.png",
+    "source_size": [
+      1536,
+      1024
+    ],
+    "frame": [
+      512,
+      511
+    ],
+    "downscale": 0.502,
+    "crown_row": 2,
+    "alpha_bottom_row": 509,
+    "stance_centre_x": 256.0,
+    "crown_to_sole": 508,
+    "anim_offset": [
+      0.0,
+      -280.4
+    ],
+    "anim_scale": 0.23967,
+    "rendered_height": 151.0
+  },
+  {
+    "label": "Deep lean-back groove",
+    "wiring": "Dancehall skank / Bogle sway (T)",
+    "source": "artifacts/sound-clash/art-source/feedback/selected-frames-2026-11-18/feedback_hit_reaction_leanback.png",
+    "output": "godot/assets/sprites/feedback/selected-frames-2026-11-18/02_lean-back-groove.png",
+    "source_size": [
+      1199,
+      1312
+    ],
+    "frame": [
+      432,
+      512
+    ],
+    "downscale": 0.392,
+    "crown_row": 3,
+    "alpha_bottom_row": 511,
+    "stance_centre_x": 264.0,
+    "crown_to_sole": 509,
+    "anim_offset": [
+      -48.0,
+      -282.0
+    ],
+    "anim_scale": 0.23919,
+    "rendered_height": 151.0
+  },
+  {
+    "label": "Extended open-palm slap",
+    "wiring": "jab (J)",
+    "source": "artifacts/sound-clash/art-source/feedback/selected-frames-2026-11-18/feedback_open_hand_strike.png",
+    "output": "godot/assets/sprites/feedback/selected-frames-2026-11-18/03_open-palm-slap.png",
+    "source_size": [
+      1230,
+      1278
+    ],
+    "frame": [
+      491,
+      512
+    ],
+    "downscale": 0.4022,
+    "crown_row": 2,
+    "alpha_bottom_row": 511,
+    "stance_centre_x": 188.0,
+    "crown_to_sole": 510,
+    "anim_offset": [
+      57.5,
+      -282.0
+    ],
+    "anim_scale": 0.23873,
+    "rendered_height": 151.0
+  },
+  {
+    "label": "High Clarks boot kick",
+    "wiring": "Sparta kick (L / tump) active frame",
+    "source": "artifacts/sound-clash/art-source/feedback/selected-frames-2026-11-18/feedback_front_kick.png",
+    "output": "godot/assets/sprites/feedback/selected-frames-2026-11-18/04_clarks-kick.png",
+    "source_size": [
+      1179,
+      1334
+    ],
+    "frame": [
+      447,
+      512
+    ],
+    "downscale": 0.3935,
+    "crown_row": 2,
+    "alpha_bottom_row": 511,
+    "stance_centre_x": 161.0,
+    "crown_to_sole": 510,
+    "anim_offset": [
+      62.5,
+      -282.0
+    ],
+    "anim_scale": 0.23873,
+    "rendered_height": 151.0
+  },
+  {
+    "label": "Fist raised skyward",
+    "wiring": "upper box (I) / celebration",
+    "source": "artifacts/sound-clash/art-source/feedback/selected-frames-2026-11-18/feedback_extended_shove.png",
+    "output": "godot/assets/sprites/feedback/selected-frames-2026-11-18/05_sky-fist.png",
+    "source_size": [
+      1024,
+      1536
+    ],
+    "frame": [
+      370,
+      512
+    ],
+    "downscale": 0.3765,
+    "crown_row": 4,
+    "alpha_bottom_row": 511,
+    "stance_centre_x": 199.0,
+    "crown_to_sole": 508,
+    "anim_offset": [
+      -14.0,
+      -281.9
+    ],
+    "anim_scale": 0.23967,
+    "rendered_height": 151.0
+  },
+  {
+    "label": "Wide-stance forward hand reach",
+    "wiring": "collar grab (U) startup",
+    "source": "artifacts/sound-clash/art-source/feedback/selected-frames-2026-11-18/feedback_high_uppercut_anti_air.png",
+    "output": "godot/assets/sprites/feedback/selected-frames-2026-11-18/06_hand-reach.png",
+    "source_size": [
+      1536,
+      1024
+    ],
+    "frame": [
+      512,
+      454
+    ],
+    "downscale": 0.4499,
+    "crown_row": 2,
+    "alpha_bottom_row": 453,
+    "stance_centre_x": 299.0,
+    "crown_to_sole": 452,
+    "anim_offset": [
+      -43.0,
+      -250.0
+    ],
+    "anim_scale": 0.26936,
+    "rendered_height": 151.0
+  }
+]

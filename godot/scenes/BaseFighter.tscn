@@ -1,4 +1,4 @@
-[gd_scene load_steps=46 format=3]
+[gd_scene load_steps=52 format=3]
 
 [ext_resource type="Script" path="res://scripts/BaseFighter.gd" id="1_fighter"]
 [ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/01_idle.png" id="t2"]
@@ -41,6 +41,12 @@
 [ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-15/lightah/04.png" id="t39"]
 
 [ext_resource type="Texture2D" path="res://assets/sprites/feedback/box-footoff-ground-2026-11-15/Feedback_Baseball_Pitch_BOX_Foot_Off_Ground.png" id="t40"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-18/01_double-palm-shove.png" id="t42"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-18/02_lean-back-groove.png" id="t43"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-18/03_open-palm-slap.png" id="t44"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-18/04_clarks-kick.png" id="t45"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-18/05_sky-fist.png" id="t46"]
+[ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-18/06_hand-reach.png" id="t47"]
 [ext_resource type="Script" path="res://scripts/stages/GroundShadow.gd" id="t41_shadow"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
@@ -298,6 +304,54 @@ animations = [{
 "loop": true,
 "name": &"lightah",
 "speed": 4.4
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t42")
+}],
+"loop": false,
+"name": &"palm_shove",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t43")
+}],
+"loop": false,
+"name": &"lean_back",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t44")
+}],
+"loop": false,
+"name": &"open_slap",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t45")
+}],
+"loop": false,
+"name": &"clarks_kick",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t46")
+}],
+"loop": false,
+"name": &"sky_fist",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("t47")
+}],
+"loop": false,
+"name": &"hand_reach",
+"speed": 1.0
 }]
 
 [node name="BaseFighter" type="CharacterBody2D"]

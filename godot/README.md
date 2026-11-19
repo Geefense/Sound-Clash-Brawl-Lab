@@ -19,7 +19,9 @@ godot/
     sprites/feedback/imported-poses/    six imported pose studies
     sprites/feedback/walk-four-keys/    four walk keys (unapproved movement test)
     sprites/feedback/selected-frames-2026-11-15/  20 selected 512×512 frames (owner-approved working art)
+    sprites/feedback/selected-frames-2026-11-18/  6 processed 2026-11-18 poses (throw/groove/slap/kick/fist/reach)
     sprites/feedback/box-footoff-ground-2026-11-15/  foot-off-ground BOX contact frame (1024×1536, owner-approved)
+    sprites/lickshot/                  11 processed poses: 4 from 2026-11-17 + 7 from 2026-11-18
     flow_exports/walk/                  walk video exports
     audio/                              inventory placeholder — no audio files exist yet
 ```

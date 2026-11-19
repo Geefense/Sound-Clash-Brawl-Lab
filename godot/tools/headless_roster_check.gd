@@ -93,7 +93,20 @@ func _run() -> void:
 	var hud: Control = arena.get_node("HUD/Ui/Hud")
 
 	_check(p1.display_name == "FEEDBACK", "P1 is Feedback", p1.display_name)
-	_check(p2.display_name == "LICKSHOT", "P2 is Lickshot", p2.display_name)
+	# Owner styling rule (AGENTS.md §9 item 32): the on-screen name renders I as !, while the
+	# roster key, asset folder and code id stay `lickshot`.
+	_check(p2.display_name == "L!CKSHOT", "P2 is L!CKSHOT on screen", p2.display_name)
+	_check(p2.fighter_key == &"lickshot" and FighterRoster.display_name(&"lickshot") == "L!CKSHOT",
+		"the styled name keeps the clean internal key", str(p2.fighter_key))
+	_check(FighterRoster.styled_name("FLING STONE") == "FL!NG STONE"
+			and FighterRoster.styled_name("RUM PUNCH") == "RUM PUNCH"
+			and FighterRoster.styled_name("SKY JUICE") == "SKY JU!CE",
+		"the I to ! rule covers the Fighters #4-#6 name pool")
+	var bungee: Font = load("res://assets/fonts/Bungee-Regular.ttf")
+	_check(bungee != null
+			and bungee.get_string_size("!", HORIZONTAL_ALIGNMENT_LEFT, -1, 24).x > 2.0
+			and bungee.get_string_size("L!CKSHOT", HORIZONTAL_ALIGNMENT_LEFT, -1, 24).x > 40.0,
+		"the ! glyph renders in the Bungee HUD font")
 	_check(p2.fighter_key == &"lickshot", "P2 fighter_key applied", str(p2.fighter_key))
 	# Rename guard (AGENTS.md §9 item 26): Fighter #2 is Lickshot everywhere, and the old key must
 	# not linger in the roster table, or a saved selection would quietly resolve to a dead fighter.
@@ -163,8 +176,90 @@ func _run() -> void:
 	p2._attack_id = &"tump"
 	_check(not p2.shows_strike_tell(), "the high kick replaces the generic strike smear")
 	p2._attack_id = &"jab"
-	_check(p2.shows_strike_tell(), "Lickshot's unposed jab still gets the strike smear")
+	_check(not p2.shows_strike_tell(), "Lickshot's drawn jab retires the strike smear")
+	p2._attack_id = &"upper_box"
+	_check(not p2.shows_strike_tell(), "Lickshot's drawn upper box retires the strike smear")
 	p2._attack_id = &""
+
+	# ---- Lickshot's seven 2026-11-18 poses (AGENTS.md §9 item 34) -----------
+	var lick_new: Array[StringName] = [&"jab", &"upper_box", &"block", &"hitstun", &"launched",
+		&"skank", &"celebration"]
+	var lick_missing := []
+	for key in lick_new:
+		if not p2.sprite.sprite_frames.has_animation(key):
+			lick_missing.append(String(key))
+	_check(lick_missing.is_empty(), "all seven new Lickshot poses are registered",
+		"missing %s" % [lick_missing] if not lick_missing.is_empty() else "jab, cross, guard, hitstun, launch, skank, celebration")
+	var lick_off := []
+	var lick_tallest := 0.0
+	for key in lick_new:
+		var floor_y := _anim_floor_y(p2, key)
+		if absf(floor_y - 592.0) > 0.75:
+			lick_off.append("%s %.1f" % [key, floor_y])
+		var tex := p2.sprite.sprite_frames.get_frame_texture(key, 0)
+		if tex != null:
+			lick_tallest = maxf(lick_tallest, float(maxi(tex.get_width(), tex.get_height())))
+	_check(lick_off.is_empty(), "every new Lickshot pose plants on the y 592 sand line",
+		"off-floor %s" % [lick_off] if not lick_off.is_empty() else "592.0")
+	_check(lick_tallest <= 512.5, "the new Lickshot frames stay inside the 512 px cap",
+		"%.0f px" % lick_tallest)
+	# Guard, hitstun, launch, taunt and grab all have dedicated drawings now.
+	_check(p2._state_anims.get("grab", &"") == &"celebration",
+		"Lickshot's collar grab plays the wide-open arms pose")
+	_check(p2._taunt_sequence == [&"skank"], "Lickshot's taunt plays the gun-finger lean")
+	_check(p2._celebrate_anim == &"celebration", "Lickshot celebrates with the arms-open pose")
+	p2.play_celebration(6)
+	await physics_frame
+	_check(p2.sprite.animation == &"celebration", "the celebration pose actually draws",
+		String(p2.sprite.animation))
+	p2._celebrate_ticks = 0
+	p2._play_state_anim()
+
+	# ---- Feedback's six 2026-11-18 poses (AGENTS.md §9 item 33) -------------
+	var fb_new: Array[StringName] = [&"palm_shove", &"lean_back", &"open_slap", &"clarks_kick",
+		&"sky_fist", &"hand_reach"]
+	var fb_missing := []
+	var fb_off := []
+	var fb_tallest := 0.0
+	for key in fb_new:
+		if not p1.sprite.sprite_frames.has_animation(key):
+			fb_missing.append(String(key))
+			continue
+		var floor_y := _anim_floor_y(p1, key)
+		if absf(floor_y - 592.0) > 0.75:
+			fb_off.append("%s %.1f" % [key, floor_y])
+		var tex := p1.sprite.sprite_frames.get_frame_texture(key, 0)
+		if tex != null:
+			fb_tallest = maxf(fb_tallest, float(maxi(tex.get_width(), tex.get_height())))
+	_check(fb_missing.is_empty(), "all six new Feedback poses are registered",
+		"missing %s" % [fb_missing] if not fb_missing.is_empty() else "shove, groove, slap, kick, sky fist, reach")
+	_check(fb_off.is_empty(), "every new Feedback pose plants on the y 592 sand line",
+		"off-floor %s" % [fb_off] if not fb_off.is_empty() else "592.0")
+	_check(fb_tallest <= 512.5, "the new Feedback frames stay inside the 512 px cap",
+		"%.0f px" % fb_tallest)
+	# Wiring: throw moments, grab, taunt sequence and celebration.
+	_check(p1._state_anims.get("throw_break", &"") == &"palm_shove"
+			and p1._state_anims.get("throw_release", &"") == &"palm_shove",
+		"Feedback's throw break and forward release play the double-palm shove")
+	_check(p1._state_anims.get("grab", &"") == &"hand_reach",
+		"Feedback's collar grab plays the wide-stance hand reach")
+	_check(p1._taunt_sequence == [&"lean_back", &"skank"],
+		"Feedback's T grooves lean-back into the skank loop")
+	_check(p1._celebrate_anim == &"sky_fist", "Feedback celebrates with the skyward fist")
+	_check(p1.attacks[&"jab"]["anim_active"] == &"open_slap"
+			and p1.attacks[&"tump"]["anim_active"] == &"clarks_kick"
+			and p1.attacks[&"upper_box"]["anim_active"] == &"sky_fist",
+		"jab, Sparta kick and upper box play their new contact frames")
+	_check(p1.attacks[&"tump"]["startup"] == 12 and p1.attacks[&"jab"]["active"] == 3
+			and p1.attacks[&"upper_box"]["recovery"] == 16,
+		"the pose wiring left the combat timings untouched")
+	p1._attack_id = &"jab"
+	_check(not p1.shows_strike_tell(), "Feedback's drawn jab retires the strike smear")
+	p1._attack_id = &"tump"
+	_check(not p1.shows_strike_tell(), "Feedback's drawn kick retires the strike smear")
+	p1._attack_id = &"upper_box"
+	_check(not p1.shows_strike_tell(), "Feedback's drawn upper box retires the strike smear")
+	p1._attack_id = &""
 
 	# ---- Arena with Young Selecta -----------------------------------------
 	setup.p2_fighter = &"young_selecta"

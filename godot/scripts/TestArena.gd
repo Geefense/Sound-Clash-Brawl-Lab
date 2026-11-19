@@ -233,6 +233,8 @@ func _ready() -> void:
 	p2.died.connect(_on_fighter_died)
 
 	rounds.setup(p1, p2, self)
+	if not rounds.round_ended.is_connected(_on_round_ended):
+		rounds.round_ended.connect(_on_round_ended)
 	if rounds.enabled:
 		rounds.start_match()          # Round 1 lighting is applied by the round controller
 	else:
@@ -376,6 +378,18 @@ func _on_strike_resolved(_attacker: BaseFighter, target: BaseFighter, result: Di
 ## A fighter entering KO: the dramatic arcade drop (fired once per K.O.).
 func _on_fighter_died() -> void:
 	Sfx.play(&"ko")
+
+
+## Round win: the winner throws its celebration pose while the result banner runs
+## (AGENTS.md §9 items 33–34). winner -1 is the time-out tie, which has nobody to celebrate.
+func _on_round_ended(_round_index: int, winner: int) -> void:
+	var champion: BaseFighter = null
+	if winner == 0:
+		champion = p1
+	elif winner == 1:
+		champion = p2
+	if champion != null:
+		champion.play_celebration(140)
 
 
 ## 100% Crowd Hype Surge: the crowd jumps and the HUD banner flashes for the same

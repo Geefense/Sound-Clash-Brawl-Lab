@@ -26,7 +26,7 @@ The fighters must feel like personalities at a dance, not interchangeable boxers
 
 **Mic continuity requires version-specific care.** Earlier pose work used the left hand; the later four-key walk study explicitly uses the right hand. Never silently flip or normalize one set into the other. Each sequence must keep one mic in its declared anatomical hand and one continuous cable, including forearm wraps. A mic cannot disappear while adjusting the hat or reappear in another hand. [TODO] Owner resolves the canonical cross-set hand before final fighter integration. Mirroring art changes apparent handedness and is provisional only.
 
-**Other concepts:** **Lickshot is now Fighter #2's display name** (renamed from Dubplate, 2026-11-17 — §9 item 26); `Disc Jock Lickshot` and `Booyaka Lickshot` stay recorded alternates and the owner says the name may still evolve. The off-screen selecta record-theft gag belongs to Fighter #2 accordingly. The Godot migration gate for Fighter #2 is passed — he is in the roster with his own four-pose set since 2026-11-17 (§9 item 27): mic stance, high kick, Sonic Clap windup and Sonic Clap impact. **Working name pool for Fighters #4–#6 (owner, 2026-11-17): Fling Stone, Rum Punch, Sky Juice** — working names only, with no slot assigned and no design implied (§2, §9 item 26).
+**Other concepts:** **Lickshot is now Fighter #2's display name** (renamed from Dubplate, 2026-11-17 — §9 item 26); `Disc Jock Lickshot` and `Booyaka Lickshot` stay recorded alternates and the owner says the name may still evolve. The off-screen selecta record-theft gag belongs to Fighter #2 accordingly. The Godot migration gate for Fighter #2 is passed — he is in the roster with his own four-pose set since 2026-11-17 (§9 item 27): mic stance, high kick, Sonic Clap windup and Sonic Clap impact. **Working name pool for Fighters #4–#6 (owner, 2026-11-17): FL!NG STONE, RUM PUNCH, SKY JU!CE** — the on-screen spelling under the I → ! rule (§9 item 32); their internal ids would stay clean (`fling_stone`, `sky_juice`). Working names only, with no slot assigned and no design implied (§2, §9 items 26 and 32).
 
 ### Owner clarification — cross-animation consistency (2026-11-13)
 
@@ -63,7 +63,7 @@ Calendar clarification: November 13, 2026 to April 21, 2027 is 159 days (~22.7 w
 | **Weeks 18–20** | **Mar 12 – Apr 1, 2027** | Build 2–3 distinct Sound Clash venues, Character Select and Arcade mode. Add stretch Fighters #7–#8 only if genuinely ahead. | Six-fighter roster selectable; Arcade run completes and restarts; venues work with hazards/party transitions. Stretch scope cannot consume final QA time. |
 | **Weeks 21–22 / closing partial week** | **Apr 2 – Apr 21, 2027** | Final balance, audio mixing, input/beat responsiveness checks, regression fixes, clean export and birthday launch. | Versioned release build tested on the chosen target; no critical blocker; credits/controls included; reproducible export instructions. |
 
-Roster slots: #1 Feedback; #2 **Lickshot** (renamed from Dubplate on 2026-11-17, §9 item 26 — the name may still evolve); #3 Young Selecta (§9 items 22–25); #4–#6 **[TODO]** assign final names/order from the owner's working **name pool: Fling Stone, Rum Punch, Sky Juice** (2026-11-17). Those three are working names, not assignments: nothing says #4 is Fling Stone, and a name is not a design — do not build a fighter from a name alone or treat the pool as final. The owner named #1–#3 explicitly; #4–#6 remain open. #7–#8 remain optional.
+Roster slots: #1 Feedback; #2 **L!CKSHOT** on screen, key `lickshot` (renamed from Dubplate on 2026-11-17, §9 item 26; I → ! styling rule, §9 item 32 — the name may still evolve); #3 Young Selecta (§9 items 22–25); #4–#6 **[TODO]** assign final names/order from the owner's working **name pool: FL!NG STONE, RUM PUNCH, SKY JU!CE** (2026-11-17, styled per §9 item 32). Those three are working names, not assignments: nothing says #4 is Fling Stone, and a name is not a design — do not build a fighter from a name alone or treat the pool as final. The owner named #1–#3 explicitly; #4–#6 remain open. #7–#8 remain optional.
 
 Suggested content slots within the supplied eight-week roster block: #3 Jan 15–28; #4 Jan 29–Feb 11; #5 Feb 12–25; #6 Feb 26–Mar 11. Each slot covers stance/move definition, approved exports, data/hitboxes, voices, integration and a playable check. Templates and placeholders should be prepared before the slot, not used to claim finished art.
 
@@ -387,7 +387,7 @@ This register includes all phrases recoverable from the visible conversation, su
 
 - **`cricket box`**: owner-proposed name for a cricket-bowling-inspired BOX/slap, potentially for another character. No fighter assigned; concept/backlog only, not an implemented move or added launch requirement. Preserve the owner's name. Keep separate from Feedback's current BOX direction: original rear three-quarter camera, right-knee lift, plant/turn into the existing slap/follow-through. The earlier raised-knee illustration changed the camera/build and is not approved production art.
 
-- `Rum Punch`: candidate fighter name, powerful move/hit name, or both; Caribbean punch/fighting wordplay. Now one of the three names in the owner's working pool for Fighters #4–#6 alongside `Fling Stone` and `Sky Juice` (§2, §9 item 26). Keep options open, not finalized.
+- `Rum Punch`: candidate fighter name, powerful move/hit name, or both; Caribbean punch/fighting wordplay. Now one of the three names in the owner's working pool for Fighters #4–#6 alongside `FL!NG STONE` and `SKY JU!CE` — the on-screen spellings under the I → ! rule (§2, §9 items 26 and 32). Keep options open, not finalized.
 - Later Three Piece polish: launched opponent lands comically on their head (stylized, non-graphic), with hard landing/dust/shake; defer until the working baseline is stable.
 - Mr. Bean versus Mike Tyson reference backlog: exaggerated recoil/stagger, humorous personality contrast and venue knockdowns such as stumbling into a speaker stack. Not immediate implementation.
 - UI feedback: avoid oversized `ROUND OVER` lettering; it was called out as too huge/weird. Preserve readable, restrained overlays.
@@ -1019,9 +1019,11 @@ here is gameplay-verified; implementation status is stated per item.
       frames built, and his enlarged adult render height intact (0.2992 = 0.2378 × 1.24). Counts here are
       measured by counting `PASS` lines: the figures recorded in items 23 and 24 (45 and 47) were undercounts
       by two, and those same runs print **47** and **49** — corrected in place.
-    - **Roster name pool for Fighters #4–#6 (owner, 2026-11-17): Fling Stone, Rum Punch, Sky Juice.**
-      Working names for the open slots, recorded in §2 and cross-referenced in §8. They are **not
-      assignments** — nothing says #4 is Fling Stone, #5 Rum Punch or #6 Sky Juice — and not designs: no
+    - **Roster name pool for Fighters #4–#6 (owner, 2026-11-17): FL!NG STONE, RUM PUNCH, SKY JU!CE.**
+      Those are the on-screen spellings under the I → ! styling rule (item 32); internal ids would stay
+      clean (`fling_stone`, `sky_juice`). Working names for the open slots, recorded in §2 and
+      cross-referenced in §8. They are **not
+      assignments** — nothing says #4 is FL!NG STONE, #5 RUM PUNCH or #6 SKY JU!CE — and not designs: no
       silhouette, stance, move set, height, voice or art exists behind any of the three. `Rum Punch` also
       stays a possible move/hit name. Do not start a fighter from a name, and do not promote one of them into
       a slot without the owner.
@@ -1172,6 +1174,106 @@ here is gameplay-verified; implementation status is stated per item.
     offset/scale numbers are unaffected. `Feedback_Walk_Video_Import.py` reads `part-*.b64` files that sit
     beside it and are not in the repository, so it remains a record of how the video was delivered rather
     than a runnable tool — true before the move and after it.
+
+32. **Global fighter-name styling rule — an I renders as ! on screen (owner, 2026-11-19).**
+
+    - **The rule.** Any fighter whose name contains the letter I is shown with **!** instead of **I** on
+      screen: Character Select, the HUD health-bar name plate, round/result announcements and every
+      roster display. It is a **display-time transform, never a rename** — roster keys, asset folders,
+      sprite filenames, script ids and `FighterRoster.FIGHTERS` keys stay clean ASCII.
+    - **Implementation.** `FighterRoster.styled_name()` applies `String.replace("I", "!")` and
+      `FighterRoster.display_name()` — the single funnel the title screen and the HUD already use —
+      returns the styled result. `BaseFighter.apply_fighter_profile()` sets `display_name` through it, so
+      any future screen reading the fighter's own name inherits the rule automatically. Applying the rule
+      twice is idempotent (`!` is not `I`).
+    - **Fighter #2 is L!CKSHOT on screen.** The roster entry still stores `"name": "LICKSHOT"`; the key is
+      `lickshot`, the asset folder is `godot/assets/sprites/lickshot/`, the prep script and every code id
+      remain `lickshot`. The title-screen splash line is now built from `FighterRoster.ORDER` through
+      `display_name()` instead of a hard-coded string, so a rename cannot leave a stale label behind.
+    - **Future name pool.** The Fighters #4–#6 working pool renders **FL!NG STONE, RUM PUNCH, SKY JU!CE**
+      (§2, §8, item 26). RUM PUNCH contains no I and is unchanged. Still working names, still unassigned.
+    - **Font check.** All three Bungee faces shipped in the project (`Bungee-Regular`, `BungeeShade-Regular`,
+      `BungeeInline-Regular`) contain the `!` glyph (fontTools cmap check), and the headless roster check
+      asserts the Bungee face gives `!` and `L!CKSHOT` non-zero measured advances. That proves the glyph
+      and the metrics; it does not prove the name plate looks right at gameplay size, because nothing was
+      seen on screen in this environment (no GPU).
+
+33. **Feedback's six 2026-11-18 poses — prepared, wired, headless-verified (2026-11-19).**
+
+    - **Sources.** The six owner uploads were moved with `git mv` (byte-identical) into
+      `artifacts/sound-clash/art-source/feedback/selected-frames-2026-11-18/` and join a `PROVENANCE.md`
+      plus the script's `prep-report.json`. Original filenames are kept as provenance.
+    - **Preparation.** `artifacts/sound-clash/art-source/feedback/prep_feedback_poses_2026-11-18.py` drops
+      border-connected near-white background (enclosed highlights are kept), protects the thin black mic
+      cord and the cream Clarks soles from the one-pixel edge erosion, crops to the alpha bbox, caps the
+      longest side at **512 px**, and measures each pose's crown row, alpha bottom and stance centre.
+    - **Floor rule.** Every processed frame's drawn alpha bottom lands on world **y 592**
+      (`BaseFighter.REACTION_FLOOR_Y`), the same 8 px above the y 600 origin line the Lickshot set uses.
+      Offset y is `frame centre − alpha bottom − 8 / (scale × FIGHTER_ART_SCALE)`; scale is
+      `121.75 / crown-to-sole`, so every pose renders at the adult ~151 px height and the cable is the
+      lowest drawn pixel rather than an estimate.
+    - **What each frame is wired to** (new `BaseFighter.tscn` animations, `ANIM_OFFSET`/`ANIM_SCALE`
+      entries and the Feedback roster entry):
+      1. `01_double-palm-shove` → **throw break** (both fighters; the breaker uses the hitstun override,
+         the attacker's still in GRAB during recovery so it uses the grab override) and the
+         **forward-throw release** pose through grab recovery.
+      2. `02_lean-back-groove` → first half of the **T (skank) taunt**, then the existing skank loop:
+         `taunt_sequence = [lean_back, skank]`.
+      3. `03_open-palm-slap` → **jab (J)** startup/active/recovery.
+      4. `04_clarks-kick` → **Sparta kick (L / tump) active frame**; the existing Sparta frames keep the
+         windup and the recovery.
+      5. `05_sky_fist` → **upper box (I)**, and the **round-win / 100 % Hype Surge** celebration.
+      6. `06_hand_reach` → **collar grab (U) startup**.
+    - **No combat change.** Only `anim_startup/anim_active/anim_recovery` names were remapped. Startup,
+      active and recovery ticks, damage, chip, hitstun, knockback, hitbox position/size and the shared FSM
+      are untouched. Because jab, kick and upper box now carry drawn contact poses, they join
+      `no_strike_tell` so the arena stops painting the generic smear over them.
+    - **New shared presentation hooks, all data-driven.** `BaseFighter` gained the optional roster keys
+      `state_anims` (`grab`, `throw_break`, `throw_release`), `taunt_sequence` and `celebrate_anim`; a
+      fighter without them keeps the old jab/hitstun/skank behaviour. `play_celebration()` shows the pose
+      only in IDLE/WALK/CROUCH, so it can never hide an attack drawing; `TestArena` calls it for the round
+      winner (`round_ended`) and `BaseFighter` for a Hype Surge (60 ticks).
+    - **Verified headless (Godot 4.5).** All six animations registered, every drawn bottom on y 592 within
+      0.75 px, every frame ≤512 px, the animation remap applied, the old timings unchanged, the
+      grab/throw/taunt/celebration wiring present, and the jab/kick/upper-box smears retired. **Not**
+      verified: how the drawings look in motion, whether the high kick's untouched stomach-height hitbox
+      still reads against a high kick, or how the shove reads against the throw timing — those need a
+      playtest.
+
+34. **L!CKSHOT's seven 2026-11-18 poses — prepared, wired, headless-verified (2026-11-19).**
+
+    - **Sources.** The seven uploads are the untouched originals
+      `art-source/fighters/lickshot/05_left-jab_original.png` through
+      `11_arms-open_celebration_original.png`, beside the first four. They are pure-white-background
+      exports, not the dark studio backdrop of the 2026-11-17 set.
+    - **Preparation.** `art-source/fighters/prep_lickshot_poses.py` gained a `white` keying mode: background
+      is near-white that touches the frame border **or** forms a large enclosed pocket (a loop of mic
+      cable seals a white hole behind the legs in three poses), while sub-1000-px enclosed highlights —
+      the silver mic grille, the chain — are kept, and the cream Wallabee soles sit far below the white
+      floor so they are never keyed. The four approved 2026-11-17 outputs were **not** rewritten: the new
+      pass ran with `--only` and merged its entries into the existing `prep-report.json`.
+    - **What each frame is wired to** (Lickshot roster entry; same y 592 floor rule and 121.75 px
+      crown-to-sole authoring height as the first four):
+      1. `jab` (left-hand straight jab) → **jab (J)**, retiring the placeholder strike smear.
+      2. `upper_box` (heavy right-hand mic cross) → **upper box (I)** heavy strike.
+      3. `guard_stance` (defensive mic and open palm) → **guard** entry, held block, blockstun and release
+         (S). One drawing covers all three guard phases; the phase timing is unchanged.
+      4. `hitstun_recoil` (chin snap) → **hitstun** reaction.
+      5. `launched_recoil` (head-back groove / heavy recoil) → **launched** pose.
+      6. `skank_point` (wide gun-finger / mic-point lean) → **taunt / Dancehall skank (T)**.
+      7. `celebration` (wide-open arms, mic in the cargo pocket) → **collar grab (U)** and the **round-win /
+         Hype Surge** celebration.
+    - **Unchanged.** His existing idle, high kick, Sonic Clap windup and Sonic Clap impact frames stay
+      byte-identical to item 27, and knockdown/KO/tumble still fall back to the mic stance.
+    - **Verified headless (Godot 4.5).** All seven registered, every drawn bottom on y 592 within 0.75 px,
+      every frame ≤512 px, the guard/hitstun/launch/taunt/grab/celebration wiring present, the jab and
+      upper-box smears retired, and the celebration pose actually becoming the drawn animation. **Not**
+      verified: the in-motion look, how one guard drawing reads across entry→hold→release, or whether the
+      mic cross's untouched upper-box hitbox matches the drawing. Those need a playtest.
+    - **`/docs` rebuilt from this commit** with `--headless --path godot --export-release "Web"
+      ../docs/index.html` after the 13 frames were imported. `index.pck` grew from **11,726,228 B** (item 28)
+      to **13,842,592 B**, `index.wasm` 38,057,390 B, `index.js` 305,185 B and `index.html` 5,449 B, so the
+      playable build and the source are the same revision.
 
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 

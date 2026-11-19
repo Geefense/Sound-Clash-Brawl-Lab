@@ -33,12 +33,45 @@ const FIGHTERS := {
 		"reach_bonus": 0.0,
 		"stand_size": Vector2(60, 160),
 		"crouch_size": Vector2(60, 96),
-		"uses_scene_frames": true,      # the full 17-pose pack already lives in BaseFighter.tscn
+		"uses_scene_frames": true,      # the full 17-pose pack + 2026-11-18 set live in BaseFighter.tscn
 		"frames": {},
 		"anim_offset": {},
 		"anim_scale": {},
 		"anim_source_max": {},
-		"attack_anims": {},
+		# 2026-11-18 pose set (AGENTS.md §9 item 33). Only the animation names change: the
+		# startup/active/recovery ticks, damage, knockback and hitboxes stay exactly as they
+		# were, so this is presentation wiring and not a combat change.
+		"attack_anims": {
+			&"jab": {
+				"anim_startup": &"open_slap",
+				"anim_active": &"open_slap",
+				"anim_recovery": &"open_slap",
+			},
+			# The high Clarks boot replaces only the L (tump) contact frame; the Sparta frames
+			# still carry the windup and the recovery.
+			&"tump": {
+				"anim_startup": &"sparta_startup",
+				"anim_active": &"clarks_kick",
+				"anim_recovery": &"sparta_recovery",
+			},
+			&"upper_box": {
+				"anim_startup": &"sky_fist",
+				"anim_active": &"sky_fist",
+				"anim_recovery": &"sky_fist",
+			},
+		},
+		# The two throw moments and the collar grab now carry drawn poses.
+		"state_anims": {
+			"grab": &"hand_reach",
+			"throw_break": &"palm_shove",
+			"throw_release": &"palm_shove",
+		},
+		# T: lean back into the groove, then settle into the existing skank loop.
+		"taunt_sequence": [&"lean_back", &"skank"],
+		"celebrate_anim": &"sky_fist",
+		# These attacks now ship their own drawn pose, so the arena must not also smear the
+		# generic strike tell over them.
+		"no_strike_tell": [&"jab", &"tump", &"upper_box"],
 	},
 	# Fighter #2 — Lickshot, renamed from Dubplate (AGENTS.md §9 item 26) and given his own
 	# four-pose set on 2026-11-17 (§9 item 27): mic stance, high kick, Sonic Clap windup and
@@ -63,66 +96,79 @@ const FIGHTERS := {
 		"crouch_size": Vector2(62, 98),
 		"uses_scene_frames": false,
 		"frames": {
-			# Mic stance carries every neutral and defensive state until more poses exist.
+			# Mic stance carries the neutral movement states; the 2026-11-18 set (AGENTS.md §9
+			# item 34) now covers guard, jab, upper box, hitstun, launch, taunt and celebration.
 			&"idle": ["res://assets/sprites/lickshot/idle.png"],
 			&"walk": ["res://assets/sprites/lickshot/idle.png"],
 			&"jump": ["res://assets/sprites/lickshot/idle.png"],
 			&"crouch": ["res://assets/sprites/lickshot/idle.png"],
-			&"block": ["res://assets/sprites/lickshot/idle.png"],
-			&"guard_entry": ["res://assets/sprites/lickshot/idle.png"],
-			&"guard_recovery": ["res://assets/sprites/lickshot/idle.png"],
-			&"skank": ["res://assets/sprites/lickshot/idle.png"],
-			&"jab": ["res://assets/sprites/lickshot/idle.png"],
-			&"hitstun": ["res://assets/sprites/lickshot/idle.png"],
+			# One drawn guard pose covers entry, the held brace and the release.
+			&"block": ["res://assets/sprites/lickshot/guard_stance.png"],
+			&"guard_entry": ["res://assets/sprites/lickshot/guard_stance.png"],
+			&"guard_recovery": ["res://assets/sprites/lickshot/guard_stance.png"],
+			&"skank": ["res://assets/sprites/lickshot/skank_point.png"],
+			&"jab": ["res://assets/sprites/lickshot/jab.png"],
+			&"upper_box": ["res://assets/sprites/lickshot/upper_box.png"],
+			&"hitstun": ["res://assets/sprites/lickshot/hitstun_recoil.png"],
+			&"launched": ["res://assets/sprites/lickshot/launched_recoil.png"],
 			&"knockdown": ["res://assets/sprites/lickshot/idle.png"],
 			&"ko": ["res://assets/sprites/lickshot/idle.png"],
-			&"launched": ["res://assets/sprites/lickshot/idle.png"],
 			&"tumble": ["res://assets/sprites/lickshot/idle.png"],
 			# K = BOX is the Sonic Clap: arms spread wide, then the oversized hands meet with a
 			# golden shockwave. L = TUMP is the extended high left kick.
 			&"high_kick": ["res://assets/sprites/lickshot/high_kick.png"],
 			&"sonic_clap_windup": ["res://assets/sprites/lickshot/sonic_clap_windup.png"],
 			&"sonic_clap_impact": ["res://assets/sprites/lickshot/sonic_clap_impact.png"],
+			# Collar grab (U) and the round-win / Hype Surge celebration share the wide-open
+			# arms pose with the mic in the cargo pocket.
+			&"celebration": ["res://assets/sprites/lickshot/celebration.png"],
 		},
 		"anim_offset": {
 			# offset = frame centre − (stance centre x, sole row), with the sole lifted to y 592:
 			# y = H/2 − sole_row − 8 / (anim_scale × FIGHTER_ART_SCALE).
+			# States still drawn by the mic stance keep the idle placement.
 			"idle": Vector2(7.5, -281.9),
 			"walk": Vector2(7.5, -281.9),
 			"jump": Vector2(7.5, -281.9),
 			"crouch": Vector2(7.5, -281.9),
-			"block": Vector2(7.5, -281.9),
-			"guard_entry": Vector2(7.5, -281.9),
-			"guard_recovery": Vector2(7.5, -281.9),
-			"skank": Vector2(7.5, -281.9),
-			"jab": Vector2(7.5, -281.9),
-			"hitstun": Vector2(7.5, -281.9),
 			"knockdown": Vector2(7.5, -281.9),
 			"ko": Vector2(7.5, -281.9),
-			"launched": Vector2(7.5, -281.9),
 			"tumble": Vector2(7.5, -281.9),
 			"high_kick": Vector2(127.5, -282.0),
 			"sonic_clap_windup": Vector2(-28.5, -281.0),
 			"sonic_clap_impact": Vector2(141.0, -167.5),
+			# 2026-11-18 set: same floor rule, measured per frame by the prep script.
+			"jab": Vector2(-34.5, -282.0),
+			"upper_box": Vector2(-30.0, -282.0),
+			"block": Vector2(-47.5, -282.0),
+			"guard_entry": Vector2(-47.5, -282.0),
+			"guard_recovery": Vector2(-47.5, -282.0),
+			"hitstun": Vector2(-45.5, -282.1),
+			"launched": Vector2(31.5, -282.1),
+			"skank": Vector2(-16.5, -282.0),
+			"celebration": Vector2(-1.0, -282.1),
 		},
 		"anim_scale": {
 			# 121.75 px crown-to-sole / that frame's measured height (the 1.24 art scale is
 			# applied once, by BaseFighter, so every fighter grows together).
 			"idle": 0.24014,
-			"walk": 0.24014, "jump": 0.24014, "crouch": 0.24014, "block": 0.24014,
-			"guard_entry": 0.24014, "guard_recovery": 0.24014, "skank": 0.24014,
-			"jab": 0.24014, "hitstun": 0.24014, "knockdown": 0.24014, "ko": 0.24014,
-			"launched": 0.24014, "tumble": 0.24014,
+			"walk": 0.24014, "jump": 0.24014, "crouch": 0.24014,
+			"knockdown": 0.24014, "ko": 0.24014, "tumble": 0.24014,
 			"high_kick": 0.23873,
 			"sonic_clap_windup": 0.23919,
 			"sonic_clap_impact": 0.43021,   # the shockwave sits above the cap in this frame
+			"jab": 0.23873, "upper_box": 0.23873,
+			"block": 0.23873, "guard_entry": 0.23873, "guard_recovery": 0.23873,
+			"hitstun": 0.23826, "launched": 0.23826, "celebration": 0.23826,
+			"skank": 0.23873,
 		},
 		"anim_source_max": {
 			"idle": 512.0, "walk": 512.0, "jump": 512.0, "crouch": 512.0,
-			"block": 512.0, "guard_entry": 512.0, "guard_recovery": 512.0, "skank": 512.0,
-			"jab": 512.0, "hitstun": 512.0, "knockdown": 512.0, "ko": 512.0,
-			"launched": 512.0, "tumble": 512.0,
+			"knockdown": 512.0, "ko": 512.0, "tumble": 512.0,
 			"high_kick": 512.0, "sonic_clap_windup": 512.0, "sonic_clap_impact": 512.0,
+			"jab": 512.0, "upper_box": 512.0,
+			"block": 512.0, "guard_entry": 512.0, "guard_recovery": 512.0,
+			"hitstun": 512.0, "launched": 512.0, "skank": 512.0, "celebration": 512.0,
 		},
 		# K = BOX plays windup → impact; L = TUMP plays the high kick. The kick's contact box
 		# moves up to head height, because the art is an extended high kick and not the
@@ -140,10 +186,20 @@ const FIGHTERS := {
 				"hitbox_pos": Vector2(96, -128),
 				"hitbox_size": Vector2(112, 56),
 			},
+			# I = upper box now plays the drawn heavy mic cross instead of the idle stance.
+			&"upper_box": {
+				"anim_startup": &"upper_box",
+				"anim_active": &"upper_box",
+				"anim_recovery": &"upper_box",
+			},
 		},
-		# These two attacks ship their own drawn pose, so the arena must not also smear the
-		# generic strike tell over them. The jab still has no art and keeps the smear.
-		"no_strike_tell": [&"strong", &"tump"],
+		# U = collar grab and the round-win / Hype Surge pose share the wide-open arms art.
+		"state_anims": {"grab": &"celebration"},
+		"taunt_sequence": [&"skank"],
+		"celebrate_anim": &"celebration",
+		# Every attack now ships its own drawn pose, so none of them also gets the generic
+		# strike smear: the jab's placeholder smear is retired.
+		"no_strike_tell": [&"strong", &"tump", &"jab", &"upper_box"],
 	},
 	# Fighter #3 — the ten-year-old school-uniform prodigy. Faster on his feet and the
 	# boom-mic thrust reaches 25 px further than an adult's jab (owner direction).
@@ -242,8 +298,15 @@ static func profile(key: StringName) -> Dictionary:
 	return FIGHTERS.get(key, FIGHTERS[&"feedback"])
 
 
+## Owner styling rule (AGENTS.md §9 item 32): any fighter whose name contains the letter I
+## renders with "!" instead of "I" on screen. Applied at display time only, so roster keys,
+## asset folders and code ids keep their clean ASCII spelling (`lickshot`, not `l!ckshot`).
+static func styled_name(raw: String) -> String:
+	return raw.replace("I", "!")
+
+
 static func display_name(key: StringName) -> String:
-	return String(profile(key)["name"])
+	return styled_name(String(profile(key)["name"]))
 
 
 static func walk_speed_for(key: StringName) -> float:

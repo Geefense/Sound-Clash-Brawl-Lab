@@ -4,7 +4,13 @@
 Reads the untouched owner originals in `art-source/fighters/lickshot/` and writes the
 game-ready frames to `godot/assets/sprites/lickshot/`. Originals are never modified.
 
-Why this is a separate script from `prep_fighter_art.py`: these four share one studio
+2026-11-19: the seven owner frames added on 2026-11-18 are **pure white** backgrounds,
+not the dark plum studio. They are processed by the same script through a separate
+`white` keying mode (border flood of near-white plus an erosion pass), while the four
+original studio jobs keep their `studio` path untouched. `--only` re-runs just the new
+frames so the four approved outputs are not rewritten.
+
+Why this is a separate script from `prep_fighter_art.py`: the first four share one studio
 setup (dark plum backdrop, lit sand floor, soft cast shadow) and one placement rule —
 character crown-to-sole is authored at 121.75 px before `BaseFighter.FIGHTER_ART_SCALE`,
 and the alpha bottom sits on world y 592 (`BaseFighter.REACTION_FLOOR_Y`). The older
@@ -28,6 +34,7 @@ Usage: python3 art-source/fighters/prep_lickshot_poses.py
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -65,6 +72,42 @@ JOBS = [
         "label": "Lickshot Sonic Clap impact",
         "crown_window": (380, 620),
     }),
+    # ---- 2026-11-18 uploads: pure white background, no studio floor or shadow ----
+    ("05_left-jab_original.png", "jab.png", {
+        "label": "Lickshot left-hand straight jab",
+        "background": "white",
+        "wiring": "jab (J) — retires the placeholder strike smear",
+    }),
+    ("06_mic-cross_original.png", "upper_box.png", {
+        "label": "Lickshot heavy right-hand mic cross",
+        "background": "white",
+        "wiring": "upper box (I) heavy strike",
+    }),
+    ("07_guard-stance_original.png", "guard_stance.png", {
+        "label": "Lickshot defensive mic and open-palm guard",
+        "background": "white",
+        "wiring": "guard entry / held block / blockstun / guard release (S)",
+    }),
+    ("08_hitstun-recoil_original.png", "hitstun_recoil.png", {
+        "label": "Lickshot chin-snap hitstun recoil",
+        "background": "white",
+        "wiring": "hitstun reaction",
+    }),
+    ("09_head-back-recoil_original.png", "launched_recoil.png", {
+        "label": "Lickshot head-back groove / heavy recoil",
+        "background": "white",
+        "wiring": "launched / heavy recoil pose",
+    }),
+    ("10_skank-point_original.png", "skank_point.png", {
+        "label": "Lickshot wide gun-finger / mic-point lean",
+        "background": "white",
+        "wiring": "Dancehall skank / taunt (T)",
+    }),
+    ("11_arms-open_celebration_original.png", "celebration.png", {
+        "label": "Lickshot wide-open arms celebration (mic in cargo pocket)",
+        "background": "white",
+        "wiring": "collar grab (U) and round victory / Hype Surge",
+    }),
 ]
 
 
@@ -83,6 +126,29 @@ def key_backdrop(im: Image.Image, thresh: int = 34) -> np.ndarray:
         ImageDraw.floodfill(work, seed, MAGENTA, thresh=thresh)
     arr = np.asarray(work)
     return ~((arr[:, :, 0] == 255) & (arr[:, :, 1] == 0) & (arr[:, :, 2] == 255))
+
+
+def key_white(im: Image.Image) -> np.ndarray:
+    """Foreground mask for the 2026-11-18 pure-white uploads.
+
+    Background is near-white that either touches the frame border or is a large interior
+    region: a loop of mic cable seals a white pocket behind the legs in several poses,
+    exactly like the studio vignette pocket the older jobs drop. Size separates those
+    from legitimate small white highlights (the chain, the mic grille); the cream
+    Wallabee soles sit well below the white floor and are never part of the mask.
+    """
+    rgb = np.asarray(im.convert("RGB")).astype(np.int16)
+    near_white = rgb.min(axis=2) >= 236
+    labels, count = ndimage.label(near_white)
+    if count == 0:
+        return np.ones(near_white.shape, dtype=bool)
+    border_labels: set[int] = set()
+    for edge in (labels[0, :], labels[-1, :], labels[:, 0], labels[:, -1]):
+        border_labels.update(int(v) for v in np.unique(edge) if v != 0)
+    sizes = ndimage.sum(near_white, labels, range(1, count + 1))
+    big = {i for i in range(1, count + 1) if sizes[i - 1] >= 1000}
+    background = np.isin(labels, list(border_labels | big))
+    return ~background
 
 
 def drop_backdrop_blobs(mask: np.ndarray, rgb: np.ndarray, min_area: int = 3000) -> np.ndarray:
@@ -184,11 +250,17 @@ def measure_crown(solid: np.ndarray, window: tuple[int, int], min_run: int) -> i
 
 
 def prepare(src: Path, dst: Path, job: dict) -> dict:
+    white = job.get("background") == "white"
     im = Image.open(src).convert("RGB")
     rgb = np.asarray(im).astype(np.int16)
-    fg = key_backdrop(im)
-    fg = drop_backdrop_blobs(fg, rgb)
-    fg, sole_before_crop = cut_ground(fg, rgb)
+    if white:
+        # No painted floor or cast shadow to remove: the upload is on plain white.
+        fg = key_white(im)
+        sole_before_crop = -1
+    else:
+        fg = key_backdrop(im)
+        fg = drop_backdrop_blobs(fg, rgb)
+        fg, sole_before_crop = cut_ground(fg, rgb)
     fg = restore_small_holes(fg, 600)
 
     # Drop detached specks but keep the idle motion arc (a real, larger drawing element).
@@ -245,10 +317,16 @@ def prepare(src: Path, dst: Path, job: dict) -> dict:
     # Stance centre: the lower body's centre of mass (waist to sole), not one shoe. A wide
     # lunge is centred between both Wallabees, and a high kick keeps its origin under the
     # hips instead of jumping a body-width sideways with the planted support foot.
-    wx0, wx1 = job["crown_window"]
+    if "crown_window" in job:
+        wx0, wx1 = job["crown_window"]
+        crown_window = (int(round((wx0 - left) * scale)), int(round((wx1 - left) * scale)))
+    else:
+        # The 2026-11-18 frames have no motion arc or shockwave: the hat is the widest
+        # solid run at the top, and a raised wrist is too thin to trip the run test.
+        crown_window = (0, rgba.width)
     crown_row = measure_crown(
         body,
-        (int(round((wx0 - left) * scale)), int(round((wx1 - left) * scale))),
+        crown_window,
         max(8, int(round(rgba.width * 0.04))),
     )
     crown_row = max(0, min(crown_row, sole_row))
@@ -264,6 +342,8 @@ def prepare(src: Path, dst: Path, job: dict) -> dict:
 
     return {
         "label": job["label"],
+        "wiring": job.get("wiring", ""),
+        "background": job.get("background", "studio"),
         "source": str(src.relative_to(ROOT)),
         "output": str(dst.relative_to(ROOT)),
         "source_size": list(Image.open(src).size),
@@ -279,18 +359,30 @@ def prepare(src: Path, dst: Path, job: dict) -> dict:
 
 
 def main() -> None:
-    report = []
+    # `--only jab.png upper_box.png` re-runs a subset; without it every job runs. The four
+    # 2026-11-17 outputs were approved as-is, so the new pass is invoked with --only and
+    # the report keeps their original entries.
+    wanted = set(sys.argv[sys.argv.index("--only") + 1:]) if "--only" in sys.argv else set()
+    report_path = SRC / "prep-report.json"
+    report = json.loads(report_path.read_text()) if report_path.exists() else []
+    by_output = {entry["output"]: i for i, entry in enumerate(report)}
     for rel_src, rel_dst, job in JOBS:
+        if wanted and rel_dst not in wanted:
+            continue
         src = SRC / rel_src
         if not src.exists():
             raise SystemExit(f"missing original: {src}")
         entry = prepare(src, OUT / rel_dst, job)
-        report.append(entry)
+        if entry["output"] in by_output:
+            report[by_output[entry["output"]]] = entry
+        else:
+            by_output[entry["output"]] = len(report)
+            report.append(entry)
         print(f"{entry['label']}: frame {entry['frame']} crown {entry['crown_row']} "
               f"sole {entry['sole_row']} height {entry['crown_to_sole']} "
               f"sole_x {entry['sole_centre_x']} downscale {entry['downscale']}")
-    (SRC / "prep-report.json").write_text(json.dumps(report, indent=2) + "\n")
-    print(f"\nwrote {SRC / 'prep-report.json'}")
+    report_path.write_text(json.dumps(report, indent=2) + "\n")
+    print(f"\nwrote {report_path}")
 
 
 if __name__ == "__main__":

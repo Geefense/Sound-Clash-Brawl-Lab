@@ -473,7 +473,7 @@ here is gameplay-verified; implementation status is stated per item.
    VFX work are all hand-set defaults awaiting a Godot playtest.
 
 6. **Foot-off-ground BOX contact frame — approved and wired (2026-11-15).**
-   `Feedback_Baseball_Pitch_BOX_Foot_Off_Ground.png` at the repository root (1024×1536; rear
+   `Feedback_Baseball_Pitch_BOX_Foot_Off_Ground.png` (1024×1536; rear
    three-quarter view, right knee lifted, left support foot planted, microphone in the right hand) is
    copied byte-identically into `godot/assets/sprites/feedback/box-footoff-ground-2026-11-15/` and is
    now the `box_active` frame of BOX (K), between the `12_backhand_windup` startup and the
@@ -739,8 +739,9 @@ here is gameplay-verified; implementation status is stated per item.
     - **Reference relocation.** The three screen recordings moved out of the repository root into
       `artifacts/sound-clash/art-source/references/2026-11-16-scr-review/` beside
       `CROWD-AND-MOVEMENT-REVIEW-2026-11-16.md` and five evidence stills, under their real names
-      (`ScreenRecording_11-15-2026-{17-34-45,23-25-15,23-26-04}_1.mov`; byte-identical to the root
-      blobs from `596ae3a`). They live outside `/godot` and `/docs`, so the Web pack never carries
+      (`ScreenRecording_11-15-2026-{17-34-45,23-25-15,23-26-04}_1.mov`; byte-identical to the blobs
+      delivered in `596ae3a`, now filed under `artifacts/sound-clash/art-source/references/`). They live
+      outside `/godot` and `/docs`, so the Web pack never carries
       them: `docs/index.pck` is **10,648,048 B (10.16 MiB)** after this build, still under the 11 MB
       budget, and `index.wasm` is unchanged at 38,057,390 B.
     - **`YardBarrier.gd`** draws a low wooden/zinc yard barrier with primitives across y **524–558**
@@ -1077,6 +1078,100 @@ here is gameplay-verified; implementation status is stated per item.
       silhouette, cut-out edges at gameplay size, the kick's new head-height hitbox, the clap's reach, timing
       feel and the mirrored left-facing version all need the owner's on-screen pass. Each pose is one drawing,
       not an interpolated sequence, and the cable is drawn per pose rather than animated.
+
+28. **Consolidated onto `stage/sound-clash-sand`, with Lickshot merged — done (2026-11-19).**
+
+    - **The merge.** `work/lickshot-art` (`88c7275`) was a straight fast-forward onto stage's `04db5ec`
+      (6 commits): the Dubplate → Lickshot rename, his four wired poses, `prep_lickshot_poses.py`, the
+      roster/title-screen updates and its rebuilt Web export. No conflict resolution was needed and no
+      commit was rewritten.
+    - **Roster state.** `FighterRoster.ORDER` is **Feedback, Lickshot, Young Selecta**, and the title screen's
+      Character & Match Setup lists those three. `MatchSetup` still defaults to **Feedback vs Feedback**
+      (`p1_fighter = p2_fighter = &"feedback"`, AI mode 1), so the default sparring setup is untouched and
+      Lickshot and Young Selecta stay selectable.
+    - **Engine verification (real, not static).** Godot **4.5.stable.official.876b29033** was installed in the
+      cloud workspace with the matching export templates. A first `--headless --path godot --import` pass
+      built the import cache and the `class_name` registry, then
+      `--headless --path godot --script res://tools/headless_roster_check.gd` printed **ALL CHECKS PASSED** —
+      roster order, title-screen setup, shared FSM, Lickshot's Sonic Clap and high kick, Young Selecta's
+      reach/height, crowd acts, facing and mirroring, the y 592 sand line, the three lighting phases, the AI
+      modes, and the Esc round trip. No GPU, no audio device and no on-screen look, so this proves the
+      project imports and those code paths execute — **not** that anything looks or feels right.
+    - **Note for the next agent.** A bare `--headless --script` run on a fresh checkout fails with
+      `Identifier "FighterRoster" not declared`; that is only the missing class cache, not a code fault.
+      Run the `--import` pass first. The `libfontconfig.so.1` warning at startup is non-fatal headless.
+    - **`/docs` was rebuilt from this commit** with `--headless --path godot --export-release "Web"
+      ../docs/index.html`, so the playable build and the source are the same revision. The export produced
+      `index.pck` **11,726,228 B (11.18 MiB)**, `index.wasm` 38,057,390 B, `index.js` 305,185 B and
+      `index.html` 5,449 B — byte-identical to the pack the Lickshot branch shipped, which is the expected
+      result of exporting the same code.
+
+29. **Next-generation visual & combat direction — approved direction (2026-11-19).**
+
+    Scoped to the **Godot 4.5 project only**. The Phaser/TypeScript prototype is archived reference and is
+    not the target: nothing here is ported from it, and no TS/Phaser file is revived. The two documents
+    salvaged from `freebuff/20c43fa8…` and kept at `artifacts/sound-clash/VISUAL-DIRECTION-2026-11-18.md`
+    and `artifacts/sound-clash/FEEDBACK-ART-INTEGRATION-2026-11-18.md` are the **Phaser-era audit that
+    produced this direction** — historical evidence for the reasoning, never a specification for the port.
+
+    - **A. Character polish — *Marvel Tōkon* reference.** Bold, readable silhouettes first; dimensional
+      lighting (warm key, core shadow, rim on the near edge, head/jaw highlights) painted or lit per pose;
+      exaggerated anticipation → impact → recoil punctuation. Constraint: Feedback's identity is fixed —
+      slim build, bucket hat and locks, burgundy jacket with cream stripes, fitted trousers, Clarks
+      Wallabees, one gold tooth, face concealed — and item 2's mic-hand rule applies unchanged: one mic, the
+      declared anatomical hand, no `flip_h`, no invented left-facing art.
+    - **B. Stage polish — *Street Fighter 6* reference.** Layered depth between far scenery, crowd and the
+      fight lane; bass-vibrating speaker cones on the cosmetic beat pulse; dynamic lighting and floor/rail
+      reflections against the three existing day/sunset/night phases; a fighting lane that stays legible
+      above all of it (the arena's readability is a hard requirement, not a nice-to-have).
+    - **C. Arcade energy — *Fatal Fury: City of the Wolves* reference.** Immediate hit feedback at contact,
+      directional speed lines that follow the strike, layered impact bursts (core → ring → rays) that never
+      cover the contact, and crowd reactions with individual personality and phase rather than one shared
+      loop.
+    - **Boundaries.** Presentation only: no change to hitboxes, startup/active/recovery, damage, guard
+      rules, AI, the beat clock or the seeded simulation. Effects and shadows stay separate from source art
+      (no baked-in VFX, no re-exported sprites), and the mic/cable continuity audit still gates any new
+      Feedback pose that is drawn.
+    - **[TODO] Nothing here is implemented yet.** No shader, particle or lighting pass exists in `/godot`;
+      this item records the direction so new frames and stage work are judged against one target.
+
+30. **Future 2v2 / 3v3 Sound-Clash Crew tag-switching — [TODO], architecture note only, not implemented
+    (2026-11-19).**
+
+    **Do not implement yet.** One-on-one stays the only playable mode and Feedback vs Feedback stays the
+    default test setup (item 24). This records where the seams are so the crew mode can be added later
+    without rewriting the fighter.
+
+    - **`FighterRoster`** already is the data layer: per-fighter frames, offsets, scales, `anim_source_max`,
+      attack-anim mapping and the shared adult/kid height rules. A "crew" can later be nothing more than an
+      ordered list of roster keys plus a side owner — no new art pipeline, no per-fighter scripts.
+    - **`MatchSetup`** already owns the match choices as plain state (`p1_fighter`, `p2_fighter`, `ai_mode`,
+      `subtitles`). Extending it to two crews with an active index per side is an additive change to that
+      autoload and the Character & Match Setup screen; the arena keeps reading the same contract.
+    - **`BaseFighter`** stays the single shared FSM. A tag would add an explicit `TAG_IN` / `TAG_OUT` state
+      pair and a `tag` command beside `jump`/`guard`/`attack`, entered through the existing
+      `change_state()` authority — never a parallel state machine and never a scene-level swap.
+    - **Match layer.** A round ends when a side has no runnable fighter left, not when one body's health
+      hits zero; the KO → knockdown → announcement sequence stays per body, checked after the announcement.
+    - **Only the two active bodies are simulated.** Bench fighters are data: no off-screen physics, no spare
+      hurtbox, no assist hitbox.
+    - **[TODO] Decide before any code:** tag-in invulnerability, cooldown, whether hype/combo carries across
+      a swap, entrance camera framing, HUD treatment for a full crew, and how a swap is recorded so a replay
+      stays deterministic.
+    - **Explicitly not built:** no tag input, no assists, no bench bodies, no simultaneous multi-fighter
+      fights, and no change to the current 1v1 rules.
+
+31. **Loose root reference files relocated into `artifacts/sound-clash/art-source/references/` — housekeeping
+    (2026-11-19).** The three UUID-named `.mov` screen recordings
+    (`6B29EBF9-…`, `7CEDC855-…`, `BC9199CE-…`), `Feedback_Forward_Prepared_Transparent.zip`,
+    `Feedback_Crossed_Arms_Import.py`, `Feedback_Walk_Video_Import.py`, the foot-off-ground BOX contact PNG
+    and the Baseball-pitch lean comparison MP4 were moved with `git mv` (byte-identical, history kept) so the
+    repository root holds only `AGENTS.md`, `FREEBUFF-HANDOFF.md`, the two source trees, `godot/`, `docs/`
+    and the workspace config. The in-game copy of the BOX frame stays at
+    `godot/assets/sprites/feedback/box-footoff-ground-2026-11-15/`; only the loose reference moved, so item 6's
+    offset/scale numbers are unaffected. `Feedback_Walk_Video_Import.py` reads `part-*.b64` files that sit
+    beside it and are not in the repository, so it remains a record of how the video was delivered rather
+    than a runnable tool — true before the move and after it.
 
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 

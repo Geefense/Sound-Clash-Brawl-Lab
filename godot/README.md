@@ -32,7 +32,7 @@ godot/
 | `assets/sprites/feedback/imported-poses/` | `artifacts/sound-clash/art-source/feedback/imported-poses/` | 6 study PNGs |
 | `assets/sprites/feedback/walk-four-keys/poses/` | `artifacts/sound-clash/art-source/feedback/walk-four-keys/poses/` | 4 walk keys — **unapproved movement test** |
 | `assets/sprites/feedback/selected-frames-2026-11-15/` | `artifacts/sound-clash/art-source/feedback/selected-frames-2026-11-15/` | 20 selected 512×512 frames + `inventory.json` — owner-approved working art, originals untouched |
-| `assets/sprites/feedback/box-footoff-ground-2026-11-15/` | repository root `Feedback_Baseball_Pitch_BOX_Foot_Off_Ground.png` | foot-off-ground BOX contact frame — owner-approved, byte-identical copy |
+| `assets/sprites/feedback/box-footoff-ground-2026-11-15/` | `artifacts/sound-clash/art-source/references/Feedback_Baseball_Pitch_BOX_Foot_Off_Ground.png` | foot-off-ground BOX contact frame — owner-approved, byte-identical copy |
 | `assets/flow_exports/walk/` | `art-source/feedback/` and `chat-movement-transfer-2026-11-13/movement-reference/` | walk flow test, approved 132 BPM reference |
 
 Copies were verified by file count and per-file SHA-256 against the sources. Original filenames,
@@ -237,7 +237,7 @@ was edited.
 | `walk` | 4 walk keys (`01_contact_a` … `04_pass_b`) | pinned sole, y 566 in the 460×620 keys |
 | `crouch` | `07_crouch` | feet, y 900 |
 | `jab` | `09_point` (poke — placeholder for a jab) | feet, y 900 |
-| `box_startup` / `box_active` / `box_recovery` | `12` / **root `Feedback_Baseball_Pitch_BOX_Foot_Off_Ground.png`** / `14` | feet, y 900 / planted sole row 1406 of 1536 / feet, y 900 |
+| `box_startup` / `box_active` / `box_recovery` | `12` / **reference `Feedback_Baseball_Pitch_BOX_Foot_Off_Ground.png`** / `14` | feet, y 900 / planted sole row 1406 of 1536 / feet, y 900 |
 | `hitstun` | `16_gut_punch` | pelvis, y 610 |
 | `knockdown` | `17_seated_landing` | ground contact, y 900 |
 | `ko` | `02_knockout` | feet, y 900 |

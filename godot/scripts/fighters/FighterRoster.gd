@@ -99,12 +99,19 @@ const FIGHTERS := {
 		"frames": {
 			# Mic stance carries the neutral movement states; the 2026-11-18 set (AGENTS.md §9
 			# item 34) covers guard, jab, upper box and celebration, and the 2026-11-19 batch
-			# (item 38) replaces the single taunt / hit / launch / knockdown poses with drawn
-			# sequences. `walk` still recycles the mic stance: the 2026-11-19 walk video is a
-			# phone-framed close-up that clips the hat crown and one boot in every frame, so it
-			# is not wired — see the batch PROVENANCE.md.
+			# (item 38) replaces the single taunt / hit / launch / knockdown poses and the
+			# recycled idle walk with drawn sequences. The walk is the video's own drawings, so
+			# the phone crop (hat crown and one boot at the frame edge) is a source limitation —
+			# see the batch PROVENANCE.md.
 			&"idle": ["res://assets/sprites/lickshot/idle.png"],
-			&"walk": ["res://assets/sprites/lickshot/idle.png"],
+			&"walk": [
+				"res://assets/sprites/lickshot/walk/01.png",
+				"res://assets/sprites/lickshot/walk/02.png",
+				"res://assets/sprites/lickshot/walk/03.png",
+				"res://assets/sprites/lickshot/walk/04.png",
+				"res://assets/sprites/lickshot/walk/05.png",
+				"res://assets/sprites/lickshot/walk/06.png",
+			],
 			&"jump": ["res://assets/sprites/lickshot/idle.png"],
 			&"crouch": ["res://assets/sprites/lickshot/idle.png"],
 			# One drawn guard pose covers entry, the held brace and the release.
@@ -165,7 +172,11 @@ const FIGHTERS := {
 			# y = H/2 − sole_row − 8 / (anim_scale × FIGHTER_ART_SCALE).
 			# States still drawn by the mic stance keep the idle placement.
 			"idle": Vector2(7.5, -281.9),
-			"walk": Vector2(7.5, -281.9),
+			# The walk canvas is capped at exactly 512 px tall, which leaves a 2 px feather under
+			# the sole that the shared group formula does not count; this offset is the measured
+			# value (2 source px lifted), so all six stride frames plant on 592 like the standing
+			# poses instead of sinking 0.6 px into the sand.
+			"walk": Vector2(-7.3, -281.7),
 			"jump": Vector2(7.5, -281.9),
 			"crouch": Vector2(7.5, -281.9),
 			"high_kick": Vector2(127.5, -282.0),
@@ -192,7 +203,7 @@ const FIGHTERS := {
 			# 121.75 px crown-to-sole / that frame's measured height (the 1.24 art scale is
 			# applied once, by BaseFighter, so every fighter grows together).
 			"idle": 0.24014,
-			"walk": 0.24014, "jump": 0.24014, "crouch": 0.24014,
+			"walk": 0.24157, "jump": 0.24014, "crouch": 0.24014,
 			"high_kick": 0.23873,
 			"sonic_clap_windup": 0.23919,
 			"sonic_clap_impact": 0.43021,   # the shockwave sits above the cap in this frame
@@ -210,13 +221,13 @@ const FIGHTERS := {
 		# the 68-tick taunt) and a short snap for the reactions. Single-frame poses keep the
 		# default 1 fps, so nothing that was already wired changes speed.
 		"anim_fps": {
-			"skank": 7.0, "hitstun": 12.0,
+			"walk": 10.0, "skank": 7.0, "hitstun": 12.0,
 			"launched": 10.0, "tumble": 10.0,
 			"knockdown": 8.0, "ko": 5.0,
 		},
 		# The knockdown and KO settle on their last drawn frame instead of snapping back.
 		"anim_loop": {
-			"skank": true, "hitstun": false, "launched": false,
+			"walk": true, "skank": true, "hitstun": false, "launched": false,
 			"tumble": true, "knockdown": false, "ko": false,
 		},
 		"anim_source_max": {

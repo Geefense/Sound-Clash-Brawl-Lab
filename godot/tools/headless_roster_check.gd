@@ -229,7 +229,7 @@ func _run() -> void:
 	# are multi-frame animations, so one shared canvas per group is what proves no frame can
 	# bob or sink mid-sequence.
 	var lick_seq := {
-		&"skank": 8, &"hitstun": 3, &"launched": 3,
+		&"walk": 6, &"skank": 8, &"hitstun": 3, &"launched": 3,
 		&"tumble": 4, &"knockdown": 2, &"ko": 2,
 	}
 	var seq_missing := []
@@ -254,10 +254,10 @@ func _run() -> void:
 			var tex := p2.sprite.sprite_frames.get_frame_texture(key, i)
 			if tex != null:
 				seq_tallest = maxf(seq_tallest, float(maxi(tex.get_width(), tex.get_height())))
-	_check(seq_missing.is_empty(), "all six Lickshot sequences are registered",
-		"missing %s" % [seq_missing] if not seq_missing.is_empty() else "skank, hitstun, launched, tumble, knockdown, ko")
+	_check(seq_missing.is_empty(), "all seven Lickshot sequences are registered",
+		"missing %s" % [seq_missing] if not seq_missing.is_empty() else "walk, skank, hitstun, launched, tumble, knockdown, ko")
 	_check(seq_counts.is_empty(), "every sequence carries its full drawn frame count",
-		"%s" % [seq_counts] if not seq_counts.is_empty() else "8 / 3 / 3 / 4 / 2 / 2")
+		"%s" % [seq_counts] if not seq_counts.is_empty() else "6 / 8 / 3 / 3 / 4 / 2 / 2")
 	_check(seq_off.is_empty(), "every frame of every sequence lands on the y 592 sand line",
 		"off-floor %s" % [seq_off] if not seq_off.is_empty() else "592.0")
 	_check(seq_below.is_empty(), "no frame of any sequence sinks below the sand",
@@ -271,6 +271,11 @@ func _run() -> void:
 	_check(not p2.sprite.sprite_frames.get_animation_loop(&"knockdown")
 			and not p2.sprite.sprite_frames.get_animation_loop(&"ko"),
 		"knockdown and KO settle on their last drawn frame")
+	# The 2026-11-19 walk video replaces the recycled idle stance on the movement states.
+	_check(not str(FighterRoster.FIGHTERS[&"lickshot"]["frames"][&"walk"]).contains("idle.png")
+			and p2.sprite.sprite_frames.get_animation_speed(&"walk") == 10.0
+			and p2.sprite.sprite_frames.get_animation_loop(&"walk"),
+		"the walk loop plays the six drawn stride frames, not the idle stance")
 	# Retired placeholders: the single-frame taunt/recoil poses are no longer referenced, while
 	# every approved frame from the 2026-11-17/18 sets stays wired.
 	var lick_frames_text := str(FighterRoster.FIGHTERS[&"lickshot"]["frames"])

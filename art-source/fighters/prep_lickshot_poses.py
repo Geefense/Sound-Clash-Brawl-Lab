@@ -558,6 +558,27 @@ def slice_grid(im: Image.Image, rows: int, cols: int, label: str) -> list[tuple[
     return out
 
 
+def _drop_small_fragments(frame: Image.Image, min_area: int = 2000) -> Image.Image:
+    """Drop detached specks left over after a group is downscaled.
+
+    A boot that leaves the phone-video frame edge is joined to the body by a 1 px stalk in
+    the upload; the LANCZOS downscale drops the stalk and leaves the chopped piece floating
+    beside the fighter. Anything that is not the drawing itself and is smaller than a hand
+    is not art.
+    """
+    a = np.asarray(frame).copy()
+    solid = a[:, :, 3] > 32
+    labels, count = ndimage.label(solid)
+    if count <= 1:
+        return frame
+    sizes = ndimage.sum(solid, labels, range(1, count + 1))
+    body = int(np.argmax(sizes)) + 1
+    specks = [i + 1 for i in range(count) if i + 1 != body and sizes[i] < min_area]
+    if specks:
+        a[np.isin(labels, specks)] = 0
+    return Image.fromarray(a)
+
+
 def compose_group(poses: list[Image.Image], label: str) -> tuple[list[Image.Image], dict]:
     """Place every pose of one animation on a shared canvas, anchored by sole and stance.
 
@@ -583,6 +604,7 @@ def compose_group(poses: list[Image.Image], label: str) -> tuple[list[Image.Imag
     if scale < 1.0:
         size = (max(1, round(width * scale)), max(1, round(height * scale)))
         canvas = [f.resize(size, Image.LANCZOS) for f in canvas]
+    canvas = [_drop_small_fragments(f) for f in canvas]
     final = [_metrics(f) for f in canvas]
     soles = [m["sole_row"] for m in final]
     stance = [m["stance_x"] for m in final]
@@ -657,13 +679,16 @@ def _contact_sheet(frames: list[Image.Image], path: Path, scale: float = 0.5,
     sheet.save(path)
 
 
-def extract_walk(count: int = 4) -> tuple[list[Image.Image], dict]:
+def extract_walk(count: int = 6) -> tuple[list[Image.Image], dict]:
     """Pull evenly spaced stride frames out of the owner's 3 s walk video.
 
     The upload is a phone-framed close-up: the hat crown is flush with the top edge in
-    every frame and one boot always leaves the left or right edge. Frames are therefore
-    chosen by *least* edge clipping inside each stride phase, and the crop is recorded
-    in the report rather than hidden — see the batch PROVENANCE.md.
+    every frame and one boot always leaves the left or right edge, so no single frame is
+    whole. Frames are therefore sampled evenly across the clip (one drawing per step of
+    the stride, never an invented in-between) and each pick is nudged by at most one frame
+    towards the less-clipped drawing. Detached boot fragments that the phone crop leaves
+    floating at an edge are dropped by the island rule. The crop itself is recorded in the
+    report and the batch PROVENANCE.md rather than hidden.
     """
     ffmpeg = os.environ.get("FFMPEG") or shutil.which("ffmpeg")
     if not ffmpeg:
@@ -706,14 +731,14 @@ def extract_walk(count: int = 4) -> tuple[list[Image.Image], dict]:
             period, best = lag, score
     period = max(period, count)
 
-    anchor = min(range(len(frames)), key=lambda i: info[i]["left_boot"] + info[i]["right_boot"])
+    step = len(frames) / float(count)
     chosen: list[int] = []
     for k in range(count):
-        target = anchor + int(round(k * period / count))
+        target = int(round(k * step))
         best_i, best_score = None, None
-        for delta in (0, -1, 1, -2, 2):
-            i = target + delta
-            if i < 0 or i >= len(frames) or i in chosen:
+        for delta in (0, -1, 1):
+            i = min(max(target + delta, 0), len(frames) - 1)
+            if i in chosen:
                 continue
             score = info[i]["left_boot"] + info[i]["right_boot"]
             if best_score is None or score < best_score:
@@ -809,20 +834,18 @@ def run_batch(only: set[str] | None = None) -> None:
 
     # ---- 3. The 3 s walk video -------------------------------------------
     if wanted("walk"):
-        poses, meta = extract_walk(4)
+        poses, meta = extract_walk(6)
         frames, record = compose_group(poses, "Lickshot bossy walk")
         ref = int(np.median(record["crown_to_sole"]))
-        # NOT under godot/assets: this walk is not wired. The upload crops the hat crown and
-        # one boot in every frame, so the frames are kept with the source for review until a
-        # full-body export arrives. Wiring them would put chopped art in the walk loop.
-        _save_group(frames, BATCH / "walk-frames", [f"{i + 1:02d}.png" for i in range(len(frames))])
+        _save_group(frames, OUT / "walk", [f"{i + 1:02d}.png" for i in range(len(frames))])
         _contact_sheet(frames, REVIEW / "walk-strip.png")
         report["walk"] = {**record, **meta, **_anim_numbers(record, ref),
-                          "wired": False,
-                          "blocked": "source crops the hat crown and clips one boot in every frame; "
-                                     "needs a full-body re-export before it can join the walk loop",
+                          "wired": True,
+                          "caveat": "the source crops the hat crown and one boot in every frame; "
+                                    "the frames are the video's own drawings, so the crop is a source "
+                                    "limitation, not a processing one — a full-body re-export fixes it",
                           "source": str(WALK_VIDEO.relative_to(ROOT)),
-                          "outputs": [f"batch-2026-11-19/walk-frames/{i + 1:02d}.png" for i in range(len(frames))]}
+                          "outputs": [f"{OUT.name}/walk/{i + 1:02d}.png" for i in range(len(frames))]}
         print(f"walk: {len(frames)} frames {record['frame']} scale {report['walk']['anim_scale']} "
               f"source frames {meta['chosen']} period {meta['period_frames']}")
 

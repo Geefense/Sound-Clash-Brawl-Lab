@@ -410,77 +410,95 @@
   "walk": {
     "label": "Lickshot bossy walk",
     "frame": [
-      344,
+      416,
       512
     ],
-    "downscale": 0.5565,
+    "downscale": 0.5523,
     "sole_row": 509,
     "sole_spread": [
       509,
       509
     ],
-    "stance_centre_x": 217.5,
+    "stance_centre_x": 215.3,
     "stance_spread": [
-      217.0,
-      218.0
+      215.0,
+      216.0
     ],
     "crown_rows": [
+      7,
       1,
+      7,
+      5,
       1,
-      3,
-      3
+      7
     ],
     "crown_to_sole": [
+      503,
       509,
+      503,
+      505,
       509,
-      507,
-      507
+      503
     ],
     "period_frames": 22,
     "period_iou": 0.955,
     "source_frames": 89,
     "chosen": [
-      18,
-      22,
-      30,
-      33
+      1,
+      16,
+      31,
+      44,
+      60,
+      75
     ],
     "clipping": [
       {
-        "left_boot": 238,
-        "right_boot": 0,
-        "crown_cut": 153
+        "left_boot": 0,
+        "right_boot": 338,
+        "crown_cut": 249
       },
       {
-        "left_boot": 238,
-        "right_boot": 0,
-        "crown_cut": 153
-      },
-      {
-        "left_boot": 248,
-        "right_boot": 0,
-        "crown_cut": 65
+        "left_boot": 0,
+        "right_boot": 318,
+        "crown_cut": 227
       },
       {
         "left_boot": 248,
         "right_boot": 0,
         "crown_cut": 65
+      },
+      {
+        "left_boot": 241,
+        "right_boot": 0,
+        "crown_cut": 153
+      },
+      {
+        "left_boot": 0,
+        "right_boot": 318,
+        "crown_cut": 225
+      },
+      {
+        "left_boot": 249,
+        "right_boot": 0,
+        "crown_cut": 63
       }
     ],
-    "anim_scale": 0.23967,
+    "anim_scale": 0.24157,
     "anim_offset": [
-      -45.5,
-      -279.9
+      -7.3,
+      -279.7
     ],
     "anim_source_max": 512.0,
-    "wired": false,
-    "blocked": "source crops the hat crown and clips one boot in every frame; needs a full-body re-export before it can join the walk loop",
+    "wired": true,
+    "caveat": "the source crops the hat crown and one boot in every frame; the frames are the video's own drawings, so the crop is a source limitation, not a processing one \u2014 a full-body re-export fixes it",
     "source": "art-source/fighters/lickshot/batch-2026-11-19/15_bossy-walk_original.mov",
     "outputs": [
-      "batch-2026-11-19/walk-frames/01.png",
-      "batch-2026-11-19/walk-frames/02.png",
-      "batch-2026-11-19/walk-frames/03.png",
-      "batch-2026-11-19/walk-frames/04.png"
+      "lickshot/walk/01.png",
+      "lickshot/walk/02.png",
+      "lickshot/walk/03.png",
+      "lickshot/walk/04.png",
+      "lickshot/walk/05.png",
+      "lickshot/walk/06.png"
     ]
   }
 }

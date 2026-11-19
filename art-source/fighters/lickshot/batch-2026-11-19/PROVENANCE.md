@@ -27,7 +27,8 @@ outputs are new files — no extractor overwrites an approved asset.
 4. Every pose in one animation group is composed onto a **shared canvas**, placed so its sole row
    and stance centre line up, then the group is downscaled once to the 512 px cap. `FighterRoster`
    stores one offset/scale per animation name, so a shared canvas is what stops the walk/reaction
-   loops from bobbing or sinking frame to frame.
+   loops from bobbing or sinking frame to frame. Detached specks left by the downscale are dropped
+   from the final canvas, so no chopped-off fragment reaches a sprite sheet.
 5. The floor rule: the drawn alpha bottom lands on world **y 592** (`BaseFighter.REACTION_FLOOR_Y`),
    the same 8 px above the y 600 origin line the earlier L!ckshot poses use. Measured sole spread
    inside every group is **0 px**.
@@ -40,19 +41,29 @@ appears in every drawing, so its measured disk-equivalent diameter calibrates th
 onto the sheet's scale (measured ratio **2.682**, recorded as `art_scale_match`). Without it the
 C-recoil frame would render ~2.7× larger than the airborne poses it sits beside.
 
-## Walk video — processed but NOT wired
+## Walk video — wired, with a source-crop caveat
 
 The walk upload is a phone-framed close-up, not a full-body export. Measured across all 89 frames:
 
 - the **hat crown is cut by the top edge in every frame** (row 0 already carries a 112–124 px wide
   hat cross-section that keeps widening below it);
 - **every frame clips one boot** at the left or right edge (edge-column pixel counts in the batch
-  report), and the clean-right window of each 22-frame stride period contains only half a step.
+  report).
 
-So no 4–6 frame loop can be extracted without chopped art. The four best (least-clipped) frames are
-keyed, capped and floor-aligned into `walk-frames/` with `review/walk-strip.png` for the owner to
-check, and `FighterRoster` keeps the mic stance on `walk`. A re-export with the full figure inside
-the frame, with margin on all four sides, is what unblocks it.
+Six of the video's own drawings are therefore sampled evenly across the 2.97 s clip (source frames
+1, 16, 31, 44, 60, 75 — one drawing per step, no invented in-between), each pick nudged by at most
+one frame towards the less-clipped drawing, then keyed, capped and floor-aligned into
+`godot/assets/sprites/lickshot/walk/` with `review/walk-strip.png`. All six frames land on y 592.
+
+One artefact of the crop is worth recording: a boot that leaves the frame edge is joined to the body
+by a 1 px stalk in the upload, and the downscale to the 512 px cap drops that stalk, leaving the
+chopped piece floating beside the fighter. `compose_group()` drops detached specks under 2 000 px,
+so no stray fragment ships — the first pass had one in frame 04.
+
+This is a stopgap, not the finished walk: the crown and one boot are missing from the drawings
+themselves, and no processing restores pixels the phone never framed. A re-export with the full
+figure inside the frame, with margin on all four sides, replaces these six frames as soon as it
+arrives.
 
 ## Review sheets
 

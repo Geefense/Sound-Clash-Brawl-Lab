@@ -98,23 +98,64 @@ const FIGHTERS := {
 		"uses_scene_frames": false,
 		"frames": {
 			# Mic stance carries the neutral movement states; the 2026-11-18 set (AGENTS.md §9
-			# item 34) now covers guard, jab, upper box, hitstun, launch, taunt and celebration.
+			# item 34) covers guard, jab, upper box, taunt art and celebration, and the approved
+			# 2026-11-19 batch (§9 item 38) owns walk, the 8-pose skank and every reaction.
 			&"idle": ["res://assets/sprites/lickshot/idle.png"],
-			&"walk": ["res://assets/sprites/lickshot/idle.png"],
+			# Signature selector walk: six evenly spaced stride poses extracted from the owner's
+			# 3 s walk video (the recycled idle walk is retired).
+			&"walk": [
+				"res://assets/sprites/lickshot/walk_01.png",
+				"res://assets/sprites/lickshot/walk_02.png",
+				"res://assets/sprites/lickshot/walk_03.png",
+				"res://assets/sprites/lickshot/walk_04.png",
+				"res://assets/sprites/lickshot/walk_05.png",
+				"res://assets/sprites/lickshot/walk_06.png",
+			],
 			&"jump": ["res://assets/sprites/lickshot/idle.png"],
 			&"crouch": ["res://assets/sprites/lickshot/idle.png"],
 			# One drawn guard pose covers entry, the held brace and the release.
 			&"block": ["res://assets/sprites/lickshot/guard_stance.png"],
 			&"guard_entry": ["res://assets/sprites/lickshot/guard_stance.png"],
 			&"guard_recovery": ["res://assets/sprites/lickshot/guard_stance.png"],
+			# The approved 2026-11-18 gun-finger lean stays on `skank`; the 8-pose sheet below
+			# is the full T groove, one drawing per taunt slot.
 			&"skank": ["res://assets/sprites/lickshot/skank_point.png"],
+			&"skank_1": ["res://assets/sprites/lickshot/skank_1.png"],
+			&"skank_2": ["res://assets/sprites/lickshot/skank_2.png"],
+			&"skank_3": ["res://assets/sprites/lickshot/skank_3.png"],
+			&"skank_4": ["res://assets/sprites/lickshot/skank_4.png"],
+			&"skank_5": ["res://assets/sprites/lickshot/skank_5.png"],
+			&"skank_6": ["res://assets/sprites/lickshot/skank_6.png"],
+			&"skank_7": ["res://assets/sprites/lickshot/skank_7.png"],
+			&"skank_8": ["res://assets/sprites/lickshot/skank_8.png"],
 			&"jab": ["res://assets/sprites/lickshot/jab.png"],
 			&"upper_box": ["res://assets/sprites/lickshot/upper_box.png"],
-			&"hitstun": ["res://assets/sprites/lickshot/hitstun_recoil.png"],
-			&"launched": ["res://assets/sprites/lickshot/launched_recoil.png"],
-			&"knockdown": ["res://assets/sprites/lickshot/idle.png"],
-			&"ko": ["res://assets/sprites/lickshot/idle.png"],
-			&"tumble": ["res://assets/sprites/lickshot/idle.png"],
+			# Reactions from the 12-pose sheet: top row = standing recoil, middle row = airborne
+			# launch/tumble, bottom row = grounded knockdown and prone KO. The single C-recoil
+			# upload opens `launched`.
+			&"hitstun": [
+				"res://assets/sprites/lickshot/hitstun_01.png",
+				"res://assets/sprites/lickshot/hitstun_02.png",
+				"res://assets/sprites/lickshot/hitstun_03.png",
+				"res://assets/sprites/lickshot/hitstun_04.png",
+			],
+			&"launched": [
+				"res://assets/sprites/lickshot/launched_01.png",
+				"res://assets/sprites/lickshot/launched_02.png",
+				"res://assets/sprites/lickshot/launched_03.png",
+			],
+			&"tumble": [
+				"res://assets/sprites/lickshot/tumble_01.png",
+				"res://assets/sprites/lickshot/tumble_02.png",
+			],
+			&"knockdown": [
+				"res://assets/sprites/lickshot/knockdown_01.png",
+				"res://assets/sprites/lickshot/knockdown_02.png",
+			],
+			&"ko": [
+				"res://assets/sprites/lickshot/ko_01.png",
+				"res://assets/sprites/lickshot/ko_02.png",
+			],
 			# K = BOX is the Sonic Clap: arms spread wide, then the oversized hands meet with a
 			# golden shockwave. L = TUMP is the extended high left kick.
 			&"high_kick": ["res://assets/sprites/lickshot/high_kick.png"],
@@ -129,12 +170,23 @@ const FIGHTERS := {
 			# y = H/2 − sole_row − 8 / (anim_scale × FIGHTER_ART_SCALE).
 			# States still drawn by the mic stance keep the idle placement.
 			"idle": Vector2(7.5, -281.9),
-			"walk": Vector2(7.5, -281.9),
 			"jump": Vector2(7.5, -281.9),
 			"crouch": Vector2(7.5, -281.9),
-			"knockdown": Vector2(7.5, -281.9),
-			"ko": Vector2(7.5, -281.9),
-			"tumble": Vector2(7.5, -281.9),
+			# 2026-11-19 batch (§9 item 38): every frame's canvas is symmetric around its
+			# stance centre (so x = 0) and its lowest alpha row is the sole row, measured by
+			# `prep_lickshot_poses.py --batch 2026-11-19` for the y 592 rule.
+			"walk": Vector2(0.0, -281.77),
+			"skank_1": Vector2(0.0, -198.52),
+			"skank_2": Vector2(0.0, -196.52),
+			"skank_3": Vector2(0.0, -189.02),
+			"skank_4": Vector2(0.0, -196.52),
+			"skank_5": Vector2(0.0, -192.52),
+			"skank_6": Vector2(0.0, -192.52),
+			"skank_7": Vector2(0.0, -192.52),
+			"skank_8": Vector2(0.0, -195.52),
+			"knockdown": Vector2(0.0, -101.46),
+			"ko": Vector2(0.0, -59.46),
+			"tumble": Vector2(0.0, -134.46),
 			"high_kick": Vector2(127.5, -282.0),
 			"sonic_clap_windup": Vector2(-28.5, -281.0),
 			"sonic_clap_impact": Vector2(141.0, -167.5),
@@ -144,8 +196,8 @@ const FIGHTERS := {
 			"block": Vector2(-47.5, -282.0),
 			"guard_entry": Vector2(-47.5, -282.0),
 			"guard_recovery": Vector2(-47.5, -282.0),
-			"hitstun": Vector2(-45.5, -282.1),
-			"launched": Vector2(31.5, -282.1),
+			"hitstun": Vector2(0.0, -223.96),
+			"launched": Vector2(0.0, -190.46),
 			"skank": Vector2(-16.5, -282.0),
 			"celebration": Vector2(-1.0, -282.1),
 		},
@@ -153,23 +205,40 @@ const FIGHTERS := {
 			# 121.75 px crown-to-sole / that frame's measured height (the 1.24 art scale is
 			# applied once, by BaseFighter, so every fighter grows together).
 			"idle": 0.24014,
-			"walk": 0.24014, "jump": 0.24014, "crouch": 0.24014,
-			"knockdown": 0.24014, "ko": 0.24014, "tumble": 0.24014,
+			"jump": 0.24014, "crouch": 0.24014,
+			"walk": 0.241,
+			"skank_1": 0.33914, "skank_2": 0.33914, "skank_3": 0.33914,
+			"skank_4": 0.33914, "skank_5": 0.33914, "skank_6": 0.33914,
+			"skank_7": 0.33914, "skank_8": 0.33914,
+			"knockdown": 0.30062, "ko": 0.30062, "tumble": 0.30062,
 			"high_kick": 0.23873,
 			"sonic_clap_windup": 0.23919,
 			"sonic_clap_impact": 0.43021,   # the shockwave sits above the cap in this frame
 			"jab": 0.23873, "upper_box": 0.23873,
 			"block": 0.23873, "guard_entry": 0.23873, "guard_recovery": 0.23873,
-			"hitstun": 0.23826, "launched": 0.23826, "celebration": 0.23826,
+			"hitstun": 0.30062, "launched": 0.30062, "celebration": 0.23826,
 			"skank": 0.23873,
 		},
 		"anim_source_max": {
 			"idle": 512.0, "walk": 512.0, "jump": 512.0, "crouch": 512.0,
-			"knockdown": 512.0, "ko": 512.0, "tumble": 512.0,
+			"knockdown": 334.0, "ko": 356.0, "tumble": 390.0,
 			"high_kick": 512.0, "sonic_clap_windup": 512.0, "sonic_clap_impact": 512.0,
 			"jab": 512.0, "upper_box": 512.0,
 			"block": 512.0, "guard_entry": 512.0, "guard_recovery": 512.0,
-			"hitstun": 512.0, "launched": 512.0, "skank": 512.0, "celebration": 512.0,
+			"hitstun": 480.0, "launched": 358.0, "skank": 512.0, "celebration": 512.0,
+			"skank_1": 361.0, "skank_2": 357.0, "skank_3": 372.0, "skank_4": 357.0,
+			"skank_5": 349.0, "skank_6": 349.0, "skank_7": 349.0, "skank_8": 355.0,
+		},
+		# Playback rate per animation, applied by build_frames. Walk is one cycle per two
+		# beats at 132 BPM; the reaction loops are timed to their FSM window (hitstun 14-22
+		# ticks, launched 18 ticks before the tumble switch). §9 item 38.
+		"anim_fps": {
+			"walk": 6.6,
+			"hitstun": 12.0,
+			"launched": 10.0,
+			"tumble": 6.0,
+			"knockdown": 4.0,
+			"ko": 2.5,
 		},
 		# K = BOX plays windup → impact; L = TUMP plays the high kick. The kick's contact box
 		# moves up to head height, because the art is an extended high kick and not the
@@ -196,7 +265,10 @@ const FIGHTERS := {
 		},
 		# U = collar grab and the round-win / Hype Surge pose share the wide-open arms art.
 		"state_anims": {"grab": &"celebration"},
-		"taunt_sequence": [&"skank"],
+		# T plays the full 8-pose lean-back groove, one drawing per taunt slot; TAUNT_TICKS is
+		# unchanged, so the commitment and its hype timing are exactly as approved.
+		"taunt_sequence": [&"skank_1", &"skank_2", &"skank_3", &"skank_4",
+			&"skank_5", &"skank_6", &"skank_7", &"skank_8"],
 		"celebrate_anim": &"celebration",
 		# Every attack now ships its own drawn pose, so none of them also gets the generic
 		# strike smear: the jab's placeholder smear is retired.
@@ -325,13 +397,14 @@ static func build_frames(key: StringName) -> SpriteFrames:
 	var frames := SpriteFrames.new()
 	frames.remove_animation(&"default")
 	var table: Dictionary = data["frames"]
+	var speeds: Dictionary = data.get("anim_fps", {})
 	for anim in table:
 		var paths: Array = table[anim]
 		if paths.is_empty():
 			continue
 		frames.add_animation(anim)
 		frames.set_animation_loop(anim, true)
-		frames.set_animation_speed(anim, 1.0)
+		frames.set_animation_speed(anim, float(speeds.get(anim, 1.0)))
 		for path in paths:
 			var tex := load(String(path)) as Texture2D
 			if tex == null:

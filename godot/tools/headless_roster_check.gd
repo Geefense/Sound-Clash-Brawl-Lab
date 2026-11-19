@@ -30,10 +30,16 @@ func _check(condition: bool, label: String, detail: String = "") -> void:
 ## (offset is divided by the import-cap ratio, scale multiplied by it), so this tests the art
 ## and the placement together instead of re-deriving the numbers in the offset table.
 func _anim_floor_y(f: BaseFighter, key: StringName) -> float:
+	return _anim_floor_y_at(f, key, 0)
+
+
+func _anim_floor_y_at(f: BaseFighter, key: StringName, frame: int) -> float:
 	var frames := f.sprite.sprite_frames
 	if frames == null or not frames.has_animation(key):
 		return -99999.0
-	var tex := frames.get_frame_texture(key, 0)
+	if frame >= frames.get_frame_count(key):
+		return -99999.0
+	var tex := frames.get_frame_texture(key, frame)
 	if tex == null:
 		return -99999.0
 	var img := tex.get_image()
@@ -206,7 +212,10 @@ func _run() -> void:
 	# Guard, hitstun, launch, taunt and grab all have dedicated drawings now.
 	_check(p2._state_anims.get("grab", &"") == &"celebration",
 		"Lickshot's collar grab plays the wide-open arms pose")
-	_check(p2._taunt_sequence == [&"skank"], "Lickshot's taunt plays the gun-finger lean")
+	_check(p2._taunt_sequence.size() == 8
+			and p2._taunt_sequence[0] == &"skank_1" and p2._taunt_sequence[7] == &"skank_8",
+		"Lickshot's taunt grooves through the full 8-pose lean-back sequence",
+		"%d poses" % p2._taunt_sequence.size())
 	_check(p2._celebrate_anim == &"celebration", "Lickshot celebrates with the arms-open pose")
 	p2.play_celebration(6)
 	await physics_frame
@@ -214,6 +223,50 @@ func _run() -> void:
 		String(p2.sprite.animation))
 	p2._celebrate_ticks = 0
 	p2._play_state_anim()
+
+	# ---- Lickshot's 2026-11-19 walk / skank / reactions (AGENTS.md §9 item 38) ----
+	# Every animation in the batch and its frame count: the 6-frame walk, the 8 skank poses
+	# (one drawing per taunt slot), and the 4 / 3 / 2 / 2 / 2 reaction loops.
+	var batch_frames := {
+		&"walk": 6, &"skank_1": 1, &"skank_2": 1, &"skank_3": 1, &"skank_4": 1,
+		&"skank_5": 1, &"skank_6": 1, &"skank_7": 1, &"skank_8": 1,
+		&"hitstun": 4, &"launched": 3, &"tumble": 2, &"knockdown": 2, &"ko": 2,
+	}
+	var batch_missing := []
+	var batch_off := []
+	var batch_tallest := 0.0
+	for key in batch_frames:
+		if not p2.sprite.sprite_frames.has_animation(key):
+			batch_missing.append(String(key))
+			continue
+		var count: int = p2.sprite.sprite_frames.get_frame_count(key)
+		if count != int(batch_frames[key]):
+			batch_missing.append("%s has %d" % [key, count])
+		# The acceptance rule for the whole batch: every standing, airborne and grounded frame
+		# lands on world y 592, measured from each decoded texture, not the offset table.
+		for frame in count:
+			var floor_y := _anim_floor_y_at(p2, key, frame)
+			if absf(floor_y - 592.0) > 0.75:
+				batch_off.append("%s[%d] %.1f" % [key, frame, floor_y])
+			var tex := p2.sprite.sprite_frames.get_frame_texture(key, frame)
+			if tex != null:
+				batch_tallest = maxf(batch_tallest, float(maxi(tex.get_width(), tex.get_height())))
+	_check(batch_missing.is_empty(), "every 2026-11-19 Lickshot animation is registered",
+		"bad %s" % [batch_missing] if not batch_missing.is_empty() else "walk 6, skank 8, reactions 13")
+	_check(batch_off.is_empty(), "every 2026-11-19 Lickshot frame lands on the y 592 sand line",
+		"off-floor %s" % [batch_off] if not batch_off.is_empty() else "all frames 592.0")
+	_check(batch_tallest <= 512.5, "the 2026-11-19 Lickshot frames stay inside the 512 px cap",
+		"%.0f px" % batch_tallest)
+	_check(absf(p2.sprite.sprite_frames.get_animation_speed(&"walk") - 6.6) < 0.05,
+		"the walk loop runs one cycle per two 132 BPM beats",
+		"%.1f fps" % p2.sprite.sprite_frames.get_animation_speed(&"walk"))
+	# Wiring: the walk is no longer the recycled idle, and each reaction state has its own art.
+	_check(p2.sprite.sprite_frames.get_frame_texture(&"walk", 0) \
+			!= p2.sprite.sprite_frames.get_frame_texture(&"idle", 0),
+		"the walk loop no longer recycles the idle pose")
+	_check(p2.attacks[&"tump"]["hitbox_size"] == Vector2(112, 56)
+			and p2.attacks[&"strong"]["anim_active"] == &"sonic_clap_impact",
+		"the new reaction and walk art left the move table untouched")
 
 	# ---- Feedback's six 2026-11-18 poses (AGENTS.md §9 item 33) -------------
 	var fb_new: Array[StringName] = [&"palm_shove", &"lean_back", &"open_slap", &"clarks_kick",
@@ -392,6 +445,16 @@ func _run() -> void:
 		if rounds_ctrl.clock_running():
 			break
 		await physics_frame
+	# This check is about Feedback's jab, so stop the CPU and let any Likkle Moore attack
+	# (whose art has no drawn pose) finish: otherwise a live smear from her AI swing would be
+	# read as Feedback's jab smear, which is exactly what the check must not conflate.
+	var sparring_ai: Node = arena2.get_node("SparringAI")
+	sparring_ai.set_physics_process(false)
+	p2.command = BaseFighter.Command.new()
+	for i in 90:
+		await physics_frame
+		if arena2._live_strike_tells().is_empty() and p2.state != BaseFighter.State.ATTACK_ACTIVE:
+			break
 	p1b.use_local_input = false
 	var press := BaseFighter.Command.new()
 	press.light = true

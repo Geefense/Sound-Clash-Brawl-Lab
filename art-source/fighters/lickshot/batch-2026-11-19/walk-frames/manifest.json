@@ -1,0 +1,26 @@
+[
+  {
+    "frame": "frame-01.png",
+    "video_frame": 1
+  },
+  {
+    "frame": "frame-02.png",
+    "video_frame": 18
+  },
+  {
+    "frame": "frame-03.png",
+    "video_frame": 34
+  },
+  {
+    "frame": "frame-04.png",
+    "video_frame": 52
+  },
+  {
+    "frame": "frame-05.png",
+    "video_frame": 68
+  },
+  {
+    "frame": "frame-06.png",
+    "video_frame": 85
+  }
+]

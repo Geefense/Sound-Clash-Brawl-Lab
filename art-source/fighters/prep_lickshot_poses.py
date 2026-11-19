@@ -34,7 +34,12 @@ Usage: python3 art-source/fighters/prep_lickshot_poses.py
 from __future__ import annotations
 
 import json
+import math
+import os
+import shutil
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -358,10 +363,414 @@ def prepare(src: Path, dst: Path, job: dict) -> dict:
     }
 
 
+# =========================================================================
+# 2026-11-19 creator-approved animation batch
+# =========================================================================
+## The owner approved and uploaded four L!ckshot animation sources on 2026-11-19. They are
+## different renders from the four approved studio poses and the 2026-11-18 white set, so
+## they get their own pass instead of being forced through either older job table:
+##
+##   lickshot_bossy_walk_phone.mov  3.0 s / 30 fps signature selector walk
+##   IMG_6636.jpeg                 8-pose lean-back / skank sheet, 2 rows x 4
+##   IMG_6643.jpeg                 12-pose hit / launch / knockdown sheet, 3 rows x 4
+##   IMG_6644.jpeg                 single airborne C-recoil launch pose
+##
+## Every source is on pure white, so the key is "not near-white" (minimum channel at least
+## 236 with less than 14 of saturation): that removes the flat white *and* the white pocket
+## sealed inside the mic-cable loop without a flood fill, while the black mic cord, cream
+## Clarks soles and silver mic grille all sit far below the threshold.
+##
+## Floor rule: every processed frame is composed into a canvas whose lowest alpha row is
+## `H - 1`, and `anim_offset.y` is derived from world y 592 (`REACTION_FLOOR_Y`) and the
+## 600 floor line the fighter origin stands on. The canvas is symmetric around the pose's
+## stance centre, which is why every offset in this batch has x = 0.
+##
+## Scale rule: `anim_scale = 121.75 / reference standing height` in that source's own
+## pixels. Airborne and lying frames keep the standing frames' pixel scale, so L!ckshot
+## never changes size when he is launched, and every animation in a group shares one scale.
+
+BATCH_DIR = SRC / "batch-2026-11-19"
+WALK_VIDEO = BATCH_DIR / "lickshot_bossy_walk_phone.mov"
+WALK_RAW = BATCH_DIR / "walk-frames"
+SKANK_SHEET = BATCH_DIR / "IMG_6636.jpeg"
+HIT_SHEET = BATCH_DIR / "IMG_6643.jpeg"
+C_RECOIL_IMAGE = BATCH_DIR / "IMG_6644.jpeg"
+
+ADULT_AUTHORED_HEIGHT = 121.75   # same crown-to-sole the approved poses use
+ART_SCALE = 1.24                 # BaseFighter.FIGHTER_ART_SCALE
+ORIGIN_FLOOR_Y = 600.0           # fighter origin / sprite sole line before the lift
+REACTION_FLOOR_Y = 592.0         # BaseFighter.REACTION_FLOOR_Y
+CANVAS_TOP_MARGIN = 2            # keeps the cap from touching row 0
+WALK_FRAME_TARGET = 6            # owner asked for 4 to 6 stride frames
+# The C-recoil upload is drawn about 1.98x larger than the 12-pose sheet: the silver mic
+# cap measures 159 px wide there versus ~71 px in the sheet (2.3x). Resampling by that ratio
+# puts it back into the sheet's pixel scale before it joins the `launched` sequence.
+C_RECOIL_SCALE_MATCH = 2.32
+
+
+def _white_key(rgb: np.ndarray) -> np.ndarray:
+    """Foreground mask for a pure-white upload (see the background rule above)."""
+    mx = rgb.max(axis=2)
+    mn = rgb.min(axis=2)
+    fg = ~((mn >= 236) & ((mx - mn) <= 14))
+    # JPEG ringing can puncture a dark area with one- or two-pixel white specks; fill only
+    # those pinpricks so the silver grille keeps its shading without becoming a sieve.
+    filled = ndimage.binary_fill_holes(fg)
+    holes = filled & ~fg
+    labels, count = ndimage.label(holes)
+    if count:
+        sizes = ndimage.sum(holes, labels, range(1, count + 1))
+        tiny = np.zeros(count + 1, dtype=bool)
+        tiny[1:] = sizes <= 30
+        fg |= tiny[labels]
+    labels, count = ndimage.label(fg, structure=np.ones((3, 3)))
+    if count:
+        sizes = ndimage.sum(fg, labels, range(1, count + 1))
+        keep = np.zeros(count + 1, dtype=bool)
+        keep[1:] = sizes >= 120
+        fg = keep[labels]
+    return fg
+
+
+def _runs(flags: np.ndarray) -> list[tuple[int, int]]:
+    out: list[tuple[int, int]] = []
+    start = None
+    for index, value in enumerate(flags):
+        if value and start is None:
+            start = index
+        if not value and start is not None:
+            out.append((start, index - 1))
+            start = None
+    if start is not None:
+        out.append((start, len(flags) - 1))
+    return out
+
+
+def slice_white_sheet(path: Path, expected_rows: int) -> tuple[Image.Image, list[dict]]:
+    """Split a white-background sheet into its row of four poses per row band.
+
+    Rows are found from the foreground projection (the sheet leaves a white gutter between
+    rows); inside each row band the four figures are separate connected components, which is
+    what keeps the airborne row apart even where two poses overlap in x.
+    """
+    im = Image.open(path).convert("RGB")
+    rgb = np.asarray(im).astype(np.int16)
+    fg = _white_key(rgb)
+    bands = [band for band in _runs(fg.sum(axis=1) > 2) if band[1] - band[0] > 40]
+    if len(bands) != expected_rows:
+        raise SystemExit(f"{path.name}: expected {expected_rows} pose rows, found {len(bands)}")
+    poses: list[dict] = []
+    for row_index, (y0, y1) in enumerate(bands):
+        band = fg[y0:y1 + 1]
+        labels, count = ndimage.label(band, structure=np.ones((3, 3)))
+        sizes = ndimage.sum(band, labels, range(1, count + 1))
+        blobs = []
+        for index in range(1, count + 1):
+            if sizes[index - 1] < 3000:
+                continue
+            ys, xs = np.where(labels == index)
+            blobs.append((float(xs.mean()), index, int(xs.min()), int(ys.min()) + y0,
+                          int(xs.max()) + 1, int(ys.max()) + y0 + 1))
+        blobs.sort()
+        if len(blobs) != 4:
+            raise SystemExit(f"{path.name}: row {row_index + 1} holds {len(blobs)} poses, expected 4")
+        for col, (_cx, index, x0, pose_y0, x1, pose_y1) in enumerate(blobs, start=1):
+            # The 8-pose upload's bottom row sits on the sheet's last row, so its soles are
+            # flush with the edge; that alpha bottom is the sole line the floor rule uses.
+            # Clipping on the top/left/right would cut a hat, hand or cable, so only that is
+            # an error.
+            if x0 <= 0 or pose_y0 <= 0 or x1 >= im.width:
+                raise SystemExit(
+                    f"{path.name}: pose {row_index + 1}-{col} is clipped sideways or at the top")
+            mask = np.zeros_like(fg)
+            mask[y0:y1 + 1] = labels == index
+            poses.append({
+                "sheet": path.name,
+                "row": row_index + 1,
+                "col": col,
+                "mask": mask,
+                "bbox": (x0, pose_y0, x1, pose_y1),
+            })
+    return im, poses
+
+
+def single_white_pose(path: Path) -> tuple[Image.Image, dict]:
+    im = Image.open(path).convert("RGB")
+    fg = _white_key(np.asarray(im).astype(np.int16))
+    labels, count = ndimage.label(fg, structure=np.ones((3, 3)))
+    if count == 0:
+        raise SystemExit(f"{path.name}: nothing left after background removal")
+    sizes = ndimage.sum(fg, labels, range(1, count + 1))
+    index = int(np.argmax(sizes)) + 1
+    ys, xs = np.where(labels == index)
+    x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1
+    if x0 <= 0 or y0 <= 0 or x1 >= im.width or y1 >= im.height:
+        raise SystemExit(f"{path.name}: the pose is clipped by the image edge")
+    return im, {
+        "sheet": path.name, "row": 1, "col": 1,
+        "mask": labels == index, "bbox": (x0, y0, x1, y1),
+    }
+
+
+def _pose_sprite(im: Image.Image, pose: dict, stance_mode: str) -> dict:
+    """Crop one pose, key its alpha, and measure its stance centre and height."""
+    x0, y0, x1, y1 = pose["bbox"]
+    mask = pose["mask"][y0:y1, x0:x1]
+    eroded = ndimage.binary_erosion(mask, iterations=ERODE_PX, border_value=0)
+    if eroded.sum() > mask.sum() * 0.5:
+        mask = eroded
+    alpha = Image.fromarray((mask * 255).astype(np.uint8), mode="L")
+    alpha = alpha.filter(ImageFilter.GaussianBlur(FEATHER_PX))
+    rgba = im.crop((x0, y0, x1, y1)).convert("RGBA")
+    rgba.putalpha(alpha)
+    if stance_mode == "lower_body":
+        # Waist-to-sole median x: the origin stays between the feet instead of following a
+        # swinging arm or a wide lunge across the walk cycle.
+        height = mask.shape[0]
+        waist = int(round((height - 1) * 0.62))
+        xs = np.where(mask[waist:])[1]
+    else:
+        # Airborne / grounded reaction poses have no planted sole to centre on.
+        xs = np.where(mask)[1]
+    stance = float(np.median(xs)) if xs.size else rgba.width / 2.0
+    return {
+        "rgba": rgba,
+        "stance": stance,
+        "height": float(rgba.height),
+        "source": f"{pose['sheet']} row {pose['row']} col {pose['col']}",
+    }
+
+
+def _resample_sprite(sprite: dict, factor: float) -> dict:
+    if abs(factor - 1.0) < 1e-6:
+        return dict(sprite)
+    out = dict(sprite)
+    width = max(1, int(round(sprite["rgba"].width * factor)))
+    height = max(1, int(round(sprite["rgba"].height * factor)))
+    out["rgba"] = sprite["rgba"].resize((width, height), Image.LANCZOS)
+    out["stance"] = sprite["stance"] * factor
+    out["height"] = sprite["height"] * factor
+    return out
+
+
+def _canvas_size(sprites: list[dict]) -> tuple[int, int]:
+    left = max(sprite["stance"] for sprite in sprites)
+    right = max(sprite["rgba"].width - sprite["stance"] for sprite in sprites)
+    width = int(math.ceil(2.0 * max(left, right)))
+    height = max(sprite["rgba"].height for sprite in sprites) + CANVAS_TOP_MARGIN
+    return max(width, 2), height
+
+
+def build_animation(name: str, sprites: list[dict], world_per_px: float, fps: float,
+                    label: str, wiring: str) -> dict:
+    """Compose one animation's frames on a shared canvas and write them as PNGs.
+
+    Shared canvas + shared scale is what lets a single `anim_offset` keep every frame of a
+    loop on the same floor line: the pose's stance centre is the canvas centre and its sole
+    row is the canvas's last row.
+    """
+    factor = 1.0
+    width, height = _canvas_size(sprites)
+    if max(width, height) > SIZE_CAP:
+        factor = SIZE_CAP / float(max(width, height))
+        sprites = [_resample_sprite(sprite, factor) for sprite in sprites]
+        width, height = _canvas_size(sprites)
+        if max(width, height) > SIZE_CAP:
+            second = SIZE_CAP / float(max(width, height))
+            sprites = [_resample_sprite(sprite, second) for sprite in sprites]
+            factor *= second
+            width, height = _canvas_size(sprites)
+    anim_scale = world_per_px / factor
+    offset_y = (1.0 - height / 2.0
+                - (ORIGIN_FLOOR_Y - REACTION_FLOOR_Y) / (anim_scale * ART_SCALE))
+    paths: list[str] = []
+    for frame_index, sprite in enumerate(sprites, start=1):
+        frame = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        x = int(round(width / 2.0 - sprite["stance"]))
+        y = height - sprite["rgba"].height
+        frame.alpha_composite(sprite["rgba"], (x, y))
+        suffix = "" if len(sprites) == 1 else f"_{frame_index:02d}"
+        path = OUT / f"{name}{suffix}.png"
+        frame.save(path, optimize=True)
+        paths.append(str(path.relative_to(ROOT)))
+    first_frame = f"{name}.png" if len(sprites) == 1 else f"{name}_01.png"
+    alpha = np.asarray(Image.open(OUT / first_frame))
+    solid = alpha[:, :, 3] > 32
+    rows = np.where(solid.any(axis=1))[0]
+    crown_row = int(rows[0]) if rows.size else 0
+    entry = {
+        "batch": "2026-11-19",
+        "label": label,
+        "wiring": wiring,
+        "animation": name,
+        "fps": fps,
+        "frame_count": len(sprites),
+        "sources": [sprite["source"] for sprite in sprites],
+        "frames": paths,
+        "frame": [width, height],
+        "downscale": round(factor, 4),
+        "crown_row": crown_row,
+        "sole_row": height - 1,
+        "stance_centre_x": width / 2.0,
+        "anim_scale": round(anim_scale, 5),
+        "anim_offset": [0.0, round(offset_y, 2)],
+        "anim_source_max": max(width, height),
+    }
+    print(f"{name}: {len(sprites)} frame(s) {width}x{height} scale {anim_scale:.5f} "
+          f"offset {entry['anim_offset']} fps {fps}")
+    return entry
+
+
+def _extract_walk_frames() -> list[Path]:
+    """Pick evenly spaced stride frames, rejecting poses clipped by the phone-video crop."""
+    if WALK_RAW.exists():
+        cached = sorted(WALK_RAW.glob("frame-*.png"))
+        if cached:
+            return cached
+    ffmpeg = os.environ.get("FFMPEG") or shutil.which("ffmpeg")
+    if ffmpeg is None:
+        raise SystemExit("ffmpeg is required to extract the walk video; set FFMPEG=/path/to/ffmpeg")
+    temp = Path(tempfile.mkdtemp(prefix="lickshot-walk-"))
+    subprocess.run([ffmpeg, "-v", "error", "-i", str(WALK_VIDEO), "-vsync", "0",
+                    str(temp / "raw-%03d.png")], check=True)
+    raw = sorted(temp.glob("raw-*.png"))
+    if not raw:
+        raise SystemExit("ffmpeg produced no walk frames")
+    unique: list[tuple[Path, np.ndarray]] = []
+    for path in raw:
+        im = Image.open(path).convert("RGB")
+        fg = _white_key(np.asarray(im).astype(np.int16))
+        rows = np.where(fg.any(axis=1))[0]
+        cols = np.where(fg.any(axis=0))[0]
+        if not rows.size or not cols.size:
+            continue
+        # The phone video is framed tight (its cap crown and the outer cable loop are
+        # already cropped in the source), but a frame whose feet are cut would break the
+        # y 592 contact rule, so those are rejected outright.
+        if rows[-1] >= im.height - 2:
+            continue
+        small = np.asarray(im.convert("L").resize((174, 232))).astype(np.int16)
+        if unique and np.abs(small - unique[-1][1]).mean() < 2.0:
+            continue
+        unique.append((path, small))
+    if len(unique) < WALK_FRAME_TARGET:
+        raise SystemExit(f"only {len(unique)} clean walk poses found")
+    picks = [round(i * (len(unique) - 1) / (WALK_FRAME_TARGET - 1))
+             for i in range(WALK_FRAME_TARGET)]
+    WALK_RAW.mkdir(parents=True, exist_ok=True)
+    chosen: list[Path] = []
+    manifest = []
+    for index, pick in enumerate(picks, start=1):
+        source = unique[pick][0]
+        destination = WALK_RAW / f"frame-{index:02d}.png"
+        shutil.copyfile(source, destination)
+        chosen.append(destination)
+        manifest.append({"frame": f"frame-{index:02d}.png",
+                         "video_frame": int(source.stem.split("-")[1])})
+    (WALK_RAW / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    shutil.rmtree(temp, ignore_errors=True)
+    return chosen
+
+
+def _preview(entries: list[dict]) -> None:
+    """One review sheet: every processed frame with its sole on a common sand line."""
+    if not entries:
+        return
+    cell_w, cell_h = 260, 300
+    cols = 6
+    rows = (len(entries) + cols - 1) // cols
+    sheet = Image.new("RGB", (cols * cell_w, rows * cell_h), (34, 28, 24))
+    draw = ImageDraw.Draw(sheet)
+    for index, entry in enumerate(entries):
+        x0 = (index % cols) * cell_w
+        y0 = (index // cols) * cell_h
+        draw.text((x0 + 6, y0 + 4), entry["animation"], fill=(255, 224, 130))
+        frame = Image.open(ROOT / entry["frames"][0]).convert("RGBA")
+        scale = min(1.0, 200.0 / max(frame.width, frame.height))
+        frame = frame.resize((max(1, int(frame.width * scale)),
+                              max(1, int(frame.height * scale))), Image.LANCZOS)
+        baseline = y0 + cell_h - 40
+        draw.line((x0, baseline, x0 + cell_w - 1, baseline), fill=(196, 148, 78), width=2)
+        sheet.paste(frame, (x0 + (cell_w - frame.width) // 2, baseline - frame.height), frame)
+    out = BATCH_DIR / "preview-batch-2026-11-19.png"
+    sheet.save(out, optimize=True)
+    print(f"preview: {out.relative_to(ROOT)}")
+
+
+def prepare_batch() -> None:
+    """Run the 2026-11-19 walk / skank / reaction batch."""
+    report_path = SRC / "prep-report.json"
+    report = json.loads(report_path.read_text()) if report_path.exists() else []
+    report = [entry for entry in report if entry.get("batch") != "2026-11-19"]
+
+    # ---- Walk ------------------------------------------------------------
+    walk_files = _extract_walk_frames()
+    walk_sprites = []
+    for path in walk_files:
+        im = Image.open(path).convert("RGB")
+        pose = {"sheet": f"batch-2026-11-19/walk-frames/{path.name}", "row": 1, "col": 1,
+                "mask": _white_key(np.asarray(im).astype(np.int16))}
+        fg = pose["mask"]
+        rows = np.where(fg.any(axis=1))[0]
+        cols = np.where(fg.any(axis=0))[0]
+        pose["bbox"] = (int(cols[0]), int(rows[0]), int(cols[-1]) + 1, int(rows[-1]) + 1)
+        walk_sprites.append(_pose_sprite(im, pose, "lower_body"))
+    walk_reference = float(np.median([sprite["height"] for sprite in walk_sprites]))
+    walk_world = ADULT_AUTHORED_HEIGHT / walk_reference
+    entries = [build_animation(
+        "walk", walk_sprites, walk_world, WALK_FRAME_TARGET / (2.0 * 60.0 / 132.0),
+        "L!ckshot signature selector walk", "walk loop — replaces the recycled idle walk")]
+
+    # ---- 8-pose skank ----------------------------------------------------
+    skank_im, skank_poses = slice_white_sheet(SKANK_SHEET, 2)
+    skank_sprites = [_pose_sprite(skank_im, pose, "lower_body") for pose in skank_poses]
+    skank_world = ADULT_AUTHORED_HEIGHT / skank_sprites[0]["height"]
+    for index, sprite in enumerate(skank_sprites, start=1):
+        entries.append(build_animation(
+            f"skank_{index}", [sprite], skank_world, 1.0,
+            f"L!ckshot lean-back / skank groove pose {index}",
+            "T skank taunt sequence (one pose per eighth note)"))
+
+    # ---- 12-pose reactions + the single C-recoil -------------------------
+    hit_im, hit_poses = slice_white_sheet(HIT_SHEET, 3)
+    hit_world = ADULT_AUTHORED_HEIGHT / _pose_sprite(hit_im, hit_poses[0], "lower_body")["height"]
+    standing = [_pose_sprite(hit_im, pose, "lower_body") for pose in hit_poses[0:4]]
+    airborne = [_pose_sprite(hit_im, pose, "bbox") for pose in hit_poses[4:8]]
+    grounded = [_pose_sprite(hit_im, pose, "bbox") for pose in hit_poses[8:12]]
+    c_im, c_pose = single_white_pose(C_RECOIL_IMAGE)
+    c_recoil = _resample_sprite(_pose_sprite(c_im, c_pose, "bbox"), 1.0 / C_RECOIL_SCALE_MATCH)
+    entries.append(build_animation(
+        "hitstun", standing, hit_world, 12.0,
+        "L!ckshot standing hitstun recoil (4 poses)", "hitstun reaction (4-frame recoil)"))
+    entries.append(build_animation(
+        "launched", [c_recoil] + airborne[0:2], hit_world, 10.0,
+        "L!ckshot C-recoil launch + airborne poses",
+        "launched (C-recoil, then the first two airborne poses)"))
+    entries.append(build_animation(
+        "tumble", airborne[2:4], hit_world, 6.0,
+        "L!ckshot airborne tumble poses", "tumble (the last two airborne poses)"))
+    entries.append(build_animation(
+        "knockdown", grounded[0:2], hit_world, 4.0,
+        "L!ckshot grounded knockdown poses", "knockdown (seated floor poses)"))
+    entries.append(build_animation(
+        "ko", grounded[2:4], hit_world, 2.5,
+        "L!ckshot grounded KO poses", "ko (prone floor poses)"))
+
+    report.extend(entries)
+    report_path.write_text(json.dumps(report, indent=2) + "\n")
+    print(f"\nwrote {report_path.relative_to(ROOT)} ({len(entries)} batch entries)")
+    _preview(entries)
+
+
 def main() -> None:
     # `--only jab.png upper_box.png` re-runs a subset; without it every job runs. The four
     # 2026-11-17 outputs were approved as-is, so the new pass is invoked with --only and
     # the report keeps their original entries.
+    if "--batch" in sys.argv:
+        if sys.argv[sys.argv.index("--batch") + 1] != "2026-11-19":
+            raise SystemExit("unknown batch; only 2026-11-19 exists")
+        prepare_batch()
+        return
     wanted = set(sys.argv[sys.argv.index("--only") + 1:]) if "--only" in sys.argv else set()
     report_path = SRC / "prep-report.json"
     report = json.loads(report_path.read_text()) if report_path.exists() else []

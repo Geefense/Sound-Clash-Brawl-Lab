@@ -1412,6 +1412,61 @@ here is gameplay-verified; implementation status is stated per item.
       record and is deliberately **not** copied into `/docs/` (exported WebGL2 build only) or `/godot`
       (code and assets), per §5.
 
+38. **L!CKSHOT's 2026-11-19 animation batch — walk, 8-pose skank and full reactions, prepared,
+    wired, headless-verified and exported (2026-11-19).**
+
+    The owner uploaded four creator-approved animation sources to the root of
+    `stage/sound-clash-sand` in commit `838495caa`. They are archived unchanged in
+    `art-source/fighters/lickshot/batch-2026-11-19/` (with `PROVENANCE.md`), so the repository root
+    stays clean: `lickshot_bossy_walk_phone.mov` (3.0 s, 30 fps signature walk),
+    `IMG_6636.jpeg` (8-pose lean-back/skank sheet, 2 × 4), `IMG_6643.jpeg` (12-pose hit / launch /
+    knockdown sheet, 3 × 4) and `IMG_6644.jpeg` (single airborne C-recoil).
+
+    - **Preparation.** `art-source/fighters/prep_lickshot_poses.py` gained `--batch 2026-11-19`; the
+      existing eleven studio/white jobs are untouched. Sheets are split by row band + connected
+      components (4 poses per row), the single C-recoil by its largest component, and the walk video
+      by picking 6 evenly spaced distinct held poses from its 15 (frames whose feet are cut are
+      rejected; `walk-frames/manifest.json` records the source frame numbers). Background key is
+      "not near-white" (every channel ≥ 236, saturation ≤ 14), which also removes the white pocket
+      sealed inside the mic-cable loop without a flood fill, while the black cord, cream Clarks
+      soles, silver mic grille and gold chain survive. Every frame is capped at 512 px.
+    - **Floor rule.** Every processed frame sits in a canvas whose lowest alpha row is the sole row;
+      `anim_offset` is derived from world y 592, and the canvas is symmetric around the stance
+      centre, so the batch's offsets all have x = 0. Standing, airborne and grounded frames therefore
+      land on the sand line and none can sink below it.
+    - **Scale.** `anim_scale = 121.75 / reference standing height` per source, so the character stays
+      the approved ~151 px on screen. The C-recoil upload is drawn 2.32× larger than the 12-pose sheet
+      (measured on the cap: 159 px wide versus ~71 px), so it is resampled into the sheet's pixel scale
+      before joining `launched`.
+    - **Wiring.** `walk` = the 6 extracted stride frames at 6.6 fps (one cycle per two 132 BPM beats),
+      replacing the recycled idle walk. T (`taunt_sequence`) = `skank_1`…`skank_8`, one drawing per
+      taunt slot through the full lean-back groove; `TAUNT_TICKS` stays 68, so the taunt commitment and
+      its hype timing are unchanged. Reactions: `hitstun` = top-row 1–4 (12 fps), `launched` =
+      C-recoil + middle-row 1–2 (10 fps), `tumble` = middle-row 3–4 (6 fps), `knockdown` = bottom-row
+      1–2 (4 fps), `ko` = bottom-row 3–4 (2.5 fps). Per-animation playback rates are a new roster field
+      (`anim_fps`) applied by `FighterRoster.build_frames`; every existing approved frame (idle, jab,
+      upper box, Sonic Clap windup/impact, high kick, guard, celebration, skank point) is kept, and the
+      superseded single-frame `hitstun_recoil.png` / `launched_recoil.png` stay in the folder unwired.
+      No hitbox, damage, startup/active/recovery, guard, AI or beat-clock value changed.
+    - **Verification.** `godot --headless --path godot --import` then
+      `godot --headless --path godot --script res://tools/headless_roster_check.gd` — all checks
+      passed on three consecutive runs. New checks confirm every batch animation and exact frame count
+      (walk 6, skank 8, hitstun 4, launched 3, tumble 2, knockdown 2, ko 2), that **every frame's real
+      decoded-texture bottom lands on world y 592** (±0.75 px, not just frame 0), the 512 px cap, the
+      6.6 fps walk rate, that walk no longer reuses the idle texture, and that the move table is
+      untouched. The pre-existing "P1's drawn jab draws no generic strike smear" check was made
+      deterministic by stopping the CPU first: it was observing Likkle Moore's AI smear as if it were
+      Feedback's (the assertion itself is unchanged).
+    - **Web export.** `godot --headless --path godot --export-release "Web" ../docs/index.html` rebuilt
+      `/docs` (`index.pck` 16.4 MB). This is an export, not a browser playtest; nobody has clicked
+      through the new walk/skank/reactions in the page yet.
+    - **Known source limits.** The walk video is framed tight, so its cap crown, the outer cable loop and
+      the leading hand are clipped by the phone recording itself in every frame; the extracted sprites
+      inherit that crop (the body, cord and soles are intact). The 8-pose sheet's bottom-row shoes sit
+      flush on the sheet's last row, so those two poses' soles are aligned on that alpha edge. The video
+      contains no in-between drawings, so no frames were invented. **Owner visual approval of the wired
+      walk, groove and reactions remains open.**
+
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 
 Recorded at build `ad27516` (`stage/sound-clash-sand`); §9 items 1–19 above are the decisions that

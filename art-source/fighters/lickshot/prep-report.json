@@ -287,5 +287,423 @@
     "sole_centre_x": 134.0,
     "crown_to_sole": 511,
     "sole_row_source": -1
+  },
+  {
+    "batch": "2026-11-19",
+    "label": "L!ckshot signature selector walk",
+    "wiring": "walk loop \u2014 replaces the recycled idle walk",
+    "animation": "walk",
+    "fps": 6.6000000000000005,
+    "frame_count": 6,
+    "sources": [
+      "batch-2026-11-19/walk-frames/frame-01.png row 1 col 1",
+      "batch-2026-11-19/walk-frames/frame-02.png row 1 col 1",
+      "batch-2026-11-19/walk-frames/frame-03.png row 1 col 1",
+      "batch-2026-11-19/walk-frames/frame-04.png row 1 col 1",
+      "batch-2026-11-19/walk-frames/frame-05.png row 1 col 1",
+      "batch-2026-11-19/walk-frames/frame-06.png row 1 col 1"
+    ],
+    "frames": [
+      "godot/assets/sprites/lickshot/walk_01.png",
+      "godot/assets/sprites/lickshot/walk_02.png",
+      "godot/assets/sprites/lickshot/walk_03.png",
+      "godot/assets/sprites/lickshot/walk_04.png",
+      "godot/assets/sprites/lickshot/walk_05.png",
+      "godot/assets/sprites/lickshot/walk_06.png"
+    ],
+    "frame": [
+      429,
+      512
+    ],
+    "downscale": 0.553,
+    "crown_row": 8,
+    "sole_row": 511,
+    "stance_centre_x": 214.5,
+    "anim_scale": 0.241,
+    "anim_offset": [
+      0.0,
+      -281.77
+    ],
+    "anim_source_max": 512
+  },
+  {
+    "batch": "2026-11-19",
+    "label": "L!ckshot lean-back / skank groove pose 1",
+    "wiring": "T skank taunt sequence (one pose per eighth note)",
+    "animation": "skank_1",
+    "fps": 1.0,
+    "frame_count": 1,
+    "sources": [
+      "IMG_6636.jpeg row 1 col 1"
+    ],
+    "frames": [
+      "godot/assets/sprites/lickshot/skank_1.png"
+    ],
+    "frame": [
+      224,
+      361
+    ],
+    "downscale": 1.0,
+    "crown_row": 3,
+    "sole_row": 360,
+    "stance_centre_x": 112.0,
+    "anim_scale": 0.33914,
+    "anim_offset": [
+      0.0,
+      -198.52
+    ],
+    "anim_source_max": 361
+  },
+  {
+    "batch": "2026-11-19",
+    "label": "L!ckshot lean-back / skank groove pose 2",
+    "wiring": "T skank taunt sequence (one pose per eighth note)",
+    "animation": "skank_2",
+    "fps": 1.0,
+    "frame_count": 1,
+    "sources": [
+      "IMG_6636.jpeg row 1 col 2"
+    ],
+    "frames": [
+      "godot/assets/sprites/lickshot/skank_2.png"
+    ],
+    "frame": [
+      272,
+      357
+    ],
+    "downscale": 1.0,
+    "crown_row": 3,
+    "sole_row": 356,
+    "stance_centre_x": 136.0,
+    "anim_scale": 0.33914,
+    "anim_offset": [
+      0.0,
+      -196.52
+    ],
+    "anim_source_max": 357
+  },
+  {
+    "batch": "2026-11-19",
+    "label": "L!ckshot lean-back / skank groove pose 3",
+    "wiring": "T skank taunt sequence (one pose per eighth note)",
+    "animation": "skank_3",
+    "fps": 1.0,
+    "frame_count": 1,
+    "sources": [
+      "IMG_6636.jpeg row 1 col 3"
+    ],
+    "frames": [
+      "godot/assets/sprites/lickshot/skank_3.png"
+    ],
+    "frame": [
+      372,
+      342
+    ],
+    "downscale": 1.0,
+    "crown_row": 3,
+    "sole_row": 341,
+    "stance_centre_x": 186.0,
+    "anim_scale": 0.33914,
+    "anim_offset": [
+      0.0,
+      -189.02
+    ],
+    "anim_source_max": 372
+  },
+  {
+    "batch": "2026-11-19",
+    "label": "L!ckshot lean-back / skank groove pose 4",
+    "wiring": "T skank taunt sequence (one pose per eighth note)",
+    "animation": "skank_4",
+    "fps": 1.0,
+    "frame_count": 1,
+    "sources": [
+      "IMG_6636.jpeg row 1 col 4"
+    ],
+    "frames": [
+      "godot/assets/sprites/lickshot/skank_4.png"
+    ],
+    "frame": [
+      258,
+      357
+    ],
+    "downscale": 1.0,
+    "crown_row": 3,
+    "sole_row": 356,
+    "stance_centre_x": 129.0,
+    "anim_scale": 0.33914,
+    "anim_offset": [
+      0.0,
+      -196.52
+    ],
+    "anim_source_max": 357
+  },
+  {
+    "batch": "2026-11-19",
+    "label": "L!ckshot lean-back / skank groove pose 5",
+    "wiring": "T skank taunt sequence (one pose per eighth note)",
+    "animation": "skank_5",
+    "fps": 1.0,
+    "frame_count": 1,
+    "sources": [
+      "IMG_6636.jpeg row 2 col 1"
+    ],
+    "frames": [
+      "godot/assets/sprites/lickshot/skank_5.png"
+    ],
+    "frame": [
+      278,
+      349
+    ],
+    "downscale": 1.0,
+    "crown_row": 3,
+    "sole_row": 348,
+    "stance_centre_x": 139.0,
+    "anim_scale": 0.33914,
+    "anim_offset": [
+      0.0,
+      -192.52
+    ],
+    "anim_source_max": 349
+  },
+  {
+    "batch": "2026-11-19",
+    "label": "L!ckshot lean-back / skank groove pose 6",
+    "wiring": "T skank taunt sequence (one pose per eighth note)",
+    "animation": "skank_6",
+    "fps": 1.0,
+    "frame_count": 1,
+    "sources": [
+      "IMG_6636.jpeg row 2 col 2"
+    ],
+    "frames": [
+      "godot/assets/sprites/lickshot/skank_6.png"
+    ],
+    "frame": [
+      318,
+      349
+    ],
+    "downscale": 1.0,
+    "crown_row": 3,
+    "sole_row": 348,
+    "stance_centre_x": 159.0,
+    "anim_scale": 0.33914,
+    "anim_offset": [
+      0.0,
+      -192.52
+    ],
+    "anim_source_max": 349
+  },
+  {
+    "batch": "2026-11-19",
+    "label": "L!ckshot lean-back / skank groove pose 7",
+    "wiring": "T skank taunt sequence (one pose per eighth note)",
+    "animation": "skank_7",
+    "fps": 1.0,
+    "frame_count": 1,
+    "sources": [
+      "IMG_6636.jpeg row 2 col 3"
+    ],
+    "frames": [
+      "godot/assets/sprites/lickshot/skank_7.png"
+    ],
+    "frame": [
+      274,
+      349
+    ],
+    "downscale": 1.0,
+    "crown_row": 3,
+    "sole_row": 348,
+    "stance_centre_x": 137.0,
+    "anim_scale": 0.33914,
+    "anim_offset": [
+      0.0,
+      -192.52
+    ],
+    "anim_source_max": 349
+  },
+  {
+    "batch": "2026-11-19",
+    "label": "L!ckshot lean-back / skank groove pose 8",
+    "wiring": "T skank taunt sequence (one pose per eighth note)",
+    "animation": "skank_8",
+    "fps": 1.0,
+    "frame_count": 1,
+    "sources": [
+      "IMG_6636.jpeg row 2 col 4"
+    ],
+    "frames": [
+      "godot/assets/sprites/lickshot/skank_8.png"
+    ],
+    "frame": [
+      230,
+      355
+    ],
+    "downscale": 1.0,
+    "crown_row": 3,
+    "sole_row": 354,
+    "stance_centre_x": 115.0,
+    "anim_scale": 0.33914,
+    "anim_offset": [
+      0.0,
+      -195.52
+    ],
+    "anim_source_max": 355
+  },
+  {
+    "batch": "2026-11-19",
+    "label": "L!ckshot standing hitstun recoil (4 poses)",
+    "wiring": "hitstun reaction (4-frame recoil)",
+    "animation": "hitstun",
+    "fps": 12.0,
+    "frame_count": 4,
+    "sources": [
+      "IMG_6643.jpeg row 1 col 1",
+      "IMG_6643.jpeg row 1 col 2",
+      "IMG_6643.jpeg row 1 col 3",
+      "IMG_6643.jpeg row 1 col 4"
+    ],
+    "frames": [
+      "godot/assets/sprites/lickshot/hitstun_01.png",
+      "godot/assets/sprites/lickshot/hitstun_02.png",
+      "godot/assets/sprites/lickshot/hitstun_03.png",
+      "godot/assets/sprites/lickshot/hitstun_04.png"
+    ],
+    "frame": [
+      480,
+      407
+    ],
+    "downscale": 1.0,
+    "crown_row": 3,
+    "sole_row": 406,
+    "stance_centre_x": 240.0,
+    "anim_scale": 0.30062,
+    "anim_offset": [
+      0.0,
+      -223.96
+    ],
+    "anim_source_max": 480
+  },
+  {
+    "batch": "2026-11-19",
+    "label": "L!ckshot C-recoil launch + airborne poses",
+    "wiring": "launched (C-recoil, then the first two airborne poses)",
+    "animation": "launched",
+    "fps": 10.0,
+    "frame_count": 3,
+    "sources": [
+      "IMG_6644.jpeg row 1 col 1",
+      "IMG_6643.jpeg row 2 col 1",
+      "IMG_6643.jpeg row 2 col 2"
+    ],
+    "frames": [
+      "godot/assets/sprites/lickshot/launched_01.png",
+      "godot/assets/sprites/lickshot/launched_02.png",
+      "godot/assets/sprites/lickshot/launched_03.png"
+    ],
+    "frame": [
+      358,
+      340
+    ],
+    "downscale": 1.0,
+    "crown_row": 2,
+    "sole_row": 339,
+    "stance_centre_x": 179.0,
+    "anim_scale": 0.30062,
+    "anim_offset": [
+      0.0,
+      -190.46
+    ],
+    "anim_source_max": 358
+  },
+  {
+    "batch": "2026-11-19",
+    "label": "L!ckshot airborne tumble poses",
+    "wiring": "tumble (the last two airborne poses)",
+    "animation": "tumble",
+    "fps": 6.0,
+    "frame_count": 2,
+    "sources": [
+      "IMG_6643.jpeg row 2 col 3",
+      "IMG_6643.jpeg row 2 col 4"
+    ],
+    "frames": [
+      "godot/assets/sprites/lickshot/tumble_01.png",
+      "godot/assets/sprites/lickshot/tumble_02.png"
+    ],
+    "frame": [
+      390,
+      228
+    ],
+    "downscale": 1.0,
+    "crown_row": 4,
+    "sole_row": 227,
+    "stance_centre_x": 195.0,
+    "anim_scale": 0.30062,
+    "anim_offset": [
+      0.0,
+      -134.46
+    ],
+    "anim_source_max": 390
+  },
+  {
+    "batch": "2026-11-19",
+    "label": "L!ckshot grounded knockdown poses",
+    "wiring": "knockdown (seated floor poses)",
+    "animation": "knockdown",
+    "fps": 4.0,
+    "frame_count": 2,
+    "sources": [
+      "IMG_6643.jpeg row 3 col 1",
+      "IMG_6643.jpeg row 3 col 2"
+    ],
+    "frames": [
+      "godot/assets/sprites/lickshot/knockdown_01.png",
+      "godot/assets/sprites/lickshot/knockdown_02.png"
+    ],
+    "frame": [
+      334,
+      162
+    ],
+    "downscale": 1.0,
+    "crown_row": 3,
+    "sole_row": 161,
+    "stance_centre_x": 167.0,
+    "anim_scale": 0.30062,
+    "anim_offset": [
+      0.0,
+      -101.46
+    ],
+    "anim_source_max": 334
+  },
+  {
+    "batch": "2026-11-19",
+    "label": "L!ckshot grounded KO poses",
+    "wiring": "ko (prone floor poses)",
+    "animation": "ko",
+    "fps": 2.5,
+    "frame_count": 2,
+    "sources": [
+      "IMG_6643.jpeg row 3 col 3",
+      "IMG_6643.jpeg row 3 col 4"
+    ],
+    "frames": [
+      "godot/assets/sprites/lickshot/ko_01.png",
+      "godot/assets/sprites/lickshot/ko_02.png"
+    ],
+    "frame": [
+      356,
+      78
+    ],
+    "downscale": 1.0,
+    "crown_row": 3,
+    "sole_row": 77,
+    "stance_centre_x": 178.0,
+    "anim_scale": 0.30062,
+    "anim_offset": [
+      0.0,
+      -59.46
+    ],
+    "anim_source_max": 356
   }
 ]

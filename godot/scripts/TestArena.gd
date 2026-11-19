@@ -130,6 +130,35 @@ const CROWD_FLINCH_COOLDOWN := 0.85
 ## so they are never on screen even for one frame.
 const PREWARM_OFFSCREEN := Vector2(-4000.0, -4000.0)
 
+## Patois callout rotation (AGENTS.md §8, owner-approved 2026-11-19). Each trigger owns a
+## pool and the pool rotates, so the new line leads the first time and the approved lines
+## that already played here still come round again. Spellings are the owner's, verbatim;
+## the English gloss is a separate field, which is the only place it belongs.
+const CALLOUTS := {
+	&"parry": [
+		["WHOLE-AWN-DEH!", "(Translation: Hold on a second!)"],
+		["BIG TUNE!", "(Translation: Cleanest block in the dance!)"],
+	],
+	&"throw_break": [
+		["WHOLE-AWN-DEH!", "(Translation: Hold on a second!)"],
+	],
+	&"hype": [
+		["PLAYAH NEX TUNE!", "(Translation: Play another song!)"],
+		["WHEEL AND COME AGAIN!", "(Translation: Rewind the track — rematch!)"],
+	],
+	&"round_win": [
+		["PLAYAH NEX TUNE!", "(Translation: Play another song!)"],
+	],
+	&"taunt": [
+		["POPPYSHOW!", "(Translation: Show-off! / Clown!)"],
+		["YUH TOO BOD MINE!!", "(Translation: You're way too jealous!)"],
+	],
+	&"punish": [
+		["POPPYSHOW!", "(Translation: Show-off! / Clown!)"],
+	],
+}
+var _callout_cursor := {}
+
 ## Push separation (AGENTS.md §9 backlog item B7). 64 px is wider than the 60 px body, so
 ## the fighters never visually overlap; grabs (96 px) still reach comfortably.
 const BODY_GAP := 64.0
@@ -373,6 +402,9 @@ func _on_strike_resolved(_attacker: BaseFighter, target: BaseFighter, result: Di
 	if target != null:
 		_add_spark(target.global_position + Vector2(0.0, -110.0),
 			&"hit_onbeat" if on_beat else &"hit")
+	# Punish: the hit interrupted an attack or a taunt, so it gets the show-off callout.
+	if bool(result.get("punish", false)) and not bool(result.get("blocked", false)):
+		_announce_callout(&"punish")
 
 
 ## A fighter entering KO: the dramatic arcade drop (fired once per K.O.).
@@ -390,6 +422,8 @@ func _on_round_ended(_round_index: int, winner: int) -> void:
 		champion = p2
 	if champion != null:
 		champion.play_celebration(140)
+		# The crowd wants the next tune, not this one again.
+		_announce_callout(&"round_win")
 
 
 ## 100% Crowd Hype Surge: the crowd jumps and the HUD banner flashes for the same
@@ -397,7 +431,19 @@ func _on_round_ended(_round_index: int, winner: int) -> void:
 func _on_hype_surge(seconds: float) -> void:
 	crowd.surge(seconds)
 	Sfx.play(&"airhorn")
-	hud.announce_subtitle("WHEEL AND COME AGAIN!", "(Translation: Rewind the track — rematch!)")
+	_announce_callout(&"hype")
+
+
+## Advance one trigger's callout pool and show the next line. Returns false when subtitles
+## are off or the HUD pill is still cooling down, so a burst can never stack pills.
+func _announce_callout(kind: StringName) -> bool:
+	var pool: Array = CALLOUTS.get(kind, [])
+	if pool.is_empty():
+		return false
+	var index := int(_callout_cursor.get(kind, 0)) % pool.size()
+	_callout_cursor[kind] = index + 1
+	var line: Array = pool[index]
+	return hud.announce_subtitle(String(line[0]), String(line[1]))
 
 
 ## 50 % Crowd Hype: the line reshuffles itself even before the surge lands.
@@ -412,14 +458,16 @@ func _on_static_parry(defender: BaseFighter, attacker: BaseFighter) -> void:
 	_add_spark((defender.global_position + attacker.global_position) * 0.5 + Vector2(0.0, -110.0))
 	_on_shake(0.5, 0.12)
 	Sfx.play(&"parry")
-	hud.announce_subtitle("BIG TUNE!", "(Translation: Cleanest block in the dance!)")
+	# Record Static Parry interrupts the tune: "hold on a second".
+	_announce_callout(&"parry")
 
 
 ## On-beat skank taunt: the one taunt line that gets a callout (off-beat stays quiet).
 func _on_taunt_finished(on_beat: bool) -> void:
 	if not on_beat:
 		return
-	hud.announce_subtitle("YUH TOO BOD MINE!!", "(Translation: You're way too jealous!)")
+	# A taunt is a show-off: POPPYSHOW! leads, the older taunt line rotates back in.
+	_announce_callout(&"taunt")
 
 
 ## Throw break: the mutual shove-apart gets the same spark flash, with no damage.
@@ -429,6 +477,8 @@ func _on_throw_broken(attacker: BaseFighter, defender: BaseFighter) -> void:
 	_add_spark((attacker.global_position + defender.global_position) * 0.5 + Vector2(0.0, -110.0))
 	_on_shake(0.55, 0.14)
 	Sfx.play(&"clank")
+	# Throw break is the same interruption of the run: hold on a second.
+	_announce_callout(&"throw_break")
 
 
 ## A landed throw: the spinback pops the crowd (the slam's shake comes from the fighter).
@@ -642,6 +692,7 @@ func _add_strike_tell(fighter: BaseFighter) -> void:
 	if live.size() >= MAX_STRIKE_TELLS:
 		live[0].queue_free()
 	var tell := StrikeTell.new()
+	tell.source = fighter
 	tell.global_position = Vector2(volume.get_center().x, volume.get_center().y)
 	tell.facing = fighter.facing
 	tell.reach = volume.size.x * 0.5 + 26.0

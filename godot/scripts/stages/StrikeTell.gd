@@ -22,6 +22,10 @@ const HEAVY_EXTRA := 7.0
 @export var radius: float = 24.0
 ## BOX / kick get a wider, brighter smear than the jab.
 @export var heavy: bool = false
+## The fighter this smear belongs to. Presentation bookkeeping only: it lets the headless
+## check ask "did THIS fighter's drawn jab spawn a smear?" instead of "is any smear alive?",
+## which used to read the CPU's own attack as a failure (2026-11-19).
+var source: Node = null
 
 var _life: float = 0.0
 

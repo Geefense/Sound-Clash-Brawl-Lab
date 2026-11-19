@@ -98,7 +98,11 @@ const FIGHTERS := {
 		"uses_scene_frames": false,
 		"frames": {
 			# Mic stance carries the neutral movement states; the 2026-11-18 set (AGENTS.md §9
-			# item 34) now covers guard, jab, upper box, hitstun, launch, taunt and celebration.
+			# item 34) covers guard, jab, upper box and celebration, and the 2026-11-19 batch
+			# (item 38) replaces the single taunt / hit / launch / knockdown poses with drawn
+			# sequences. `walk` still recycles the mic stance: the 2026-11-19 walk video is a
+			# phone-framed close-up that clips the hat crown and one boot in every frame, so it
+			# is not wired — see the batch PROVENANCE.md.
 			&"idle": ["res://assets/sprites/lickshot/idle.png"],
 			&"walk": ["res://assets/sprites/lickshot/idle.png"],
 			&"jump": ["res://assets/sprites/lickshot/idle.png"],
@@ -107,14 +111,46 @@ const FIGHTERS := {
 			&"block": ["res://assets/sprites/lickshot/guard_stance.png"],
 			&"guard_entry": ["res://assets/sprites/lickshot/guard_stance.png"],
 			&"guard_recovery": ["res://assets/sprites/lickshot/guard_stance.png"],
-			&"skank": ["res://assets/sprites/lickshot/skank_point.png"],
+			# T = the full 8-pose lean-back / skank groove, one pose per beat of the taunt.
+			&"skank": [
+				"res://assets/sprites/lickshot/skank/01.png",
+				"res://assets/sprites/lickshot/skank/02.png",
+				"res://assets/sprites/lickshot/skank/03.png",
+				"res://assets/sprites/lickshot/skank/04.png",
+				"res://assets/sprites/lickshot/skank/05.png",
+				"res://assets/sprites/lickshot/skank/06.png",
+				"res://assets/sprites/lickshot/skank/07.png",
+				"res://assets/sprites/lickshot/skank/08.png",
+			],
 			&"jab": ["res://assets/sprites/lickshot/jab.png"],
 			&"upper_box": ["res://assets/sprites/lickshot/upper_box.png"],
-			&"hitstun": ["res://assets/sprites/lickshot/hitstun_recoil.png"],
-			&"launched": ["res://assets/sprites/lickshot/launched_recoil.png"],
-			&"knockdown": ["res://assets/sprites/lickshot/idle.png"],
-			&"ko": ["res://assets/sprites/lickshot/idle.png"],
-			&"tumble": ["res://assets/sprites/lickshot/idle.png"],
+			# Standing recoil snap (top row of the 3 x 4 sheet).
+			&"hitstun": [
+				"res://assets/sprites/lickshot/hitstun/01.png",
+				"res://assets/sprites/lickshot/hitstun/02.png",
+				"res://assets/sprites/lickshot/hitstun/03.png",
+			],
+			# C-recoil launch, then the sheet's airborne poses.
+			&"launched": [
+				"res://assets/sprites/lickshot/airborne/01.png",
+				"res://assets/sprites/lickshot/airborne/02.png",
+				"res://assets/sprites/lickshot/airborne/03.png",
+			],
+			&"tumble": [
+				"res://assets/sprites/lickshot/airborne/03.png",
+				"res://assets/sprites/lickshot/airborne/04.png",
+				"res://assets/sprites/lickshot/airborne/05.png",
+				"res://assets/sprites/lickshot/airborne/06.png",
+			],
+			# Bottom row of the sheet: seated into sprawled, then the face-down frames.
+			&"knockdown": [
+				"res://assets/sprites/lickshot/ground/01.png",
+				"res://assets/sprites/lickshot/ground/02.png",
+			],
+			&"ko": [
+				"res://assets/sprites/lickshot/ground/03.png",
+				"res://assets/sprites/lickshot/ground/04.png",
+			],
 			# K = BOX is the Sonic Clap: arms spread wide, then the oversized hands meet with a
 			# golden shockwave. L = TUMP is the extended high left kick.
 			&"high_kick": ["res://assets/sprites/lickshot/high_kick.png"],
@@ -132,9 +168,6 @@ const FIGHTERS := {
 			"walk": Vector2(7.5, -281.9),
 			"jump": Vector2(7.5, -281.9),
 			"crouch": Vector2(7.5, -281.9),
-			"knockdown": Vector2(7.5, -281.9),
-			"ko": Vector2(7.5, -281.9),
-			"tumble": Vector2(7.5, -281.9),
 			"high_kick": Vector2(127.5, -282.0),
 			"sonic_clap_windup": Vector2(-28.5, -281.0),
 			"sonic_clap_impact": Vector2(141.0, -167.5),
@@ -144,32 +177,59 @@ const FIGHTERS := {
 			"block": Vector2(-47.5, -282.0),
 			"guard_entry": Vector2(-47.5, -282.0),
 			"guard_recovery": Vector2(-47.5, -282.0),
-			"hitstun": Vector2(-45.5, -282.1),
-			"launched": Vector2(31.5, -282.1),
-			"skank": Vector2(-16.5, -282.0),
 			"celebration": Vector2(-1.0, -282.1),
+			# 2026-11-19 sequences (AGENTS.md §9 item 38). Each group is composed onto one
+			# shared canvas, so every frame of an animation has the same sole row and stance
+			# centre and these single offsets hold the y 592 sand line for the whole sequence.
+			"skank": Vector2(-11.0, -196.4),
+			"hitstun": Vector2(-37.5, -221.9),
+			"launched": Vector2(-35.5, -165.9),
+			"tumble": Vector2(-35.5, -165.9),
+			"knockdown": Vector2(10.5, -99.4),
+			"ko": Vector2(10.5, -99.4),
 		},
 		"anim_scale": {
 			# 121.75 px crown-to-sole / that frame's measured height (the 1.24 art scale is
 			# applied once, by BaseFighter, so every fighter grows together).
 			"idle": 0.24014,
 			"walk": 0.24014, "jump": 0.24014, "crouch": 0.24014,
-			"knockdown": 0.24014, "ko": 0.24014, "tumble": 0.24014,
 			"high_kick": 0.23873,
 			"sonic_clap_windup": 0.23919,
 			"sonic_clap_impact": 0.43021,   # the shockwave sits above the cap in this frame
 			"jab": 0.23873, "upper_box": 0.23873,
 			"block": 0.23873, "guard_entry": 0.23873, "guard_recovery": 0.23873,
-			"hitstun": 0.23826, "launched": 0.23826, "celebration": 0.23826,
-			"skank": 0.23873,
+			"celebration": 0.23826,
+			# 2026-11-19: 121.75 px target / the group's standing crown-to-sole. The skank
+			# sheet is drawn at a larger art scale than the 3 x 4 sheet, so its factor differs;
+			# the C-recoil inside `launched` is rescaled onto the sheet by its mic grille.
+			"skank": 0.34104,
+			"hitstun": 0.30211, "launched": 0.30211, "tumble": 0.30211,
+			"knockdown": 0.30211, "ko": 0.30211,
+		},
+		# Playback rates for the drawn sequences. One pose per beat on the taunt (8 poses over
+		# the 68-tick taunt) and a short snap for the reactions. Single-frame poses keep the
+		# default 1 fps, so nothing that was already wired changes speed.
+		"anim_fps": {
+			"skank": 7.0, "hitstun": 12.0,
+			"launched": 10.0, "tumble": 10.0,
+			"knockdown": 8.0, "ko": 5.0,
+		},
+		# The knockdown and KO settle on their last drawn frame instead of snapping back.
+		"anim_loop": {
+			"skank": true, "hitstun": false, "launched": false,
+			"tumble": true, "knockdown": false, "ko": false,
 		},
 		"anim_source_max": {
 			"idle": 512.0, "walk": 512.0, "jump": 512.0, "crouch": 512.0,
-			"knockdown": 512.0, "ko": 512.0, "tumble": 512.0,
 			"high_kick": 512.0, "sonic_clap_windup": 512.0, "sonic_clap_impact": 512.0,
 			"jab": 512.0, "upper_box": 512.0,
 			"block": 512.0, "guard_entry": 512.0, "guard_recovery": 512.0,
-			"hitstun": 512.0, "launched": 512.0, "skank": 512.0, "celebration": 512.0,
+			"celebration": 512.0,
+			# 2026-11-19 sequences: the shared canvas' longest side, so the import-cap ratio
+			# stays 1.0 and no scale is applied twice.
+			"skank": 365.0,
+			"hitstun": 411.0, "launched": 401.0, "tumble": 401.0,
+			"knockdown": 339.0, "ko": 339.0,
 		},
 		# K = BOX plays windup → impact; L = TUMP plays the high kick. The kick's contact box
 		# moves up to head height, because the art is an extended high kick and not the
@@ -325,13 +385,18 @@ static func build_frames(key: StringName) -> SpriteFrames:
 	var frames := SpriteFrames.new()
 	frames.remove_animation(&"default")
 	var table: Dictionary = data["frames"]
+	# Optional playback: a drawn sequence needs a real frame rate, and a knockdown or KO
+	# should hold its last pose. A fighter with no tables keeps 1 fps / loop, exactly as
+	# every single-frame pose already behaved.
+	var fps_table: Dictionary = data.get("anim_fps", {})
+	var loop_table: Dictionary = data.get("anim_loop", {})
 	for anim in table:
 		var paths: Array = table[anim]
 		if paths.is_empty():
 			continue
 		frames.add_animation(anim)
-		frames.set_animation_loop(anim, true)
-		frames.set_animation_speed(anim, 1.0)
+		frames.set_animation_loop(anim, bool(loop_table.get(anim, true)))
+		frames.set_animation_speed(anim, float(fps_table.get(anim, 1.0)))
 		for path in paths:
 			var tex := load(String(path)) as Texture2D
 			if tex == null:

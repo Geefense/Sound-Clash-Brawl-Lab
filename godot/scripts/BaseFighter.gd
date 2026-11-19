@@ -1246,8 +1246,13 @@ func receive_strike(attacker: BaseFighter, strike: Dictionary) -> Dictionary:
 	health_changed.emit(health, max_health)
 
 	var kb: Vector2 = a["knockback"]
+	# Punish: the strike landed while the target was committed to an attack or a taunt. Read
+	# from the pre-resolution state, because every branch below already switches it.
+	var punish := state in [State.ATTACK_STARTUP, State.ATTACK_ACTIVE, State.ATTACK_RECOVERY,
+		State.TAUNT]
 	var result := {
 		"blocked": blocked, "damage": dmg, "ko": false, "on_beat": on_beat,
+		"punish": punish,
 		"attacker_surge": attacker.is_hype_surging(),
 		"attack_id": strike["attack_id"],
 		"input_beat": strike["input_beat"],

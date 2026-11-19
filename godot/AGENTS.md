@@ -26,7 +26,7 @@ The fighters must feel like personalities at a dance, not interchangeable boxers
 
 **Mic continuity requires version-specific care.** Earlier pose work used the left hand; the later four-key walk study explicitly uses the right hand. Never silently flip or normalize one set into the other. Each sequence must keep one mic in its declared anatomical hand and one continuous cable, including forearm wraps. A mic cannot disappear while adjusting the hat or reappear in another hand. [TODO] Owner resolves the canonical cross-set hand before final fighter integration. Mirroring art changes apparent handedness and is provisional only.
 
-**Other concepts:** **Lickshot is now Fighter #2's display name** (renamed from Dubplate, 2026-11-17 — §9 item 26); `Disc Jock Lickshot` and `Booyaka Lickshot` stay recorded alternates and the owner says the name may still evolve. The off-screen selecta record-theft gag belongs to Fighter #2 accordingly. The Godot migration gate for Fighter #2 is passed — he is in the roster with his own four-pose set since 2026-11-17 (§9 item 27): mic stance, high kick, Sonic Clap windup and Sonic Clap impact. **Working name pool for Fighters #4–#6 (owner, 2026-11-17): FL!NG STONE, RUM PUNCH, SKY JU!CE** — the on-screen spelling under the I → ! rule (§9 item 32); their internal ids would stay clean (`fling_stone`, `sky_juice`). Working names only, with no slot assigned and no design implied (§2, §9 items 26 and 32).
+**Other concepts:** **Lickshot is now Fighter #2's display name** (renamed from Dubplate, 2026-11-17 — §9 item 26); `Disc Jock Lickshot` and `Booyaka Lickshot` stay recorded alternates and the owner says the name may still evolve. The off-screen selecta record-theft gag belongs to Fighter #2 accordingly. The Godot migration gate for Fighter #2 is passed — he is in the roster with his own four-pose set since 2026-11-17 (§9 item 27): mic stance, high kick, Sonic Clap windup and Sonic Clap impact. **Working name pool for the future roster (owner, 2026-11-17; expanded 2026-11-19): FL!NG STONE, RUM PUNCH, SKY JU!CE** — the on-screen spelling under the I → ! rule (§9 item 32); their internal ids would stay clean (`fling_stone`, `sky_juice`) — **joined on 2026-11-19 by POPPY SHOW, SUGAR KANE and JUNE PLUM** (owner direction; Sugar Kane and June Plum are female fighter name candidates — the first female slots in the pool). Working names only, with no slot assigned and no design implied (§2, §9 items 26, 32 and 38).
 
 ### Owner clarification — cross-animation consistency (2026-11-13)
 
@@ -67,7 +67,7 @@ Calendar clarification: November 13, 2026 to April 21, 2027 is 159 days (~22.7 w
 | **Weeks 18–20** | **Mar 12 – Apr 1, 2027** | Build 2–3 distinct Sound Clash venues, Character Select and Arcade mode. Add stretch Fighters #7–#8 only if genuinely ahead. | Six-fighter roster selectable; Arcade run completes and restarts; venues work with hazards/party transitions. Stretch scope cannot consume final QA time. |
 | **Weeks 21–22 / closing partial week** | **Apr 2 – Apr 21, 2027** | Final balance, audio mixing, input/beat responsiveness checks, regression fixes, clean export and birthday launch. | Versioned release build tested on the chosen target; no critical blocker; credits/controls included; reproducible export instructions. |
 
-Roster slots: #1 Feedback; #2 **L!CKSHOT** on screen, key `lickshot` (renamed from Dubplate on 2026-11-17, §9 item 26; I → ! styling rule, §9 item 32 — the name may still evolve); #3 **Likkle Moore**, on screen **L!KKLE MOORE** (renamed from Young Selecta on 2026-11-19, §9 item 35; the roster key `young_selecta` and the sprite folder stay unchanged, and the name may still evolve) (§9 items 22–25); #4–#6 **[TODO]** assign final names/order from the owner's working **name pool: FL!NG STONE, RUM PUNCH, SKY JU!CE** (2026-11-17, styled per §9 item 32). Those three are working names, not assignments: nothing says #4 is Fling Stone, and a name is not a design — do not build a fighter from a name alone or treat the pool as final. The owner named #1–#3 explicitly; #4–#6 remain open. #7–#8 remain optional.
+Roster slots: #1 Feedback; #2 **L!CKSHOT** on screen, key `lickshot` (renamed from Dubplate on 2026-11-17, §9 item 26; I → ! styling rule, §9 item 32 — the name may still evolve); #3 **Likkle Moore**, on screen **L!KKLE MOORE** (renamed from Young Selecta on 2026-11-19, §9 item 35; the roster key `young_selecta` and the sprite folder stay unchanged, and the name may still evolve) (§9 items 22–25); #4–#6 **[TODO]** assign final names/order from the owner's working **name pool: FL!NG STONE, RUM PUNCH, SKY JU!CE** (2026-11-17, styled per §9 item 32), **expanded 2026-11-19 with POPPY SHOW, SUGAR KANE and JUNE PLUM** (owner direction; Sugar Kane and June Plum are female fighter name candidates — §9 item 38). Those six are working names, not assignments: nothing says #4 is Fling Stone, and a name is not a design — do not build a fighter from a name alone or treat the pool as final. The owner named #1–#3 explicitly; #4–#6 remain open. #7–#8 remain optional.
 
 Suggested content slots within the supplied eight-week roster block: #3 Jan 15–28; #4 Jan 29–Feb 11; #5 Feb 12–25; #6 Feb 26–Mar 11. Each slot covers stance/move definition, approved exports, data/hitboxes, voices, integration and a playable check. Templates and placeholders should be prepared before the slot, not used to claim finished art.
 
@@ -405,7 +405,10 @@ This register includes all phrases recoverable from the visible conversation, su
 | `LIGHTAH!` | Shouted form of the existing `Lighter!` request; one of the owner's family-friendly callouts (2026-11-15). |
 | `FORWARD!` | Owner's family-friendly hype callout; the implemented 100 % Hype Surge banner (§9 item 10). |
 | `WHEEL AND COME AGAIN!` | Shouted banner/voice form of the existing `wheel and cum again`. A separately recorded capitalization variant — do not normalise the two into one. |
-| `BIG TUNE!` | Owner's family-friendly crowd/hype callout. [TODO] Trigger and delivery are unset. |
+| `BIG TUNE!` | Owner's family-friendly crowd/hype callout. Implemented as the rotating Patois subtitle on a Record Static Parry (2026-11-19, §9 item 38); voice delivery still unset. |
+| `WHOLE-AWN-DEH!` | Owner gloss: “Hold on a second!” Owner-approved callout added 2026-11-19 (§9 item 38) and wired as a Patois subtitle on the Record Static Parry and on a throw break — the moments the tune gets interrupted. Preserve the spelling and the exclamation. |
+| `PLAYAH NEX TUNE!` | Owner gloss: “Play another song!” Owner-approved callout added 2026-11-19 (§9 item 38) and wired as a Patois subtitle on the 100 % Hype Surge and on a round win. Preserve the spelling and the exclamation. |
+| `POPPYSHOW!` | Owner gloss: “Show-off! / Clown!” Owner-approved callout added 2026-11-19 (§9 item 38) and wired as a Patois subtitle on a taunt (T) and on a punish hit (a strike that interrupts an attack or a taunt). One word, no space — do not split it. |
 | `Feedbackhand` | Proposed backhand pun. |
 
 ### Comedy, taunt and move register
@@ -1412,6 +1415,71 @@ here is gameplay-verified; implementation status is stated per item.
       record and is deliberately **not** copied into `/docs/` (exported WebGL2 build only) or `/godot`
       (code and assets), per §5.
 
+38. **L!CKSHOT's 2026-11-19 batch — 8-pose skank groove, 12-pose hit/launch/knockdown sheet and the C-recoil prepared, wired and headless-verified; three Patois callouts and an expanded name pool recorded (2026-11-19).**
+
+    - **Uploads.** Four creator-approved files were moved off the repository root with `git mv`
+      (byte-identical) into `art-source/fighters/lickshot/batch-2026-11-19/` and recorded in its
+      `PROVENANCE.md`: the 2.97 s / 89-frame walk video (`lickshot_bossy_walk_phone.mov`), the 2 × 4
+      lean-back / skank sheet (`IMG_6636.jpeg`), the 3 × 4 hitstun / airborne / knockdown sheet
+      (`IMG_6643.jpeg`) and the single C-recoil pose (`IMG_6644.jpeg`). The root carries no upload left
+      over from this batch.
+    - **Preparation.** `art-source/fighters/prep_lickshot_poses.py --batch 2026-11-19` (measurements in
+      `art-source/fighters/lickshot/prep-report-2026-11-19.json`) keys the white background including the
+      pocket sealed inside the mic-cable loop, protects the thin black cord, the silver grille and the cream
+      Wallabee soles, and crops each drawing as its own connected blob — a straight grid cut chopped the
+      poses because the sheet rows touch. Every animation group is then composed onto **one shared canvas**
+      (sole row and stance centre aligned, group downscaled once to the **512 px** cap), because
+      `FighterRoster` stores one offset/scale per animation name; that is what keeps a sequence from bobbing
+      or sinking frame to frame. Measured sole spread inside every group: **0 px**.
+    - **Floor rule.** Every frame's drawn alpha bottom lands on world **y 592**
+      (`BaseFighter.REACTION_FLOOR_Y`), the same 8 px above the y 600 origin the earlier poses use. The 0.5 px
+      feather is re-cut at the sole line, because Godot's `used_rect` counts any non-zero alpha and the
+      feather tail would have set a sole two pixels low (it did: 592.7–592.9 before the fix).
+    - **Art-scale calibration.** The standalone C-recoil is drawn ~2.7× larger than a sheet pose. The mic
+      grille — the only rigid prop in every drawing — calibrates it onto the sheet scale (measured ratio
+      **2.682**, `art_scale_match` in the report), so the C-recoil reads at the same body size as the
+      airborne poses beside it.
+    - **Wiring (presentation only; no combat value changed).** `skank` = the 8-pose lean-back groove (the T
+      taunt, 7 fps over the 68-tick taunt); `hitstun` = the sheet's 3 standing recoils; `launched` =
+      C-recoil + row-1 pose 4 + the first airborne pose; `tumble` = the 4 airborne poses; `knockdown` = the
+      seated → sprawled pair; `ko` = the two face-down frames. `FighterRoster.build_frames()` gained optional
+      `anim_fps` / `anim_loop` tables (defaults unchanged, so every single-frame pose behaves exactly as
+      before) and the knockdown/KO hold their last drawn frame. The three replaced single poses
+      (`skank_point.png`, `hitstun_recoil.png`, `launched_recoil.png`) stay in the repo but are no longer
+      referenced; idle, jab, upper box, Sonic Clap windup/impact, high kick, guard and celebration are
+      untouched.
+    - **Walk upload — processed, NOT wired.** The clip is a phone-framed close-up: the hat crown is cut by
+      the top edge in all 89 frames and **every frame clips one boot** at a side edge, while the clean-right
+      window of each 22-frame stride period holds only half a step. The four least-clipped frames are keyed,
+      capped and floor-aligned into `batch-2026-11-19/walk-frames/` with `review/walk-strip.png`; `walk`
+      still recycles the mic stance. **A full-body re-export with margin on all four sides is needed before
+      the walk can be wired** — chopped soles in a looping walk is exactly the failure §9 item 6 forbids.
+    - **Patois callouts (§8).** `WHOLE-AWN-DEH!` (Record Static Parry, throw break), `PLAYAH NEX TUNE!`
+      (100 % Hype Surge, round win) and `POPPYSHOW!` (taunt, punish hit) are wired through one rotating pool
+      in `TestArena.CALLOUTS`: the new line leads its trigger and the lines that already played there
+      (`BIG TUNE!`, `WHEEL AND COME AGAIN!`, `YUH TOO BOD MINE!!`) rotate back in. `receive_strike()` now
+      records a `punish` flag (the strike interrupted an attack or a taunt) so the punish callout has a real
+      trigger. Every line keeps its English gloss in its own field; no spelling was normalised.
+    - **Future roster name pool (§2).** POPPY SHOW, SUGAR KANE and JUNE PLUM join FL!NG STONE, RUM PUNCH and
+      SKY JU!CE. Sugar Kane and June Plum are **female fighter name candidates**. Still working names with no
+      slot assigned and no design implied — do not build a fighter from a name.
+    - **One check made deterministic.** `StrikeTell` now carries its `source` fighter, so the headless
+      smear check asks whether **P1's own** drawn jab spawned a smear instead of whether *any* smear is
+      alive — the CPU (Likkle Moore) draws real smears, and that made the old form flip depending on when
+      the AI attacked. Two consecutive runs now both pass.
+    - **Checks actually run** — Godot **4.5.stable.official (876b29033)** headless, Web templates installed
+      locally (never committed): `--import`, then `--script res://tools/headless_roster_check.gd` →
+      **98 assertions, `ALL CHECKS PASSED`, exit 0**, including per-frame floor checks on all 22 sequence
+      frames, the 512 px cap, the full frame counts (8/3/3/4/2/2), the taunt rate and loop flags, the retired
+      single poses, the six-name pool and each new callout's text and rotation. The Web export was rebuilt
+      (`docs/`).
+    - **Not verified.** No GPU or display here: nothing was watched running, so the groove's feel, the
+      frame-to-frame continuity at gameplay size and the punch of the new callout timing are unjudged. The
+      frames are **UNAPPROVED** art pending the owner's review; the C-recoil scale match is arithmetic from a
+      prop measurement, not an eye check. The walk is blocked on a re-export, not on code.
+    - **Next.** Owner review of the four review strips; re-upload the walk with the whole figure inside the
+      frame; then a device playtest of the taunt groove, the hit responses and the callout rotation.
+
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 
 Recorded at build `ad27516` (`stage/sound-clash-sand`); §9 items 1–19 above are the decisions that
@@ -1618,6 +1686,7 @@ For Godot, once created: [TODO] pin exact import/headless launch/test/export com
 | Round-based day → sunset → night lighting | Implemented 2026-11-15 on branch `stage/sound-clash-sand`; headless checks of all three phases, tween and N cycle pass; round-controller driving and **on-screen look [TODO]**. |
 | Owner playtest pass: facing, visible CPU strikes, crowd acts, stage lighting, framing, props | Implemented 2026-11-17; headless 4.5 check 49/49; **on-screen look and feel [TODO]**; left-facing frames and multi-frame crowd loops still need art prep. |
 | Lickshot four-pose set (stance, high kick, Sonic Clap windup/impact) | Implemented 2026-11-17 (§9 item 27): four keyed 512 px frames wired into `FighterRoster`, the generic smear replaced on K/L, headless 4.5 **58/58**, Web export rebuilt; **on-screen look and motion [TODO]**. |
+| L!ckshot 2026-11-19 batch: 8-pose skank groove, hitstun / launch / tumble / knockdown / KO sequences, C-recoil, three Patois callouts, name pool | Implemented 2026-11-19 (§9 item 38): four uploads archived off the root, sheets sliced and keyed, one shared canvas per animation, every frame on the y 592 sand line, headless 4.5 **98/98**, Web export rebuilt; **art UNAPPROVED and on-screen motion [TODO]**. The walk video is processed but **NOT wired**: the upload crops the hat crown and one boot in every frame, so a full-body re-export is needed. |
 | Smart Sparring AI modes (P2) | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 4 modes cycle on **Y**, HUD banner, **G** guard override; headless Godot 4.5 runs pass for every mode; **on-screen/feel playtest [TODO]**. |
 | Dancehall crowd line + 100% Hype Surge | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 6 sliced spectators (Queen centre) + 2 record crates at the stacks, beat bob, FORWARD!/PULL UP! banner, 5 s 1.20× / faster-recovery boost; headless checks pass; **on-screen look and balance [TODO]**. |
 | 15-character two-row rotating crowd + contact shadows | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 9 new slices (pool 15), front/back rows, 12–18 s and 50 %/100 % hype reshuffles, GroundShadow on crowd and crates; headless checks pass; **on-screen look [TODO]**. |

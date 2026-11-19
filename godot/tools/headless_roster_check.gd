@@ -29,11 +29,13 @@ func _check(condition: bool, label: String, detail: String = "") -> void:
 ## Reads the real texture alpha bounds and composes the same offset/scale the renderer uses
 ## (offset is divided by the import-cap ratio, scale multiplied by it), so this tests the art
 ## and the placement together instead of re-deriving the numbers in the offset table.
-func _anim_floor_y(f: BaseFighter, key: StringName) -> float:
+func _anim_floor_y(f: BaseFighter, key: StringName, index: int = 0) -> float:
 	var frames := f.sprite.sprite_frames
 	if frames == null or not frames.has_animation(key):
 		return -99999.0
-	var tex := frames.get_frame_texture(key, 0)
+	if index >= frames.get_frame_count(key):
+		return -99999.0
+	var tex := frames.get_frame_texture(key, index)
 	if tex == null:
 		return -99999.0
 	var img := tex.get_image()
@@ -98,10 +100,15 @@ func _run() -> void:
 	_check(p2.display_name == "L!CKSHOT", "P2 is L!CKSHOT on screen", p2.display_name)
 	_check(p2.fighter_key == &"lickshot" and FighterRoster.display_name(&"lickshot") == "L!CKSHOT",
 		"the styled name keeps the clean internal key", str(p2.fighter_key))
+	# The owner expanded the future roster pool on 2026-11-19 (AGENTS.md §2, §9 item 38):
+	# POPPY SHOW, SUGAR KANE and JUNE PLUM join the three names already recorded.
 	_check(FighterRoster.styled_name("FLING STONE") == "FL!NG STONE"
 			and FighterRoster.styled_name("RUM PUNCH") == "RUM PUNCH"
-			and FighterRoster.styled_name("SKY JUICE") == "SKY JU!CE",
-		"the I to ! rule covers the Fighters #4-#6 name pool")
+			and FighterRoster.styled_name("SKY JUICE") == "SKY JU!CE"
+			and FighterRoster.styled_name("POPPY SHOW") == "POPPY SHOW"
+			and FighterRoster.styled_name("SUGAR KANE") == "SUGAR KANE"
+			and FighterRoster.styled_name("JUNE PLUM") == "JUNE PLUM",
+		"the I to ! rule covers the six-name future roster pool")
 	var bungee: Font = load("res://assets/fonts/Bungee-Regular.ttf")
 	_check(bungee != null
 			and bungee.get_string_size("!", HORIZONTAL_ALIGNMENT_LEFT, -1, 24).x > 2.0
@@ -193,12 +200,13 @@ func _run() -> void:
 	var lick_off := []
 	var lick_tallest := 0.0
 	for key in lick_new:
-		var floor_y := _anim_floor_y(p2, key)
-		if absf(floor_y - 592.0) > 0.75:
-			lick_off.append("%s %.1f" % [key, floor_y])
-		var tex := p2.sprite.sprite_frames.get_frame_texture(key, 0)
-		if tex != null:
-			lick_tallest = maxf(lick_tallest, float(maxi(tex.get_width(), tex.get_height())))
+		for i in p2.sprite.sprite_frames.get_frame_count(key):
+			var floor_y := _anim_floor_y(p2, key, i)
+			if absf(floor_y - 592.0) > 0.75:
+				lick_off.append("%s#%d %.1f" % [key, i, floor_y])
+			var tex := p2.sprite.sprite_frames.get_frame_texture(key, i)
+			if tex != null:
+				lick_tallest = maxf(lick_tallest, float(maxi(tex.get_width(), tex.get_height())))
 	_check(lick_off.is_empty(), "every new Lickshot pose plants on the y 592 sand line",
 		"off-floor %s" % [lick_off] if not lick_off.is_empty() else "592.0")
 	_check(lick_tallest <= 512.5, "the new Lickshot frames stay inside the 512 px cap",
@@ -206,7 +214,7 @@ func _run() -> void:
 	# Guard, hitstun, launch, taunt and grab all have dedicated drawings now.
 	_check(p2._state_anims.get("grab", &"") == &"celebration",
 		"Lickshot's collar grab plays the wide-open arms pose")
-	_check(p2._taunt_sequence == [&"skank"], "Lickshot's taunt plays the gun-finger lean")
+	_check(p2._taunt_sequence == [&"skank"], "Lickshot's taunt plays the skank groove")
 	_check(p2._celebrate_anim == &"celebration", "Lickshot celebrates with the arms-open pose")
 	p2.play_celebration(6)
 	await physics_frame
@@ -214,6 +222,110 @@ func _run() -> void:
 		String(p2.sprite.animation))
 	p2._celebrate_ticks = 0
 	p2._play_state_anim()
+
+	# ---- Lickshot's 2026-11-19 sequences (AGENTS.md §9 item 38) --------------
+	# The 8-pose skank groove, the standing hitstun snap, the airborne launch/tumble and the
+	# ground knockdown/KO. Every frame of every sequence must land on the sand line: these
+	# are multi-frame animations, so one shared canvas per group is what proves no frame can
+	# bob or sink mid-sequence.
+	var lick_seq := {
+		&"skank": 8, &"hitstun": 3, &"launched": 3,
+		&"tumble": 4, &"knockdown": 2, &"ko": 2,
+	}
+	var seq_missing := []
+	var seq_counts := []
+	var seq_off := []
+	var seq_below := []
+	var seq_tallest := 0.0
+	for key in lick_seq:
+		if not p2.sprite.sprite_frames.has_animation(key):
+			seq_missing.append(String(key))
+			continue
+		var want := int(lick_seq[key])
+		var got := p2.sprite.sprite_frames.get_frame_count(key)
+		if got != want:
+			seq_counts.append("%s %d/%d" % [key, got, want])
+		for i in got:
+			var fy := _anim_floor_y(p2, key, i)
+			if absf(fy - 592.0) > 0.75:
+				seq_off.append("%s#%d %.1f" % [key, i, fy])
+			if fy > 592.5:
+				seq_below.append("%s#%d %.1f" % [key, i, fy])
+			var tex := p2.sprite.sprite_frames.get_frame_texture(key, i)
+			if tex != null:
+				seq_tallest = maxf(seq_tallest, float(maxi(tex.get_width(), tex.get_height())))
+	_check(seq_missing.is_empty(), "all six Lickshot sequences are registered",
+		"missing %s" % [seq_missing] if not seq_missing.is_empty() else "skank, hitstun, launched, tumble, knockdown, ko")
+	_check(seq_counts.is_empty(), "every sequence carries its full drawn frame count",
+		"%s" % [seq_counts] if not seq_counts.is_empty() else "8 / 3 / 3 / 4 / 2 / 2")
+	_check(seq_off.is_empty(), "every frame of every sequence lands on the y 592 sand line",
+		"off-floor %s" % [seq_off] if not seq_off.is_empty() else "592.0")
+	_check(seq_below.is_empty(), "no frame of any sequence sinks below the sand",
+		"below %s" % [seq_below] if not seq_below.is_empty() else "none")
+	_check(seq_tallest <= 512.5, "the new sequence frames stay inside the 512 px cap",
+		"%.0f px" % seq_tallest)
+	# The taunt plays the groove at a musical rate; the ground sequences settle on the sand.
+	_check(is_equal_approx(p2.sprite.sprite_frames.get_animation_speed(&"skank"), 7.0)
+			and p2.sprite.sprite_frames.get_animation_loop(&"skank"),
+		"the 8-pose skank groove plays looping at 7 fps")
+	_check(not p2.sprite.sprite_frames.get_animation_loop(&"knockdown")
+			and not p2.sprite.sprite_frames.get_animation_loop(&"ko"),
+		"knockdown and KO settle on their last drawn frame")
+	# Retired placeholders: the single-frame taunt/recoil poses are no longer referenced, while
+	# every approved frame from the 2026-11-17/18 sets stays wired.
+	var lick_frames_text := str(FighterRoster.FIGHTERS[&"lickshot"]["frames"])
+	_check(not lick_frames_text.contains("skank_point")
+			and not lick_frames_text.contains("hitstun_recoil")
+			and not lick_frames_text.contains("launched_recoil"),
+		"the replaced single-pose taunt and recoils are out of the frame table")
+	_check(lick_frames_text.contains("idle.png") and lick_frames_text.contains("jab.png")
+			and lick_frames_text.contains("upper_box.png")
+			and lick_frames_text.contains("sonic_clap_windup.png")
+			and lick_frames_text.contains("sonic_clap_impact.png")
+			and lick_frames_text.contains("high_kick.png")
+			and lick_frames_text.contains("guard_stance.png")
+			and lick_frames_text.contains("celebration.png"),
+		"every approved Lickshot frame is still wired")
+
+	# ---- Patois callout rotation (AGENTS.md §8, item 38) ---------------------
+	# The owner-approved lines lead their trigger; the older approved lines rotate back in.
+	hud.subtitles_enabled = true
+	hud._sub_cooldown = 0.0
+	var parry_first: bool = arena._announce_callout(&"parry") \
+		and hud.subtitle_text().contains("WHOLE-AWN-DEH!")
+	hud._sub_cooldown = 0.0
+	var parry_second: bool = arena._announce_callout(&"parry") \
+		and hud.subtitle_text().contains("BIG TUNE!")
+	_check(parry_first and parry_second,
+		"Record Static Parry leads with WHOLE-AWN-DEH! and rotates BIG TUNE! back in",
+		hud.subtitle_text())
+	hud._sub_cooldown = 0.0
+	var hype_ok: bool = arena._announce_callout(&"hype") \
+		and hud.subtitle_text().contains("PLAYAH NEX TUNE!")
+	_check(hype_ok, "Hype Surge calls PLAYAH NEX TUNE!", hud.subtitle_text())
+	hud._sub_cooldown = 0.0
+	var win_ok: bool = arena._announce_callout(&"round_win") \
+		and hud.subtitle_text().contains("PLAYAH NEX TUNE!")
+	_check(win_ok, "a round win calls PLAYAH NEX TUNE!", hud.subtitle_text())
+	hud._sub_cooldown = 0.0
+	var pop_ok: bool = arena._announce_callout(&"taunt") \
+		and hud.subtitle_text().contains("POPPYSHOW!")
+	hud._sub_cooldown = 0.0
+	var punish_ok: bool = arena._announce_callout(&"punish") \
+		and hud.subtitle_text().contains("POPPYSHOW!")
+	_check(pop_ok and punish_ok, "taunts and punish hits call POPPYSHOW!",
+		hud.subtitle_text())
+	hud._sub_cooldown = 0.0
+	var break_ok: bool = arena._announce_callout(&"throw_break") \
+		and hud.subtitle_text().contains("WHOLE-AWN-DEH!")
+	_check(break_ok, "a throw break calls WHOLE-AWN-DEH!", hud.subtitle_text())
+	# Glosses stay in their own field, never folded into the spoken spelling.
+	_check(str(arena.CALLOUTS[&"parry"][0][1]).contains("Hold on a second")
+			and str(arena.CALLOUTS[&"hype"][0][1]).contains("Play another song")
+			and str(arena.CALLOUTS[&"punish"][0][1]).contains("Show-off"),
+		"each new callout keeps a separate English gloss")
+	hud.toggle_subtitles()
+	hud.toggle_subtitles()
 
 	# ---- Feedback's six 2026-11-18 poses (AGENTS.md §9 item 33) -------------
 	var fb_new: Array[StringName] = [&"palm_shove", &"lean_back", &"open_slap", &"clarks_kick",
@@ -402,8 +514,11 @@ func _run() -> void:
 		await physics_frame
 		if p1b.state == BaseFighter.State.ATTACK_ACTIVE:
 			saw_active = true
-		if arena2._live_strike_tells().size() > 0:
-			saw_tell = true
+		# Only P1's own smears count: the CPU (Likkle Moore) draws real smears, and asking
+		# "is any smear alive?" made this check flip on the AI's attack timing.
+		for tell in arena2._live_strike_tells():
+			if tell.source == p1b:
+				saw_tell = true
 		if saw_active and saw_tell:
 			break
 	_check(saw_active, "P1's jab reached its active window")

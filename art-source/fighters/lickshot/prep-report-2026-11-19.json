@@ -408,97 +408,166 @@
     "reference": "row 1 col 1 crown-to-sole (same drawing scale as every row)"
   },
   "walk": {
-    "label": "Lickshot bossy walk",
+    "label": "Lickshot bossy walk (clean 4-pose sheet)",
     "frame": [
-      416,
+      454,
       512
     ],
-    "downscale": 0.5523,
-    "sole_row": 509,
+    "downscale": 0.4207,
+    "sole_row": 510,
     "sole_spread": [
-      509,
-      509
+      510,
+      510
     ],
-    "stance_centre_x": 215.3,
+    "stance_centre_x": 232.2,
     "stance_spread": [
-      215.0,
-      216.0
+      232.0,
+      233.0
     ],
     "crown_rows": [
-      7,
+      6,
       1,
-      7,
-      5,
-      1,
-      7
+      46,
+      48
     ],
     "crown_to_sole": [
-      503,
-      509,
-      503,
       505,
-      509,
-      503
+      510,
+      465,
+      463
     ],
-    "period_frames": 22,
-    "period_iou": 0.955,
-    "source_frames": 89,
-    "chosen": [
-      1,
-      16,
-      31,
-      44,
-      60,
-      75
+    "frame_order": [
+      "top-left",
+      "top-right",
+      "bottom-left",
+      "bottom-right"
     ],
-    "clipping": [
+    "fps": 9.0,
+    "loop": true,
+    "sole_bob_px": 0,
+    "cells": [
       {
-        "left_boot": 0,
-        "right_boot": 338,
-        "crown_cut": 249
+        "row": 1,
+        "col": 1,
+        "components": 1,
+        "cell": [
+          40,
+          78,
+          1053,
+          1278
+        ],
+        "metrics": {
+          "box": [
+            0,
+            0,
+            1015,
+            1201
+          ],
+          "size": [
+            1015,
+            1201
+          ],
+          "crown_row": 2,
+          "sole_row": 1199,
+          "stance_x": 492.0,
+          "crown_to_sole": 1198
+        }
       },
       {
-        "left_boot": 0,
-        "right_boot": 318,
-        "crown_cut": 227
+        "row": 1,
+        "col": 2,
+        "components": 1,
+        "cell": [
+          960,
+          77,
+          1741,
+          1288
+        ],
+        "metrics": {
+          "box": [
+            0,
+            0,
+            783,
+            1212
+          ],
+          "size": [
+            783,
+            1212
+          ],
+          "crown_row": 2,
+          "sole_row": 1210,
+          "stance_x": 545.0,
+          "crown_to_sole": 1209
+        }
       },
       {
-        "left_boot": 248,
-        "right_boot": 0,
-        "crown_cut": 65
+        "row": 2,
+        "col": 1,
+        "components": 1,
+        "cell": [
+          43,
+          1283,
+          995,
+          2388
+        ],
+        "metrics": {
+          "box": [
+            0,
+            0,
+            954,
+            1106
+          ],
+          "size": [
+            954,
+            1106
+          ],
+          "crown_row": 2,
+          "sole_row": 1104,
+          "stance_x": 551.0,
+          "crown_to_sole": 1103
+        }
       },
       {
-        "left_boot": 241,
-        "right_boot": 0,
-        "crown_cut": 153
-      },
-      {
-        "left_boot": 0,
-        "right_boot": 318,
-        "crown_cut": 225
-      },
-      {
-        "left_boot": 249,
-        "right_boot": 0,
-        "crown_cut": 63
+        "row": 2,
+        "col": 2,
+        "components": 1,
+        "cell": [
+          991,
+          1281,
+          1672,
+          2382
+        ],
+        "metrics": {
+          "box": [
+            0,
+            0,
+            683,
+            1102
+          ],
+          "size": [
+            683,
+            1102
+          ],
+          "crown_row": 2,
+          "sole_row": 1100,
+          "stance_x": 378.0,
+          "crown_to_sole": 1099
+        }
       }
     ],
-    "anim_scale": 0.24157,
+    "anim_scale": 0.25103,
     "anim_offset": [
-      -7.3,
+      -5.2,
       -279.7
     ],
     "anim_source_max": 512.0,
     "wired": true,
-    "caveat": "the source crops the hat crown and one boot in every frame; the frames are the video's own drawings, so the crop is a source limitation, not a processing one \u2014 a full-body re-export fixes it",
-    "source": "art-source/fighters/lickshot/batch-2026-11-19/15_bossy-walk_original.mov",
+    "source": "art-source/fighters/lickshot/batch-2026-11-19/16_walk-sheet-clean_original.png",
     "outputs": [
       "lickshot/walk/01.png",
       "lickshot/walk/02.png",
       "lickshot/walk/03.png",
-      "lickshot/walk/04.png",
-      "lickshot/walk/05.png",
-      "lickshot/walk/06.png"
+      "lickshot/walk/04.png"
     ]
   }
 }

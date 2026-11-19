@@ -28,13 +28,15 @@ Pipeline per image:
   7. measure the crown row (flat cap), the sole row and the sole centre, then print the
      offset/scale `FighterRoster.gd` needs.
 
-2026-11-19 batch (`--batch 2026-11-19`): the walk video, the 2 x 4 skank/lean-back sheet,
-the 3 x 4 hitstun/launch/knockdown sheet and the single C-recoil pose live in
-`batch-2026-11-19/`. Those are multi-frame animations, so each animation group is
+2026-11-19 batch (`--batch 2026-11-19`): the 2 x 2 clean walk sheet, the 2 x 4 skank/
+lean-back sheet, the 3 x 4 hitstun/launch/knockdown sheet and the single C-recoil pose live
+in `batch-2026-11-19/`. Those are multi-frame animations, so each animation group is
 composed onto a shared canvas — every pose anchored by its sole row and stance centre —
 and downscaled once. One offset/scale per animation is all `FighterRoster` stores, so a
-shared canvas is what stops a walk loop from bobbing or sinking. Walk frames come out of
-the video with ffmpeg (`FFMPEG=/path/to/ffmpeg` if it is not on PATH).
+shared canvas is what stops a walk loop from bobbing or sinking. The walk is sliced from
+the clean 4-pose sheet (`16_walk-sheet-clean_original.png`); the archived phone video and
+`extract_walk()` remain only as provenance for the superseded clipped frames.
+
 
 Usage: python3 art-source/fighters/prep_lickshot_poses.py
        python3 art-source/fighters/prep_lickshot_poses.py --batch 2026-11-19
@@ -385,7 +387,8 @@ def prepare(src: Path, dst: Path, job: dict) -> dict:
 BATCH = SRC / "batch-2026-11-19"
 BATCH_REPORT = SRC / "prep-report-2026-11-19.json"
 
-WALK_VIDEO = BATCH / "15_bossy-walk_original.mov"
+WALK_VIDEO = BATCH / "15_bossy-walk_original.mov"      # superseded: every frame clips a boot
+WALK_SHEET = BATCH / "16_walk-sheet-clean_original.png"
 SKANK_SHEET = BATCH / "12_skank-leanback-sheet_original.jpeg"
 REACTION_SHEET = BATCH / "13_hitstun-launch-knockdown-sheet_original.jpeg"
 C_RECOIL = BATCH / "14_c-recoil-launch_original.jpeg"
@@ -758,6 +761,31 @@ def extract_walk(count: int = 6) -> tuple[list[Image.Image], dict]:
     return poses, meta
 
 
+def extract_walk_sheet() -> tuple[list[Image.Image], dict]:
+    """Slice the clean 2 x 2 walk sheet in reading order.
+
+    The owner's re-upload has the whole figure inside every drawing, on pure white, with
+    generous margin. It is still sliced by connected blob rather than by a straight grid
+    cut: the top row's boots reach below the vertical midpoint and the drawings' bounding
+    boxes overlap across the centre, so quadrant crops would chop a Wallabee. Order is
+    top-left -> top-right -> bottom-left -> bottom-right, which is the stride order the
+    owner specified and the order `slice_grid()` returns.
+    """
+    sheet = Image.open(WALK_SHEET)
+    cells = slice_grid(sheet, 2, 2, "walk sheet")
+    if len(cells) != 4:
+        raise SystemExit(f"walk sheet: expected 4 poses, sliced {len(cells)}")
+    poses = [c[0] for c in cells]
+    meta = {
+        "frame_order": ["top-left", "top-right", "bottom-left", "bottom-right"],
+        "fps": 9.0,
+        "loop": True,
+        "sole_bob_px": 0,
+        "cells": [c[1] for c in cells],
+    }
+    return poses, meta
+
+
 def run_batch(only: set[str] | None = None) -> None:
     report: dict = json.loads(BATCH_REPORT.read_text()) if BATCH_REPORT.exists() else {}
     wanted = (lambda key: not only or key in only)
@@ -832,22 +860,22 @@ def run_batch(only: set[str] | None = None) -> None:
                             "reference": "row 1 col 1 crown-to-sole (same drawing scale as every row)"}
         print(f"ground: {len(frames)} frames {record['frame']} scale {report['ground']['anim_scale']}")
 
-    # ---- 3. The 3 s walk video -------------------------------------------
+    # ---- 3. The clean 2 x 2 walk sheet (supersedes the clipped video walk) --
     if wanted("walk"):
-        poses, meta = extract_walk(6)
-        frames, record = compose_group(poses, "Lickshot bossy walk")
+        poses, meta = extract_walk_sheet()
+        frames, record = compose_group(poses, "Lickshot bossy walk (clean 4-pose sheet)")
         ref = int(np.median(record["crown_to_sole"]))
         _save_group(frames, OUT / "walk", [f"{i + 1:02d}.png" for i in range(len(frames))])
         _contact_sheet(frames, REVIEW / "walk-strip.png")
+        if record["sole_spread"][0] != record["sole_spread"][1]:
+            raise SystemExit(f"walk: sole rows do not share one line ({record['sole_spread']})")
         report["walk"] = {**record, **meta, **_anim_numbers(record, ref),
                           "wired": True,
-                          "caveat": "the source crops the hat crown and one boot in every frame; "
-                                    "the frames are the video's own drawings, so the crop is a source "
-                                    "limitation, not a processing one — a full-body re-export fixes it",
-                          "source": str(WALK_VIDEO.relative_to(ROOT)),
+                          "source": str(WALK_SHEET.relative_to(ROOT)),
                           "outputs": [f"{OUT.name}/walk/{i + 1:02d}.png" for i in range(len(frames))]}
-        print(f"walk: {len(frames)} frames {record['frame']} scale {report['walk']['anim_scale']} "
-              f"source frames {meta['chosen']} period {meta['period_frames']}")
+        print(f"walk: {len(frames)} frames {record['frame']} sole {record['sole_row']} "
+              f"bob {record['sole_spread'][1] - record['sole_spread'][0]} px "
+              f"scale {report['walk']['anim_scale']}")
 
     BATCH_REPORT.write_text(json.dumps(report, indent=2, default=str) + "\n")
     print(f"\nwrote {BATCH_REPORT}")
@@ -856,7 +884,7 @@ def run_batch(only: set[str] | None = None) -> None:
 def main() -> None:
     # `--only jab.png upper_box.png` re-runs a subset of the single-pose jobs; without it
     # every single-pose job runs. `--batch 2026-11-19` runs only the 2026-11-19 multi-frame
-    # batch (walk video, skank sheet, reaction sheet, C-recoil) into its own report, so the
+    # batch (walk sheet, skank sheet, reaction sheet, C-recoil) into its own report, so the
     # approved single-pose outputs are never rewritten by a batch pass.
     if "--batch" in sys.argv:
         # `--batch 2026-11-19` runs the whole batch; trailing group names (walk, skank,

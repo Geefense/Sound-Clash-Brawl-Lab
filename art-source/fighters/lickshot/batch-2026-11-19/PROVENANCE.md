@@ -1,77 +1,52 @@
-# L!ckshot — 2026-11-19 upload batch
+# L!ckshot animation batch — 2026-11-19
 
-Four creator-approved L!ckshot animation uploads, moved off the repository root with `git mv`
-(byte-identical) into this folder. Preparation: `art-source/fighters/prep_lickshot_poses.py
---batch 2026-11-19`; its measurements live in `../prep-report-2026-11-19.json`.
+Creator-approved animation sources uploaded by Garfield Connell to the root of
+`stage/sound-clash-sand` in commit `838495caa` ("Add files via upload"), moved here
+unchanged so the repository root stays clean. Originals are immutable; the game-ready
+frames are generated from them by `art-source/fighters/prep_lickshot_poses.py --batch
+2026-11-19` into `godot/assets/sprites/lickshot/`.
 
-| Upload (as delivered) | Stored here as | Role |
+| File | What it is | Wired to |
 | --- | --- | --- |
-| `lickshot_bossy_walk_phone.mov` | `15_bossy-walk_original.mov` | 2.97 s / 89-frame / 30 fps HEVC walk video (694 × 928) |
-| `IMG_6636.jpeg` | `12_skank-leanback-sheet_original.jpeg` | 2 × 4 lean-back / skank dodge sheet (1440 × 720) on pure `#FFFFFF` |
-| `IMG_6643.jpeg` | `13_hitstun-launch-knockdown-sheet_original.jpeg` | 3 × 4 hitstun / airborne launch / knockdown sheet (1264 × 843) on pure `#FFFFFF` |
-| `IMG_6644.jpeg` | `14_c-recoil-launch_original.jpeg` | single airborne C-recoil launch pose (1264 × 843) on pure `#FFFFFF` |
+| `16_walk-sheet-clean_original.png` | 1792 × 2390, **2 rows × 2 poses on pure `#FFFFFF`**: full Kangol cap crowns, complete Clarks Wallabee toes and generous white margin on all four sides. Uploaded later to the root of `stage/sound-clash-sand` as `IMG_6654.jpeg` (commit `db85686`) and stored here as PNG (lossless decode; no pixel retouching). Reading order top-left → top-right → bottom-left → bottom-right. | `walk` — the 4-frame stride cycle at 9 fps, looping (replaces the clipped phone-video frames) |
+| `lickshot_bossy_walk_phone.mov` | 3.0 s, 30 fps, 694 × 928 signature selector walk (a held-pose cycle; 15 distinct drawings). **Superseded as the walk source:** the phone crop cuts the hat crown and one boot in every frame. | Archived provenance only; no longer referenced by the roster |
+| `IMG_6636.jpeg` | 8-pose lean-back / skank sheet, 2 rows × 4, pure `#FFFFFF` | `skank_1` … `skank_8` — the full T skank/taunt groove |
+| `IMG_6643.jpeg` | 12-pose hit / launch / knockdown sheet, 3 rows × 4, pure `#FFFFFF` | see below |
+| `IMG_6644.jpeg` | single airborne C-recoil launch pose, same build and palette as the 12-pose sheet | `launched` frame 1 |
 
-Originals are untouched. The owner's upload filenames are recorded here, and the processed
-outputs are new files — no extractor overwrites an approved asset.
+12-pose sheet wiring (row-major):
 
-## Pipeline
+* top row 1–4 → `hitstun` (standing recoil)
+* middle row 5–6 → `launched` (with the single C-recoil as frame 1); 7–8 → `tumble`
+* bottom row 9–10 → `knockdown`; 11–12 → `ko`
 
-1. Border-connected and large enclosed near-white regions are keyed out, so the white pocket
-   sealed inside the mic-cable loop goes transparent while the silver grille, the chain and the
-   cream Wallabee soles stay.
-2. Each drawing is a connected blob: the biggest `rows × cols` blobs are clustered by centre and
-   every smaller fragment joins its nearest pose, which keeps the thin black mic cord attached to
-   the hand that holds it. (A straight row/column projection cut the drawings — the sheet rows
-   touch.)
-3. 1 px erosion, 0.5 px feather, sole line re-cut after the blur, crop to the alpha bbox.
-4. Every pose in one animation group is composed onto a **shared canvas**, placed so its sole row
-   and stance centre line up, then the group is downscaled once to the 512 px cap. `FighterRoster`
-   stores one offset/scale per animation name, so a shared canvas is what stops the walk/reaction
-   loops from bobbing or sinking frame to frame. Detached specks left by the downscale are dropped
-   from the final canvas, so no chopped-off fragment reaches a sprite sheet.
-5. The floor rule: the drawn alpha bottom lands on world **y 592** (`BaseFighter.REACTION_FLOOR_Y`),
-   the same 8 px above the y 600 origin line the earlier L!ckshot poses use. Measured sole spread
-   inside every group is **0 px**.
+## Preparation rules
 
-## Art-scale calibration
+* **Background:** pure white means "every channel ≥ 236 and saturation ≤ 14". Treating the
+  white as background wherever it sits removes the flat backdrop *and* the white pocket
+  sealed inside the mic-cable loop, without a flood fill. The black mic cord, cream Clarks
+  soles, silver mic grille and gold chain are all far below the threshold, so they survive.
+* **Cap:** longest side of every processed frame ≤ 512 px (the project import cap).
+* **Floor:** every standing, airborne and grounded frame is placed in a canvas whose lowest
+  alpha row sits on world **y = 592** (`BaseFighter.REACTION_FLOOR_Y`) once the roster's
+  `anim_offset`/`anim_scale` are applied — on the sand, never through it.
+* **Scale:** `anim_scale = 121.75 / reference standing height` in the source's own pixels,
+  so L!ckshot stays the same on-screen size from idle through a knockdown. The single
+  C-recoil upload is rendered about 1.98× larger than the 12-pose sheet (measured on the
+  silver mic grille, 37 × 33 px vs 19 × 14 px), so it is resampled into the sheet's pixel
+  scale before joining `launched`.
+* **Walk sheet:** sliced by connected drawing, not a straight 2 × 2 crop — the top row's
+  boots pass below the vertical midpoint and neighbouring bounding boxes overlap, so a
+  quadrant cut would chop a Wallabee. The four drawings are composed onto **one 454 × 512
+  shared canvas**: every sole on row 510, measured spread **[510, 510] → 0 px vertical
+  sole bobbing**, then capped at 512 px. The black cord loop, silver mic grille and cream
+  Wallabee soles survive the white key. Wired at **9 fps**, looping.
+* **Walk frames (superseded):** the previous pass took 6 of the phone video's distinct held
+  poses with clipped frames rejected. Those outputs (`walk/05.png`, `walk/06.png`) and
+  their import sidecars are removed; the video itself stays archived above as provenance.
 
-The sheets and the standalone C-recoil were drawn at different sizes: the single pose fills a
-whole canvas, a sheet pose fills a quarter of one. The mic grille is the only rigid prop that
-appears in every drawing, so its measured disk-equivalent diameter calibrates the standalone pose
-onto the sheet's scale (measured ratio **2.682**, recorded as `art_scale_match`). Without it the
-C-recoil frame would render ~2.7× larger than the airborne poses it sits beside.
+## Status
 
-## Walk video — wired, with a source-crop caveat
-
-The walk upload is a phone-framed close-up, not a full-body export. Measured across all 89 frames:
-
-- the **hat crown is cut by the top edge in every frame** (row 0 already carries a 112–124 px wide
-  hat cross-section that keeps widening below it);
-- **every frame clips one boot** at the left or right edge (edge-column pixel counts in the batch
-  report).
-
-Six of the video's own drawings are therefore sampled evenly across the 2.97 s clip (source frames
-1, 16, 31, 44, 60, 75 — one drawing per step, no invented in-between), each pick nudged by at most
-one frame towards the less-clipped drawing, then keyed, capped and floor-aligned into
-`godot/assets/sprites/lickshot/walk/` with `review/walk-strip.png`. All six frames land on y 592.
-
-One artefact of the crop is worth recording: a boot that leaves the frame edge is joined to the body
-by a 1 px stalk in the upload, and the downscale to the 512 px cap drops that stalk, leaving the
-chopped piece floating beside the fighter. `compose_group()` drops detached specks under 2 000 px,
-so no stray fragment ships — the first pass had one in frame 04.
-
-This is a stopgap, not the finished walk: the crown and one boot are missing from the drawings
-themselves, and no processing restores pixels the phone never framed. A re-export with the full
-figure inside the frame, with margin on all four sides, replaces these six frames as soon as it
-arrives.
-
-## Review sheets
-
-`review/skank-strip.png`, `review/hitstun-strip.png`, `review/airborne-strip.png`,
-`review/ground-strip.png` and `review/walk-strip.png` — every frame drawn on the sand colour and
-bottom-aligned, so a sole that is off the line is visible at a glance.
-
-## Ownership
-
-The owner is the final creative approver. Nothing here is a claim of visual approval: the frames are
-prepared, aligned and verified headlessly (no GPU in this environment, so nobody has seen them run).
+Processed and wired as presentation-only animation. Combat timings, hitboxes, damage and
+the FSM are unchanged. Owner visual approval of the wired result is still pending; the
+manifest of measured offsets/scales lives in `art-source/fighters/lickshot/prep-report.json`.

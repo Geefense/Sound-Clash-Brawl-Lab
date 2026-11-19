@@ -1459,9 +1459,9 @@ here is gameplay-verified; implementation status is stated per item.
       floor-aligned into `godot/assets/sprites/lickshot/walk/` with `review/walk-strip.png`. The phone crop
       also leaves a chopped boot piece floating beside the fighter once the 1 px stalk that tied it to the
       body is lost in the downscale; `compose_group()` now drops detached specks under 2 000 px so no stray
-      fragment ships. All six frames land on y 592 in the headless check. **A full-body re-export with margin
-      on all four sides would still replace this**: the crown and one boot are missing from the drawings
-      themselves, and no processing can restore pixels the phone never framed.
+      fragment ships. All six frames land on y 592 in the headless check. **Superseded later the same day by
+      the full-body sheet in item 39** — the crown and one boot were missing from the drawings themselves, and
+      no processing could restore pixels the phone never framed.
     - **Patois callouts (§8).** `WHOLE-AWN-DEH!` (Record Static Parry, throw break), `PLAYAH NEX TUNE!`
       (100 % Hype Surge, round win) and `POPPYSHOW!` (taunt, punish hit) are wired through one rotating pool
       in `TestArena.CALLOUTS`: the new line leads its trigger and the lines that already played there
@@ -1486,9 +1486,38 @@ here is gameplay-verified; implementation status is stated per item.
       frames are **UNAPPROVED** art pending the owner's review; the C-recoil scale match is arithmetic from a
       prop measurement, not an eye check. The walk loop is wired from the drawings the upload contains, so
       the missing crown and boot edge are visible in motion until a full-body re-export arrives.
-    - **Next.** Owner review of the four review strips; re-upload the walk with the whole figure inside the
-      frame; then a device playtest of the walk loop, the taunt groove, the hit responses and the callout
-      rotation.
+    - **Next.** Owner review of the four review strips; device playtest of the walk loop, the taunt groove,
+      the hit responses and the callout rotation. The walk re-upload arrived the same day — see item 39.
+
+39. **L!CKSHOT's clean 4-pose walk sheet — the clipped phone-crop stride retired, re-sliced, floor-locked and wired at 9 fps (2026-11-19).**
+
+    - **Upload.** `IMG_6654.jpeg` (1792 × 2390, pure `#FFFFFF`, 2 rows × 2 poses, full Kangol cap crowns,
+      complete Clarks Wallabee toes and generous margin on all four sides) was uploaded by Garfield to the
+      root of `stage/sound-clash-sand` in commit `db85686`. It was moved off the root to
+      `art-source/fighters/lickshot/batch-2026-11-19/16_walk-sheet-clean_original.png`, stored as PNG
+      (lossless decode of the JPEG; no pixel retouching), and `PROVENANCE.md` records the mapping. The
+      3 s phone video `15_bossy-walk_original.mov` stays archived as provenance for the superseded walk and
+      is no longer referenced by the roster.
+    - **Preparation.** `prep_lickshot_poses.py --batch 2026-11-19 walk` slices the sheet in the owner's order
+      (top-left → top-right → bottom-left → bottom-right) by **connected drawing**, not a straight 2 × 2 crop: the
+      top row's boots pass below the vertical midpoint and neighbouring drawing boxes overlap, so a quadrant cut
+      chopped a Wallabee. Pure white is keyed with the same threshold as the other 2026-11-19 sheets, keeping the
+      black cord loop, silver mic grille and cream soles. The four drawings are composed onto **one 454 × 512
+      shared canvas** with every sole on row 510 — measured spread **[510, 510], 0 px vertical bobbing** — then
+      capped at 512 px. Frames: `godot/assets/sprites/lickshot/walk/01..04.png`; review strip
+      `batch-2026-11-19/review/walk-strip.png`; measurements in `prep-report-2026-11-19.json`
+      (`anim_scale 0.25103`, `anim_offset [-5.2, -279.7]`, `anim_source_max 512`).
+    - **Wiring (presentation only).** `walk` = those four frames at **9 fps, looping**; `anim_scale`,
+      `anim_offset` and `anim_source_max` refreshed from the report, so the single shared offset holds the whole
+      stride on world y 592. `walk/05.png` and `walk/06.png` plus their `.import` sidecars are removed. Every other
+      L!ckshot pose and sequence, and every combat timing, hitbox, damage value and FSM rule, is untouched.
+    - **Checks actually run** — Godot **4.5.stable.official (876b29033)** headless, Web single-thread templates
+      installed locally (never committed): `--import`, then `--script res://tools/headless_roster_check.gd` →
+      **100 assertions, `ALL CHECKS PASSED`, exit 0**, including the new walk frame count (4), the 9 fps loop and
+      the explicit **0.00 px** sole-bob measurement across all four frames; `--export-release "Web"
+      ../docs/index.html` rebuilt `docs/` (pck 16.0 MB).
+    - **Not verified.** No display or GPU in this environment: the stride was not watched in motion and the art
+      remains **UNAPPROVED**. Owner review of `review/walk-strip.png` and an on-device playtest are still required.
 
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 
@@ -1696,7 +1725,8 @@ For Godot, once created: [TODO] pin exact import/headless launch/test/export com
 | Round-based day → sunset → night lighting | Implemented 2026-11-15 on branch `stage/sound-clash-sand`; headless checks of all three phases, tween and N cycle pass; round-controller driving and **on-screen look [TODO]**. |
 | Owner playtest pass: facing, visible CPU strikes, crowd acts, stage lighting, framing, props | Implemented 2026-11-17; headless 4.5 check 49/49; **on-screen look and feel [TODO]**; left-facing frames and multi-frame crowd loops still need art prep. |
 | Lickshot four-pose set (stance, high kick, Sonic Clap windup/impact) | Implemented 2026-11-17 (§9 item 27): four keyed 512 px frames wired into `FighterRoster`, the generic smear replaced on K/L, headless 4.5 **58/58**, Web export rebuilt; **on-screen look and motion [TODO]**. |
-| L!ckshot 2026-11-19 batch: 6-frame walk loop, 8-pose skank groove, hitstun / launch / tumble / knockdown / KO sequences, C-recoil, three Patois callouts, name pool | Implemented 2026-11-19 (§9 item 38): four uploads archived off the root, sheets sliced and keyed, one shared canvas per animation, every frame on the y 592 sand line, headless 4.5 **99/99**, Web export rebuilt; **art UNAPPROVED and on-screen motion [TODO]**. The walk is wired from the six drawings the upload contains; a full-body re-export is still wanted because the phone crop cuts the hat crown and one boot. |
+| L!ckshot 2026-11-19 batch: 8-pose skank groove, hitstun / launch / tumble / knockdown / KO sequences, C-recoil, three Patois callouts, name pool | Implemented 2026-11-19 (§9 item 38): four uploads archived off the root, sheets sliced and keyed, one shared canvas per animation, every frame on the y 592 sand line, headless 4.5 **99/99**, Web export rebuilt; **art UNAPPROVED and on-screen motion [TODO]**. The 6-frame phone-crop walk was superseded the same day by item 39. |
+| L!ckshot clean 4-pose walk sheet (full crowns and Wallabee toes) | Implemented 2026-11-19 (§9 item 39): upload archived as `16_walk-sheet-clean_original.png`, four drawings sliced in reading order onto one 454 × 512 canvas, **0 px vertical sole bobbing**, wired at 9 fps looping in place of `walk/01..06`, headless 4.5 **100/100**, Web export rebuilt; **art UNAPPROVED and on-screen stride [TODO]**. |
 | Smart Sparring AI modes (P2) | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 4 modes cycle on **Y**, HUD banner, **G** guard override; headless Godot 4.5 runs pass for every mode; **on-screen/feel playtest [TODO]**. |
 | Dancehall crowd line + 100% Hype Surge | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 6 sliced spectators (Queen centre) + 2 record crates at the stacks, beat bob, FORWARD!/PULL UP! banner, 5 s 1.20× / faster-recovery boost; headless checks pass; **on-screen look and balance [TODO]**. |
 | 15-character two-row rotating crowd + contact shadows | Implemented 2026-11-15 on branch `stage/sound-clash-sand`: 9 new slices (pool 15), front/back rows, 12–18 s and 50 %/100 % hype reshuffles, GroundShadow on crowd and crates; headless checks pass; **on-screen look [TODO]**. |

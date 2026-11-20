@@ -128,7 +128,7 @@ func _run() -> void:
 	_check(p2.display_name == "L!CKSHOT", "P2 is L!CKSHOT on screen", p2.display_name)
 	_check(p2.fighter_key == &"lickshot" and FighterRoster.display_name(&"lickshot") == "L!CKSHOT",
 		"the styled name keeps the clean internal key", str(p2.fighter_key))
-	# The owner expanded the future roster pool on 2026-11-19 (AGENTS.md §2, §9 item 38):
+	# The owner expanded the future roster pool on 2026-11-19 (AGENTS.md §2, §9 item 41):
 	# POPPY SHOW, SUGAR KANE and JUNE PLUM join the three names already recorded.
 	_check(FighterRoster.styled_name("FLING STONE") == "FL!NG STONE"
 			and FighterRoster.styled_name("RUM PUNCH") == "RUM PUNCH"
@@ -251,7 +251,7 @@ func _run() -> void:
 	p2._celebrate_ticks = 0
 	p2._play_state_anim()
 
-	# ---- Lickshot's 2026-11-19 sequences (AGENTS.md §9 item 38) --------------
+	# ---- Lickshot's 2026-11-19 sequences (AGENTS.md §9 item 41) --------------
 	# The 8-pose skank groove, the standing hitstun snap, the airborne launch/tumble and the
 	# ground knockdown/KO. Every frame of every sequence must land on the sand line: these
 	# are multi-frame animations, so one shared canvas per group is what proves no frame can
@@ -571,6 +571,245 @@ func _run() -> void:
 	_check(is_equal_approx(fight_shadow.stretch, 0.95), "afternoon keeps a compact shadow",
 		"%.2f×" % fight_shadow.stretch)
 
+	# ---- 2.5D arcade visual overhaul (AGENTS.md §9 item 41, 2026-11-20) ----------
+	# Everything below is presentation: rim light, projected shadows, sand, depth layers,
+	# impact juice and camera. No hitbox, damage, timing or y 592 alignment is touched.
+	var rim_shader := load("res://scripts/stages/fighter_rim_light.gdshader") as Shader
+	_check(rim_shader != null, "the fighter rim-light shader loads")
+	var uniform_names := []
+	if rim_shader != null:
+		for u in rim_shader.get_shader_uniform_list():
+			uniform_names.append(String(u["name"]))
+	# `get_shader_uniform_list()` only returns entries when the shader parsed, so this is a real
+	# compile check in headless — a syntax error lists zero uniforms.
+	_check(uniform_names.size() >= 11, "the rim shader compiles and exposes its uniforms",
+		"%d uniforms" % uniform_names.size())
+	var required := ["rim_colour", "rim_colour_b", "rim_strength", "rim_width", "light_uv",
+		"sprite_facing", "bounce_colour", "bounce_strength", "bounce_top", "flash_colour",
+		"hit_flash"]
+	var missing_uniforms := []
+	for uniform in required:
+		if not (uniform in uniform_names):
+			missing_uniforms.append(uniform)
+	_check(missing_uniforms.is_empty(), "every rim/flash uniform is declared",
+		"missing %s" % [missing_uniforms] if not missing_uniforms.is_empty() else "11/11")
+	# WebGL2 / Chromebook safety: a CanvasItem pass with no screen or depth reads, no includes
+	# and no unbounded loops.
+	var shader_code: String = rim_shader.code if rim_shader != null else ""
+	var banned := []
+	for token in ["hint_screen_texture", "SCREEN_TEXTURE", "DEPTH_TEXTURE", "#include", "while ("]:
+		if shader_code.contains(token):
+			banned.append(token)
+	_check(banned.is_empty(), "the rim shader is WebGL2-safe (single pass, no screen reads)",
+		"found %s" % [banned] if not banned.is_empty() else "9 taps, 0 screen reads")
+
+	var p1_mat := p1b.sprite.material as ShaderMaterial
+	var p2_mat := p2.sprite.material as ShaderMaterial
+	_check(p1_mat != null and p1_mat.shader == rim_shader,
+		"every fighter sprite carries the rim ShaderMaterial (shared BaseFighter scene)")
+	_check(p2_mat != null and p2_mat.shader == rim_shader,
+		"the second roster fighter inherits the same rim material")
+
+	# Afternoon palette is already applied (the block above left phase 0 selected).
+	_check(is_equal_approx(fight_shadow.density, 1.0),
+		"afternoon keeps full-density shadows", "%.2f" % fight_shadow.density)
+	_check(arena2.beams != null and is_zero_approx(arena2.beams.strength),
+		"no volumetric beams in the afternoon sun")
+
+	# Sunset: warm golden-amber rim, long skew, strong sand bounce.
+	arena2.set_time_of_day(1, 0.0)
+	await process_frame
+	_check(p1b.rim_a.r > 0.9 and p1b.rim_a.r > p1b.rim_a.b and p1b.rim_strength >= 1.0,
+		"sunset wraps a warm golden-amber rim",
+		"rim %.2f strength %.2f" % [p1b.rim_a.r, p1b.rim_strength])
+	_check(p1b.rim_b.r > 0.9 and p1b.rim_b.b < 0.4,
+		"the sunset rim's second colour stays amber, not neon")
+	var shader_rim_strength: float = float(p1_mat.get_shader_parameter("rim_strength")) if p1_mat != null else 0.0
+	_check(p1_mat != null and absf(shader_rim_strength - p1b.rim_strength) < 0.001,
+		"the artist-facing rim strength reaches the shader", "%.2f" % p1b.rim_strength)
+	_check(fight_shadow.stretch > 1.5 and fight_shadow.shadow_lean() > 0.5,
+		"sunset throws a long, skewed shadow to the right",
+		"stretch %.2f lean %.2f" % [fight_shadow.stretch, fight_shadow.shadow_lean()])
+	_check(fight_shadow.density < 1.0, "a long sunset shadow is also thinner",
+		"density %.2f" % fight_shadow.density)
+	_check(arena2.beams.strength > 0.5, "sunset light beams sweep the stage",
+		"intensity %.2f" % arena2.beams.strength)
+	_check(arena2.heat_haze != null and arena2.heat_haze.intensity > 0.5,
+		"sunset heat haze is up")
+	_check(arena2.foreground != null and arena2.foreground.intensity > 0.5,
+		"the foreground crowd is up at sunset")
+
+	# Night: cyan/magenta neon wrap, short soft shadow, truss beams.
+	arena2.set_time_of_day(2, 0.0)
+	await process_frame
+	_check(p1b.rim_a.b > 0.85 and p1b.rim_a.g > 0.85 and p1b.rim_a.r < 0.5,
+		"night wraps a cyan neon rim")
+	_check(p1b.rim_b.r > 0.85 and p1b.rim_b.b > 0.85 and p1b.rim_b.g < 0.5,
+		"night's second rim colour is magenta")
+	_check(p1b.rim_strength > 1.1, "the neon rim burns harder than daylight",
+		"%.2f" % p1b.rim_strength)
+	_check(p1b.rim_bounce < 0.25, "the night kills most of the sand bounce",
+		"%.2f" % p1b.rim_bounce)
+	_check(fight_shadow.shadow_lean() < 0.0 and fight_shadow.stretch < 1.3,
+		"the night floodlight projects a short shadow to the left")
+	_check(arena2.beams.strength > 0.5, "the festival trusses still beam at night")
+
+	# Facing: the rim must stay on the stage's light side when the frame is mirrored. The
+	# fighters are parked either side of each other first, so the live AI cannot flip them
+	# between the two reads.
+	var p1_was_locked: bool = p1b.input_locked
+	var p2_was_locked: bool = p2.input_locked
+	p1b.input_locked = true
+	p2.input_locked = true
+	p1b.reset_for_round(Vector2(300, 600))
+	p2.reset_for_round(Vector2(900, 600))
+	p1b.face_toward(900.0)
+	_check(not p1b.sprite.flip_h and p1_mat != null
+			and is_equal_approx(float(p1_mat.get_shader_parameter("sprite_facing")), 1.0),
+		"an unmirrored sprite leaves the rim on the stage's light side")
+	p1b.face_toward(0.0)
+	_check(p1b.sprite.flip_h and p1_mat != null
+			and is_equal_approx(float(p1_mat.get_shader_parameter("sprite_facing")), -1.0),
+		"the shader compensates a mirrored sprite's facing")
+
+	# Impact-flash uniform: up on contact, released on the second tick. Input is locked so the
+	# sparring AI cannot land a fresh hit and re-raise the flash between the two reads.
+	await physics_frame
+	p1b.flash_impact(true)
+	_check(p1_mat != null and is_equal_approx(float(p1_mat.get_shader_parameter("hit_flash")), 1.0),
+		"a landed hit raises the white/gold hit_flash uniform")
+	await physics_frame
+	await physics_frame
+	_check(p1_mat != null and is_zero_approx(float(p1_mat.get_shader_parameter("hit_flash")))
+			and p1b._impact_flash_ticks == 0,
+		"the hit_flash uniform clears after its two ticks")
+	p1b.sprite.modulate = Color.WHITE
+	p1b.input_locked = p1_was_locked
+	p2.input_locked = p2_was_locked
+
+	# Sand: a burst is clamped, and the heavy strikes are the ones that kick it up.
+	p1b._puff(3.0)
+	_check(p1b.dust.amount <= 16, "a sand burst stays inside the per-fighter particle cap",
+		"%d particles" % p1b.dust.amount)
+	_check(BaseFighter.HEAVY_ATTACK_IDS.has(&"strong")
+			and BaseFighter.HEAVY_ATTACK_IDS.has(&"tump")
+			and BaseFighter.HEAVY_ATTACK_IDS.has(&"upper_box")
+			and not BaseFighter.HEAVY_ATTACK_IDS.has(&"jab"),
+		"heavy slaps, mic crosses and Sparta kicks kick sand; jabs stay clean")
+
+	# Impact juice: 4–6 frame hit-stop on every heavy, a 4-frame jab, and a 6-frame counter.
+	var jab_stop: int = int(BaseFighter.HITSTOP_TICKS[&"jab"])
+	var heavy_ok := true
+	for id in [&"strong", &"tump", &"upper_box"]:
+		var ticks: int = int(BaseFighter.HITSTOP_TICKS[id])
+		if ticks < 4 or ticks > 6:
+			heavy_ok = false
+	_check(jab_stop == 4 and heavy_ok, "heavy contacts freeze for 4–6 frames",
+		"jab %d / heavies 6" % jab_stop)
+	_check(BaseFighter.HITSTOP_COUNTER == 6 and BaseFighter.KO_HITSTOP_TICKS == 9,
+		"counters stay in the 4–6 budget and the KO keeps its 9-frame freeze")
+
+	# Counter-hit detection: only while the victim is committed to its own strike.
+	p1b.reset_for_round(Vector2(420, 600))
+	p2.reset_for_round(Vector2(860, 600))
+	await physics_frame
+	_check(not p2.is_counterable(), "a neutral fighter is not counterable")
+	p2.change_state(BaseFighter.State.ATTACK_STARTUP)
+	_check(p2.is_counterable(), "a fighter in its own startup is counterable")
+	var probe := {
+		"target": p2, "attack_id": &"jab", "attack": p2.attacks[&"jab"],
+		"input_beat": {}, "contact_beat": {},
+	}
+	var counter_result := p2.receive_strike(p1b, probe)
+	_check(bool(counter_result.get("counter", false)),
+		"striking a committed fighter resolves as a counter-hit")
+	_check(int(counter_result.get("damage", 0)) == int(p2.max_health - p2.health),
+		"the counter flag changes presentation only, not the damage",
+		"%d damage" % int(counter_result.get("damage", 0)))
+	p2.reset_for_round(Vector2(860, 600))
+	await physics_frame
+
+	# Layered stage depth: beams over the fighters, haze behind them, near-crowd in front.
+	_check(arena2.beams.z_index == 4 and p1b.z_index == 0 and arena2.beams.z_index > p1b.z_index,
+		"volumetric beams draw over the fighters but under the HUD",
+		"beams %d / fighter %d" % [arena2.beams.z_index, p1b.z_index])
+	var beam_mat := arena2.beams.material as CanvasItemMaterial
+	_check(beam_mat != null and beam_mat.blend_mode == CanvasItemMaterial.BLEND_MODE_ADD,
+		"the beams are additive, one draw pass, no shader")
+	_check(arena2.heat_haze.z_index < p1b.z_index,
+		"heat haze and motes sit behind the fighters",
+		"haze %d" % arena2.heat_haze.z_index)
+	var motes := arena2.heat_haze.get_node_or_null("DustMotes") as CPUParticles2D
+	_check(motes != null and motes.amount <= 16 and motes.texture != null,
+		"drifting dust motes are a capped, textured CPU emitter",
+		"%d particles" % (motes.amount if motes != null else -1))
+	_check(arena2.foreground != null and arena2.foreground.z_index > p1b.z_index,
+		"the near-crowd silhouette draws in front of the fighters",
+		"foreground %d / fighter %d" % [arena2.foreground.z_index, p1b.z_index])
+	_check(arena2.foreground.figure_count >= 8 and arena2.foreground.lighter_slots() >= 1,
+		"the foreground stack has heads, hands, rags and lighters",
+		"%d figures / %d lighter slots" % [arena2.foreground.figure_count,
+			arena2.foreground.lighter_slots()])
+	_check(arena2.foreground.lighter_count() >= 1, "at least one foreground lighter is up")
+	# Pinned to the bottom screen edge at whatever zoom the camera is holding.
+	var fg: ForegroundCrowd = arena2.foreground
+	var fg_bottom: float = fg.global_position.y + fg.screen_size().y
+	var cam: Camera2D = arena2.camera
+	var cam_bottom: float = cam.get_screen_center_position().y + (720.0 / cam.zoom.y) * 0.5
+	_check(absf(fg_bottom - cam_bottom) < 1.0,
+		"the foreground band stays glued to the bottom screen edge",
+		"band %.1f / camera %.1f" % [fg_bottom, cam_bottom])
+
+	# Whole-scene particle budget for the Chromebook WebGL2 target.
+	var particle_total := 0
+	var particle_over := []
+	for node in arena2.find_children("*", "CPUParticles2D", true, false):
+		var emitter := node as CPUParticles2D
+		particle_total += emitter.amount
+		if emitter.amount > 16:
+			particle_over.append("%s %d" % [emitter.name, emitter.amount])
+	_check(particle_over.is_empty() and particle_total <= 64,
+		"every emitter respects the 16/particle and 64/scene budget",
+		"total %d%s" % [particle_total,
+			(" — over: " + ", ".join(particle_over)) if not particle_over.is_empty() else ""])
+
+	# Musical-note trails and the comic impact frame, both capped.
+	for i in 5:
+		arena2._add_note_trail(Vector2(520.0 + i * 12.0, 500.0), 1, true)
+	_check(arena2._live_note_trails().size() <= 3, "note trails are capped at three",
+		"%d alive" % arena2._live_note_trails().size())
+	var trail: NoteTrail = arena2._live_note_trails()[0]
+	_check(trail.z_index > p1b.z_index and trail.heavy,
+		"note trails arc over the fighters on heavy strikes")
+	arena2._add_impact_frame(&"counter")
+	arena2._add_impact_frame(&"surge")
+	_check(arena2._live_impact_frames().size() == 1,
+		"only one comic impact frame can be alive",
+		"%d alive" % arena2._live_impact_frames().size())
+	_check(arena2._live_impact_frames()[0].z_index == 30,
+		"the impact frame sits above the world and below the HUD")
+
+	# Fighting-game camera: smooth framing plus an additive micro-zoom punch.
+	var smooth_before: float = arena2._zoom_smooth
+	arena2._zoom_punch_burst(0.05)
+	# delta 0 applies the punch without letting the wall-clock decay eat it first, so the check
+	# measures the burst rather than how long the headless frame took.
+	arena2._follow_action(0.0)
+	_check(cam.zoom.x > arena2._zoom_smooth + 0.01,
+		"a counter/Hype Surge punches the camera in",
+		"zoom %.4f > smooth %.4f" % [cam.zoom.x, arena2._zoom_smooth])
+	_check(absf(arena2._zoom_smooth - smooth_before) < 0.08,
+		"the framing zoom eases instead of snapping",
+		"%.4f -> %.4f" % [smooth_before, arena2._zoom_smooth])
+
+	# y 592 floor alignment is untouched by any of this.
+	_check(is_equal_approx(BaseFighter.REACTION_FLOOR_Y, 592.0),
+		"the y 592 sand alignment constant is unchanged")
+	_check(is_equal_approx(fight_shadow.ground_y, 600.0),
+		"fighter contact shadows still sit on the y 600 origin line")
+	arena2.set_time_of_day(0, 0.0)
+	await process_frame
+
 	# Fight for a moment: the AI must actually drive the FSM through attacks.
 	var seen := {}
 	for i in 240:
@@ -586,6 +825,17 @@ func _run() -> void:
 		if rounds_ctrl.clock_running():
 			break
 		await physics_frame
+	# Isolate P1's jab: the sparring AI's own attacks also spawn strike smears, and this check
+	# is about whether *P1's drawn jab* doubles itself.
+	var p2_locked_for_smear: bool = p2.input_locked
+	p2.input_locked = true
+	# Locking input alone does not cancel a strike already in flight, and that strike would own
+	# a smear for 0.19 s. Reset P2 to neutral so P1 is the only body that can spawn one.
+	p2.reset_for_round(p2.global_position)
+	await physics_frame
+	for live_tell in arena2._live_strike_tells():
+		live_tell.queue_free()
+	await physics_frame
 	p1b.use_local_input = false
 	var press := BaseFighter.Command.new()
 	press.light = true
@@ -612,6 +862,7 @@ func _run() -> void:
 	_check(p2.shows_strike_tell(), "an attack without drawn art still gets the strike smear")
 	p2._attack_id = &""
 	p1b.command = BaseFighter.Command.new()
+	p2.input_locked = p2_locked_for_smear
 
 	# ---- Esc back to Character Select ------------------------------------
 	setup.escape_to_setup()

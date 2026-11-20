@@ -404,6 +404,7 @@ This register includes all phrases recoverable from the visible conversation, su
 | `Lighter!` | Requested lighter taunt shout. |
 | `LIGHTAH!` | Shouted form of the existing `Lighter!` request; one of the owner's family-friendly callouts (2026-11-15). |
 | `FORWARD!` | Owner's family-friendly hype callout; the implemented 100 % Hype Surge banner (§9 item 10). |
+| `PULL UP!` | The second half of the owner's `FORWARD! / PULL UP!` surge callout (recorded in the 2026-11-20 2.5D brief, §9 item 38): wheel the dub back and run it again. `TestHud` has shipped it in the 100 % Hype banner since item 10; the 2.5D pass (§9 item 41) rides its camera punch and comic impact frame on that same banner, leaving the subtitle to the rotating Patois pool (item 38). |
 | `WHEEL AND COME AGAIN!` | Shouted banner/voice form of the existing `wheel and cum again`. A separately recorded capitalization variant — do not normalise the two into one. |
 | `BIG TUNE!` | Owner's family-friendly crowd/hype callout. Implemented as the rotating Patois subtitle on a Record Static Parry (2026-11-19, §9 item 38); voice delivery still unset. |
 | `WHOLE-AWN-DEH!` | Owner gloss: “Hold on a second!” Owner-approved callout added 2026-11-19 (§9 item 38) and wired as a Patois subtitle on the Record Static Parry and on a throw break — the moments the tune gets interrupted. Preserve the spelling and the exclamation. |
@@ -1555,6 +1556,69 @@ here is gameplay-verified; implementation status is stated per item.
     - **Not verified.** No display or GPU: the new bounce and strut were not watched in-engine. Owner judgement
       of the rhythm and an on-device playtest are pending; the art remains **UNAPPROVED**.
 
+41. **2.5D arcade presentation overhaul — rim light, directional sand shadows, stage depth, impact
+    juice and camera (2026-11-20).**
+
+    Owner brief: the high-res sprites still read as flat 2D cut-outs pasted over a backdrop. This pass
+    locks them into the stage's light **without changing any sprite art, PNG proportion, y = 592 floor
+    alignment, or combat hitbox/timing**. Every system below is presentation-only: nothing in it is read
+    by the FSM, the hit registry, damage, knockback, the beat clock or the seeded simulation.
+
+    - **Fighter rim light** — `godot/scripts/stages/fighter_rim_light.gdshader`, a CanvasItem shader on
+      the `Sprite` in `BaseFighter.tscn`, so all three roster fighters inherit it from the shared scene.
+      Directional rim from the sprite's own alpha gradient: nine clamped texture taps, one pass, no
+      screen/depth reads, no includes, no unbounded loops — WebGL2 / GL Compatibility safe on Intel
+      Chromebooks. **Sunset** wraps golden-amber; **Night** blends cyan on one side into magenta on the
+      other inside the same pass. A warm sand **bounce** tint rides the lower legs and Clarks, and
+      `hit_flash` is the dynamic white/gold impact uniform the existing `flash_impact()` drives.
+      `BaseFighter.set_rim_light()` pushes the palette; the `sprite_facing` uniform cancels the sprite
+      mirror so the rim stays on the stage's light side when a fighter turns.
+    - **Directional sand shadows** — `GroundShadow` is now a sheared ellipse stack, not a squashed
+      circle: the far edge drags out along the sand away from the light (`shadow_lean()` ≈1.28 px per px
+      of half-height at the Sunset 1.95× stretch, negative at Night), thinner with a low sun
+      (`density` 0.85 Sunset / 0.72 Night / 1.0 Afternoon), still scaling smoothly through jumps and
+      launches. Geometry rebuilds only when the light changes; the per-frame path stays a transform
+      write. Fighter shadows remain on the **y 600** origin line and every drawn sole on **y 592**.
+    - **Kicked-up sand** — `BaseFighter._puff()` gained a `push_x` direction bias and a hard 16-particle
+      ceiling. Walking steps, jump takeoff, jump landing, heavy-strike foot plants (K/L/I), throws,
+      skids, knockdowns and speaker-stack slams throw sand away from the plant instead of straight up.
+    - **Layered stage depth** — `LightBeams` (z 4, additive, 3 cones × 6 stacked quads) sweeps down from
+      the Sunset sky / Night trusses across the speaker stacks and fighters; `HeatHaze` (z −5) draws 11
+      drifting shimmer streaks plus a 16-particle soft golden-mote emitter. Both are primitives and CPU
+      particles: no shader, no screen reads.
+    - **Foreground clash crowd** — `ForegroundCrowd` (z 8: in front of the fighters at 0, behind
+      `BirdHazard` 20 and `ImpactFrame` 30) draws a darkened, out-of-focus band of heads, raised hands,
+      waving rags and flickering lighters along the bottom screen edge, pinned to the camera's visible
+      rect at any zoom so it reads as standing inside a packed yard.
+    - **Impact juice** — heavy hit-stop is now **4 frames** on the jab and **6** on `strong`, `tump` and
+      `upper_box`, inside the owner's 4–6 frame request. A counter-hit is detected before the strike
+      mutates state (`BaseFighter.is_counterable()` → `result["counter"]`) and keeps the 6-frame freeze,
+      paying its extra weight in a 1.4× shake, a micro-zoom and the comic frame. `NoteTrail` arcs
+      varied-size multicoloured ♩ ♪ ♫/♬ notes along heavy and on-beat strikes (light jabs stay clean);
+      `ImpactFrame` draws three frames of black-and-gold comic ink with a gold star burst. Both are
+      capped (3 trails, 1 frame) and both are primitives — no texture or font atlas.
+    - **Camera** — the framing zoom now eases instead of snapping (`CAMERA_ZOOM_SMOOTH`), still zooming
+      in as fighters close and out as bodies are thrown apart, plus `_zoom_punch_burst()` on counters and
+      on the 100 % Hype Surge, where `TestHud`'s banner already reads **FORWARD! / PULL UP!**
+      (item 10, §8); the subtitle keeps rotating the approved Patois pool from item 38.
+    - **Phase palette** — `TestArena.TIME_PHASES` gained `rim_a` / `rim_b` / `rim_strength` / `light_uv` /
+      `bounce` / `shadow_density` / `beam` / `haze` / `fg`. `set_time_of_day()` cross-fades all of them
+      with `_vis_tween` alongside the existing sky, floodlight and crowd tween, so a round change reads
+      as one lighting change rather than five.
+    - **Chromebook budget** — every emitter is ≤16 particles and the whole scene is 64 (two fighters +
+      heat motes + the existing wind motes), asserted headlessly. No multi-pass post-processing, no
+      `SCREEN_TEXTURE`, no threads, no new textures beyond one generated 32×32 radial gradient.
+    - **Deliberately unchanged** — no sprite PNG, import cap, scale, offset, `y = 592`
+      (`REACTION_FLOOR_Y`) or `y = 600` floor line, hitbox position/size, startup/active/recovery,
+      damage, hitstun, knockback, guard, AI, beat window, round flow or roster data.
+    - **Verified headless (Godot 4.5.stable, 876b29033):** `tools/headless_roster_check.gd` now prints
+      **155** checks and ends `ALL CHECKS PASSED`. The shader is genuinely compiled: headless
+      `Shader.get_shader_uniform_list()` returns 11 uniforms, and a syntax error returns 0 (verified by
+      deliberately breaking a probe shader). See the verification section at the end of §9.
+    - **Not verified — no render happened.** This environment has no GPU or display, so the actual rim
+      colour, shadow softness, beam density, foreground silhouettes, note shapes and impact frames have
+      **not been seen**. They need a look at `docs/index.html` on the target Chromebook.
+
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 
 Recorded at build `ad27516` (`stage/sound-clash-sand`); §9 items 1–19 above are the decisions that
@@ -2174,3 +2238,59 @@ and move-list overlay stays B3.
 
 **Next:** open `docs/index.html` (or the editor) on the target device, play each fighter against each
 AI style, and rule on proportions, spacing and whether the stand prop reads at gameplay size.
+
+### 2.5D arcade presentation overhaul — headless verification, November 20, 2026
+
+Recorded on branch `stage/sound-clash-sand`; this is the build that adds §9 item 38. The owner brief
+was that the high-res sprites read as flat cut-outs over a backdrop, so this pass adds stage light,
+projected shadow, depth layers, impact juice and a fighting-game camera **without touching a single
+sprite, PNG proportion, y = 592 floor alignment or combat hitbox/timing**.
+
+**Commands actually run** — Godot 4.5.stable.official (876b29033), headless, Web export templates
+installed locally in the user profile (never committed):
+
+```bash
+godot --headless --path godot --import
+godot --headless --path godot --script res://tools/headless_roster_check.gd
+godot --headless --path godot --export-release "Web" docs/index.html
+```
+
+`tools/headless_roster_check.gd` prints **155 PASS / 0 FAIL** and ends `ALL CHECKS PASSED` (99 before the L!CKSHOT and 2.5D
+passes joined the tree). The 54 checks added here cover: the rim shader loading and **compiling** (11 uniforms —
+`get_shader_uniform_list()` returns 0 for a broken shader, so this is a real parse/compile check), the
+WebGL2 static lint (no `hint_screen_texture`, `SCREEN_TEXTURE`, `DEPTH_TEXTURE`, `#include` or `while`),
+the shared `ShaderMaterial` on both live fighters, the Sunset golden-amber and Night cyan/magenta
+palettes, the shader receiving the artist-facing strength, mirror compensation (`sprite_facing`), the
+`hit_flash` raise/clear lifecycle, Sunset/Night shadow lean + stretch + density, the sand-puff and
+scene particle budgets (≤16 each, 64 total), heavy vs light sand kicks, the 4/6/9 hit-stop table, the
+counter-hit flag and that it changes presentation only (damage identical), beam/haze/foreground
+z-order and additive blending, the foreground band pinned to the camera's bottom edge, the note-trail
+and impact-frame caps, the camera punch, and that `REACTION_FLOOR_Y` is still 592 and fighter shadows
+still sit on y 600.
+
+**Files added** — `godot/scripts/stages/fighter_rim_light.gdshader`, `LightBeams.gd`, `HeatHaze.gd`,
+`ForegroundCrowd.gd`, `NoteTrail.gd`, `ImpactFrame.gd`.
+
+**Files changed** — `godot/scripts/BaseFighter.gd` (rim/flash plumbing, counter flag, hit-stop table,
+sand push, puff cap), `godot/scripts/stages/GroundShadow.gd` (sheared directional patch + density),
+`godot/scripts/stages/CrowdLine.gd` (`set_shadow_density`), `godot/scripts/TestArena.gd` (phase
+palette, camera smoothing/punch, note trails, impact frames, counter feedback, surge subtitle),
+`godot/scenes/BaseFighter.tscn` (shader material), `godot/scenes/TestArena.tscn` (LightBeams,
+HeatHaze, ForegroundCrowd), `godot/tools/headless_roster_check.gd` (new checks).
+
+**`/docs` rebuilt from this commit** with `--headless --path godot --export-release "Web"
+../docs/index.html`: `index.pck` **16,087,712 B** (13,883,828 B before L!CKSHOT's items 38–40 joined the tree), `index.wasm`
+38,057,390 B, `index.js` 305,185 B, `index.html` 5,449 B.
+
+**Not verified — no render happened.** This environment has no GPU, display or Xvfb, so nothing was
+looked at on screen: the actual rim light, the sheared shadow, the beams, the haze motes, the
+foreground silhouettes, the note glyph shapes, the comic impact frame and the camera feel are all
+arithmetic and geometry, not eyes. Two Chromebook-specific risks remain unmeasured: fill-rate on the
+additive full-screen impact frame (three frames, once per counter/surge) and the per-frame cost of the
+foreground band at 1.12× zoom. Both are one-pass primitives with no screen reads, but they need a real
+frame-time check on the target device.
+
+**Next:** open `docs/index.html` on the Chromebook and play a Sunset and a Night round: confirm the rim
+sits on the shadow side, the five depths read (stage → haze → crowd line → fighters → near-crowd), a
+counter-hit's black-and-gold frame does not feel like a flashbang, and the foreground band does not
+hide a fighter's feet during a corner brawl.

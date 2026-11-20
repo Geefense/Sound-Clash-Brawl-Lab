@@ -519,6 +519,16 @@ func apply_light(dir: float, stretch: float) -> void:
 		m.shadow.stretch = stretch
 
 
+## Per-phase shadow density (AGENTS.md §9 item 41): the low sunset sun paints long, thin
+## crowd shadows, the afternoon sun compact denser ones, the night floodlight the softest.
+func set_shadow_density(value: float) -> void:
+	var density := clampf(value, 0.0, 1.5)
+	for m in _members:
+		if m.retired:
+			continue
+		m.shadow.density = density
+
+
 ## Nearby spectators flinch away from a body that dashes, is thrown or lands beside them.
 ## Returns how many members reacted, so the caller can rate-limit itself.
 func flinch(at_x: float, strength: float = 1.0) -> int:

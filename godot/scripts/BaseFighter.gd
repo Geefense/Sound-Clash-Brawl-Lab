@@ -108,6 +108,9 @@ const STUN_FRICTION := 900.0
 
 # Sand stage presentation (AGENTS.md §9). Cosmetic only: never touches combat.
 const STEP_PUFF_TICKS := 8          # one footfall puff every 8 ticks of walking
+## Per-fighter particle ceiling (AGENTS.md §9 items 17/41). The whole arena budget is 64, so
+## one burst can never spend more than this however hard the step or slam.
+const MAX_PUFF_PARTICLES := 16
 const LANDING_PUFF_MIN_SPEED := 260.0
 const SPLATTER_STUN_TICKS := 12     # comedic bird-splatter flinch, no damage
 
@@ -155,8 +158,16 @@ const STAGE_RIGHT := 1210.0
 var input_locked: bool = false
 
 # Hitstop, in ticks. KO uses its own value.
-const HITSTOP_TICKS := {&"jab": 4, &"strong": 7, &"tump": 7, &"upper_box": 7}
+# 2.5D impact juice (AGENTS.md §9 item 41): the jab keeps a short 4-tick freeze and the three
+# heavy strikes land on 6, so the freeze sits inside the requested 4–6 frame budget and a big
+# contact reads without stalling the exchange. Only presentation changes — startup, active,
+# recovery, damage and the hit registry are untouched.
+const HITSTOP_TICKS := {&"jab": 4, &"strong": 6, &"tump": 6, &"upper_box": 6}
+const HITSTOP_COUNTER := 6
 const KO_HITSTOP_TICKS := 9
+## Strikes that get the heavy presentation: sand off the planted foot, a note trail, the
+## comic impact frame on a counter. Light jabs stay clean so fast exchanges stay readable.
+const HEAVY_ATTACK_IDS := [&"strong", &"tump", &"upper_box"]
 const SHAKE_LIGHT := 0.35
 const SHAKE_HEAVY := 0.7
 const SHAKE_SECONDS := 0.12
@@ -349,6 +360,17 @@ const IMPACT_FLASH_PLAIN := Color(2.10, 1.94, 1.52)
 const IMPACT_FLASH_ONBEAT := Color(1.55, 1.92, 1.30)
 var _impact_flash_ticks: int = 0
 
+## 2.5D rim light (AGENTS.md §9 item 41). The palette and light direction are pushed in by
+## TestArena once per time-of-day phase; the ShaderMaterial lives on the Sprite in
+## BaseFighter.tscn, so all three roster fighters inherit it from the shared scene.
+## Presentation only: no hitbox, hurtbox, FSM or timing value reads any of these.
+var rim_a: Color = Color(1.0, 0.86, 0.62)
+var rim_b: Color = Color(1.0, 0.74, 0.42)
+var rim_strength: float = 0.55
+var rim_bounce: float = 0.30
+var rim_light_uv: Vector2 = Vector2(0.86, -0.42)
+var _rim_material: ShaderMaterial = null
+
 ## Visual polish (AGENTS.md §9 item 22): a 132 BPM idle groove plus attack lunge and
 ## squash/stretch. Presentation only: the sprite's draw scale and its own local position
 ## move, while the collision body, hurtbox and hitbox never read any of it. `_anim_base_scale`
@@ -417,6 +439,8 @@ func _ready() -> void:
 	_set_hitbox_active(false)
 	_apply_stance(false)
 	_play_state_anim()
+	_cache_rim_material()
+	_push_rim()
 	health_changed.emit(health, max_health)
 	hype_changed.emit(hype, HYPE_MAX)
 
@@ -517,8 +541,10 @@ func _physics_process(_delta: float) -> void:
 	# still releases it on the second tick instead of holding a bright frame.
 	if _impact_flash_ticks > 0:
 		_impact_flash_ticks -= 1
-		if _impact_flash_ticks == 0 and sprite != null:
-			sprite.modulate = Color.WHITE
+		if _impact_flash_ticks == 0:
+			set_hit_flash(0.0)
+			if sprite != null:
+				sprite.modulate = Color.WHITE
 
 	# Celebration pose window (round win / Hype Surge). Presentation only.
 	if _celebrate_ticks > 0:
@@ -615,6 +641,8 @@ func _enter_state(s: State) -> void:
 			_hit_targets.clear()
 			_set_hitbox_active(true)
 			_poll_hitbox()      # immediate check: the Area2D only reports overlaps on the next physics frame
+			if _attack_id in HEAVY_ATTACK_IDS:
+				_puff(0.85, -float(facing))    # the planted heavy step kicks sand away from the plant
 		State.TAUNT:
 			velocity.x = 0.0
 			_taunt_slot = 0
@@ -862,11 +890,18 @@ func _resolve_pending_strikes() -> void:
 			continue
 		var result := target.receive_strike(self, s)
 		var ignored := bool(result.get("ignored", false))
-		var stop := KO_HITSTOP_TICKS if result.get("ko", false) else int(HITSTOP_TICKS.get(s["attack_id"], 7))
+		var stop := KO_HITSTOP_TICKS if result.get("ko", false) else int(HITSTOP_TICKS.get(s["attack_id"], 6))
+		if bool(result.get("counter", false)):
+			# A counter keeps the 6-tick freeze and pays its extra weight in shake and the
+			# arena's comic impact frame instead of a longer hit-stop.
+			stop = maxi(stop, HITSTOP_COUNTER)
 		if not ignored:
 			_apply_hitstop(stop)
 			target._apply_hitstop(stop)
-			camera_shake_requested.emit(SHAKE_LIGHT if stop <= 4 else SHAKE_HEAVY, SHAKE_SECONDS)
+			if bool(result.get("counter", false)):
+				camera_shake_requested.emit(SHAKE_HEAVY * 1.4, SHAKE_SECONDS)
+			else:
+				camera_shake_requested.emit(SHAKE_LIGHT if stop <= 4 else SHAKE_HEAVY, SHAKE_SECONDS)
 		if hype_requires_connect and bool((s["input_beat"] as Dictionary).get("on_beat", false)):
 			_add_hype(ON_BEAT_HYPE)
 		strike_resolved.emit(self, target, result)
@@ -880,6 +915,7 @@ func _apply_hitstop(ticks: int) -> void:
 ## Called by the arena from `strike_resolved`; presentation only.
 func flash_impact(on_beat: bool) -> void:
 	_impact_flash_ticks = IMPACT_FLASH_TICKS
+	set_hit_flash(1.0)
 	if sprite != null:
 		sprite.modulate = IMPACT_FLASH_ONBEAT if on_beat else IMPACT_FLASH_PLAIN
 
@@ -890,12 +926,18 @@ func flash_impact(on_beat: bool) -> void:
 ## One sand puff at the feet. Uses the Dust CPUParticles2D child when it exists, so
 ## the base scene still works without stage art. Strength 0.3 = footfall, 1.0 = jump
 ## takeoff, 1.6 = heavy knockdown.
-func _puff(strength: float) -> void:
+## `push_x` biases the burst away from a planted foot or a slide instead of firing it straight
+## up, so a heavy step and a skid throw sand backwards the way the sand yard reads.
+func _puff(strength: float, push_x: float = 0.0) -> void:
 	if dust == null:
 		return
-	dust.amount = int(clampf(6.0 + 16.0 * strength, 6.0, 40.0))
+	dust.amount = mini(int(clampf(6.0 + 16.0 * strength, 6.0, 40.0)), MAX_PUFF_PARTICLES)
 	dust.initial_velocity_min = 24.0 + 26.0 * strength
 	dust.initial_velocity_max = 74.0 + 96.0 * strength
+	if is_zero_approx(push_x):
+		dust.direction = Vector2(0.0, -1.0)
+	else:
+		dust.direction = Vector2(signf(push_x) * 0.86, -0.5).normalized()
 	dust.restart()
 	dust.emitting = true
 
@@ -1157,6 +1199,7 @@ func receive_forward_throw(attacker: BaseFighter, damage: int) -> void:
 	var ko := _take_throw_damage(damage)
 	global_position.x = clampf(global_position.x, STAGE_LEFT, STAGE_RIGHT)
 	velocity = Vector2(THROW_LAUNCH.x * dir, THROW_LAUNCH.y)
+	_puff(0.9, -dir)                         # launch kick-up along the throw
 	if ko:
 		change_state(State.KO)
 		return
@@ -1222,6 +1265,7 @@ func _check_speaker_wall() -> void:
 	velocity.x = -float(side) * maxf(speed * WALL_SLAM_BOUNCE, 220.0)
 	velocity.y = minf(velocity.y, -200.0)      # pop back up off the stack
 	var ko := _take_throw_damage(WALL_SLAM_BONUS)
+	_puff(1.4, -float(side))                 # sand blasted off the speaker stack
 	speaker_slam_triggered.emit(self, side)
 	camera_shake_requested.emit(SHAKE_HEAVY * 1.5, 0.26)
 	if ko:
@@ -1235,6 +1279,10 @@ func receive_strike(attacker: BaseFighter, strike: Dictionary) -> Dictionary:
 	if state == State.KO or state == State.KNOCKDOWN:
 		return {"ignored": true}               # [TODO] confirm TS rule for hits on downed fighters
 
+	# Counter-hit flag, read before this strike changes the state: striking a fighter that is
+	# still committed to its own startup/active window is a counter. Feedback only — damage,
+	# knockback and stun are unchanged (AGENTS.md §9 item 41).
+	var counter := is_counterable()
 	var a: Dictionary = strike["attack"]
 	var away := signf(global_position.x - attacker.global_position.x)
 	if away == 0.0:
@@ -1263,6 +1311,7 @@ func receive_strike(attacker: BaseFighter, strike: Dictionary) -> Dictionary:
 	var result := {
 		"blocked": blocked, "damage": dmg, "ko": false, "on_beat": on_beat,
 		"punish": punish,
+		"counter": counter,
 		"attacker_surge": attacker.is_hype_surging(),
 		"attack_id": strike["attack_id"],
 		"input_beat": strike["input_beat"],
@@ -1340,6 +1389,12 @@ func _tick_knockdown() -> void:
 		change_state(State.IDLE)
 
 
+## True while this fighter is committed to a strike it has not recovered from: a contact here
+## is a counter-hit. Presentation/feedback only — no rule reads it.
+func is_counterable() -> bool:
+	return state == State.ATTACK_STARTUP or state == State.ATTACK_ACTIVE
+
+
 func _tick_ko() -> void:
 	_apply_gravity()
 	velocity.x = move_toward(velocity.x, 0.0, STUN_FRICTION * get_physics_process_delta_time())
@@ -1369,6 +1424,7 @@ func reset_for_round(at: Vector2) -> void:
 	_stun_is_block = false
 	_hitstop_frames = 0
 	_impact_flash_ticks = 0
+	set_hit_flash(0.0)
 	if sprite != null:
 		sprite.modulate = Color.WHITE
 	_surge_ticks = 0
@@ -1439,6 +1495,57 @@ func set_light(dir: float, stretch: float) -> void:
 		return
 	shadow.light_dir = dir
 	shadow.stretch = stretch
+
+
+## Cache the Sprite's ShaderMaterial. A scene without the rim shader still runs: every push
+## below becomes a no-op instead of an error.
+func _cache_rim_material() -> void:
+	_rim_material = null
+	if sprite == null:
+		return
+	_rim_material = sprite.material as ShaderMaterial
+	if _rim_material != null and _rim_material.shader == null:
+		_rim_material = null
+
+
+## Push the cached rim state to the sprite shader.
+func _push_rim() -> void:
+	if _rim_material == null:
+		return
+	_rim_material.set_shader_parameter("rim_colour", rim_a)
+	_rim_material.set_shader_parameter("rim_colour_b", rim_b)
+	_rim_material.set_shader_parameter("rim_strength", rim_strength)
+	_rim_material.set_shader_parameter("bounce_strength", rim_bounce)
+	_rim_material.set_shader_parameter("light_uv", rim_light_uv)
+	_push_rim_facing()
+
+
+## AnimatedSprite2D mirrors the frame for a facing turn, which mirrors the alpha gradient too.
+## The shader undoes that with `sprite_facing`, so the rim stays on the stage's light side.
+func _push_rim_facing() -> void:
+	if _rim_material == null or sprite == null:
+		return
+	_rim_material.set_shader_parameter("sprite_facing", -1.0 if sprite.flip_h else 1.0)
+
+
+## Stage lighting for the 2.5D pass (AGENTS.md §9 item 41). `a`/`b` are the two rim colours
+## blended across the silhouette (golden-amber at Sunset, cyan/magenta at Night), `strength`
+## is the rim energy, `light_uv` points *toward* the light in texture UV space, and `bounce`
+## is the warm sand bounce on the lower legs and Clarks. Presentation only.
+func set_rim_light(a: Color, b: Color, strength: float, light_uv: Vector2, bounce: float) -> void:
+	rim_a = a
+	rim_b = b
+	rim_strength = clampf(strength, 0.0, 2.0)
+	rim_light_uv = light_uv
+	rim_bounce = clampf(bounce, 0.0, 1.0)
+	_push_rim()
+
+
+## White/gold impact-flash uniform, driven alongside the `sprite.modulate` flash.
+func set_hit_flash(value: float) -> void:
+	if _rim_material == null:
+		return
+	_rim_material.set_shader_parameter("hit_flash", clampf(value, 0.0, 1.0))
 
 
 func _set_guarding(v: bool) -> void:
@@ -1565,6 +1672,7 @@ func _play_state_anim() -> void:
 	sprite.scale = Vector2(s, s)
 	_anim_base_scale = sprite.scale
 	sprite.play(anim)
+	_push_rim_facing()
 
 
 # =========================================================================

@@ -51,6 +51,11 @@ const CAMERA_MAX_ZOOM := 1.12
 const CAMERA_FOCUS_LIFT := 140.0
 const THUMP_ZOOM := 0.008             # 132 BPM speaker thump: 0.8% micro-pulse
 const THUMP_DECAY := 7.0
+## Fighting-game camera (AGENTS.md §9 item 41): the framing zoom approaches its target
+## smoothly instead of snapping every frame, and a micro-zoom burst punches in on a counter
+## or a 100 % Hype Surge. Both are additive above 1.0, so the stage art always covers the view.
+const CAMERA_ZOOM_SMOOTH := 6.0       # per-second approach rate to the framing zoom
+const CAMERA_PUNCH_DECAY := 0.30      # how fast a micro-zoom burst settles (per second)
 
 ## Round-based time of day (AGENTS.md §9 owner decision). `tint` is a CanvasModulate
 ## over the whole world canvas — the HUD lives in a CanvasLayer, so it stays readable —
@@ -82,6 +87,16 @@ const TIME_PHASES := [
 		"crowd": 0.0,
 		"shadow_stretch": 0.95,
 		"shadow_dir": -1.0,
+		# 2.5D lighting pass (AGENTS.md §9 item 41): a high, slightly warm daylight rim.
+		"rim_a": Color(1.0, 0.88, 0.66),
+		"rim_b": Color(1.0, 0.78, 0.48),
+		"rim_strength": 0.55,
+		"light_uv": Vector2(0.62, -0.78),
+		"bounce": 0.30,
+		"shadow_density": 1.0,
+		"beam": 0.0,
+		"haze": 0.35,
+		"fg": 0.0,
 	},
 	{
 		"name": "Golden Hour / Sunset Clash",
@@ -96,6 +111,16 @@ const TIME_PHASES := [
 		"crowd": 0.18,
 		"shadow_stretch": 1.95,     # low sun: long shadows cast to the right
 		"shadow_dir": 1.0,
+		# Golden-amber wrap from the low sun on the right, plus heavy sand bounce.
+		"rim_a": Color(1.0, 0.70, 0.24),
+		"rim_b": Color(1.0, 0.50, 0.16),
+		"rim_strength": 1.15,
+		"light_uv": Vector2(0.90, -0.36),
+		"bounce": 0.55,
+		"shadow_density": 0.85,
+		"beam": 0.85,
+		"haze": 1.0,
+		"fg": 1.0,
 	},
 	{
 		"name": "Late-Night Sound Clash",
@@ -110,6 +135,16 @@ const TIME_PHASES := [
 		"crowd": 0.85,              # crowd drops to silhouette
 		"shadow_stretch": 1.1,
 		"shadow_dir": -1.0,
+		# Cyan/magenta neon wrap from the truss rig, low bounce, softer crowd shadows.
+		"rim_a": Color(0.30, 0.95, 1.0),
+		"rim_b": Color(1.0, 0.32, 0.95),
+		"rim_strength": 1.30,
+		"light_uv": Vector2(-0.28, -0.92),
+		"bounce": 0.18,
+		"shadow_density": 0.72,
+		"beam": 0.72,
+		"haze": 0.45,
+		"fg": 1.0,
 	},
 ]
 const TIME_TRANSITION_SEC := 3.0
@@ -120,6 +155,11 @@ const MAX_ACTIVE_BIRDS := 1           # one bird in the air at a time, however f
 const MAX_PARRY_SPARKS := 4           # oldest spark is recycled once four are alive
 const MAX_PARTICLE_AMOUNT := 16       # hard ceiling applied to every CPUParticles2D
 const MAX_STRIKE_TELLS := 4           # attack smears, same cap policy as the sparks
+## 2.5D impact juice (AGENTS.md §9 item 41). Note trails and the comic impact frame are
+## transient primitives under the same cap policy as the sparks, so a long brawl never piles
+## nodes up on a Chromebook.
+const MAX_NOTE_TRAILS := 3            # musical-note swing trails alive at once
+const MAX_IMPACT_FRAMES := 1          # one comic frame at a time, never a stack
 
 ## Crowd proximity ebb (AGENTS.md §9 item 21). A body crossing the line at this speed, or
 ## any thrown / landing body, pulls the nearest spectators back for a beat. Walking is 220,
@@ -186,6 +226,11 @@ const NO_SEPARATION_STATES := [
 @onready var sunset_wash: Sprite2D = $SunsetWash
 @onready var night_wash: Sprite2D = $NightWash
 @onready var sun_shaft: Sprite2D = $SunShaft
+# 2.5D stage depth (AGENTS.md §9 item 41). `get_node_or_null` keeps the arena runnable if a
+# stripped scene omits them; every call site below already null-checks.
+@onready var beams: LightBeams = get_node_or_null("LightBeams") as LightBeams
+@onready var heat_haze: HeatHaze = get_node_or_null("HeatHaze") as HeatHaze
+@onready var foreground: ForegroundCrowd = get_node_or_null("ForegroundCrowd") as ForegroundCrowd
 
 var _dummy_guard: bool = false
 var _shake_time: float = 0.0
@@ -199,6 +244,16 @@ var _flinch_cd := [0.0, 0.0]          # per-fighter rate limit for the crowd fli
 var _crowd_night: float = 0.0
 var _shadow_stretch: float = 1.0
 var _shadow_dir: float = -1.0
+# Camera (AGENTS.md §9 item 41).
+var _zoom_smooth: float = CAMERA_MAX_ZOOM
+var _zoom_punch: float = 0.0
+var _camera_ready: bool = false
+# Phase-driven 2.5D palette: _vis_now is what is on screen, _vis_from/_vis_to bracket the
+# cross-fade, so a round change blends the rim, bounce, beams, haze and near-crowd together.
+var _vis_now: Dictionary = {}
+var _vis_from: Dictionary = {}
+var _vis_to: Dictionary = {}
+var _vis_tween: Tween = null
 
 
 func _ready() -> void:
@@ -261,6 +316,8 @@ func _ready() -> void:
 	p1.died.connect(_on_fighter_died)
 	p2.died.connect(_on_fighter_died)
 
+	# The phase palette must exist before the round controller applies round 1 lighting.
+	_init_visuals()
 	rounds.setup(p1, p2, self)
 	if not rounds.round_ended.is_connected(_on_round_ended):
 		rounds.round_ended.connect(_on_round_ended)
@@ -279,7 +336,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_thump = maxf(0.0, _thump - delta * THUMP_DECAY)
-	_follow_action()
+	_follow_action(delta)
 	_update_shake(delta)
 	_update_crowd_flinch(delta)
 	hud.queue_redraw()
@@ -384,7 +441,7 @@ func is_muted() -> bool:
 
 ## Impact cue. Blocked contacts knock, plain contacts thud, and a strike judged on the beat
 ## gets the sub-bass punch so timing reads with the music muted.
-func _on_strike_resolved(_attacker: BaseFighter, target: BaseFighter, result: Dictionary) -> void:
+func _on_strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dictionary) -> void:
 	if bool(result.get("ignored", false)) or bool(result.get("parried", false)):
 		return                    # a parry has its own cue, fired from the fighter signal
 	var on_beat := bool(result.get("on_beat", false))
@@ -405,6 +462,22 @@ func _on_strike_resolved(_attacker: BaseFighter, target: BaseFighter, result: Di
 	# Punish: the hit interrupted an attack or a taunt, so it gets the show-off callout.
 	if bool(result.get("punish", false)) and not bool(result.get("blocked", false)):
 		_announce_callout(&"punish")
+
+	# 2.5D impact juice (AGENTS.md §9 item 41): musical-note trails on heavies and on-beat
+	# contacts, and the black-and-gold comic frame plus a micro-zoom on a counter-hit. Light
+	# jabs stay clean so a fast exchange is still readable.
+	if target == null:
+		return
+	if not bool(result.get("blocked", false)):
+		var attack_id := StringName(result.get("attack_id", &""))
+		var heavy_hit := attack_id in BaseFighter.HEAVY_ATTACK_IDS
+		var face := attacker.facing if attacker != null else 1
+		if heavy_hit or on_beat:
+			_add_note_trail(target.global_position + Vector2(0.0, -96.0), face, heavy_hit)
+		if bool(result.get("counter", false)):
+			_add_impact_frame(&"counter")
+			_zoom_punch_burst(0.06)
+			_on_shake(1.0, 0.20)
 
 
 ## A fighter entering KO: the dramatic arcade drop (fired once per K.O.).
@@ -431,6 +504,11 @@ func _on_round_ended(_round_index: int, winner: int) -> void:
 func _on_hype_surge(seconds: float) -> void:
 	crowd.surge(seconds)
 	Sfx.play(&"airhorn")
+	# 100 % Crowd Hype punches the camera in and throws the comic frame (AGENTS.md §9 item 41).
+	_zoom_punch_burst(0.075)
+	_add_impact_frame(&"surge")
+	# `TestHud`'s own banner already reads FORWARD! / PULL UP! (§9 item 10); the subtitle keeps
+	# rotating the approved Patois pool (item 38) instead of repeating the banner.
 	_announce_callout(&"hype")
 
 
@@ -625,6 +703,14 @@ func set_time_of_day(phase: int, duration: float = TIME_TRANSITION_SEC) -> void:
 	# The cast direction is a switch, not a blend: shadows flip to the sunset side at once and
 	# the stretch carries the eye through the transition.
 	_shadow_dir = float(target["shadow_dir"])
+	# 2.5D palette: blend the rim colours, bounce, beams, haze and near-crowd with the same
+	# duration as the sky, so a round change reads as one lighting change, not five.
+	_vis_from = _vis_now.duplicate()
+	_vis_to = _phase_visuals(target)
+	if _vis_tween != null and _vis_tween.is_valid():
+		_vis_tween.kill()
+	if duration <= 0.0:
+		_apply_vis_blend(1.0)
 	if duration <= 0.0:
 		time_modulate.color = tint
 		floodlight.modulate.a = flood
@@ -652,6 +738,8 @@ func set_time_of_day(phase: int, duration: float = TIME_TRANSITION_SEC) -> void:
 	_time_tween.tween_property(sun_shaft, "modulate:a", shaft, duration)
 	_time_tween.tween_method(_set_crowd_night, _crowd_night, crowd_night, duration)
 	_time_tween.tween_method(_set_shadow_light, _shadow_stretch, stretch, duration)
+	_vis_tween = create_tween()
+	_vis_tween.tween_method(_apply_vis_blend, 0.0, 1.0, duration)
 
 
 ## Crowd silhouette level for the current phase (0 daylight, ~0.85 night).
@@ -727,18 +815,30 @@ func _restart_click_loop() -> void:
 		music.play()
 
 
-func _follow_action() -> void:
+func _follow_action(delta: float = 0.0) -> void:
 	var mid := (p1.global_position + p2.global_position) * 0.5
 	var span := clampf(absf(p1.global_position.x - p2.global_position.x) * 1.8,
 		CAMERA_MIN_DISTANCE, CAMERA_MAX_DISTANCE)
-	var z := clampf(CAMERA_FIT_DISTANCE / span, CAMERA_MIN_ZOOM, CAMERA_MAX_ZOOM)
-	var half := STAGE_SIZE * 0.5 / z
+	var target_zoom := clampf(CAMERA_FIT_DISTANCE / span, CAMERA_MIN_ZOOM, CAMERA_MAX_ZOOM)
+	if not _camera_ready:
+		_zoom_smooth = target_zoom
+		_camera_ready = true
+	if delta > 0.0:
+		# Closing for a brawl eases in, and bodies thrown apart ease back out, instead of
+		# the framing snapping on every position change.
+		_zoom_smooth = lerpf(_zoom_smooth, target_zoom,
+			1.0 - exp(-CAMERA_ZOOM_SMOOTH * delta))
+		_zoom_punch = move_toward(_zoom_punch, 0.0, CAMERA_PUNCH_DECAY * delta)
+	else:
+		_zoom_smooth = target_zoom
+	var half := STAGE_SIZE * 0.5 / _zoom_smooth
 	var target := mid + Vector2(0.0, -CAMERA_FOCUS_LIFT)
 	target.x = clampf(target.x, half.x, STAGE_SIZE.x - half.x)
 	target.y = clampf(target.y, half.y, STAGE_SIZE.y - half.y)
 	camera.global_position = target
-	# Zooming in only ever shrinks the visible area, so the thump never exposes an edge.
-	camera.zoom = Vector2(z, z) * (1.0 + THUMP_ZOOM * _thump)
+	# Zooming in only ever shrinks the visible area, so the thump and the punch never expose
+	# an edge of the single-layer stage art.
+	camera.zoom = Vector2(_zoom_smooth, _zoom_smooth) * (1.0 + THUMP_ZOOM * _thump + _zoom_punch)
 
 
 func _on_shake(intensity: float, duration: float) -> void:
@@ -755,3 +855,129 @@ func _update_shake(delta: float) -> void:
 			_shake_time = 0.0
 			_shake_intensity = 0.0
 			camera.offset = Vector2.ZERO
+
+
+# =========================================================================
+# 2.5D impact juice (AGENTS.md §9 item 41)
+# =========================================================================
+## Punch the framing zoom in by `amount`, then let `_follow_action()` ease it back. Only ever
+## positive, so the stage art keeps covering the whole view.
+func _zoom_punch_burst(amount: float = 0.055) -> void:
+	_zoom_punch = maxf(_zoom_punch, maxf(amount, 0.0))
+
+
+## Vibrant musical notes arcing along a heavy strike (or an on-beat contact). Capped like
+## every other transient in the arena.
+func _add_note_trail(at: Vector2, facing: int, heavy: bool) -> void:
+	var live := _live_note_trails()
+	if live.size() >= MAX_NOTE_TRAILS:
+		live[0].queue_free()
+	var trail := NoteTrail.new()
+	trail.global_position = at
+	trail.facing = facing if facing != 0 else 1
+	trail.heavy = heavy
+	add_child(trail)
+
+
+func _live_note_trails() -> Array[NoteTrail]:
+	var found: Array[NoteTrail] = []
+	for child in get_children():
+		var trail := child as NoteTrail
+		if trail != null and not trail.is_queued_for_deletion():
+			found.append(trail)
+	return found
+
+
+## Black-and-gold comic impact frame: at most one alive at a time, so two contacts in the same
+## second never stack a black screen.
+func _add_impact_frame(kind: StringName) -> void:
+	var live := _live_impact_frames()
+	if live.size() >= MAX_IMPACT_FRAMES:
+		live[0].queue_free()
+	var frame := ImpactFrame.new()
+	frame.kind = kind
+	add_child(frame)
+
+
+func _live_impact_frames() -> Array[ImpactFrame]:
+	var found: Array[ImpactFrame] = []
+	for child in get_children():
+		var frame := child as ImpactFrame
+		if frame != null and not frame.is_queued_for_deletion():
+			found.append(frame)
+	return found
+
+
+# =========================================================================
+# Phase-driven 2.5D palette (AGENTS.md §9 item 41)
+# =========================================================================
+## The colours and weights one time-of-day phase hands to every presentation layer.
+func _phase_visuals(phase: Dictionary) -> Dictionary:
+	return {
+		"rim_a": phase["rim_a"],
+		"rim_b": phase["rim_b"],
+		"rim_strength": float(phase["rim_strength"]),
+		"light_uv": phase["light_uv"],
+		"bounce": float(phase["bounce"]),
+		"density": float(phase["shadow_density"]),
+		"beam": float(phase["beam"]),
+		"haze": float(phase["haze"]),
+		"fg": float(phase["fg"]),
+		"sunset": float(phase["sunset"]),
+		"night": float(phase["night"]),
+	}
+
+
+## Round 1's palette, applied before the round controller can change it.
+func _init_visuals() -> void:
+	_vis_now = _phase_visuals(TIME_PHASES[0])
+	_vis_from = _vis_now.duplicate()
+	_vis_to = _vis_now.duplicate()
+	_push_visuals()
+
+
+## `t` 0 → the palette on screen before the change, 1 → the new phase.
+func _apply_vis_blend(t: float) -> void:
+	for key in _vis_to:
+		var to = _vis_to[key]
+		var from = _vis_from.get(key, to)
+		match typeof(to):
+			TYPE_COLOR:
+				_vis_now[key] = (from as Color).lerp(to as Color, t)
+			TYPE_VECTOR2:
+				_vis_now[key] = (from as Vector2).lerp(to as Vector2, t)
+			_:
+				_vis_now[key] = lerpf(float(from), float(to), t)
+	_push_visuals()
+
+
+## Fan the blended palette out to the fighters, crowd, beams, haze and near-crowd. Every
+## target is null-checked, so a scene without one of the new nodes still runs.
+func _push_visuals() -> void:
+	if _vis_now.is_empty():
+		return
+	var rim_a: Color = _vis_now.get("rim_a", Color.WHITE)
+	var rim_b: Color = _vis_now.get("rim_b", Color.WHITE)
+	var rim_strength := float(_vis_now.get("rim_strength", 0.0))
+	var light_uv: Vector2 = _vis_now.get("light_uv", Vector2(0.0, -1.0))
+	var bounce := float(_vis_now.get("bounce", 0.0))
+	var density := float(_vis_now.get("density", 1.0))
+	var sunset := float(_vis_now.get("sunset", 0.0))
+	var night := float(_vis_now.get("night", 0.0))
+	for fighter in [p1, p2]:
+		if fighter == null:
+			continue
+		fighter.set_rim_light(rim_a, rim_b, rim_strength, light_uv, bounce)
+		if fighter.shadow != null:
+			fighter.shadow.density = density
+	if crowd != null:
+		crowd.set_shadow_density(density)
+	if beams != null:
+		beams.set_palette(rim_a, rim_b)
+		beams.set_intensity(float(_vis_now.get("beam", 0.0)))
+	if heat_haze != null:
+		heat_haze.set_phase(sunset, night)
+		heat_haze.set_intensity(float(_vis_now.get("haze", 0.0)))
+	if foreground != null:
+		foreground.set_phase(sunset, night)
+		foreground.set_intensity(float(_vis_now.get("fg", 0.0)))

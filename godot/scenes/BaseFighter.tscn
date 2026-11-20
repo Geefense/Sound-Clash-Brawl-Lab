@@ -1,4 +1,4 @@
-[gd_scene load_steps=52 format=3]
+[gd_scene load_steps=54 format=3]
 
 [ext_resource type="Script" path="res://scripts/BaseFighter.gd" id="1_fighter"]
 [ext_resource type="Texture2D" path="res://assets/sprites/feedback/aligned/01_idle.png" id="t2"]
@@ -48,6 +48,7 @@
 [ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-18/05_sky-fist.png" id="t46"]
 [ext_resource type="Texture2D" path="res://assets/sprites/feedback/selected-frames-2026-11-18/06_hand-reach.png" id="t47"]
 [ext_resource type="Script" path="res://scripts/stages/GroundShadow.gd" id="t41_shadow"]
+[ext_resource type="Shader" path="res://scripts/stages/fighter_rim_light.gdshader" id="t48_rim"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 resource_local_to_scene = true
@@ -60,6 +61,20 @@ size = Vector2(70, 170)
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_hit"]
 resource_local_to_scene = true
 size = Vector2(70, 36)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_rim"]
+shader = ExtResource("t48_rim")
+shader_parameter/rim_colour = Color(1, 0.86, 0.62, 1)
+shader_parameter/rim_colour_b = Color(1, 0.74, 0.42, 1)
+shader_parameter/rim_strength = 0.55
+shader_parameter/rim_width = 7.0
+shader_parameter/light_uv = Vector2(0.86, -0.42)
+shader_parameter/sprite_facing = 1.0
+shader_parameter/bounce_colour = Color(1, 0.8, 0.5, 1)
+shader_parameter/bounce_strength = 0.3
+shader_parameter/bounce_top = 0.72
+shader_parameter/flash_colour = Color(1, 0.96, 0.78, 1)
+shader_parameter/hit_flash = 0.0
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_feedback"]
 animations = [{
@@ -386,6 +401,7 @@ scale_amount_max = 3.2
 color = Color(0.94, 0.83, 0.62, 0.5)
 
 [node name="Sprite" type="AnimatedSprite2D" parent="."]
+material = SubResource("ShaderMaterial_rim")
 scale = Vector2(0.25, 0.25)
 sprite_frames = SubResource("SpriteFrames_feedback")
 offset = Vector2(0, -388)

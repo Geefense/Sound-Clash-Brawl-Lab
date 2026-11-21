@@ -8,21 +8,28 @@ extends Node3D
 ## stay exactly as they were. The whole 3D layer can be switched off without touching a
 ## single combat value.
 ##
-## Two model sources are wired:
-##   * `feedback_fighting_idle.fbx` — the owner's uploaded 40 000-triangle mesh with the
-##     25-bone Mixamo rig and its baked 3.30 s `mixamo_com` idle clip. The baked clip drives
-##     the neutral/walk base, and the eight fight states are layered additively on the
-##     skeleton (procedural stances) until per-state Mixamo tracks arrive.
-##   * `lickshot_placeholder_static.fbx` — the second upload: byte-different, but the same
-##     40 000-triangle mesh with no skeleton and no clip. It therefore gets the clean
-##     procedural stance/bob/tilt/lunge/recoil/knockdown path, with a hue/tint variant so
-##     the two models read as different selectors while L!ckshot's own model is pending.
+## One model source is wired:
+##   * `feedback_fighting_idle_rigged.fbx` — the owner's uploaded 40 000-triangle mesh with
+##     the 25-bone Mixamo rig and its baked 3.30 s `mixamo_com` idle clip. The baked clip
+##     drives the neutral/walk base, and the eight fight states are layered additively on
+##     the skeleton (procedural stances) until per-state Mixamo tracks arrive.
+##     Both P1 and P2 use it, so the default FEEDBACK vs FEEDBACK showcase is a true mirror
+##     match; P2 gets the cool/gold alternate accent below so the two rigs stay readable.
+##   * `lickshot_placeholder_static.fbx` is **archived for reference only** and is no longer
+##     assigned to anyone. L!ckshot renders as a `FighterBillboard3D` from his approved 2D
+##     sprites until his own rigged model is uploaded.
 ##
 ## Materials are the toon/cel shader with an inverted-hull ink `next_pass`; both are
-## WebGL2-safe. The outfit texture is the owner's baked albedo, shared by both slots.
+## WebGL2-safe. The outfit texture is the owner's baked albedo (also used by the billboard).
 
 const TOON_SHADER := preload("res://assets/shaders/toon_cel.gdshader")
 const OUTLINE_SHADER := preload("res://assets/shaders/toon_outline.gdshader")
+
+## Mirror-match accents. P1 keeps the owner's warm cream rim; P2 gets a cool jacket tint and
+## a gold rim, so two identical Feedback rigs read as two players instead of one clone.
+const MIRROR_TINT := Color(0.80, 0.90, 1.10, 1.0)
+const MIRROR_HUE := 0.030
+const MIRROR_RIM := Color(1.0, 0.70, 0.26, 1.0)
 
 ## Per-fighter model wiring. `height` is the on-screen fighting height in world metres
 ## (the arena uses 140 px = 1 m, so 1.55 m reads between 55 % and 65 % of the 720 px frame
@@ -39,18 +46,9 @@ const MODEL_SOURCES := {
 		"ink": Color(0.022, 0.016, 0.030, 1.0),
 		"rim": Color(1.0, 0.88, 0.62, 1.0),
 	},
-	&"lickshot": {
-		"path": "res://assets/models/fighters/lickshot_placeholder_static.fbx",
-		"albedo": "res://assets/models/fighters/feedback_fitted_jacket_albedo.jpg",
-		"label": "Lickshot — static placeholder (same mesh, pending own model)",
-		"height": 1.58,
-		"tint": Color(0.86, 0.94, 1.06, 1.0),
-		"hue_shift": 0.055,
-		"yaw_offset": 0.0,
-		"ink": Color(0.03, 0.016, 0.026, 1.0),
-		"rim": Color(0.96, 0.86, 0.55, 1.0),
-	},
 }
+## `lickshot_placeholder_static.fbx` (the static bake of the same mesh) stays archived in
+## `assets/models/fighters/` for reference; it is intentionally not a selectable model.
 
 var fighter: BaseFighter = null
 var fighter_key: StringName = &""
@@ -61,6 +59,7 @@ var meshes: Array[MeshInstance3D] = []
 var materials: Array[ShaderMaterial] = []
 
 var model_height: float = 1.55
+var mirror_variant: bool = false
 var triangles: int = 0
 var bone_count: int = 0
 var has_rig: bool = false
@@ -79,6 +78,9 @@ var _spin: float = 0.0
 var _spin_angle: float = 0.0
 var _flash: float = 0.0
 var _last_facing: int = 1
+var _base_tint: Color = Color.WHITE
+var _base_hue: float = 0.0
+var _base_rim: Color = Color.WHITE
 
 
 func _ready() -> void:
@@ -105,6 +107,9 @@ func bind(target: BaseFighter, key: StringName) -> bool:
 	fighter = target
 	fighter_key = key
 	model_height = float(src["height"])
+	_base_tint = src["tint"]
+	_base_hue = float(src["hue_shift"])
+	_base_rim = src["rim"]
 	base_yaw = float(src["yaw_offset"])
 
 	_pivot = Node3D.new()
@@ -147,6 +152,36 @@ func model_source_label() -> String:
 	if not MODEL_SOURCES.has(fighter_key):
 		return ""
 	return String(MODEL_SOURCES[fighter_key]["label"])
+
+
+## Player 2 in a mirror match: a cool jacket tint and gold rim so two identical Feedback
+## rigs are still distinguishable. Presentation only — no material, tint or shader value
+## reaches the combat simulation.
+func set_mirror_variant(enabled: bool) -> void:
+	if enabled == mirror_variant:
+		return
+	mirror_variant = enabled
+	_apply_variant()
+
+
+func is_mirror_variant() -> bool:
+	return mirror_variant
+
+
+func shader_tint() -> Color:
+	if materials.is_empty():
+		return _base_tint
+	return materials[0].get_shader_parameter("tint") as Color
+
+
+func _apply_variant() -> void:
+	var tint := MIRROR_TINT if mirror_variant else _base_tint
+	var hue := MIRROR_HUE if mirror_variant else _base_hue
+	var rim := MIRROR_RIM if mirror_variant else _base_rim
+	for mat in materials:
+		mat.set_shader_parameter("tint", tint)
+		mat.set_shader_parameter("hue_shift", hue)
+		mat.set_shader_parameter("rim_colour", rim)
 
 
 func _collect(inst: Node3D) -> void:

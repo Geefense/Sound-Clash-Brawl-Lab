@@ -9,11 +9,14 @@ const TITLE_SCENE := "res://scenes/TitleScreen.tscn"
 const ARENA_SCENE := "res://scenes/TestArena.tscn"
 
 ## Fighter keys are FighterRoster keys.
-## Owner decision (2026-11-17, AGENTS.md §9 item 24): the default matchup is **Feedback vs
-## Feedback**, so combat, blocking, hit reactions and the upcoming Dancehall move set can be
-## refined with full animation on both sides. L!CKSHOT and Likkle Moore stay selectable.
-var p1_fighter: StringName = &"feedback"
-var p2_fighter: StringName = &"feedback"
+## Owner decision (2026-11-17, AGENTS.md §9 item 24; reaffirmed 2026-11-21 as the 3D showcase):
+## the default matchup is **FEEDBACK vs FEEDBACK** on the rigged 25-bone model, so the mirror
+## match demonstrates the cel shading, mirror accent and full animation on both sides.
+## L!CKSHOT and Likkle Moore stay selectable.
+const DEFAULT_P1: StringName = &"feedback"
+const DEFAULT_P2: StringName = &"feedback"
+var p1_fighter: StringName = DEFAULT_P1
+var p2_fighter: StringName = DEFAULT_P2
 ## SparringController.Mode index: 0 Dummy, 1 Counter-Puncher, 2 Riddim Rusher, 3 Baiter.
 var ai_mode: int = 1
 var subtitles: bool = true

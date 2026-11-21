@@ -173,6 +173,20 @@ func setup(p1: BaseFighter, p2: BaseFighter) -> void:
 		model.position = Vector3(px_to_world_x(fighter.global_position.x), 0.0, 0.0)
 	_camera_x = px_to_world_x((p1.global_position.x + p2.global_position.x) * 0.5) if p1 != null and p2 != null else 0.0
 	camera.position = Vector3(_camera_x, CAMERA_HEIGHT, CAMERA_DISTANCE)
+	_apply_mirror_variants()
+
+
+## Default FEEDBACK vs FEEDBACK showcase: both sides use the rigged upload, so P2 gets the
+## alternate cool/gold accent. Only a genuine mirror match is tinted; a different opponent
+## keeps its own material.
+func _apply_mirror_variants() -> void:
+	var p1: BaseFighter = fighters.get("p1")
+	var p2: BaseFighter = fighters.get("p2")
+	if p1 == null or p2 == null or p1.fighter_key != p2.fighter_key:
+		return
+	var model := models.get("p2") as FighterModel3D
+	if model != null:
+		model.set_mirror_variant(true)
 
 
 ## Called by the arena on every FSM transition that has geometry to show.

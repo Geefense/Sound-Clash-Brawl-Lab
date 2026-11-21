@@ -6,7 +6,7 @@ immutable owner uploads; nothing in this folder is re-authored art.
 | File | Source upload | Bytes | Mesh | Rig | Clip | Texture |
 | --- | --- | --- | --- | --- | --- | --- |
 | `feedback_fighting_idle_rigged.fbx` | `Fighting Idle (1).fbx` | 4,788,128 | 40,000 triangles / 26,215 vertices | Mixamo skeleton, **25 bones** (`mixamorig_Hips` … `mixamorig_RightToe_End`) | `mixamo_com`, **3.30 s**, 21 bone tracks | embedded 4096² atlas, skipped (see below) |
-| `lickshot_placeholder_static.fbx` | `c534c936-46ff-4878-8dc5-e96053704264 (2).zip` → `output.fbx` | 4,142,476 | 40,000 triangles / 26,215 vertices | **none** | **none** | `feedback_fitted_jacket_albedo.jpg` (shared) |
+| `lickshot_placeholder_static.fbx` | `c534c936-46ff-4878-8dc5-e96053704264 (2).zip` → `output.fbx` | 4,142,476 | 40,000 triangles / 26,215 vertices | **none** | **none** | `feedback_fitted_jacket_albedo.jpg` (shared) — **archived, not assigned** |
 | `feedback_fitted_jacket_albedo.jpg` | same zip → `textured_mesh.jpg` | 2,550,454 | — | — | — | 4096² source, imported at 2048² with mipmaps |
 
 **Important:** both uploads are the *same Feedback mesh*. The vertex count, AABB
@@ -20,9 +20,14 @@ There is no second character in this upload, and no Walk/Attack/Block/Hit/Knockd
   states are layered additively on the skeleton by `FighterModel3D.gd` (guard arms, strike
   lunge/arm, spine recoil, walk leg swing, crouch, taunt, celebration), because no per-state
   Mixamo tracks exist yet.
-- **Lickshot** uses the static upload with the clean procedural stance/bob/tilt/lunge/recoil/
-  knockdown path and a cool tint + hue shift so the two selectors read apart. Replace
-  `lickshot_placeholder_static.fbx` and the `MODEL_SOURCES` entry when his own model arrives.
+- **Both P1 and P2 Feedback** use the rigged upload. `MatchSetup` defaults to FEEDBACK vs
+  FEEDBACK, and in a mirror match `FighterModel3D.set_mirror_variant(true)` gives **P2** a cool
+  jacket tint (`0.80, 0.90, 1.10`), a small hue shift and a gold rim (`1.0, 0.70, 0.26`) while
+  P1 keeps the warm cream rim (`1.0, 0.88, 0.62`). This is presentation only.
+- **Lickshot** no longer uses the static mesh. `FighterModel3D.MODEL_SOURCES` has no
+  `lickshot` entry, so he renders as a camera-facing `Sprite3D` billboard from his approved
+  2D sprites until his own rigged model is uploaded. `lickshot_placeholder_static.fbx` is
+  **archived for reference only** and must not be assigned to a fighter again.
 - **L!kkle Moore** has no 3D upload and keeps his approved 2D art as a camera-facing
   `Sprite3D` billboard on the same 3D plane.
 

@@ -1649,7 +1649,8 @@ here is gameplay-verified; implementation status is stated per item.
     **Files and paths.** Moved byte-identically into `godot/assets/models/fighters/` and removed
     from the repository root (root is spotless again):
     - `feedback_fighting_idle_rigged.fbx` — SHA-256 `c590259b…e273d2c6`
-    - `lickshot_placeholder_static.fbx` — SHA-256 `8ea6acb8…ca606322`
+    - `lickshot_placeholder_static.fbx` — SHA-256 `8ea6acb8…ca606322` (archived reference only;
+      no fighter slot loads it)
     - `feedback_fitted_jacket_albedo.jpg` — SHA-256 `c4cb0ff4…30c1cb7c`
     - roughness PNG kept as provenance only at
       `artifacts/sound-clash/art-source/models/feedback_upload_roughness.png`.
@@ -1665,9 +1666,9 @@ here is gameplay-verified; implementation status is stated per item.
     single-pass, unshaded/forward, with no screen/depth reads, no includes and no unbounded
     loops — WebGL2 / GL Compatibility safe. `FighterModel3D.gd` builds one `ShaderMaterial` per
     model, assigns the outline as `next_pass`, and measures the model's own skeleton/AABB to
-    normalise it to **1.55 m** (Feedback, feet at world y 0) or 1.58 m (Lickshot), independent
-    of the FBX's authored centimetre-ish unit scale. Directional rim + the Scene's 3D lights
-    do the lighting; the material is not baked flat.
+    normalise it to **1.55 m** (Feedback, feet at world y 0), independent of the FBX's authored
+    centimetre-ish unit scale. Directional rim + the Scene's 3D lights do the lighting; the
+    material is not baked flat.
 
     **Facing.** Undeformed rest bones put Mixamo's left hand on +X and the face on +Z, so the
     model yaw is `facing × 90°` about Y; a fighter facing right shows its +X side, and the
@@ -1681,9 +1682,23 @@ here is gameplay-verified; implementation status is stated per item.
     Dancehall bob, forward/back lean, strike lunge, hit-recoil, jump/crouch squash, tumble spin
     and a knockdown/KO fall about the feet. This is the clean procedural fallback the brief asked
     for while per-state Mixamo tracks are pending; the combat timing is not driven by it.
-    Lickshot's static upload has no skeleton and uses the procedural path alone, with a cool
-    tint/hue variant so the two models read apart. When his own model arrives, replace the FBX
-    and the `MODEL_SOURCES` entry; no combat code changes.
+    The procedural layer is retained for any future rig that arrives without state clips; the
+    current Feedback rig uses it together with the additive skeletal stances.
+
+    **Default mirror showcase (2026-11-21).** `MatchSetup.DEFAULT_P1` and `DEFAULT_P2` are both
+    `feedback`, so the untouched title screen boots **FEEDBACK vs FEEDBACK** on the rigged model.
+    `Arena3D._apply_mirror_variants()` checks that both fighter keys match and then calls
+    `FighterModel3D.set_mirror_variant(true)` on P2 only: a cool jacket tint
+    `Color(0.80, 0.90, 1.10)`, `hue_shift` 0.030 and a gold rim `Color(1.0, 0.70, 0.26)`, against
+    P1's warm cream rim `Color(1.0, 0.88, 0.62)`. P1 keeps the owner's neutral material; a
+    non-mirror opponent is never tinted. Presentation only.
+
+    **Lickshot is a billboard again (2026-11-21).** The static second upload is no longer
+    assigned to him: `MODEL_SOURCES` has no `lickshot` entry, so `Arena3D._make_fighter()` falls
+    through to `FighterBillboard3D`, which mirrors his approved `AnimatedSprite2D` frames onto a
+    camera-facing `Sprite3D` at **1.57 m**. `lickshot_placeholder_static.fbx` stays archived in
+    `assets/models/fighters/` for reference and must not be assigned to a fighter. Replace it
+    with his own rigged upload when it arrives; no combat or billboard code changes.
 
     **L!kkle Moore fallback.** He has no 3D upload, so `FighterBillboard3D.gd` mirrors his
     current approved `AnimatedSprite2D` frame onto a camera-facing `Sprite3D` on the 3D plane,
@@ -1695,13 +1710,16 @@ here is gameplay-verified; implementation status is stated per item.
     alive. `TestArena.presentation_3d` (default true) installs the 3D layer; setting it false
     restores the previous 2D drawing path without a code change.
 
-    **Verified headless.** `tools/headless_roster_check.gd` now prints **200** checks and ends
-    `ALL CHECKS PASSED`, including: both uploads' **40,000** triangles, the rigged model's **25**
-    bones, the baked clip playing, the static model having no rig, both normalised heights and
-    feet offsets, the outline `next_pass`, the toon and outline shaders **compiling** (uniform
-    lists non-empty) and being WebGL2-safe, the 2D stage/sprites hidden, both hitboxes alive, and
-    the 55–65 % camera framing (measured **60.3 %**). No GPU/display exists here, so the actual
-    rendered cel bands, ink weight, silhouette and model identity have **not been seen**.
+    **Verified headless.** `tools/headless_roster_check.gd` now prints **210** checks and ends
+    `ALL CHECKS PASSED` (200 before the mirror pass), including: the default **FEEDBACK vs
+    FEEDBACK** arena with both sides on the **40,000**-triangle **25-bone** rig, both baked idle
+    clips playing, only P2 carrying the cool/gold mirror accent with a distinct rim, Lickshot on
+    the `Sprite3D` billboard at 1.57 m with no `FighterModel3D` proxy, the archived static FBX
+    still present but unassigned, Feedback's 1.55 m height and feet offset, the outline
+    `next_pass`, the toon and outline shaders **compiling** (uniform lists non-empty) and being
+    WebGL2-safe, the 2D stage/sprites hidden, both hitboxes alive, and the 55–65 % camera framing
+    (measured **60.3 %**). No GPU/display exists here, so the actual rendered cel bands, ink
+    weight, silhouette, mirror tints and model identity have **not been seen**.
 
 43. **3D Sound Clash yard, real lights, camera and music-note impact bursts (2026-11-21).**
 
@@ -1807,6 +1825,35 @@ here is gameplay-verified; implementation status is stated per item.
     Recorded in the backlog below and in `artifacts/sound-clash/SOUND_CLASH_CULTURE.md` as
     **[TODO] — record only, do not implement yet**. No title-menu mode, jukebox, ladder,
     commentator or shout-out system was built in this branch.
+
+47. **FEEDBACK vs FEEDBACK 3D showcase is the default; Lickshot's static clone retired (2026-11-21).**
+
+    Owner request: make the mirror match the default 3D showcase and stop presenting the static
+    Feedback bake as Lickshot.
+    - `godot/scripts/MatchSetup.gd` now exposes `DEFAULT_P1` / `DEFAULT_P2`, both `&"feedback"`,
+      and the title screen already renders those values, so P1 **FEEDBACK** vs P2 **FEEDBACK**
+      is what a fresh boot shows with no selection changes.
+    - Both slots load `feedback_fighting_idle_rigged.fbx` through `MODEL_SOURCES`; the arena
+      verifies both proxies have the 25-bone skeleton and 40,000 triangles.
+    - `FighterModel3D.set_mirror_variant(true)` is applied to **P2 only** when both fighter keys
+      match. It swaps the material tint to `Color(0.80, 0.90, 1.10)`, raises `hue_shift` to
+      0.030 and changes the rim to gold `Color(1.0, 0.70, 0.26)`; P1 stays on the owner's
+      neutral tint and cream `Color(1.0, 0.88, 0.62)` rim. No shader/material value enters the
+      combat simulation; `BaseFighter` is untouched by the variant.
+    - `lickshot_placeholder_static.fbx` is **archived**: the `lickshot` entry is gone from
+      `MODEL_SOURCES`, so `Arena3D._make_fighter()` selects `FighterBillboard3D` and mirrors his
+      approved 2D frames at 1.57 m. The FBX remains in `assets/models/fighters/` for reference
+      and must not be assigned to a fighter again.
+    - Headless: **210 PASS / 0 FAIL**, `ALL CHECKS PASSED`. New checks cover the default
+      FEEDBACK vs FEEDBACK arena, both rigs and their bones/triangles, P1-vs-P2 mirror accent and
+      gold rim, both baked idles playing, Lickshot's billboard texture/height, the absence of a
+      `FighterModel3D` proxy for him, and the archived-but-unassigned static file.
+    - `/docs/index.html` rebuilt: `index.pck` **24,183,692 B** (24,181,004 B before this pass),
+      `index.wasm` 38,057,390 B, `index.js` 305,185 B, `index.html` 5,449 B.
+    - **Not verified:** no GPU/display, so the rendered mirror tints, gold rim, billboard art
+      alignment and the two-model mirror framing have not been seen on screen. The static bake
+      stays in the asset tree only to preserve provenance; it is not part of any match.
+
 
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 
@@ -2576,3 +2623,39 @@ two 40k-tri skinned meshes at once is a real cost).
 Sunset and Night, and rule on the ink weight, cel bands, 60 % framing, note colours, speaker
 pulse, tag cascade and sting sync. Then replace the Lickshot placeholder with his own rigged
 model when it is uploaded, and approve or record the production audio slots.
+
+### FEEDBACK vs FEEDBACK mirror showcase — headless verification, November 21, 2026
+
+Owner request on branch `feature/3d-cel-shaded`: make the mirror match the default 3D showcase
+and retire Lickshot's static Feedback clone. Recorded as §9 item 47.
+
+**Commands actually run** — Godot 4.5.stable.official (876b29033), headless:
+
+```bash
+godot --headless --path godot --import
+godot --headless --path godot --script res://tools/headless_roster_check.gd
+godot --headless --path godot --export-release "Web" ../docs/index.html
+```
+
+`tools/headless_roster_check.gd` prints **210 PASS / 0 FAIL** and ends `ALL CHECKS PASSED` (200
+before this pass). The new checks boot the untouched default arena and confirm P1 and P2 are both
+`feedback` on the **40,000-triangle / 25-bone** rig with both baked idles playing, that only P2
+carries the mirror accent (cool tint `0.80, 0.90, 1.10`, gold rim `1.0, 0.70, 0.26`) while P1
+keeps the cream rim, and that Lickshot resolves to `FighterBillboard3D` at 1.57 m with a live
+sprite texture and **no** `FighterModel3D` proxy. The archived
+`lickshot_placeholder_static.fbx` is checked to still exist on disk and to be absent from
+`FighterModel3D.MODEL_SOURCES`.
+
+**Files changed** — `godot/scripts/MatchSetup.gd` (`DEFAULT_P1` / `DEFAULT_P2`),
+`godot/scripts/fighters/FighterModel3D.gd` (lickshot source removed; mirror variant),
+`godot/scripts/stages/Arena3D.gd` (`_apply_mirror_variants`),
+`godot/tools/headless_roster_check.gd`, `godot/assets/models/fighters/MODELS.md`, `AGENTS.md`
+and `godot/AGENTS.md`.
+
+**`/docs` rebuilt** with `--headless --path godot --export-release "Web" ../docs/index.html`:
+`index.pck` **24,183,692 B**, `index.wasm` 38,057,390 B, `index.js` 305,185 B, `index.html`
+5,449 B. The export log's only errors are the environment's known non-fatal fontconfig warnings.
+
+**Not verified — no render.** The rendered mirror tint, gold rim, billboard alignment, billboard
+depth sorting against both rigs and the two-model framing have not been seen. The static FBX is
+retained only as archived provenance; no fighter slot loads it.

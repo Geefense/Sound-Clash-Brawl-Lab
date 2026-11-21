@@ -2,10 +2,10 @@ extends SceneTree
 ## Headless roster + title-screen check (AGENTS.md §9 backlog item B1).
 ## Run with: godot --headless --path godot --script res://tools/headless_roster_check.gd
 ##
-## Boots TitleScreen, verifies the MatchSetup defaults, boots TestArena with Lickshot as
-## P2, then rebuilds the arena with Likkle Moore (L!KKLE MOORE) and checks the shared FSM, the sprite
-## frames, the +25 px reach, the AI mode and the Esc return path. Prints one line per
-## check and exits non-zero if any check fails.
+## Boots TitleScreen, verifies the default FEEDBACK vs FEEDBACK 3D showcase (both rigged,
+## P2's mirror accent), then boots TestArena with Lickshot as P2, rebuilds it with Likkle
+## Moore (L!KKLE MOORE) and checks the shared FSM, sprite frames, +25 px reach, the AI mode
+## and the Esc return path. Prints one line per check and exits non-zero if any check fails.
 
 const PASS := "PASS"
 const FAIL := "FAIL"
@@ -107,6 +107,48 @@ func _run() -> void:
 		setup.cycle_p2(1)
 	_check(setup.p1_fighter == &"feedback", "three cycles wrap P1 back to Feedback")
 	_check(setup.p2_fighter == &"feedback", "three cycles wrap P2 back to Feedback")
+
+	# ---- Default 3D showcase: FEEDBACK vs FEEDBACK --------------------------
+	# Owner request (2026-11-21): both sides use the rigged 25-bone upload and P2 gets a
+	# cool/gold mirror accent, so the untouched default selection is a true mirror match.
+	setup.p1_fighter = &"feedback"
+	setup.p2_fighter = &"feedback"
+	change_scene_to_file("res://scenes/TestArena.tscn")
+	await process_frame
+	await process_frame
+	var mirror_arena := current_scene
+	var mp1: BaseFighter = mirror_arena.get_node("P1")
+	var mp2: BaseFighter = mirror_arena.get_node("P2")
+	var mirror_stage: Arena3D = mirror_arena.arena3d
+	var mp1_model: FighterModel3D = mirror_stage.model_for(mp1) as FighterModel3D
+	var mp2_model: FighterModel3D = mirror_stage.model_for(mp2) as FighterModel3D
+	_check(mp1.fighter_key == &"feedback" and mp2.fighter_key == &"feedback",
+		"the default arena is FEEDBACK vs FEEDBACK", "%s vs %s" % [mp1.fighter_key, mp2.fighter_key])
+	_check(mp1_model != null and mp1_model.has_rig and mp1_model.bone_count == 25
+			and mp1_model.triangle_count() == 40000,
+		"P1 Feedback uses the rigged 25-bone 40 000-triangle upload",
+		"%d bones / %d tris" % [mp1_model.bone_count if mp1_model != null else -1,
+			mp1_model.triangle_count() if mp1_model != null else -1])
+	_check(mp2_model != null and mp2_model.has_rig and mp2_model.bone_count == 25
+			and mp2_model.triangle_count() == 40000,
+		"P2 Feedback uses the same rigged model in the mirror match",
+		"%d bones / %d tris" % [mp2_model.bone_count if mp2_model != null else -1,
+			mp2_model.triangle_count() if mp2_model != null else -1])
+	_check(mp1_model != null and mp2_model != null
+			and not mp1_model.is_mirror_variant() and mp2_model.is_mirror_variant(),
+		"only P2 carries the mirror-match alternate accent")
+	var p1_tint: Color = mp1_model.shader_tint() if mp1_model != null else Color.WHITE
+	var p2_tint: Color = mp2_model.shader_tint() if mp2_model != null else Color.WHITE
+	_check(p1_tint != p2_tint and p2_tint.b > p2_tint.r,
+		"P2's alternate is a cool jacket tint, distinct from P1",
+		"P1 %s / P2 %s" % [p1_tint, p2_tint])
+	var p2_rim: Color = mp2_model.materials[0].get_shader_parameter("rim_colour") \
+			if mp2_model != null and not mp2_model.materials.is_empty() else Color.WHITE
+	_check(p2_rim.r > p2_rim.b, "P2's rim accent shifts gold in the mirror match", str(p2_rim))
+	_check(mp1_model != null and mp2_model != null and mp1_model.animation != null
+			and mp2_model.animation != null
+			and mp1_model.animation.is_playing() and mp2_model.animation.is_playing(),
+		"both mirror-match rigs play the baked Mixamo idle")
 
 	# ---- Arena with Lickshot -----------------------------------------------
 	setup.p1_fighter = &"feedback"
@@ -392,22 +434,30 @@ func _run() -> void:
 	var model1 = stage3d.model_for(p1) if stage3d != null else null
 	var model2 = stage3d.model_for(p2) if stage3d != null else null
 	var rigged: FighterModel3D = model1 as FighterModel3D
-	var static_model: FighterModel3D = model2 as FighterModel3D
+	var lick_billboard: FighterBillboard3D = model2 as FighterBillboard3D
 	_check(rigged != null and rigged.has_rig and rigged.bone_count == 25,
 		"Feedback uses the uploaded rigged model with its 25 Mixamo bones",
 		"%d bones" % (rigged.bone_count if rigged != null else -1))
 	_check(rigged != null and rigged.triangle_count() == 40000,
 		"Feedback's uploaded mesh is 40 000 triangles",
 		"%d" % (rigged.triangle_count() if rigged != null else -1))
-	_check(static_model != null and not static_model.has_rig and static_model.triangle_count() == 40000,
-		"the second upload is the static 40 000-triangle mesh",
-		"%d tris / %d bones" % [static_model.triangle_count() if static_model != null else -1,
-			static_model.bone_count if static_model != null else -1])
-	_check(rigged != null and absf(rigged.model_height - 1.55) < 0.02
-			and absf(static_model.model_height - 1.58) < 0.02,
-		"both models are normalised to their authored fighting height")
-	_check(rigged != null and rigged.feet_offset > 0.0 and static_model.feet_offset > 0.0,
-		"each model is seated feet-down on the world floor")
+	_check(lick_billboard != null and lick_billboard.sprite != null
+			and lick_billboard.sprite.texture != null,
+		"L!ckshot renders as a camera-facing Sprite3D billboard, not the static clone")
+	_check(model2 is FighterBillboard3D and not (model2 is FighterModel3D),
+		"no FighterModel3D proxy is created for L!ckshot")
+	_check(not FighterModel3D.MODEL_SOURCES.has(&"lickshot")
+			and FileAccess.file_exists("res://assets/models/fighters/lickshot_placeholder_static.fbx"),
+		"the static output.fbx stays archived but is no longer assigned to L!ckshot")
+	_check(rigged != null and absf(rigged.model_height - 1.55) < 0.02,
+		"Feedback is normalised to its authored fighting height",
+		"%.2f m" % (rigged.model_height if rigged != null else 0.0))
+	_check(lick_billboard != null and lick_billboard.model_height > 1.4
+			and lick_billboard.model_height < 1.7,
+		"L!ckshot's billboard keeps the adult stand height on the 3D plane",
+		"%.2f m" % (lick_billboard.model_height if lick_billboard != null else 0.0))
+	_check(rigged != null and rigged.feet_offset > 0.0,
+		"Feedback is seated feet-down on the world floor")
 	_check(rigged != null and rigged.animation != null and rigged.animation.is_playing(),
 		"the baked Mixamo idle clip is playing on the rigged model")
 	_check(rigged != null and not rigged.materials.is_empty()

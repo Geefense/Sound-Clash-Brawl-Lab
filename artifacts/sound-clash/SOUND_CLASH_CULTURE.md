@@ -48,6 +48,14 @@ Purpose: Establish the permanent creative direction for Sound Clash Brawl and gu
 
 • Explore original dubplate-inspired recordings, echoing character DJ tags, selector/MC callouts, 132 BPM dancehall/reggae riddims, sound-system sirens/power-downs, crowd forwards/whistles/laughter, and character-specific voice expressions—using strictly original, licensed, or creator-approved recordings.
 
+### 2026-11-21 status note — menu/victory beat bed
+
+The owner's three creator-owned reggae hip-hop beats now play **only** on Title / Character Select
+and after a match victory, on a dedicated `MusicBed` bus. Active rounds remain completely free of
+background music so the round sting, tape-delay DJ tags, selector, horn and layered crowd carry the
+fight. M auditions the three beats on the menu and post-KO screens; it stays the mute key during a
+fight. This is an implementation status note, not new cultural approval of the tracks.
+
 ### 2026-11-21 status note — 3D presentation
 
 The 2.5D rim-light, impact-frame and musical-note-trail ideas in §4 are now implemented, and the

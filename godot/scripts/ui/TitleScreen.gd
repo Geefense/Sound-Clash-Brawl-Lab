@@ -27,6 +27,9 @@ var row: int = ROW_P1
 
 
 func _ready() -> void:
+	# The active beat starts with the screen and keeps the select menu alive. It is faded
+	# out again in `_start()` so FIGHT! has no background music under the round sting.
+	MusicBed.play_title()
 	# Coming back from the arena via Esc skips the splash and keeps the selection.
 	if MatchSetup.return_to_setup:
 		phase = Phase.SETUP
@@ -65,6 +68,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			_change(1)
 		KEY_V:
 			MatchSetup.toggle_subtitles()
+		KEY_M:
+			# Audit the three menu beats without leaving Character Select.
+			MusicBed.cycle()
 		KEY_ENTER, KEY_KP_ENTER, KEY_SPACE:
 			_start()
 		KEY_Q:
@@ -92,6 +98,9 @@ func _gui_input(event: InputEvent) -> void:
 func _enter_setup() -> void:
 	phase = Phase.SETUP
 	row = ROW_P1
+	# Browsers only unlock audio on the first gesture; restart the bed now so the beat is
+	# definitely audible the moment Character Select appears.
+	MusicBed.play_title()
 
 
 func _change(dir: int) -> void:
@@ -107,6 +116,7 @@ func _change(dir: int) -> void:
 
 
 func _start() -> void:
+	MusicBed.stop_for_fight()
 	MatchSetup.start_match()
 
 
@@ -254,9 +264,14 @@ func _draw_setup(width: float, height: float) -> void:
 		_fit(FONT_BODY, detail, 16, panel.size.x - 52.0), Color(0.86, 0.86, 0.92, 0.9))
 
 	var footer := "UP/DOWN SELECT · LEFT/RIGHT CHANGE · ENTER FIGHT · V SUBTITLES · ESC BACK"
-	_text(Vector2(0, height * 0.92), footer, FONT_BODY,
+	_text(Vector2(0, height * 0.915), footer, FONT_BODY,
 		_fit(FONT_BODY, footer, 16, width - 80.0),
 		Color(0.90, 0.90, 0.95, 0.75), HORIZONTAL_ALIGNMENT_CENTER, width)
+	# Menu beat state, so M's audition cycle is visible instead of blind.
+	var music_line := "%s · M TO CYCLE" % MusicBed.label()
+	_text(Vector2(0, height * 0.958), music_line, FONT_BODY,
+		_fit(FONT_BODY, music_line, 14, width - 80.0),
+		Color(1.0, 0.86, 0.32, 0.8), HORIZONTAL_ALIGNMENT_CENTER, width)
 
 
 func _setup_row(index: int, label: String, value: String) -> void:

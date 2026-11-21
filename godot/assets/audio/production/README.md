@@ -17,5 +17,13 @@ engine prefers them over its synthesised placeholders; missing files simply fall
 the three crowd files. Tag files should be short (≈0.8–1.4 s) so the bus echo, not the clip,
 creates the cascade.
 
+## Menu / victory beats
+
+`beats/` holds the three creator-owned reggae hip-hop beats already wired to the `MusicBed`
+bus: `beat_01.mp3` (Buck Shots, 23.38 s), `beat_02.mp3` (Easy Rider, 4:22.8) and
+`beat_03.mp3` (Lonely Gyal, 90.04 s). They play only on Title/Character Select and after a
+match victory; active rounds are music-free. See `beats/README.md` for the source filenames
+and the archived fourth upload. Do not add unlicensed commercial tracks.
+
 Record source, licence and owner approval next to any file before committing it. No paid
 service and no unlicensed commercial dubplate may be added here.

@@ -1855,6 +1855,54 @@ here is gameplay-verified; implementation status is stated per item.
       stays in the asset tree only to preserve provenance; it is not part of any match.
 
 
+48. **Menu / victory beat bed — the owner's three production beats, with active rounds kept music-free (2026-11-21).**
+
+    Three creator-owned reggae hip-hop uploads were moved off the repository root and wired to a
+    new `MusicBed` bus through the `MusicBed` autoload. The fight itself is deliberately
+    **music-free** so the 6 s round sting, tape-delay DJ tags, selector, horn and crowd layers
+    are never muddied.
+    - **Files** — `godot/assets/audio/production/beats/`:
+      | Slot | Clean file | Original upload | Decoded length |
+      | --- | --- | --- | --- |
+      | Beat 1 | `beat_01.mp3` | `Buck Shots (2) wonder productions .mp3` | **23.38 s** |
+      | Beat 2 | `beat_02.mp3` | `Easy Rider.mp3` | **262.84 s (4:22.8)** |
+      | Beat 3 | `beat_03.mp3` | `Lonely Gyal wonder productions.mp3` | **90.04 s** |
+      A fourth upload, `Wonder Production.mp3`, has no song title and the same 90.04 s duration
+      as Beat 3 but a different audio payload. It is preserved (not deleted) at
+      `artifacts/sound-clash/audio-source/beats/Wonder Production (untitled upload,
+      same duration as beat_03).mp3` and is **not** in rotation. The owner can promote it if it is a distinct mix.
+      Full provenance and policy: `production/beats/README.md`.
+    - **Bus** — `MusicBed` added to `default_bus_layout.tres` (−4 dB, → Master). `Music` remains
+      the 132 BPM metronome click. The bed is a separate autoload (`scripts/audio/MusicBed.gd`)
+      so it survives scene changes, loops each MP3, and fades between screens.
+    - **Title / Character Select** — `TitleScreen._ready()` and `_enter_setup()` call
+      `MusicBed.play_title()`; the active beat fades in over 0.8 s at −7 dB. `_enter_setup()` also
+      restarts the bed on the first gesture so browser autoplay unlock cannot swallow it. The
+      setup screen prints `BEAT n — TITLE · M TO CYCLE`.
+    - **Match start** — `TitleScreen._start()` calls `MusicBed.stop_for_fight()` before the scene
+      change, and `TestArena._ready()` calls it again, so the bed fades to −60 dB and stops during
+      the 1.8 s announce. It stays off through FIGHT!, every round and the final blow.
+    - **Victory** — the final-round K.O. hook in `TestArena._on_round_ended()` calls
+      `MusicBed.play_victory()` immediately (rotation advances Beat 1 → 2 → 3 → 1), and
+      `rounds.match_ended` guarantees it without advancing twice. The winner poses out at −4 dB.
+    - **M key** — on Title/Character Select and the post-KO/victory screen, M cycles
+      Beat 1 → Beat 2 → Beat 3 → Off → Beat 1 for auditioning. During a fight M keeps its old
+      meaning (global mute) and never starts the bed.
+    - **Verified headless** — **231 PASS / 0 FAIL**, `ALL CHECKS PASSED` (210 before this pass).
+      New checks confirm all three files load and loop, decoded lengths (23.38 / 262.84 / 90.04 s),
+      the `MusicBed` bus and autoload, Title/Select starting Beat 1, the full M cycle on Title and
+      on the post-KO screen, stop-to-silence on match start, MusicBed still silent at
+      `RoundController.Phase.FIGHTING`, M acting as mute during the fight, the final K.O. advancing
+      to Beat 2, and the victory screen not advancing twice.
+    - **`/docs` rebuilt** with `--headless --path godot --export-release "Web" ../docs/index.html`:
+      `index.pck` **30,243,396 B** (24,183,692 B before the beats), `index.wasm` 38,057,390 B,
+      `index.js` 305,185 B, `index.html` 5,449 B. Export log errors are the known non-fatal
+      fontconfig warnings only.
+    - **Not heard:** this environment has no audio device, so the actual mix, fade feel, loop
+      points and browser/iPhone playback have not been listened to. The bed is intentionally
+      absent from combat; if it is ever heard mid-round, that is a regression.
+
+
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 
 Recorded at build `ad27516` (`stage/sound-clash-sand`); §9 items 1–19 above are the decisions that
@@ -2659,3 +2707,35 @@ and `godot/AGENTS.md`.
 **Not verified — no render.** The rendered mirror tint, gold rim, billboard alignment, billboard
 depth sorting against both rigs and the two-model framing have not been seen. The static FBX is
 retained only as archived provenance; no fighter slot loads it.
+
+### Menu / victory beat bed — headless verification, November 21, 2026
+
+Owner request on `feature/3d-cel-shaded`: wire the three uploaded beats for Title/Select and the
+post-KO victory only, keeping active rounds music-free. Recorded as §9 item 48.
+
+```bash
+godot --headless --path godot --import
+godot --headless --path godot --script res://tools/headless_roster_check.gd
+godot --headless --path godot --export-release "Web" ../docs/index.html
+```
+
+**231 PASS / 0 FAIL**, `ALL CHECKS PASSED` (210 before this pass). The new checks load
+`beat_01.mp3` / `beat_02.mp3` / `beat_03.mp3` and assert their decoded lengths (23.38 s,
+262.84 s, 90.04 s) and looping, then exercise the real TitleScreen input path: Beat 1 starts on
+load, M cycles Beat 1 → 2 → 3 → Off → 1, and `stop_for_fight()` reaches true silence. In the
+arena they assert MusicBed is off at `Phase.FIGHTING`, that M remains the mute key during the
+fight, that the final K.O. starts Beat 2 under the victory pose, that `match_ended` does not
+advance twice, and that post-KO M cycles Beat 3 → Off → Beat 1.
+
+**Files changed** — `godot/scripts/audio/MusicBed.gd` (new autoload), `godot/scripts/ui/
+TitleScreen.gd`, `godot/scripts/TestArena.gd`, `godot/project.godot`,
+`godot/assets/audio/default_bus_layout.tres`, the three beats plus `beats/README.md` and the
+archived fourth upload, `godot/assets/audio/README.md`, `production/README.md`,
+`godot/tools/headless_roster_check.gd`, `AGENTS.md` and `godot/AGENTS.md`.
+
+**`/docs` rebuilt**: `index.pck` 30,243,396 B, `index.wasm` 38,057,390 B, `index.js` 305,185 B,
+`index.html` 5,449 B.
+
+**Not heard — no audio device.** The songs' actual sound, fade shape, loop seam, loudness against
+the sting and DJ tags, and Web/iPhone playback are unverified by ear. Browser autoplay is handled
+by restarting the bed in `_enter_setup()` on the first gesture, but that needs a real-device check.

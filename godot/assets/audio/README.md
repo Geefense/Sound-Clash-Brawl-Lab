@@ -8,8 +8,10 @@ for the Sound Clash engine.
   selector, horn and crowd layers at run time (see the README there).
 - `production/` — the exact slot filenames owner-approved recordings should use; each entry
   names the bus and the timing contract.
+- `production/beats/` — the three creator-owned beats used **only** on Title/Character Select
+  and after a match victory, on the `MusicBed` bus. They never play during an active round.
 - `default_bus_layout.tres` — Master, Music, SFX, Crowd, `DJTag` (AudioEffectDelay →
-  AudioEffectLowPassFilter → AudioEffectReverb), Selector and Stinger.
+  AudioEffectLowPassFilter → AudioEffectReverb), Selector, Stinger and `MusicBed`.
 
 The web prototype's sound is generated at runtime by `SoundEffects.ts` (oscillator tones),
 which is reference behaviour, not an asset. The web prototype's sound is generated at runtime by `SoundEffects.ts` (oscillator tones),

@@ -20,6 +20,8 @@ SoundClash="*res://scripts/audio/SoundClashAudio.gd"
 ; P1 / P2 / AI style / subtitle choices carried from TitleScreen.tscn into TestArena.tscn
 ; (AGENTS.md §9 backlog item B1).
 MatchSetup="*res://scripts/MatchSetup.gd"
+; Menu / victory beat bed (AGENTS.md §9 item 48). Silent during active rounds by design.
+MusicBed="*res://scripts/audio/MusicBed.gd"
 
 [display]
 

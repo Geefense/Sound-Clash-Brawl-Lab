@@ -255,6 +255,10 @@ var _thump: float = 0.0
 var _time_phase: int = 0
 var _time_tween: Tween = null
 var _muted: bool = false
+## True from the final-round victory until the scene reloads: M auditions the victory beat
+## instead of toggling the global mute (AGENTS.md §9 item 48).
+var _match_over: bool = false
+var _victory_music_started: bool = false
 var _separation_queued: bool = false
 var _flinch_cd := [0.0, 0.0]          # per-fighter rate limit for the crowd flinch
 var _crowd_night: float = 0.0
@@ -273,6 +277,9 @@ var _vis_tween: Tween = null
 
 
 func _ready() -> void:
+	# Active rounds carry no background music: the round sting, DJ tags, selector and crowd
+	# own the fight. This also covers loading the arena directly after a victory beat.
+	MusicBed.stop_for_fight()
 	p1.beat_service = beat
 	p2.beat_service = beat
 	beat.audio_player = music
@@ -345,6 +352,8 @@ func _ready() -> void:
 		rounds.round_ended.connect(_on_round_ended)
 	if not rounds.round_started.is_connected(_on_round_started):
 		rounds.round_started.connect(_on_round_started)
+	if not rounds.match_ended.is_connected(_on_match_ended):
+		rounds.match_ended.connect(_on_match_ended)
 	if rounds.enabled:
 		rounds.start_match()          # Round 1 lighting is applied by the round controller
 	else:
@@ -383,7 +392,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			if sparring != null:
 				sparring.cycle_mode()
 		KEY_M:
-			_set_muted(not _muted)
+			# Post-KO the M key auditions the beats; during the fight it stays the mute toggle.
+			if _match_over:
+				MusicBed.cycle()
+			else:
+				_set_muted(not _muted)
 		KEY_B:
 			_spawn_bird()
 		KEY_N:
@@ -543,10 +556,25 @@ func _on_round_ended(_round_index: int, winner: int) -> void:
 		champion.play_celebration(140)
 		# The crowd wants the next tune, not this one again.
 		_announce_callout(&"round_win")
+	# Final-round K.O.: the winner poses out to the next beat as soon as the celebration starts,
+	# instead of waiting through the round-over banner.
+	if winner >= 0 and winner < rounds.wins.size() and rounds.wins[winner] >= rounds.rounds_to_win:
+		_victory_music_started = true
+		_match_over = true
+		MusicBed.play_victory()
 	if SoundClash != null:
 		SoundClash.set_crowd_intensity(1.0)
 	if arena3d != null:
 		arena3d.pulse_speakers(1.4)
+
+
+## Match over: guarantee the victory bed is running (no-op if the final K.O. already started
+## it) and switch M from mute to the beat audition cycle.
+func _on_match_ended(_winner: int) -> void:
+	_match_over = true
+	if not _victory_music_started:
+		_victory_music_started = true
+		MusicBed.play_victory()
 
 
 ## 100% Crowd Hype Surge: the crowd jumps and the HUD banner flashes for the same

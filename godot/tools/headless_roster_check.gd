@@ -83,6 +83,7 @@ func _anim_floor_y(f: BaseFighter, key: StringName, index: int = 0) -> float:
 
 func _run() -> void:
 	var setup := root.get_node_or_null("MatchSetup")
+	var music_bed := root.get_node_or_null("MusicBed")
 	_check(setup != null, "MatchSetup autoload exists")
 	if setup == null:
 		quit(1)
@@ -100,6 +101,53 @@ func _run() -> void:
 		str(setup.p2_fighter))
 	_check(setup.ai_mode == 1, "AI defaults to Counter-Puncher", str(setup.ai_mode))
 	_check(setup.subtitles == true, "Patois subtitles default on")
+
+	# ---- Menu music bed: title only, silent in fights (AGENTS.md §9 item 48) ---
+	_check(music_bed != null, "the MusicBed autoload exists")
+	_check(AudioServer.get_bus_index(&"MusicBed") >= 0, "the MusicBed bus exists in the layout")
+	_check(music_bed.beat_count() == 3, "three production beats are registered",
+		"%d" % music_bed.beat_count())
+	var beat_files := []
+	var beat_lengths := []
+	for i in music_bed.beat_count():
+		var beat_stream: AudioStream = music_bed.stream_at(i)
+		if beat_stream != null:
+			beat_files.append(music_bed.beat_file(i))
+			beat_lengths.append(snappedf(beat_stream.get_length(), 0.01))
+	_check(beat_files.size() == 3 and beat_files[0] == "beat_01.mp3"
+			and beat_files[1] == "beat_02.mp3" and beat_files[2] == "beat_03.mp3",
+		"all three beat files load from production/beats", "%s" % [beat_files])
+	_check(beat_lengths.size() == 3 and beat_lengths[0] > 20.0
+			and beat_lengths[1] > 250.0 and beat_lengths[2] > 85.0,
+		"the three beats decode at their upload durations", "%s" % [beat_lengths])
+	var beat_one := music_bed.stream_at(0) as AudioStreamMP3
+	_check(beat_one != null and beat_one.loop, "the menu beats loop while a screen is open")
+	_check(music_bed.in_title() and music_bed.state_name() == "beat_1" and music_bed.is_playing(),
+		"the Title / Select screen starts the active beat on load",
+		"%s / %s" % [music_bed.state_name(), music_bed.label()])
+
+	# M auditions Beat 1 → Beat 2 → Beat 3 → Off → Beat 1 on Title / Select.
+	title._enter_setup()
+	var m_key := InputEventKey.new()
+	m_key.physical_keycode = KEY_M
+	m_key.pressed = true
+	title._unhandled_input(m_key)
+	_check(music_bed.state_name() == "beat_2" and music_bed.is_playing(),
+		"M on Title / Select cycles Beat 1 to Beat 2")
+	title._unhandled_input(m_key)
+	_check(music_bed.state_name() == "beat_3" and music_bed.is_playing(),
+		"M cycles Beat 2 to Beat 3")
+	title._unhandled_input(m_key)
+	_check(music_bed.state_name() == "off" and not music_bed.is_playing(),
+		"M cycles Beat 3 to Off")
+	title._unhandled_input(m_key)
+	_check(music_bed.state_name() == "beat_1" and music_bed.is_playing(),
+		"M cycles Off back to Beat 1")
+	# Match start: the bed fades out before FIGHT so the round sting owns the intro.
+	music_bed.stop_for_fight()
+	await create_timer(0.6).timeout
+	_check(music_bed.state_name() == "off" and not music_bed.is_playing(),
+		"match start fades MusicBed to true silence")
 
 	# Cycle the roster through every fighter and back to the first.
 	for i in 3:
@@ -149,6 +197,43 @@ func _run() -> void:
 			and mp2_model.animation != null
 			and mp1_model.animation.is_playing() and mp2_model.animation.is_playing(),
 		"both mirror-match rigs play the baked Mixamo idle")
+
+	# ---- MusicBed must stay silent through the active round -----------------
+	_check(music_bed.state_name() == "off" and not music_bed.is_playing(),
+		"the round opens with MusicBed silent")
+	await create_timer(2.0).timeout
+	_check(mirror_arena.rounds.phase == RoundController.Phase.FIGHTING,
+		"the round has reached FIGHTING for the silence check")
+	_check(music_bed.state_name() == "off" and not music_bed.is_playing(),
+		"MusicBed stays completely silent from FIGHT! through the active round")
+	# M during the fight keeps its existing meaning (mute) and must not start music.
+	mirror_arena._unhandled_input(m_key)
+	_check(mirror_arena.is_muted() and music_bed.state_name() == "off",
+		"M during a fight stays the mute toggle and never starts the beat")
+	mirror_arena._unhandled_input(m_key)          # unmute again for the rest of the run
+
+	# ---- Post-KO / victory: next beat, then M audition ----------------------
+	# Pretend the final round was just won: the celebration hook starts the next beat at once.
+	mirror_arena.rounds.wins[0] = 2
+	mirror_arena.rounds.wins[1] = 0
+	mirror_arena._on_round_ended(0, 0)
+	_check(music_bed.in_victory() and music_bed.state_name() == "beat_2" and music_bed.is_playing(),
+		"the final K.O. celebration starts the next beat (Beat 2)",
+		"%s / %s" % [music_bed.state_name(), music_bed.label()])
+	mirror_arena._on_match_ended(0)
+	_check(music_bed.state_name() == "beat_2" and mirror_arena._match_over,
+		"the victory screen keeps that beat instead of advancing twice")
+	mirror_arena._unhandled_input(m_key)
+	_check(music_bed.state_name() == "beat_3",
+		"M on the post-KO screen auditions Beat 3")
+	mirror_arena._unhandled_input(m_key)
+	_check(music_bed.state_name() == "off" and not music_bed.is_playing(),
+		"M on the post-KO screen cycles Beat 3 to Off")
+	mirror_arena._unhandled_input(m_key)
+	_check(music_bed.state_name() == "beat_1" and music_bed.is_playing(),
+		"M resumes the victory audition from Beat 1")
+	music_bed.stop_for_fight()
+	await create_timer(0.6).timeout
 
 	# ---- Arena with Lickshot -----------------------------------------------
 	setup.p1_fighter = &"feedback"

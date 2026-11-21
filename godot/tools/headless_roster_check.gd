@@ -369,6 +369,192 @@ func _run() -> void:
 			and lick_frames_text.contains("celebration.png"),
 		"every approved Lickshot frame is still wired")
 
+	# ---- 3D cel-shaded presentation (AGENTS.md §9 items 43–45, 2026-11-21) ----
+	var stage3d: Arena3D = arena.arena3d
+	_check(stage3d != null, "the 3D yard is installed as a Node3D presentation layer")
+	var cam3d: Camera3D = stage3d.camera if stage3d != null else null
+	_check(cam3d != null and cam3d.current,
+		"a current Camera3D frames the 2.5D fighting plane")
+	_check(stage3d != null and is_equal_approx(stage3d.camera_distance(), Arena3D.CAMERA_DISTANCE),
+		"the camera holds its steady side-view distance",
+		"%.2f m" % (stage3d.camera_distance() if stage3d != null else -1.0))
+	var frame_fraction: float = stage3d.screen_fraction() if stage3d != null else 0.0
+	_check(frame_fraction >= 0.55 and frame_fraction <= 0.65,
+		"neutral play frames the fighters at 55–65 % of screen height",
+		"%.1f %%" % (frame_fraction * 100.0))
+	_check(not arena.get_node("Stage").visible and not p1.sprite.visible and not p2.sprite.visible,
+		"the 2D stage art and fighter sprites are hidden under the 3D layer")
+	_check(p1.is_3d_presentation() and p2.is_3d_presentation(),
+		"both fighters hand their drawing layer to the 3D proxies")
+	_check(p1.global_position == p1.global_position and is_instance_valid(p1.hitbox),
+		"the 2D hitboxes stay alive and untouched behind the 3D layer")
+
+	var model1 = stage3d.model_for(p1) if stage3d != null else null
+	var model2 = stage3d.model_for(p2) if stage3d != null else null
+	var rigged: FighterModel3D = model1 as FighterModel3D
+	var static_model: FighterModel3D = model2 as FighterModel3D
+	_check(rigged != null and rigged.has_rig and rigged.bone_count == 25,
+		"Feedback uses the uploaded rigged model with its 25 Mixamo bones",
+		"%d bones" % (rigged.bone_count if rigged != null else -1))
+	_check(rigged != null and rigged.triangle_count() == 40000,
+		"Feedback's uploaded mesh is 40 000 triangles",
+		"%d" % (rigged.triangle_count() if rigged != null else -1))
+	_check(static_model != null and not static_model.has_rig and static_model.triangle_count() == 40000,
+		"the second upload is the static 40 000-triangle mesh",
+		"%d tris / %d bones" % [static_model.triangle_count() if static_model != null else -1,
+			static_model.bone_count if static_model != null else -1])
+	_check(rigged != null and absf(rigged.model_height - 1.55) < 0.02
+			and absf(static_model.model_height - 1.58) < 0.02,
+		"both models are normalised to their authored fighting height")
+	_check(rigged != null and rigged.feet_offset > 0.0 and static_model.feet_offset > 0.0,
+		"each model is seated feet-down on the world floor")
+	_check(rigged != null and rigged.animation != null and rigged.animation.is_playing(),
+		"the baked Mixamo idle clip is playing on the rigged model")
+	_check(rigged != null and not rigged.materials.is_empty()
+			and rigged.materials[0].next_pass != null,
+		"the fighter material carries the inverted-hull ink outline pass")
+
+	# Shader compile checks: `get_shader_uniform_list()` is empty for a shader that failed to
+	# parse, so this is a real GLSL parse check in a headless run.
+	var toon_shader := load("res://assets/shaders/toon_cel.gdshader") as Shader
+	var outline_shader := load("res://assets/shaders/toon_outline.gdshader") as Shader
+	_check(toon_shader != null and toon_shader.get_shader_uniform_list().size() >= 10,
+		"the Spatial Toon cel shader compiles",
+		"%d uniforms" % (toon_shader.get_shader_uniform_list().size() if toon_shader != null else 0))
+	_check(outline_shader != null and outline_shader.get_shader_uniform_list().size() >= 2,
+		"the inverted-hull outline shader compiles",
+		"%d uniforms" % (outline_shader.get_shader_uniform_list().size() if outline_shader != null else 0))
+	var toon_code: String = toon_shader.code if toon_shader != null else ""
+	var outline_code: String = outline_shader.code if outline_shader != null else ""
+	var banned_3d := []
+	for token in ["SCREEN_TEXTURE", "hint_screen_texture", "DEPTH_TEXTURE", "#include", "while ("]:
+		if toon_code.contains(token) or outline_code.contains(token):
+			banned_3d.append(token)
+	_check(banned_3d.is_empty(), "the 3D toon/ink shaders are WebGL2-safe (no screen/depth reads)",
+		"found %s" % [banned_3d] if not banned_3d.is_empty() else "single pass, no screen reads")
+
+	_check(stage3d != null and stage3d.speaker_cone_count() == 16,
+		"the two 3D speaker stacks expose 16 subwoofer/horn cones",
+		"%d cones" % (stage3d.speaker_cone_count() if stage3d != null else 0))
+	if stage3d != null:
+		stage3d.pulse_speakers(1.0)
+		await process_frame
+		var cone_depth: float = stage3d._cones[0].scale.y if not stage3d._cones.is_empty() else 1.0
+		_check(cone_depth > 1.0, "a bass hit punches the subwoofer cones out of the cabinets",
+			"cone depth %.2f×" % cone_depth)
+	_check(stage3d != null and stage3d.world_env != null
+			and stage3d.world_env.environment.fog_enabled,
+		"the 3D yard uses depth fog for crowd atmosphere")
+
+	# Lighting is real scene light, phase by phase.
+	if stage3d != null:
+		stage3d.apply_phase(2, 0.0)
+		await process_frame
+		_check(stage3d.sun.light_energy < 0.2 and stage3d.spot_left.light_energy > 2.0,
+			"night is carried by the overhead SpotLight3D rig, not a screen tint",
+			"sun %.2f / spot %.2f" % [stage3d.sun.light_energy, stage3d.spot_left.light_energy])
+		var night_sky: Color = stage3d.sky_material.get_shader_parameter("top_colour")
+		_check(night_sky.b > night_sky.r and stage3d.world_env.environment.fog_density > 0.015,
+			"night darkens the 3D sky and thickens the atmospheric depth")
+		stage3d.apply_phase(1, 0.0)
+		await process_frame
+		_check(stage3d.sun.light_color.r > stage3d.sun.light_color.b
+				and stage3d.spot_left.light_energy < 1.5,
+			"sunset turns the DirectionalLight3D warm and low")
+		stage3d.apply_phase(0, 0.0)
+		await process_frame
+		_check(stage3d.sun.light_energy > 1.0 and stage3d.spot_left.light_energy < 0.6,
+			"afternoon is a bright directional sun with the spots resting")
+	# The arena's own phase API must drive the 3D rig too.
+	arena.set_time_of_day(2, 0.0)
+	await process_frame
+	_check(stage3d != null and stage3d.sun.light_energy < 0.2,
+		"set_time_of_day(2) drives the 3D night rig")
+	arena.set_time_of_day(0, 0.0)
+	await process_frame
+
+	# 3D impact bursts: multicoloured generated note glyphs + a bass shockwave ring.
+	for i in 6:
+		arena._add_note_trail(Vector2(500.0 + i * 10.0, 500.0), 1, true)
+	_check(stage3d != null and stage3d.active_bursts() <= Arena3D.MAX_BURSTS,
+		"3D note bursts are capped on the Chromebook budget",
+		"%d alive" % (stage3d.active_bursts() if stage3d != null else -1))
+	var live_bursts: Array = stage3d._live_bursts if stage3d != null else []
+	if not live_bursts.is_empty():
+		var burst = live_bursts[0]
+		_check(burst is MusicNoteBurst and burst.notes.size() >= 4 and burst.ring != null,
+			"a burst spawns note glyph meshes plus an expanding bass ring",
+			"%d notes" % burst.notes.size())
+		_check(burst.notes[0].mesh != null and burst.notes[0].mesh.get_faces().size() > 0,
+			"the music-note glyphs are real generated 3D geometry")
+
+	# ---- Event-driven Sound Clash audio engine (AGENTS.md §9 item 46) ----
+	var sc: SoundClashAudio = root.get_node_or_null("SoundClash") as SoundClashAudio
+	_check(sc != null, "the SoundClash audio autoload exists")
+	_check(sc != null and sc.bus_names().has("DJTag") and sc.bus_names().has("Crowd")
+			and sc.bus_names().has("Stinger"),
+		"the native AudioBusLayout has DJTag, Crowd and Stinger buses",
+		"%s" % [sc.bus_names() if sc != null else []])
+	_check(sc != null and sc.dj_bus_effect_names() == ["AudioEffectDelay",
+			"AudioEffectLowPassFilter", "AudioEffectReverb"],
+		"DJ tags run through the tape-delay → low-pass → reverb chain",
+		"%s" % [sc.dj_bus_effect_names() if sc != null else []])
+	_check(sc != null and is_equal_approx(sc.sting_stream_length(), 6.0),
+		"the round-start sting slot is ~6.0 s",
+		"%.2f s" % (sc.sting_stream_length() if sc != null else 0.0))
+	var rounds_probe: RoundController = arena.get_node("RoundController")
+	_check(sc != null and is_equal_approx(sc.sting_fight_marker(), rounds_probe.announce_seconds),
+		"the guitar stab lands on FIGHT! at the announce boundary",
+		"%.2f s" % rounds_probe.announce_seconds)
+	if sc != null:
+		sc.tag_count = 0
+		sc.rejected_count = 0
+		sc._fighter_until = {}
+		sc._global_until = 0.0
+		sc._active_until = 0.0
+		sc._active_priority = 0
+		var first_tag: bool = sc.trigger_tag(&"feedback")
+		var second_tag: bool = sc.trigger_tag(&"feedback")
+		_check(first_tag and not second_tag and sc.tag_count == 1 and sc.rejected_count == 1,
+			"a single significant hit fires the DJ tag, the cooldown rejects the repeat",
+			"%d fired / %d rejected" % [sc.tag_count, sc.rejected_count])
+		# A ringing TAG outranks a new TAG; clearing it lets the other fighter speak.
+		sc._active_priority = SoundClashAudio.Priority.TAG
+		sc._active_until = sc._now() + 5.0
+		sc._fighter_until = {}
+		sc._global_until = 0.0
+		var blocked_tag: bool = sc.trigger_tag(&"lickshot")
+		sc._active_priority = 0
+		sc._active_until = 0.0
+		var allowed_tag: bool = sc.trigger_tag(&"lickshot")
+		_check(not blocked_tag and allowed_tag,
+			"anti-overlap drops a duplicate tag but lets the answer through")
+		# Clear the ringing window so the throw is judged on its own, not against the
+		# deliberately-blocked duplicate in the previous check.
+		sc._global_until = 0.0
+		sc._active_until = 0.0
+		sc._active_priority = 0
+		sc._fighter_until.clear()
+		var tagged: Array = []
+		sc.tag_played.connect(func(key: StringName, _prio: int) -> void: tagged.append(key))
+		sc.on_throw(p1)
+		_check(tagged.size() == 1 and tagged[0] == &"feedback",
+			"a landed throw fires the attacker's DJ tag event for the speaker cones",
+			"%s" % [tagged])
+		_check(arena.has_method("_on_tag_played"),
+			"the arena listens for tag events to punch the 3D speaker cones")
+		sc.set_crowd_intensity(0.95)
+		_check(sc._crowd_target > 0.9, "a heavy hit raises the target crowd response")
+		await process_frame
+		_check(sc.crowd_level > 0.0, "the crowd layer rises from silence after an event",
+			"%.2f" % sc.crowd_level)
+		var horns_before: int = sc.horn_count
+		var selectors_before: int = sc.selector_count
+		sc.on_ko()
+		_check(sc.horn_count > horns_before and sc.selector_count > selectors_before,
+			"the K.O. slot outranks a ringing tag (horn + selector)")
+		sc.set_crowd_intensity(0.0)
+
 	# ---- Patois callout rotation (AGENTS.md §8, item 38) ---------------------
 	# The owner-approved lines lead their trigger; the older approved lines rotate back in.
 	hud.subtitles_enabled = true
@@ -401,6 +587,18 @@ func _run() -> void:
 	var break_ok: bool = arena._announce_callout(&"throw_break") \
 		and hud.subtitle_text().contains("WHOLE-AWN-DEH!")
 	_check(break_ok, "a throw break calls WHOLE-AWN-DEH!", hud.subtitle_text())
+	# New callouts (AGENTS.md §8, item 47).
+	hud._sub_cooldown = 0.0
+	var heavy_call: bool = arena._announce_callout(&"heavy") \
+		and hud.subtitle_text().contains("TUMP OUT HIM TEET!")
+	hud._sub_cooldown = 0.0
+	var stun_call: bool = arena._announce_callout(&"stun") \
+		and hud.subtitle_text().contains("TEK WEH HIM MIC!")
+	_check(heavy_call and stun_call,
+		"TUMP OUT HIM TEET! and TEK WEH HIM MIC! are wired to their triggers")
+	_check(str(arena.CALLOUTS[&"heavy"][0][1]).contains("teeth")
+			and str(arena.CALLOUTS[&"stun"][0][1]).contains("microphone"),
+		"both new callouts keep a separate English gloss")
 	# Glosses stay in their own field, never folded into the spoken spelling.
 	_check(str(arena.CALLOUTS[&"parry"][0][1]).contains("Hold on a second")
 			and str(arena.CALLOUTS[&"hype"][0][1]).contains("Play another song")
@@ -484,6 +682,19 @@ func _run() -> void:
 	var kid_px := p2.sprite.scale.x * 512.0
 	_check(absf(kid_px - 99.8 * BaseFighter.FIGHTER_ART_SCALE) <= 99.8 * 0.06,
 		"kid renders ~82 % of the adult height", "%.1f px" % kid_px)
+
+	# 3D fallback (AGENTS.md §9 item 43): L!kkle Moore has no uploaded .glb yet, so his
+	# approved 2D frame is mirrored onto a camera-facing Sprite3D on the 3D plane. The shared
+	# FSM and the y 592 art stay exactly as they are.
+	var kid_stage: Arena3D = arena.arena3d
+	var kid_model = kid_stage.model_for(p2) if kid_stage != null else null
+	_check(kid_model is FighterBillboard3D and kid_model.sprite != null,
+		"L!kkle Moore falls back to a 2D sprite billboard on the 3D plane")
+	_check(kid_model != null and kid_model.model_height > 1.1 and kid_model.model_height < 1.45,
+		"the kid billboard keeps his 82 % relative height",
+		"%.2f m" % (kid_model.model_height if kid_model != null else 0.0))
+	_check(not p2.sprite.visible and p2.is_3d_presentation(),
+		"the 2D sprite is hidden while the billboard carries his art")
 
 	# ---- Facing, props, crowd acting and the time-of-day pass (2026-11-17) ----------
 	# `p1` above belongs to the previous arena instance, which the scene change freed.
@@ -773,14 +984,16 @@ func _run() -> void:
 		"total %d%s" % [particle_total,
 			(" — over: " + ", ".join(particle_over)) if not particle_over.is_empty() else ""])
 
-	# Musical-note trails and the comic impact frame, both capped.
+	# 3D impact bursts and the comic impact frame, both capped. The 2D NoteTrail path is
+	# retired while the 3D layer is on; `_add_note_trail` routes to Arena3D instead.
 	for i in 5:
 		arena2._add_note_trail(Vector2(520.0 + i * 12.0, 500.0), 1, true)
-	_check(arena2._live_note_trails().size() <= 3, "note trails are capped at three",
-		"%d alive" % arena2._live_note_trails().size())
-	var trail: NoteTrail = arena2._live_note_trails()[0]
-	_check(trail.z_index > p1b.z_index and trail.heavy,
-		"note trails arc over the fighters on heavy strikes")
+	_check(arena2.arena3d.active_bursts() <= Arena3D.MAX_BURSTS,
+		"3D note bursts are capped at four", "%d alive" % arena2.arena3d.active_bursts())
+	if not arena2.arena3d._live_bursts.is_empty():
+		var burst = arena2.arena3d._live_bursts[0]
+		_check(burst is MusicNoteBurst and burst.heavy and burst.ring != null,
+			"heavy contacts throw a 3D note burst and bass shockwave ring")
 	arena2._add_impact_frame(&"counter")
 	arena2._add_impact_frame(&"surge")
 	_check(arena2._live_impact_frames().size() == 1,

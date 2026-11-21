@@ -4,6 +4,12 @@ extends Node2D
 ## Wires the two fighters to one BeatService, drives the dummy, follows the action
 ## with the camera, shakes it on impact, and repeats the dev click loop.
 ##
+## 3D presentation (AGENTS.md §9 items 43–45): when `presentation_3d` is on, `Arena3D` adds
+## a real Node3D yard, Camera3D, cel-shaded fighter models and 3D note bursts. The 2D stage
+## art and sprite drawing are hidden; the combat simulation, hitboxes, input buffering, beat
+## clock, round timers and Patois callouts all keep running unchanged underneath. Set
+## `presentation_3d = false` to get the previous 2D build back byte-for-byte.
+##
 ## Stage: `Sound Clash Sand Stage` (1280x720 art, z_index -10) with the fighting floor
 ## at y = 600 — the sand yard starts at y ≈ 505 in that art, so both fighters stand
 ## inside the sand lane. The camera never zooms out past 1.0 or leaves the stage
@@ -175,6 +181,12 @@ const PREWARM_OFFSCREEN := Vector2(-4000.0, -4000.0)
 ## that already played here still come round again. Spellings are the owner's, verbatim;
 ## the English gloss is a separate field, which is the only place it belongs.
 const CALLOUTS := {
+	&"heavy": [
+		["TUMP OUT HIM TEET!", "(Translation: Knock out his teeth!)"],
+	],
+	&"stun": [
+		["TEK WEH HIM MIC!", "(Translation: Take away his microphone!)"],
+	],
 	&"parry": [
 		["WHOLE-AWN-DEH!", "(Translation: Hold on a second!)"],
 		["BIG TUNE!", "(Translation: Cleanest block in the dance!)"],
@@ -208,6 +220,10 @@ const NO_SEPARATION_STATES := [
 	BaseFighter.State.GRABBED, BaseFighter.State.THROWN,
 	BaseFighter.State.KNOCKDOWN, BaseFighter.State.KO,
 ]
+
+## 3D presentation toggle (AGENTS.md §9 item 43). Presentation only.
+@export var presentation_3d: bool = true
+var arena3d: Arena3D = null
 
 @onready var p1: BaseFighter = $P1
 @onready var p2: BaseFighter = $P2
@@ -266,6 +282,10 @@ func _ready() -> void:
 	p1.apply_fighter_profile(MatchSetup.p1_fighter)
 	p2.apply_fighter_profile(MatchSetup.p2_fighter)
 
+	# 3D presentation is installed before the round controller applies round 1 lighting, so
+	# the first announce already has an arena to light.
+	_setup_3d_presentation()
+
 	p2.use_local_input = false          # P2 is driven by the sparring controller only
 	p2.input_prefix = "p2_"
 	sparring.setup(p1, p2, beat)
@@ -295,6 +315,8 @@ func _ready() -> void:
 	hud.set("sparring", sparring)
 	hud.set("rounds", rounds)
 
+	if SoundClash != null and not SoundClash.tag_played.is_connected(_on_tag_played):
+		SoundClash.tag_played.connect(_on_tag_played)
 	beat.beat.connect(_on_beat)
 	crowd.setup(beat)
 	p1.hype_surge_started.connect(_on_hype_surge)
@@ -321,6 +343,8 @@ func _ready() -> void:
 	rounds.setup(p1, p2, self)
 	if not rounds.round_ended.is_connected(_on_round_ended):
 		rounds.round_ended.connect(_on_round_ended)
+	if not rounds.round_started.is_connected(_on_round_started):
+		rounds.round_started.connect(_on_round_started)
 	if rounds.enabled:
 		rounds.start_match()          # Round 1 lighting is applied by the round controller
 	else:
@@ -433,6 +457,8 @@ func _set_muted(value: bool) -> void:
 	_muted = value
 	AudioServer.set_bus_mute(AudioServer.get_bus_index(&"Master"), value)
 	Sfx.set_muted(value)
+	if SoundClash != null:
+		SoundClash.set_muted(value)
 
 
 func is_muted() -> bool:
@@ -444,6 +470,10 @@ func is_muted() -> bool:
 func _on_strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dictionary) -> void:
 	if bool(result.get("ignored", false)) or bool(result.get("parried", false)):
 		return                    # a parry has its own cue, fired from the fighter signal
+	# Event-driven sound clash engine (AGENTS.md §9 item 46): any significant single hit
+	# fires the attacker's DJ tag through the tape-delay bus, with no combo/pull-up gate.
+	if SoundClash != null:
+		SoundClash.on_strike(result, attacker, target)
 	var on_beat := bool(result.get("on_beat", false))
 	if on_beat:
 		Sfx.play(&"hit_onbeat")
@@ -462,6 +492,17 @@ func _on_strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dic
 	# Punish: the hit interrupted an attack or a taunt, so it gets the show-off callout.
 	if bool(result.get("punish", false)) and not bool(result.get("blocked", false)):
 		_announce_callout(&"punish")
+
+	# New Patois callouts (AGENTS.md §8, item 47). TUMP OUT HIM TEET! answers a heavy
+	# upper-box / tump contact or a counter-hit; TEK WEH HIM MIC! answers a stun/down.
+	var hit_id := StringName(result.get("attack_id", &""))
+	var unblocked := not bool(result.get("blocked", false))
+	if unblocked and (hit_id == &"upper_box" or hit_id == &"tump"
+			or bool(result.get("counter", false))):
+		_announce_callout(&"heavy")
+	if arena3d != null:
+		arena3d.hit_kick(0.9 if bool(result.get("counter", false)) else 0.3)
+		arena3d.pulse_speakers(0.8 if unblocked else 0.3)
 
 	# 2.5D impact juice (AGENTS.md §9 item 41): musical-note trails on heavies and on-beat
 	# contacts, and the black-and-gold comic frame plus a micro-zoom on a counter-hit. Light
@@ -483,6 +524,11 @@ func _on_strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dic
 ## A fighter entering KO: the dramatic arcade drop (fired once per K.O.).
 func _on_fighter_died() -> void:
 	Sfx.play(&"ko")
+	if SoundClash != null:
+		SoundClash.on_ko()
+	if arena3d != null:
+		arena3d.hit_kick(1.3)
+		arena3d.pulse_speakers(1.6)
 
 
 ## Round win: the winner throws its celebration pose while the result banner runs
@@ -497,13 +543,23 @@ func _on_round_ended(_round_index: int, winner: int) -> void:
 		champion.play_celebration(140)
 		# The crowd wants the next tune, not this one again.
 		_announce_callout(&"round_win")
+	if SoundClash != null:
+		SoundClash.set_crowd_intensity(1.0)
+	if arena3d != null:
+		arena3d.pulse_speakers(1.4)
 
 
 ## 100% Crowd Hype Surge: the crowd jumps and the HUD banner flashes for the same
 ## window the fighter's momentum boost lasts.
 func _on_hype_surge(seconds: float) -> void:
 	crowd.surge(seconds)
-	Sfx.play(&"airhorn")
+	# The Sound Clash engine owns the horn now, so the old procedural airhorn is not layered
+	# under it (anti-mud rule, AGENTS.md §9 item 44).
+	if SoundClash != null:
+		SoundClash.on_hype_surge()
+	if arena3d != null:
+		arena3d.hit_kick(0.55)
+		arena3d.pulse_speakers(1.5)
 	# 100 % Crowd Hype punches the camera in and throws the comic frame (AGENTS.md §9 item 41).
 	_zoom_punch_burst(0.075)
 	_add_impact_frame(&"surge")
@@ -536,6 +592,8 @@ func _on_static_parry(defender: BaseFighter, attacker: BaseFighter) -> void:
 	_add_spark((defender.global_position + attacker.global_position) * 0.5 + Vector2(0.0, -110.0))
 	_on_shake(0.5, 0.12)
 	Sfx.play(&"parry")
+	if SoundClash != null:
+		SoundClash.set_crowd_intensity(0.7)
 	# Record Static Parry interrupts the tune: "hold on a second".
 	_announce_callout(&"parry")
 
@@ -564,6 +622,11 @@ func _on_throw_connected(_attacker: BaseFighter, _defender: BaseFighter, kind: S
 	Sfx.play(&"whoosh")
 	if kind == &"back":
 		crowd.celebrate()
+	if SoundClash != null:
+		SoundClash.set_crowd_intensity(0.85)
+		SoundClash.on_throw(_attacker)
+	if arena3d != null:
+		arena3d.pulse_speakers(1.1)
 
 
 ## Speaker-Stack Bounce: electric impact right where the thrown fighter hit the stack.
@@ -572,11 +635,17 @@ func _on_speaker_slam(victim: BaseFighter, _side: int) -> void:
 		return
 	_add_spark(victim.global_position + Vector2(0.0, -110.0), &"hit")
 	Sfx.play(&"slam")
+	if arena3d != null:
+		arena3d.hit_kick(0.8)
+		arena3d.pulse_speakers(1.5)
 	hud.announce_subtitle("HOLD DAT!", "(Translation: Take that to the speakers!)")
 
 
 ## Transient sparks all share the ParrySpark cap, so a long demo can never pile up nodes.
 func _add_spark(at: Vector2, style: StringName = &"parry") -> void:
+	if arena3d != null:
+		arena3d.spawn_spark(at, style)
+		return
 	var live := _live_parry_sparks()
 	if live.size() >= MAX_PARRY_SPARKS:
 		# Recycle the oldest spark so the newest effect still reads.
@@ -676,6 +745,8 @@ func _on_beat(_beat_index: int) -> void:
 	_thump = 1.0
 	if speaker_rings != null:
 		speaker_rings.pulse()
+	if arena3d != null:
+		arena3d.pulse_speakers(1.0)
 
 
 # =========================================================================
@@ -686,6 +757,8 @@ func _on_beat(_beat_index: int) -> void:
 ## and sun glow cross-fade together.
 func set_time_of_day(phase: int, duration: float = TIME_TRANSITION_SEC) -> void:
 	_time_phase = clampi(phase, 0, TIME_PHASES.size() - 1)
+	if arena3d != null:
+		arena3d.apply_phase(_time_phase, duration)
 	var target: Dictionary = TIME_PHASES[_time_phase]
 	var tint: Color = target["tint"]
 	var flood: float = target["flood"]
@@ -764,7 +837,15 @@ func _set_shadow_light(stretch: float) -> void:
 # =========================================================================
 ## Fired on every FSM transition for both fighters. ATTACK_ACTIVE is the tick the hitbox is
 ## armed, so the smear appears exactly with the contact window instead of on the input.
-func _on_fighter_state_changed(_old_state: int, new_state: int, fighter: BaseFighter) -> void:
+func _on_fighter_state_changed(old_state: int, new_state: int, fighter: BaseFighter) -> void:
+	if fighter != null and new_state == BaseFighter.State.KNOCKDOWN \
+			and old_state != BaseFighter.State.KNOCKDOWN:
+		# TEK WEH HIM MIC! for a body on the sand (AGENTS.md §8, item 47).
+		_announce_callout(&"stun")
+		if SoundClash != null:
+			SoundClash.on_knockdown(fighter)
+		if arena3d != null:
+			arena3d.hit_kick(0.75)
 	if new_state != BaseFighter.State.ATTACK_ACTIVE or fighter == null:
 		return
 	if not fighter.shows_strike_tell():
@@ -775,6 +856,9 @@ func _on_fighter_state_changed(_old_state: int, new_state: int, fighter: BaseFig
 func _add_strike_tell(fighter: BaseFighter) -> void:
 	var volume := fighter.attack_volume()
 	if volume.size == Vector2.ZERO:
+		return
+	if arena3d != null:
+		arena3d.spawn_strike_arc(volume.get_center(), fighter.facing, volume.size.x > 90.0)
 		return
 	var live := _live_strike_tells()
 	if live.size() >= MAX_STRIKE_TELLS:
@@ -813,6 +897,53 @@ func time_of_day_name() -> String:
 func _restart_click_loop() -> void:
 	if is_instance_valid(music) and music.stream_paused == false:
 		music.play()
+
+
+# =========================================================================
+# 3D presentation layer (AGENTS.md §9 items 43–45)
+# =========================================================================
+## Build the Node3D yard + camera + cel-shaded fighter proxies, then hide the 2D drawing
+## layer. Combat nodes (Floor/Wall static bodies, P1/P2 CharacterBody2Ds, hitboxes, beat
+## service, round controller, HUD) are deliberately left alone.
+func _setup_3d_presentation() -> void:
+	if not presentation_3d:
+		return
+	arena3d = Arena3D.new()
+	arena3d.name = "Arena3D"
+	add_child(arena3d)
+	arena3d.setup(p1, p2)
+	# The 3D proxies replace these drawings; the nodes stay alive so their measured values
+	# (shadow stretch, crowd darkness, palette) keep driving the headless checks and any
+	# later 2D fallback.
+	var hidden := [
+		"Stage", "Atmosphere", "SunsetWash", "NightWash", "SunGlow", "SunShaft",
+		"SpeakerRings", "LightBeams", "TimeOfDay", "Floodlight", "WindMotes",
+		"RecordCrates", "HeatHaze", "CrowdHaze", "YardBarrier", "CrowdLine",
+		"ForegroundCrowd", "BirdHazard",
+	]
+	for node_name in hidden:
+		var node := get_node_or_null(node_name)
+		if node is CanvasItem:
+			(node as CanvasItem).visible = false
+		elif node is Node3D:
+			(node as Node3D).visible = false
+	p1.set_3d_presentation(true)
+	p2.set_3d_presentation(true)
+
+
+## Round start: the ~6 s intro slot begins on the announce, so the single guitar stab lands
+## on FIGHT! at 1.8 s while player control still opens on the round controller's own clock.
+## The 3D speaker cones punch on the tag itself, not just on the contact that caused it.
+func _on_tag_played(_key: StringName, _priority: int) -> void:
+	if arena3d != null:
+		arena3d.pulse_speakers(1.35)
+
+
+func _on_round_started(_round_index: int) -> void:
+	if SoundClash != null:
+		SoundClash.play_round_start()
+	if arena3d != null:
+		arena3d.pulse_speakers(1.6)
 
 
 func _follow_action(delta: float = 0.0) -> void:
@@ -869,6 +1000,9 @@ func _zoom_punch_burst(amount: float = 0.055) -> void:
 ## Vibrant musical notes arcing along a heavy strike (or an on-beat contact). Capped like
 ## every other transient in the arena.
 func _add_note_trail(at: Vector2, facing: int, heavy: bool) -> void:
+	if arena3d != null:
+		arena3d.spawn_notes(at, facing, heavy)
+		return
 	var live := _live_note_trails()
 	if live.size() >= MAX_NOTE_TRAILS:
 		live[0].queue_free()

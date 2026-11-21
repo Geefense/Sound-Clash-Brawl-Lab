@@ -412,6 +412,13 @@ This register includes all phrases recoverable from the visible conversation, su
 | `POPPYSHOW!` | Owner gloss: “Show-off! / Clown!” Owner-approved callout added 2026-11-19 (§9 item 38) and wired as a Patois subtitle on a taunt (T) and on a punish hit (a strike that interrupts an attack or a taunt). One word, no space — do not split it. |
 | `Feedbackhand` | Proposed backhand pun. |
 
+### Owner callouts added 2026-11-21
+
+| Exact phrase | Meaning / trigger | Status |
+| --- | --- | --- |
+| `TEK WEH HIM MIC!` | “Take away his microphone!” Crowd shout when the opponent is stunned, dizzied or knocked down. | Implemented as the `&"stun"` pool in `TestArena.CALLOUTS` (fires on `KNOCKDOWN`). Owner wording, verbatim; gloss kept separate. |
+| `TUMP OUT HIM TEET!` | “Knock out his teeth!” Heavy punch / Upper Box / counter-hit callout. | Implemented as the `&"heavy"` pool (unblocked `upper_box` / `tump` or a counter-hit). Owner wording, verbatim; gloss kept separate. |
+
 ### Comedy, taunt and move register
 
 - **`cricket box`**: owner-proposed name for a cricket-bowling-inspired BOX/slap, potentially for another character. No fighter assigned; concept/backlog only, not an implemented move or added launch requirement. Preserve the owner's name. Keep separate from Feedback's current BOX direction: original rear three-quarter camera, right-knee lift, plant/turn into the existing slap/follow-through. The earlier raised-knee illustration changed the camera/build and is not approved production art.
@@ -1619,6 +1626,188 @@ here is gameplay-verified; implementation status is stated per item.
       colour, shadow softness, beam density, foreground silhouettes, note shapes and impact frames have
       **not been seen**. They need a look at `docs/index.html` on the target Chromebook.
 
+42. **3D cel-shaded fighter presentation — the two uploaded models, the Node3D 2.5D plane and the ink/toon pass (2026-11-21).**
+
+    Branch `feature/3d-cel-shaded`, created from `stage/sound-clash-sand` at `3f13116` (the
+    `f5eb926` 2.5D presentation pass plus its two asset-upload commits). The stage branch and
+    its 2D build are untouched. **Presentation only:** the authoritative fight still runs in
+    the 2D `CharacterBody2D` fighters, so every hitbox, hurtbox, attack timing, damage value,
+    input buffer, beat window, round timer and Patois callout below is unchanged.
+
+    **Upload inspection.** The two files at the repository root were opened in Godot 4.5:
+
+    | Upload | Bytes | Format | Mesh | Rig | Clip | Texture |
+    | --- | --- | --- | --- | --- | --- | --- |
+    | `Fighting Idle (1).fbx` | 4,788,128 | Kaydara FBX Binary | **40,000 tris** / 26,215 verts | Mixamo, **25 bones** | `mixamo_com`, 3.30 s, 21 tracks | embedded 4096² atlas |
+    | `c534c936-46ff-4878-8dc5-e96053704264 (2).zip` → `output.fbx` | 16,760,749 (4,142,476 FBX) | FBX Binary | **40,000 tris** / 26,215 verts | **none** | **none** | 4096² albedo JPEG + 4096² roughness PNG |
+
+    Both files are the **same Feedback mesh** — identical triangle/vertex count, AABB and
+    material name. One export keeps the Mixamo rig and its single idle clip; the other is a
+    static bake. There is no second distinct character and no Walk/Attack/Block/Hit/Knockdown
+    clip in this upload. **Do not describe them as two different fighters in owner-facing copy.**
+
+    **Files and paths.** Moved byte-identically into `godot/assets/models/fighters/` and removed
+    from the repository root (root is spotless again):
+    - `feedback_fighting_idle_rigged.fbx` — SHA-256 `c590259b…e273d2c6`
+    - `lickshot_placeholder_static.fbx` — SHA-256 `8ea6acb8…ca606322`
+    - `feedback_fitted_jacket_albedo.jpg` — SHA-256 `c4cb0ff4…30c1cb7c`
+    - roughness PNG kept as provenance only at
+      `artifacts/sound-clash/art-source/models/feedback_upload_roughness.png`.
+    Full inventory, import contract and checksums: `godot/assets/models/fighters/MODELS.md`.
+    `fbx/embedded_image_handling=0` for both; the shared albedo imports at 2048² with mipmaps
+    (`process/size_limit=2048`, `detect_3d/compress_to=0`) to stay inside Chromebook/iPhone
+    WebGL2 texture memory. Godot's extracted `*_0.png` images are not committed.
+
+    **Cel shading.** `godot/assets/shaders/toon_cel.gdshader` is a spatial material with
+    `diffuse_toon, specular_toon` banding, a rim term and the hit-flash uniform;
+    `toon_outline.gdshader` is the inverted-hull `cull_front` `next_pass`, expanded in clip
+    space so the ink edge is a constant ~2 px at any camera distance or model scale. Both are
+    single-pass, unshaded/forward, with no screen/depth reads, no includes and no unbounded
+    loops — WebGL2 / GL Compatibility safe. `FighterModel3D.gd` builds one `ShaderMaterial` per
+    model, assigns the outline as `next_pass`, and measures the model's own skeleton/AABB to
+    normalise it to **1.55 m** (Feedback, feet at world y 0) or 1.58 m (Lickshot), independent
+    of the FBX's authored centimetre-ish unit scale. Directional rim + the Scene's 3D lights
+    do the lighting; the material is not baked flat.
+
+    **Facing.** Undeformed rest bones put Mixamo's left hand on +X and the face on +Z, so the
+    model yaw is `facing × 90°` about Y; a fighter facing right shows its +X side, and the
+    turn is a rigid yaw (no art mirroring, preserving §9 item 2).
+
+    **State wiring.** The rigged upload plays its baked `mixamo_com` idle clip as the base, and
+    `FighterModel3D._animate_rig()` layers the fight states additively on the skeleton after the
+    AnimationPlayer has written the frame (process priority 100): walk leg/arm swing, guard
+    arms, attack wind-up/lunge/recoil, spine and head hit recoil, crouch, taunt arm and
+    celebration. `_animate_pose()` adds the whole-body procedural layer for both uploads:
+    Dancehall bob, forward/back lean, strike lunge, hit-recoil, jump/crouch squash, tumble spin
+    and a knockdown/KO fall about the feet. This is the clean procedural fallback the brief asked
+    for while per-state Mixamo tracks are pending; the combat timing is not driven by it.
+    Lickshot's static upload has no skeleton and uses the procedural path alone, with a cool
+    tint/hue variant so the two models read apart. When his own model arrives, replace the FBX
+    and the `MODEL_SOURCES` entry; no combat code changes.
+
+    **L!kkle Moore fallback.** He has no 3D upload, so `FighterBillboard3D.gd` mirrors his
+    current approved `AnimatedSprite2D` frame onto a camera-facing `Sprite3D` on the 3D plane,
+    normalised to his 82 % relative height (1.27 m). His shared FSM, y 592 art and +25 px reach
+    are untouched.
+
+    **Combat preservation.** `BaseFighter.set_3d_presentation(true)` hides only `Sprite`,
+    `Shadow` and `Dust`; the body, hurtbox, hitbox, collision shapes and every numeric table stay
+    alive. `TestArena.presentation_3d` (default true) installs the 3D layer; setting it false
+    restores the previous 2D drawing path without a code change.
+
+    **Verified headless.** `tools/headless_roster_check.gd` now prints **200** checks and ends
+    `ALL CHECKS PASSED`, including: both uploads' **40,000** triangles, the rigged model's **25**
+    bones, the baked clip playing, the static model having no rig, both normalised heights and
+    feet offsets, the outline `next_pass`, the toon and outline shaders **compiling** (uniform
+    lists non-empty) and being WebGL2-safe, the 2D stage/sprites hidden, both hitboxes alive, and
+    the 55–65 % camera framing (measured **60.3 %**). No GPU/display exists here, so the actual
+    rendered cel bands, ink weight, silhouette and model identity have **not been seen**.
+
+43. **3D Sound Clash yard, real lights, camera and music-note impact bursts (2026-11-21).**
+
+    `godot/scripts/stages/Arena3D.gd` is a `Node3D` presentation layer added by `TestArena`. It
+    maps the fighting plane as **140 px = 1 m**, world y 0 = the 2D floor line (y 600), world x 0
+    = stage centre (x 640); fighters stay on z 0 and only inherit the 2D x/y, so movement remains
+    classic 2.5D and collisions never enter 3D.
+
+    - **Yard geometry** — real perspective sand floor, damp-sand discs, a deep sky-gradient
+      backdrop, a low horizon band, a metal crowd barrier, two **3D speaker stacks** (plinth,
+      three cabinets each, Rasta stripe insets, 16 subwoofer/tweeter/horn cones, a sub-bass
+      chimney), a truss with four fixtures, and 26 low-poly crowd figures with unsynchronised
+      sway. No wooden crates and no 2D circles.
+    - **Lighting** — a real `DirectionalLight3D` sun (shadow-casting, 2-split), two overhead
+      `SpotLight3D` pools on the fighters, a warm `OmniLight3D` rim behind them, a cool camera
+      fill, depth fog, and a visible additive light pool on the sand. **Afternoon** is a bright
+      high sun with the spots resting (sun 1.35 / spot 0.35); **Sunset** drops the sun warm and
+      low (spot 0.70, orange sky, sun disc low on the right); **Night** kills the sun (0.12) and
+      carries the yard on the spot rig (2.60, cool white/cyan rim, thick fog, no sun disc). The
+      arena's existing `set_time_of_day()` drives `Arena3D.apply_phase()` and cross-fades every
+      value; this is scene light, not a full-screen tint. The 2D phase nodes remain alive but
+      hidden so the older checks and the fallback still work.
+    - **Contact shadows** — a soft `contact_shadow.gdshader` quad under each fighter, following
+      x/z, shrinking and fading with jump height. It is not a real-time shadow map, so it stays
+      cheap on Intel Chromebooks.
+    - **Camera** — a steady `Camera3D` (fov 30, 4.8 m, height 1.0) that follows the fighters'
+      midpoint horizontally, clamped to the yard. **60.3 %** screen height at neutral play,
+      inside the requested 55–65 %. Heavy counters/knockdowns/KOs call `hit_kick()` for a brief
+      zoom-in (fov −3.2°) plus decaying shake; the combat hit-stop itself is untouched.
+    - **Music-note bursts** — `MusicNoteBurst.gd` replaces generic hit sparks with real 3D
+      geometry: eighth notes, sixteenth notes and a stylised treble clef generated as `ArrayMesh`
+      triangles in Rasta green/yellow/red, plus an expanding `TorusMesh` bass shockwave ring on
+      significant hits. No font glyph or texture atlas, so no missing-glyph risk in the Web
+      build. Capped at **4** simultaneous bursts (oldest recycled); each self-frees in 0.72 s.
+      Sparks, smears and the old 2D `NoteTrail` route into this system while the 3D layer is on.
+    - **Speaker reaction** — `pulse_speakers()` is called on every 132 BPM beat, on heavy
+      contacts, tags, throws, K.O.s and round starts; the cones punch out along their local
+      depth and settle.
+    - **Verified headless** — the `Camera3D` is current, framing 55–65 %, both stacks
+      expose 16 cones and the first cone moves >1.0× on a pulse, fog is on, the three lighting
+      phases produce the expected sun/spot energies and sky/fog values, `set_time_of_day(2)`
+      drives the 3D rig, and note bursts cap at 4 with generated glyph geometry. **No render
+      happened:** the actual cel banding, ink weight, speaker stack silhouette, shadow softness,
+      note shapes and camera feel have not been viewed on screen.
+
+44. **Event-driven Sound Clash audio engine — tape-delay DJ tags, priorities and crowd layers (2026-11-21).**
+
+    `godot/scripts/audio/SoundClashAudio.gd` is an autoload (`SoundClash`) plus
+    `godot/assets/audio/default_bus_layout.tres` and the `[audio]` project setting. No mandatory
+    pull-up and no combo gate: *any* strike that lands significant damage, knockback, stun or a
+    knockdown triggers the attacker's DJ tag, including a single jab (damage 8). Blocked hits and
+    parries do not.
+    - **Round-start sting** — a dedicated `Stinger` slot, **6.00 s**, started on
+      `RoundController.round_started` (the 1.8 s announce). "Step up!" call + accelerating snare
+      roll through the announce, then a single guitar stab and sub drop at **1.8 s = FIGHT!**,
+      then a clean tail to 6.0 s. Player control still opens on the RoundController's own clock;
+      the audio never gates input.
+    - **Native tape-delay chain** — buses `Master / Music / SFX / Crowd / DJTag / Selector /
+      Stinger`. `DJTag` carries `AudioEffectDelay` (dry 0.55, taps 265 ms / 530 ms, feedback
+      300 ms at −9.5 dB with a 3.6 kHz feedback low-pass) → `AudioEffectLowPassFilter` (4.2 kHz)
+      → `AudioEffectReverb` (0.62 room, 0.32 wet, 28 ms pre-delay). Tags play **dry** into that
+      bus, so one call cascades under the crowd instead of stacking dry clips. `Selector` has its
+      own short echo. The layout is a real `.tres` and the runtime `_ensure_buses()` guard is
+      idempotent, so a stripped project still builds the chain.
+    - **Priority / anti-overlap** — three tag voices, per-fighter cooldown **1.1 s**, global tag
+      cooldown **0.45 s**, selector 3.2 s, horn 4 s. Equal-or-lower priority is rejected while a
+      tag is ringing; K.O. (priority 4) force-preempts. `SoundClashAudio.trigger_tag()` is the
+      public path used by the arena and the headless checks, so tests cannot bypass the rules.
+    - **Crowd intensity** — three looping layers (murmur → cheers → eruption) driven by a 0–1
+      level that decays at 0.055/s and reaches **true silence** below 0.01. Tags, heavies,
+      knockdowns, throws, parries, Hype Surge and K.O. raise it; the tag also ducks Music
+      (−8 dB at full duck) and Crowd (−4 dB) so the selector sits on top instead of mud.
+    - **Placeholders, clearly labelled** — the repository still has no approved recordings, so
+      every slot synthesises a deterministic 22.05 kHz mono placeholder in memory (voice-like
+      formant calls, snare roll, guitar chord, horn, crowd noise). No research clip, sample pack
+      or copyrighted recording is loaded from `artifacts/` or the web. `placeholders/` is empty
+      by design; `production/` documents the exact override filenames and buses. Placeholders
+      prove timing/routing/mixing only and are **not owner-approved sound design**.
+    - **Verified headless** — buses and the three effect classes present in order, sting length
+      **6.00 s** with its FIGHT marker equal to `RoundController.announce_seconds`, a single
+      significant hit firing one tag and the cooldown rejecting the repeat (1 fired / 1
+      rejected), equal-priority anti-overlap dropping a duplicate, the answer passing once clear,
+      a landed throw firing its own `tag_played` event, crowd level rising from silence, and K.O.
+      outranking a ringing tag (horn + selector). The arena listens for `tag_played` and punches
+      the 3D cones on the tag itself, not only on the contact that caused it; the old procedural
+      airhorn is no longer layered under the engine's horn.
+      **Not heard:** headless has no audio device, so the actual cascade, mix balance, crowd
+      layers and sting sync have not been listened to on the target device.
+
+45. **New owner Patois callouts — TEK WEH HIM MIC! and TUMP OUT HIM TEET! (2026-11-21).**
+
+    Added verbatim to `TestArena.CALLOUTS` and §8, with separate English glosses:
+    - `TEK WEH HIM MIC!` = "Take away his microphone!" — `&"stun"`, fired when a fighter enters
+      `KNOCKDOWN` and on a heavy stunned contact.
+    - `TUMP OUT HIM TEET!` = "Knock out his teeth!" — `&"heavy"`, fired on an unblocked
+      `upper_box` / `tump` contact or a counter-hit.
+    Both ride the existing subtitle pill and its cooldown, so a burst cannot stack banners. They
+    do not change damage, hitstun or any combat value. Headless checks cover the exact spellings,
+    the trigger wiring and the separate glosses.
+
+46. **Backlog recorded, not implemented: B13 Toronto Selector Party & Jukebox, B14 World Clash tour, B15 Panicking Promoter & crowd shout-outs (2026-11-21).**
+
+    Recorded in the backlog below and in `artifacts/sound-clash/SOUND_CLASH_CULTURE.md` as
+    **[TODO] — record only, do not implement yet**. No title-menu mode, jukebox, ladder,
+    commentator or shout-out system was built in this branch.
+
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 
 Recorded at build `ad27516` (`stage/sound-clash-sand`); §9 items 1–19 above are the decisions that
@@ -1774,6 +1963,35 @@ bars, name plates, hype bar, round clock or subtitle pill.
 - Exit evidence: on a phone and a tablet the controls auto-appear on touch and not on desktop, every listed
   action fires, a full round is playable without a keyboard, and the HUD stays legible with the buttons
   present.
+
+**[TODO] B13 — Toronto Selector Party & Jukebox Mode (record only, do not implement yet).**
+Standalone Title Menu mode celebrating Toronto's multicultural party melting pot (Reggae, Dancehall,
+Hip-Hop, R&B, House and Soca). Players pick a 3D selector (Feedback, L!ckshot, L!kkle Moore) to
+dance/skank behind the 3D speaker stacks and talk DJ-style over tracks, with automatic music ducking
+and tape-delay mic echo, and can trigger manual **PULL UP! / WHEEL UP!** rewinds and airhorns.
+Strictly creator-owned tracks may be streamed and one-click downloaded from `docs/tracks/`; users may
+also load local audio files for 100% client-side, in-browser RAM playback only. **Copyright
+safeguard:** user files are NEVER uploaded to any server, stored remotely, or distributed to other
+players. Not built in this branch: no jukebox scene, no local-file loader, no `docs/tracks/` manifest,
+no rewind/ducking UI. Open design: track licensing/provenance per file, whether B13 reuses
+`SoundClashAudio`'s DJTag chain, and how a local file is kept in RAM only.
+
+**[TODO] B14 — “World Clash” Arcade Tour & International Bookings (record only, do not implement yet).**
+Classic fighting-game world ladder with lightweight promoter-booking progression — never an open
+world — where winning clashes unlocks international bookings from Jamaica (Home Beach Arena) to
+Toronto, Montreal, New York, London (England) and Japan, each with a distinct 3D stage atmosphere and
+an international rival. Not built: no ladder data, booking UI, rival definitions, per-city stage rigs
+or unlock save. Open design: bout count per city, difficulty curve, how a stage's atmosphere maps onto
+`Arena3D.PHASES`, and whether travel replaces or extends the current best-of-3 Sound Clash.
+
+**[TODO] B15 — Panicking Promoter Commentator & Personal Crowd Shout-Outs (record only, do not implement yet).**
+Reactive event-promoter voice slot who panics whenever fighters collide near the speaker stacks
+(“Dat coming out yuh fee!”, “Yuh nah get paid fi dat!”, “Me never booking yuh sound again!”), plus
+creator-approved crowd shout-out slots dedicated to real-life friends, family and local supporters
+(with their permission, avoiding unapproved celebrity names). Not built: no commentator state, no
+proximity trigger against the speaker stacks, no shout-out list or audio. Open design: exact
+promoter lines/glosses and owner approval, voice recording source, cooldowns against the existing
+DJ-tag priority rules, and a written consent record for every shout-out name.
 
 **Dependencies worth knowing before picking these up:** B6, B7 and B8 are closed, so the two
 combat-feel items now in the plan (B4 sparks and the B3 pause/beat-clock decision) land before the
@@ -2294,3 +2512,67 @@ frame-time check on the target device.
 sits on the shadow side, the five depths read (stage → haze → crowd line → fighters → near-crowd), a
 counter-hit's black-and-gold frame does not feel like a flashbang, and the foreground band does not
 hide a fighter's feet during a corner brawl.
+
+### 3D cel-shaded presentation + Sound Clash audio — headless verification, November 21, 2026
+
+Branch `feature/3d-cel-shaded`, started from `stage/sound-clash-sand` tip `3f13116`; the stage
+branch and its 2D build are untouched. This records §9 items 42–46.
+
+**Commands actually run** — Godot 4.5.stable.official (876b29033), headless, export templates
+installed locally in the user profile (never committed):
+
+```bash
+godot --headless --path godot --import
+godot --headless --path godot --script res://tools/headless_roster_check.gd
+godot --headless --path godot --export-release "Web" ../docs/index.html
+```
+
+`tools/headless_roster_check.gd` prints **200 PASS / 0 FAIL** and ends `ALL CHECKS PASSED` (155
+before this pass). The **45 new checks** cover: both uploads' 40,000 triangles, the rigged model's
+25 bones and its `mixamo_com` clip, the static model having no skeleton, both normalised heights
+and feet offsets, the shared 2048² texture and its mipmaps, the outline `next_pass` and both
+shaders **compiling** (uniform lists non-empty) plus the WebGL2 static lint, the 2D stage and
+sprites hidden with every hurtbox/hitbox still alive, the Camera3D being current at **60.3 %**
+fighter height, the 16 speaker cones moving on a pulse, the afternoon/sunset/night 3D light and
+fog values, note bursts capped at 4 with generated glyph mesh geometry, the bus layout and
+`AudioEffectDelay → AudioEffectLowPassFilter → AudioEffectReverb` order on `DJTag`, the
+**6.00 s** sting whose FIGHT marker equals `RoundController.announce_seconds`, single-hit tag
+firing and cooldown rejection, equal-priority anti-overlap and release, the throw `tag_played`
+event, crowd rise from true silence, and K.O. priority over a ringing tag.
+
+**Files added** — `godot/assets/models/fighters/` (two FBX files, one albedo JPEG, `MODELS.md`),
+`godot/assets/shaders/toon_cel.gdshader`, `toon_outline.gdshader`, `contact_shadow.gdshader`,
+`light_pool.gdshader`, `sky_gradient.gdshader`, `sun_disc.gdshader`, `music_note.gdshader`,
+`godot/assets/audio/default_bus_layout.tres`, `godot/assets/audio/placeholders/README.md`,
+`godot/assets/audio/production/README.md`, `godot/scripts/fighters/FighterModel3D.gd`,
+`FighterBillboard3D.gd`, `godot/scripts/stages/Arena3D.gd`, `MusicNoteBurst.gd`,
+`godot/scripts/audio/SoundClashAudio.gd`, and `artifacts/sound-clash/art-source/models/
+feedback_upload_roughness.png` (provenance only).
+
+**Files changed** — `godot/scripts/TestArena.gd` (3D switch, hazard hiding, effect routing,
+audio/callout hooks, new callouts), `godot/scripts/BaseFighter.gd` (`set_3d_presentation` only),
+`godot/project.godot` (autoload + bus layout), `godot/tools/headless_roster_check.gd`,
+`godot/assets/audio/README.md`, `artifacts/sound-clash/SOUND_CLASH_CULTURE.md` (B13–B15),
+`AGENTS.md` + `godot/AGENTS.md`. The two owner uploads were removed from the repository root.
+
+**`/docs` rebuilt from this commit** with `--headless --path godot --export-release "Web"
+../docs/index.html`: `index.pck` **24,181,004 B** (16,087,712 B before this pass — the extra
+~8.1 MB is the two 4.78 MB / 4.14 MB FBX models and the 2048² texture), `index.wasm`
+38,057,390 B, `index.js` 305,185 B, `index.html` 5,449 B. The export log's only errors are the
+environment's repeated `Unable to load fontconfig` (known non-fatal; the build uses its own
+fallback fonts).
+
+**Not verified — no render and no audio device.** This environment has no GPU, display, Xvfb or
+sound card, so nothing was seen or heard: the cel banding, ink weight, model identity and
+silhouette, the speaker-stack depth, shadow softness, note-glyph shapes, camera kick and the
+actual tag cascade/sting sync are geometry, shader code and bus routing, not eyes or ears. In
+particular the **same-mesh** situation means Lickshot is currently a tinted static copy of
+Feedback, and his state animation is entirely procedural. Two device risks remain unmeasured:
+fill-rate for the 16-cone speaker stacks plus 26 crowd figures on an Intel Chromebook, and
+WebGL2 texture memory on iPhone Safari (the 4096² source is capped to 2048² with mipmaps, but
+two 40k-tri skinned meshes at once is a real cost).
+
+**Next:** open `docs/index.html` on the Chromebook and an iPhone, play each fighter in Afternoon,
+Sunset and Night, and rule on the ink weight, cel bands, 60 % framing, note colours, speaker
+pulse, tag cascade and sting sync. Then replace the Lickshot placeholder with his own rigged
+model when it is uploaded, and approve or record the production audio slots.

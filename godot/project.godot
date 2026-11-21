@@ -14,6 +14,9 @@ run/main_scene="res://scenes/TitleScreen.tscn"
 ; Procedural arcade SFX (AGENTS.md §9 backlog item B8): every cue is synthesised with
 ; AudioStreamGenerator, so the build ships no audio files.
 Sfx="*res://scripts/audio/SfxPlayer.gd"
+; Event-driven Sound Clash audio engine (AGENTS.md §9 item 46): DJ tags through the native
+; tape-delay AudioBusLayout, priorities/cooldowns, layered crowd and the 6 s round sting.
+SoundClash="*res://scripts/audio/SoundClashAudio.gd"
 ; P1 / P2 / AI style / subtitle choices carried from TitleScreen.tscn into TestArena.tscn
 ; (AGENTS.md §9 backlog item B1).
 MatchSetup="*res://scripts/MatchSetup.gd"
@@ -24,6 +27,11 @@ window/size/viewport_width=1280
 window/size/viewport_height=720
 window/stretch/mode="canvas_items"
 window/stretch/aspect="keep"
+
+[audio]
+
+; Native tape-delay DJ-tag chain (Delay → LowPass → Reverb) and the crowd/stinger buses.
+buses/default_bus_layout="res://assets/audio/default_bus_layout.tres"
 
 [physics]
 

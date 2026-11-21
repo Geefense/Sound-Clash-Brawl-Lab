@@ -1,0 +1,780 @@
+class_name Arena3D
+extends Node3D
+## 3D Sound Clash yard presentation (AGENTS.md §9 item 43–45).
+##
+## Presentation only. The authoritative fight still runs in the 2D `BaseFighter` bodies —
+## hitboxes, hurtboxes, push separation, input buffering, beat judgement, the round clock and
+## the Patois callouts are untouched. This node mirrors both fighters onto a 3D fighting
+## plane, builds the sand yard out of real geometry, and lights it with DirectionalLight3D /
+## SpotLight3D / OmniLight3D rigs for Afternoon, Sunset and Night.
+##
+## Layout: 140 px = 1 m, the 2D floor line (y 600) is world y 0, the stage centre (x 640) is
+## world x 0. The fighters stay on the z 0 plane (classic 2.5D): only x/y move, the stage
+## gains real depth behind them.
+##
+## WebGL2: gl_compatibility-safe meshes, shaders and lights only. No GPU particles, no
+## screen-space effects, no SDFGI/SSAO/volumetric fog; contact shadows are soft quads and
+## the speaker cones are scaled on the beat.
+
+const PX_PER_M := 140.0
+const FLOOR_PX := 600.0
+const CENTER_PX := 640.0
+const STAGE_LEFT_PX := 70.0
+const STAGE_RIGHT_PX := 1210.0
+
+const CAMERA_FOV := 30.0
+const CAMERA_DISTANCE := 4.8
+const CAMERA_HEIGHT := 1.0
+const CAMERA_FOLLOW := 7.0
+const CAMERA_MIN_X := -1.78
+const CAMERA_MAX_X := 1.78
+
+const MAX_BURSTS := 4
+const NOTE_SPARK := 0.35
+const NOTE_HEAVY := 1.0
+
+const MODEL_SCRIPT := preload("res://scripts/fighters/FighterModel3D.gd")
+const BILLBOARD_SCRIPT := preload("res://scripts/fighters/FighterBillboard3D.gd")
+const BURST_SCRIPT := preload("res://scripts/stages/MusicNoteBurst.gd")
+const CONTACT_SHADOW := preload("res://assets/shaders/contact_shadow.gdshader")
+const LIGHT_POOL := preload("res://assets/shaders/light_pool.gdshader")
+const SKY_SHADER := preload("res://assets/shaders/sky_gradient.gdshader")
+const SUN_SHADER := preload("res://assets/shaders/sun_disc.gdshader")
+
+## The three round rigs. Every value is pushed into real scene objects: a DirectionalLight3D
+## sun, two overhead SpotLight3Ds, a warm rim/fill, the sky gradient, depth fog and the
+## visible pool on the sand. Nothing here is a full-screen tint.
+const PHASES := [
+	{
+		"name": "Afternoon Sun",
+		"sky_top": Color(0.35, 0.60, 0.90, 1.0),
+		"sky_bottom": Color(1.0, 0.90, 0.72, 1.0),
+		"sky_haze": Color(1.0, 0.94, 0.80, 1.0),
+		"sun_colour": Color(1.0, 0.96, 0.86, 1.0),
+		"sun_energy": 1.35,
+		"sun_rotation": Vector3(-52.0, -26.0, 0.0),
+		"ambient": Color(0.52, 0.62, 0.76, 1.0),
+		"ambient_energy": 0.55,
+		"fog": Color(0.78, 0.86, 0.95, 1.0),
+		"fog_density": 0.004,
+		"spot_energy": 0.35,
+		"spot_colour": Color(1.0, 0.94, 0.82, 1.0),
+		"pool": Color(1.0, 0.90, 0.70, 1.0),
+		"pool_alpha": 0.10,
+		"rim": Color(1.0, 0.88, 0.60, 1.0),
+		"rim_energy": 0.55,
+		"disc": 0.30,
+		"disc_colour": Color(1.0, 0.96, 0.82, 1.0),
+		"disc_pos": Vector3(-3.2, 2.9, -13.6),
+		"disc_size": 4.2,
+	},
+	{
+		"name": "Golden Hour / Sunset Clash",
+		"sky_top": Color(0.30, 0.34, 0.62, 1.0),
+		"sky_bottom": Color(1.0, 0.55, 0.24, 1.0),
+		"sky_haze": Color(1.0, 0.72, 0.36, 1.0),
+		"sun_colour": Color(1.0, 0.62, 0.28, 1.0),
+		"sun_energy": 1.15,
+		"sun_rotation": Vector3(-11.0, -62.0, 0.0),
+		"ambient": Color(0.55, 0.44, 0.48, 1.0),
+		"ambient_energy": 0.42,
+		"fog": Color(0.92, 0.60, 0.40, 1.0),
+		"fog_density": 0.010,
+		"spot_energy": 0.70,
+		"spot_colour": Color(1.0, 0.72, 0.42, 1.0),
+		"pool": Color(1.0, 0.68, 0.34, 1.0),
+		"pool_alpha": 0.22,
+		"rim": Color(1.0, 0.62, 0.26, 1.0),
+		"rim_energy": 1.10,
+		"disc": 0.95,
+		"disc_colour": Color(1.0, 0.66, 0.30, 1.0),
+		"disc_pos": Vector3(3.0, 1.55, -13.6),
+		"disc_size": 6.4,
+	},
+	{
+		"name": "Late-Night Sound Clash",
+		"sky_top": Color(0.030, 0.045, 0.12, 1.0),
+		"sky_bottom": Color(0.10, 0.14, 0.30, 1.0),
+		"sky_haze": Color(0.16, 0.20, 0.42, 1.0),
+		"sun_colour": Color(0.35, 0.45, 0.85, 1.0),
+		"sun_energy": 0.12,
+		"sun_rotation": Vector3(-66.0, 148.0, 0.0),
+		"ambient": Color(0.16, 0.20, 0.36, 1.0),
+		"ambient_energy": 0.30,
+		"fog": Color(0.08, 0.10, 0.22, 1.0),
+		"fog_density": 0.020,
+		"spot_energy": 2.60,
+		"spot_colour": Color(0.86, 0.94, 1.0, 1.0),
+		"pool": Color(0.56, 0.86, 1.0, 1.0),
+		"pool_alpha": 0.38,
+		"rim": Color(0.35, 0.95, 1.0, 1.0),
+		"rim_energy": 1.35,
+		"disc": 0.0,
+		"disc_colour": Color(0.6, 0.8, 1.0, 1.0),
+		"disc_pos": Vector3(-3.2, 2.9, -13.6),
+		"disc_size": 4.2,
+	},
+]
+
+var camera: Camera3D
+var world_env: WorldEnvironment
+var sun: DirectionalLight3D
+var fill: DirectionalLight3D
+var rim: OmniLight3D
+var spot_left: SpotLight3D
+var spot_right: SpotLight3D
+var sky_material: ShaderMaterial
+var pool_material: ShaderMaterial
+var sun_material: ShaderMaterial
+
+var fighters: Dictionary = {}          # "p1"/"p2" -> BaseFighter
+var models: Dictionary = {}            # "p1"/"p2" -> FighterModel3D or FighterBillboard3D
+var shadows: Dictionary = {}           # "p1"/"p2" -> MeshInstance3D
+
+var _cones: Array[MeshInstance3D] = []
+var _crowd: Array[Dictionary] = []
+var _pulse: float = 0.0
+var _kick: float = 0.0
+var _shake: float = 0.0
+var _camera_x: float = 0.0
+var _live_bursts: Array = []
+var _phase_index: int = 0
+var _phase_now: Dictionary = {}
+var _phase_from: Dictionary = {}
+var _phase_to: Dictionary = {}
+var _phase_age: float = 0.0
+var _phase_duration: float = 0.0
+var _rng := RandomNumberGenerator.new()
+
+
+func _ready() -> void:
+	_rng.seed = 20261121
+	_build_environment()
+	_build_camera()
+	_build_yard()
+	_build_speakers()
+	_build_truss_and_lights()
+	_build_crowd()
+	_apply_phase(PHASES[0])
+
+
+# =========================================================================
+# Public API
+# =========================================================================
+func setup(p1: BaseFighter, p2: BaseFighter) -> void:
+	fighters = {"p1": p1, "p2": p2}
+	for key in fighters:
+		var fighter: BaseFighter = fighters[key]
+		if fighter == null:
+			continue
+		var model: Node3D = _make_fighter(fighter)
+		models[key] = model
+		shadows[key] = _make_contact_shadow()
+		model.position = Vector3(px_to_world_x(fighter.global_position.x), 0.0, 0.0)
+	_camera_x = px_to_world_x((p1.global_position.x + p2.global_position.x) * 0.5) if p1 != null and p2 != null else 0.0
+	camera.position = Vector3(_camera_x, CAMERA_HEIGHT, CAMERA_DISTANCE)
+
+
+## Called by the arena on every FSM transition that has geometry to show.
+func spawn_notes(at_px: Vector2, facing: int, heavy: bool) -> void:
+	var at := px_to_world(at_px)
+	var power := NOTE_HEAVY if heavy else NOTE_SPARK
+	var angle := 0.0 if facing >= 0 else PI
+	_spawn_burst(at, power, angle)
+
+
+func spawn_spark(at_px: Vector2, style: StringName = &"hit") -> void:
+	var at := px_to_world(at_px)
+	var power := NOTE_SPARK
+	if style == &"hit_onbeat" or style == &"parry" or style == &"slam":
+		power = 0.7
+	_spawn_burst(at, power, 0.0)
+
+
+func spawn_strike_arc(at_px: Vector2, facing: int, heavy: bool) -> void:
+	var at := px_to_world(at_px)
+	_spawn_burst(at, NOTE_SPARK if not heavy else 0.7, 0.0 if facing >= 0 else PI)
+
+
+## Bass thump: the subwoofer cones visibly punch out of the cabinets and settle back.
+func pulse_speakers(strength: float = 1.0) -> void:
+	_pulse = maxf(_pulse, clampf(strength, 0.0, 2.0))
+
+
+## Heavy contact / KO / knockdown: a brief subtle zoom-in plus camera shake. Hit-stop itself
+## stays in the combat FSM — this never freezes or changes simulation time.
+func hit_kick(strength: float = 1.0) -> void:
+	_kick = maxf(_kick, clampf(strength, 0.0, 1.6))
+	_shake = maxf(_shake, clampf(strength, 0.0, 1.4) * 0.045)
+
+
+func apply_phase(index: int, duration: float = 0.0) -> void:
+	_phase_index = clampi(index, 0, PHASES.size() - 1)
+	_phase_from = _phase_now.duplicate()
+	var target: Dictionary = PHASES[_phase_index]
+	_phase_to = target.duplicate()
+	_phase_age = 0.0
+	_phase_duration = maxf(duration, 0.0)
+	if _phase_now.is_empty() or _phase_duration <= 0.0:
+		_apply_phase(_phase_to)
+
+
+func phase_name() -> String:
+	var target: Dictionary = PHASES[_phase_index]
+	return String(target["name"])
+
+
+func active_bursts() -> int:
+	_live_bursts = _live_bursts.filter(func(node): return is_instance_valid(node) and not node.is_queued_for_deletion())
+	return _live_bursts.size()
+
+
+func speaker_cone_count() -> int:
+	return _cones.size()
+
+
+func cone_pulse() -> float:
+	return _pulse
+
+
+func model_for(fighter: BaseFighter) -> Node3D:
+	for key in models:
+		if fighters.get(key) == fighter:
+			var model: Node3D = models[key]
+			return model
+	return null
+
+
+## Height of the fighter on screen as a fraction of the 720 px frame, measured by projecting
+## the feet and head through the live Camera3D (headless-safe).
+func screen_fraction() -> float:
+	var probe: Node3D = null
+	for key in models:
+		probe = models[key]
+		break
+	if probe == null or camera == null:
+		return 0.0
+	var height := 1.55
+	if probe.get("model_height") != null:
+		height = float(probe.get("model_height"))
+	var at := Vector3(_camera_x, 0.0, 0.0)
+	var feet := camera.unproject_position(at)
+	var head := camera.unproject_position(at + Vector3(0.0, height, 0.0))
+	var frame := float(get_viewport().get_visible_rect().size.y)
+	return absf(feet.y - head.y) / maxf(frame, 1.0)
+
+
+func camera_distance() -> float:
+	return camera.position.z if camera != null else 0.0
+
+
+# =========================================================================
+# Per-frame mirror of the 2D simulation
+# =========================================================================
+func _process(delta: float) -> void:
+	_pulse = move_toward(_pulse, 0.0, delta * 4.2)
+	_kick = move_toward(_kick, 0.0, delta * 2.4)
+	_shake = move_toward(_shake, 0.0, delta * 3.0)
+	_update_phase(delta)
+	_update_camera(delta)
+	_update_fighters()
+	_update_speakers()
+	_update_crowd(delta)
+	if pool_material != null:
+		var base := float(_phase_now.get("pool_alpha", 0.15))
+		pool_material.set_shader_parameter("intensity", base + _pulse * 0.10)
+
+
+func _update_camera(delta: float) -> void:
+	var p1: BaseFighter = fighters.get("p1")
+	var p2: BaseFighter = fighters.get("p2")
+	if p1 != null and p2 != null:
+		var mid := (p1.global_position.x + p2.global_position.x) * 0.5
+		var target := clampf(px_to_world_x(mid), CAMERA_MIN_X, CAMERA_MAX_X)
+		_camera_x = lerpf(_camera_x, target, 1.0 - exp(-CAMERA_FOLLOW * delta))
+	var jitter := Vector3(
+		_rng.randf_range(-1.0, 1.0) * _shake,
+		_rng.randf_range(-1.0, 1.0) * _shake * 0.7,
+		0.0)
+	camera.position = Vector3(_camera_x + jitter.x, CAMERA_HEIGHT + jitter.y, CAMERA_DISTANCE)
+	camera.fov = CAMERA_FOV - _kick * 3.2
+	camera.h_offset = 0.0
+	camera.v_offset = 0.0
+
+
+func _update_fighters() -> void:
+	for key in fighters:
+		var fighter: BaseFighter = fighters[key]
+		var model: Node3D = models.get(key)
+		if fighter == null or model == null:
+			continue
+		var lift := maxf(0.0, (FLOOR_PX - fighter.global_position.y) / PX_PER_M)
+		model.position = Vector3(px_to_world_x(fighter.global_position.x), lift, 0.0)
+		var shadow: MeshInstance3D = shadows.get(key)
+		if shadow != null:
+			var shrink := clampf(1.0 - lift * 0.28, 0.55, 1.0)
+			shadow.position = Vector3(model.position.x + lift * 0.18, 0.018, 0.02)
+			shadow.scale = Vector3(shrink, 1.0, shrink)
+			var mat := shadow.material_override as ShaderMaterial
+			if mat != null:
+				mat.set_shader_parameter("opacity", 0.58 * clampf(1.0 - lift * 0.22, 0.25, 1.0))
+
+
+func _update_speakers() -> void:
+	var punch := _pulse * _pulse
+	for cone in _cones:
+		if cone == null:
+			continue
+		# The cone cylinder's local +Y is its depth after the 90° mount rotation.
+		var depth := 1.0 + punch * 0.85 + sin(_pulse * 18.0) * 0.05
+		cone.scale = Vector3(1.0 + punch * 0.10, depth, 1.0 + punch * 0.10)
+
+
+func _update_crowd(delta: float) -> void:
+	# Unsynchronised head/shoulder sway, so the crowd is never a uniform bounce loop.
+	for person in _crowd:
+		var node: Node3D = person["node"]
+		if node == null:
+			continue
+		person["phase"] = float(person["phase"]) + delta * float(person["rate"])
+		node.rotation.z = sin(float(person["phase"])) * float(person["sway"])
+
+
+func _update_phase(delta: float) -> void:
+	if _phase_duration <= 0.0:
+		return
+	_phase_age += delta
+	var t := clampf(_phase_age / _phase_duration, 0.0, 1.0)
+	_phase_now = _blend_palette(_phase_from, _phase_to, t)
+	_push_palette(_phase_now)
+	if t >= 1.0:
+		_phase_duration = 0.0
+
+
+func _blend_palette(from: Dictionary, to: Dictionary, t: float) -> Dictionary:
+	var out: Dictionary = {}
+	for key in to:
+		var a = from.get(key, to[key])
+		var b = to[key]
+		match typeof(b):
+			TYPE_COLOR:
+				var ac: Color = a
+				var bc: Color = b
+				out[key] = ac.lerp(bc, t)
+			TYPE_VECTOR3:
+				var av: Vector3 = a
+				var bv: Vector3 = b
+				out[key] = av.lerp(bv, t)
+			TYPE_FLOAT:
+				out[key] = lerpf(float(a), float(b), t)
+			_:
+				out[key] = b
+	return out
+
+
+func _apply_phase(phase: Dictionary) -> void:
+	_phase_now = phase.duplicate()
+	_push_palette(_phase_now)
+
+
+func _push_palette(p: Dictionary) -> void:
+	if world_env == null or world_env.environment == null:
+		return
+	var env := world_env.environment
+	env.background_color = p["sky_bottom"]
+	env.ambient_light_color = p["ambient"]
+	env.ambient_light_energy = float(p["ambient_energy"])
+	env.fog_light_color = p["fog"]
+	env.fog_density = float(p["fog_density"])
+	if sun != null:
+		sun.light_color = p["sun_colour"]
+		sun.light_energy = float(p["sun_energy"])
+		sun.rotation_degrees = p["sun_rotation"]
+	if rim != null:
+		rim.light_color = p["rim"]
+		rim.light_energy = float(p["rim_energy"])
+	if spot_left != null:
+		spot_left.light_color = p["spot_colour"]
+		spot_left.light_energy = float(p["spot_energy"])
+	if spot_right != null:
+		spot_right.light_color = p["spot_colour"]
+		spot_right.light_energy = float(p["spot_energy"]) * 0.85
+	if sky_material != null:
+		sky_material.set_shader_parameter("top_colour", p["sky_top"])
+		sky_material.set_shader_parameter("bottom_colour", p["sky_bottom"])
+		sky_material.set_shader_parameter("haze_colour", p["sky_haze"])
+	if pool_material != null:
+		pool_material.set_shader_parameter("pool_colour", p["pool"])
+		pool_material.set_shader_parameter("intensity", float(p["pool_alpha"]))
+	if sun_material != null:
+		sun_material.set_shader_parameter("disc_colour", p["disc_colour"])
+		sun_material.set_shader_parameter("intensity", float(p["disc"]))
+		if _sun_disc != null:
+			_sun_disc.position = p["disc_pos"]
+			var s := float(p["disc_size"])
+			_sun_disc.scale = Vector3(s, s, 1.0)
+
+
+# =========================================================================
+# World construction
+# =========================================================================
+func _build_environment() -> void:
+	world_env = WorldEnvironment.new()
+	world_env.name = "WorldEnvironment"
+	var env := Environment.new()
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color(0.55, 0.72, 0.90)
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.55, 0.62, 0.78)
+	env.ambient_light_energy = 0.55
+	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+	env.fog_enabled = true
+	env.fog_light_color = Color(0.80, 0.86, 0.94)
+	env.fog_density = 0.004
+	env.fog_sky_affect = 0.0
+	env.fog_aerial_perspective = 0.0
+	world_env.environment = env
+	add_child(world_env)
+
+
+func _build_camera() -> void:
+	camera = Camera3D.new()
+	camera.name = "StageCamera"
+	camera.fov = CAMERA_FOV
+	camera.near = 0.05
+	camera.far = 90.0
+	camera.current = true
+	camera.position = Vector3(0.0, CAMERA_HEIGHT, CAMERA_DISTANCE)
+	add_child(camera)
+
+
+var _sun_disc: MeshInstance3D = null
+
+
+func _build_yard() -> void:
+	# Sand floor with real perspective depth.
+	var sand := _mat(Color(0.80, 0.64, 0.38), 1.0)
+	var floor_mesh := PlaneMesh.new()
+	floor_mesh.size = Vector2(24.0, 18.0)
+	floor_mesh.subdivide_width = 1
+	floor_mesh.subdivide_depth = 1
+	var floor_node := MeshInstance3D.new()
+	floor_node.name = "SandFloor"
+	floor_node.mesh = floor_mesh
+	floor_node.material_override = sand
+	floor_node.position = Vector3(0.0, 0.0, -3.5)
+	add_child(floor_node)
+
+	# Damp sand mounds, so the floor is not a flat colour card.
+	var mound_mat := _mat(Color(0.72, 0.56, 0.33), 1.0)
+	for i in 14:
+		var mound := MeshInstance3D.new()
+		var disc := CylinderMesh.new()
+		disc.top_radius = _rng.randf_range(0.16, 0.44)
+		disc.bottom_radius = disc.top_radius * 1.6
+		disc.height = 0.035
+		disc.radial_segments = 12
+		disc.rings = 1
+		mound.mesh = disc
+		mound.material_override = mound_mat
+		mound.position = Vector3(_rng.randf_range(-5.5, 5.5), 0.018, _rng.randf_range(-2.5, 1.4))
+		mound.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mound)
+
+	# Sky gradient and the afternoon/sunset disc.
+	var sky_quad := QuadMesh.new()
+	sky_quad.size = Vector2(44.0, 22.0)
+	sky_material = ShaderMaterial.new()
+	sky_material.shader = SKY_SHADER
+	var sky := MeshInstance3D.new()
+	sky.name = "SkyBackdrop"
+	sky.mesh = sky_quad
+	sky.material_override = sky_material
+	sky.position = Vector3(0.0, 5.6, -15.0)
+	sky.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(sky)
+
+	var sun_quad := QuadMesh.new()
+	sun_quad.size = Vector2(1.0, 1.0)
+	sun_material = ShaderMaterial.new()
+	sun_material.shader = SUN_SHADER
+	_sun_disc = MeshInstance3D.new()
+	_sun_disc.name = "SunDisc"
+	_sun_disc.mesh = sun_quad
+	_sun_disc.material_override = sun_material
+	_sun_disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_sun_disc.position = Vector3(-3.2, 2.9, -13.6)
+	add_child(_sun_disc)
+
+	# Horizon band and a crowd barrier: depth markers, not props stacked on the fighting lane.
+	_add_box(self, "HorizonBand", Vector3(34.0, 0.55, 0.4), Vector3(0.0, 0.30, -12.4),
+		_mat(Color(0.20, 0.20, 0.26), 1.0))
+	_add_box(self, "BarrierRail", Vector3(13.0, 0.09, 0.09), Vector3(0.0, 0.95, -2.55),
+		_mat(Color(0.66, 0.68, 0.72), 0.45, 0.7))
+	_add_box(self, "BarrierLower", Vector3(13.0, 0.07, 0.07), Vector3(0.0, 0.50, -2.55),
+		_mat(Color(0.58, 0.60, 0.64), 0.5, 0.6))
+	for i in 9:
+		_add_box(self, "BarrierPost", Vector3(0.06, 1.02, 0.06),
+			Vector3(-6.0 + i * 1.5, 0.51, -2.55), _mat(Color(0.52, 0.54, 0.58), 0.5, 0.6))
+
+	# Additive pool of stage light on the sand (the SpotLights are the real illumination).
+	var pool_quad := QuadMesh.new()
+	pool_quad.size = Vector2(5.6, 2.9)
+	pool_material = ShaderMaterial.new()
+	pool_material.shader = LIGHT_POOL
+	var pool := MeshInstance3D.new()
+	pool.name = "StageLightPool"
+	pool.mesh = pool_quad
+	pool.material_override = pool_material
+	pool.rotation.x = -PI * 0.5
+	pool.position = Vector3(0.0, 0.012, -0.3)
+	pool.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(pool)
+
+
+func _build_speakers() -> void:
+	for side in [-1.0, 1.0]:
+		var stack := Node3D.new()
+		stack.name = "SpeakerStackLeft" if side < 0.0 else "SpeakerStackRight"
+		stack.position = Vector3(side * 2.55, 0.0, -1.45)
+		add_child(stack)
+		var cabinet := _mat(Color(0.09, 0.09, 0.10), 0.8)
+		var cone_mat := _mat(Color(0.03, 0.03, 0.035), 0.55, 0.15)
+		var horn_mat := _mat(Color(0.72, 0.70, 0.62), 0.35, 0.8)
+		var rasta := [_mat(Color(0.16, 0.55, 0.20), 0.9),
+			_mat(Color(0.85, 0.68, 0.12), 0.9), _mat(Color(0.70, 0.13, 0.11), 0.9)]
+		_add_box(stack, "Plinth", Vector3(1.16, 0.18, 0.94), Vector3(0.0, 0.09, 0.0), cabinet)
+		for i in 3:
+			var y := 0.55 + float(i) * 0.72
+			_add_box(stack, "Cabinet%d" % i, Vector3(1.02, 0.68, 0.72),
+				Vector3(0.0, y, 0.0), cabinet)
+			# Rasta stripe inset on the cabinet face, matching the yard's palette.
+			_add_box(stack, "Stripe%d" % i, Vector3(0.96, 0.05, 0.02),
+				Vector3(0.0, y + 0.24, 0.372), rasta[i])
+			var cone_radius := 0.26 if i < 2 else 0.33
+			for c in 2:
+				var cone := _add_cone(stack, "Cone%d_%d" % [i, c], cone_radius, 0.10,
+					Vector3(-0.23 + float(c) * 0.46, y - 0.06, 0.40), cone_mat)
+				_cones.append(cone)
+			_add_cone(stack, "Tweeter%d" % i, 0.08, 0.06,
+				Vector3(0.0, y + 0.22, 0.40), horn_mat)
+		_add_box(stack, "HornTop", Vector3(0.92, 0.44, 0.62), Vector3(0.0, 2.88, 0.0), cabinet)
+		for c in 2:
+			var horn := _add_cone(stack, "Horn%d" % c, 0.20, 0.16,
+				Vector3(-0.22 + float(c) * 0.44, 2.88, 0.35), horn_mat)
+			_cones.append(horn)
+		# A sub-bass chimney makes the low-end pulse read from the cheap seats.
+		_add_box(stack, "Chimney", Vector3(0.34, 0.9, 0.34), Vector3(0.0, 3.55, 0.0), cabinet)
+		_add_cone(stack, "ChimneyCone", 0.16, 0.10, Vector3(0.0, 3.55, 0.20), cone_mat)
+
+
+func _build_truss_and_lights() -> void:
+	var metal := _mat(Color(0.34, 0.36, 0.40), 0.45, 0.8)
+	for side in [-1.0, 1.0]:
+		_add_box(self, "TrussTower", Vector3(0.16, 4.4, 0.16),
+			Vector3(side * 3.55, 2.2, -0.35), metal)
+	_add_box(self, "TrussBeam", Vector3(7.4, 0.16, 0.16), Vector3(0.0, 4.35, -0.35), metal)
+	for i in 4:
+		_add_box(self, "Fixture", Vector3(0.22, 0.30, 0.22),
+			Vector3(-2.4 + i * 1.6, 4.05, -0.35), _mat(Color(0.08, 0.08, 0.09), 0.7))
+
+	spot_left = SpotLight3D.new()
+	spot_left.name = "SpotLeft"
+	spot_left.position = Vector3(-1.25, 3.95, 0.55)
+	spot_left.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+	spot_left.spot_range = 8.0
+	spot_left.spot_angle = 34.0
+	spot_left.spot_angle_attenuation = 0.7
+	spot_left.light_energy = 1.0
+	spot_left.shadow_enabled = false
+	add_child(spot_left)
+	spot_right = SpotLight3D.new()
+	spot_right.name = "SpotRight"
+	spot_right.position = Vector3(1.25, 3.95, 0.55)
+	spot_right.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+	spot_right.spot_range = 8.0
+	spot_right.spot_angle = 34.0
+	spot_right.spot_angle_attenuation = 0.7
+	spot_right.light_energy = 1.0
+	spot_right.shadow_enabled = false
+	add_child(spot_right)
+
+	sun = DirectionalLight3D.new()
+	sun.name = "Sun"
+	sun.rotation_degrees = Vector3(-52.0, -26.0, 0.0)
+	sun.light_energy = 1.2
+	sun.shadow_enabled = true
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	sun.directional_shadow_max_distance = 22.0
+	add_child(sun)
+
+	fill = DirectionalLight3D.new()
+	fill.name = "CameraFill"
+	fill.rotation_degrees = Vector3(-38.0, 172.0, 0.0)
+	fill.light_color = Color(0.72, 0.80, 1.0)
+	fill.light_energy = 0.28
+	fill.shadow_enabled = false
+	add_child(fill)
+
+	rim = OmniLight3D.new()
+	rim.name = "WarmRim"
+	rim.position = Vector3(0.0, 1.9, -1.6)
+	rim.omni_range = 6.0
+	rim.light_energy = 0.6
+	rim.shadow_enabled = false
+	add_child(rim)
+
+
+func _build_crowd() -> void:
+	var shirts := [
+		Color(0.16, 0.16, 0.19), Color(0.22, 0.20, 0.18), Color(0.28, 0.16, 0.15),
+		Color(0.12, 0.24, 0.16), Color(0.30, 0.26, 0.12), Color(0.18, 0.20, 0.28),
+	]
+	for i in 26:
+		var person := Node3D.new()
+		person.name = "Crowd%02d" % i
+		var x := _rng.randf_range(-6.4, 6.4)
+		var z := _rng.randf_range(-6.6, -3.4)
+		person.position = Vector3(x, 0.0, z)
+		person.rotation.y = _rng.randf_range(-0.5, 0.5)
+		add_child(person)
+		var shirt := _mat(shirts[i % shirts.size()], 1.0)
+		var body := MeshInstance3D.new()
+		var capsule := CapsuleMesh.new()
+		capsule.radius = 0.17
+		capsule.height = _rng.randf_range(0.72, 0.92)
+		capsule.radial_segments = 8
+		capsule.rings = 2
+		body.mesh = capsule
+		body.material_override = shirt
+		body.position.y = capsule.height * 0.5
+		body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		person.add_child(body)
+		var head := MeshInstance3D.new()
+		var sphere := SphereMesh.new()
+		sphere.radius = 0.13
+		sphere.height = 0.26
+		sphere.radial_segments = 8
+		sphere.rings = 4
+		head.mesh = sphere
+		head.material_override = _mat(Color(0.32, 0.22, 0.16), 1.0)
+		head.position.y = capsule.height + 0.10
+		head.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		person.add_child(head)
+		if i % 4 == 0:
+			# A raised arm or two keeps the back rows from reading as bowling pins.
+			var arm := MeshInstance3D.new()
+			var cyl := CylinderMesh.new()
+			cyl.top_radius = 0.035
+			cyl.bottom_radius = 0.045
+			cyl.height = 0.52
+			cyl.radial_segments = 6
+			cyl.rings = 1
+			arm.mesh = cyl
+			arm.material_override = _mat(Color(0.30, 0.21, 0.15), 1.0)
+			arm.position = Vector3(0.22 if i % 8 == 0 else -0.22, capsule.height + 0.24, 0.0)
+			arm.rotation.z = 0.35 if i % 8 == 0 else -0.35
+			arm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			person.add_child(arm)
+		_crowd.append({
+			"node": person,
+			"phase": _rng.randf_range(0.0, TAU),
+			"rate": _rng.randf_range(0.6, 1.4),
+			"sway": _rng.randf_range(0.015, 0.05),
+		})
+
+
+func _make_fighter(fighter: BaseFighter) -> Node3D:
+	var key := fighter.fighter_key
+	if MODEL_SCRIPT.MODEL_SOURCES.has(key):
+		var model = MODEL_SCRIPT.new()
+		add_child(model)
+		if model.bind(fighter, key):
+			return model
+		model.queue_free()
+	var billboard = BILLBOARD_SCRIPT.new()
+	add_child(billboard)
+	billboard.bind(fighter, key)
+	return billboard
+
+
+func _make_contact_shadow() -> MeshInstance3D:
+	var quad := QuadMesh.new()
+	quad.size = Vector2(1.0, 0.52)
+	var mat := ShaderMaterial.new()
+	mat.shader = CONTACT_SHADOW
+	mat.set_shader_parameter("opacity", 0.58)
+	var shadow := MeshInstance3D.new()
+	shadow.name = "ContactShadow"
+	shadow.mesh = quad
+	shadow.material_override = mat
+	shadow.rotation.x = -PI * 0.5
+	shadow.position = Vector3(0.0, 0.018, 0.02)
+	shadow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(shadow)
+	return shadow
+
+
+func _spawn_burst(at: Vector3, power: float, angle: float) -> void:
+	# Prune freed bursts first, then recycle the oldest if the cap is reached, so a long
+	# brawl can never stack note geometry.
+	_live_bursts = _live_bursts.filter(func(node): return is_instance_valid(node) and not node.is_queued_for_deletion())
+	if _live_bursts.size() >= MAX_BURSTS:
+		var oldest = _live_bursts.pop_front()
+		if is_instance_valid(oldest):
+			oldest.queue_free()
+	var burst = BURST_SCRIPT.new()
+	add_child(burst)
+	burst.burst(at, power, angle)
+	_live_bursts.append(burst)
+
+
+# =========================================================================
+# Small geometry helpers
+# =========================================================================
+func _mat(colour: Color, roughness: float = 1.0, metallic: float = 0.0) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = colour
+	mat.roughness = roughness
+	mat.metallic = metallic
+	return mat
+
+
+func _add_box(parent: Node3D, node_name: String, size: Vector3, at: Vector3,
+		material: Material) -> MeshInstance3D:
+	var box := BoxMesh.new()
+	box.size = size
+	var mi := MeshInstance3D.new()
+	mi.name = node_name
+	mi.mesh = box
+	mi.position = at
+	mi.material_override = material
+	parent.add_child(mi)
+	return mi
+
+
+func _add_cone(parent: Node3D, node_name: String, radius: float, depth: float,
+		at: Vector3, material: Material) -> MeshInstance3D:
+	var cone := CylinderMesh.new()
+	cone.top_radius = radius
+	cone.bottom_radius = radius * 0.35
+	cone.height = depth
+	cone.radial_segments = 16
+	cone.rings = 1
+	var mi := MeshInstance3D.new()
+	mi.name = node_name
+	mi.mesh = cone
+	mi.material_override = material
+	# Mount the cone on the cabinet face: local +Y depth becomes +Z into the yard.
+	mi.rotation.x = PI * 0.5
+	mi.position = at
+	parent.add_child(mi)
+	return mi
+
+
+static func px_to_world_x(px: float) -> float:
+	return (px - CENTER_PX) / PX_PER_M
+
+
+static func px_to_world(at: Vector2) -> Vector3:
+	return Vector3(px_to_world_x(at.x), maxf(0.0, (FLOOR_PX - at.y) / PX_PER_M), 0.0)

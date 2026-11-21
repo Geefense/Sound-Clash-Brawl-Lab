@@ -1,7 +1,18 @@
-# Audio assets — empty
+# Audio assets
 
-No audio files exist in the repository yet: no music, no Patois voice lines, no hit/block/KO
-effects. The web prototype's sound is generated at runtime by `SoundEffects.ts` (oscillator tones),
+The build ships **no recorded audio**: no music, no Patois voice lines, no hit/block/KO
+samples. The only file in this tree is `default_bus_layout.tres`, the native bus/effect layout
+for the Sound Clash engine.
+
+- `placeholders/` — empty by design. The engine synthesises its placeholder sting, tags,
+  selector, horn and crowd layers at run time (see the README there).
+- `production/` — the exact slot filenames owner-approved recordings should use; each entry
+  names the bus and the timing contract.
+- `default_bus_layout.tres` — Master, Music, SFX, Crowd, `DJTag` (AudioEffectDelay →
+  AudioEffectLowPassFilter → AudioEffectReverb), Selector and Stinger.
+
+The web prototype's sound is generated at runtime by `SoundEffects.ts` (oscillator tones),
+which is reference behaviour, not an asset. The web prototype's sound is generated at runtime by `SoundEffects.ts` (oscillator tones),
 which is reference behaviour, not an asset.
 
 When approved audio arrives, keep it here by role, e.g. `music/`, `voice/`, `sfx/`, and record the

@@ -17,7 +17,7 @@ Purpose: Establish the permanent creative direction for Sound Clash Brawl and gu
 ## 2. Authentic Sound Clash Dynamics, DJ Tags & Musical Ammunition
 
 • The Mighty Crown Reference: Mighty Crown demonstrates how exclusive dubplates and selector swagger generate escalating crowd anticipation—every drop creates tension because the crowd doesn't know what ammunition comes next.
-• Character DJ Tags & Dub-Echo Wheel-Ups ([TODO] Future Audio & Combat Mechanic): Because each fighter is their own sound system, major hits and counter-attacks trigger echoing DJ vocal tags of the character's name (e.g., "FEEDBACK... Feedback... feedback..." echoing with dub delay right after smacking an opponent across the arena, answered by "L!CKSHOT... L!ckshot... l!ckshot..." when the opponent counter-attacks / wheels up!).
+• Character DJ Tags & Dub-Echo Wheel-Ups (audio engine implemented 2026-11-21 with synthesised placeholders; **approved recordings still [TODO]**): Because each fighter is their own sound system, major hits and counter-attacks trigger echoing DJ vocal tags of the character's name (e.g., "FEEDBACK... Feedback... feedback..." echoing with dub delay right after smacking an opponent across the arena, answered by "L!CKSHOT... L!ckshot... l!ckshot..." when the opponent counter-attacks / wheels up!).
 • "Plenty of Dubs" -> Bass-Dizzy Stun & "Tune-Fi-Tune" Counter ([TODO]): Dropping a dubplate special unleashes a sub-bass wave that inflicts a comedic musical dizzy stun (wobbly knees + spinning musical notes around the opponent's head) unless answered by a timed parry or counter-dub ("WHEEL AND COME AGAIN!").
 
 ## 3. Generations of Sound Clash Culture
@@ -48,7 +48,46 @@ Purpose: Establish the permanent creative direction for Sound Clash Brawl and gu
 
 • Explore original dubplate-inspired recordings, echoing character DJ tags, selector/MC callouts, 132 BPM dancehall/reggae riddims, sound-system sirens/power-downs, crowd forwards/whistles/laughter, and character-specific voice expressions—using strictly original, licensed, or creator-approved recordings.
 
-## 7. Research, Cultural Accuracy & Permanent Development Principles
+### 2026-11-21 status note — 3D presentation
+
+The 2.5D rim-light, impact-frame and musical-note-trail ideas in §4 are now implemented, and the
+fighter presentation has moved to a **3D cel-shaded / inked** layer on a Node3D yard with real
+DirectionalLight3D + SpotLight3D afternoon/sunset/night rigs. The combat simulation, hitboxes,
+input handling, Patois callouts and round flow are unchanged. This is implementation status, not
+new creative approval: the owner has not seen the rendered 3D build yet.
+
+## 8. Recorded Future Backlog — 2026-11-21 (Record Only — Do Not Implement Yet)
+
+These three items are recorded at the owner's request and are **not built**. They change no code,
+scene, hitbox, timing value or `/docs/` export file. They live here permanently alongside the
+creative direction so a later session can pick one up without re-deciding the concept.
+
+### [TODO] B13 — Toronto Selector Party & Jukebox Mode
+
+Standalone Title Menu mode celebrating Toronto's multicultural party melting pot (Reggae,
+Dancehall, Hip-Hop, R&B, House and Soca). Players pick a 3D selector (Feedback, L!ckshot,
+L!kkle Moore) to dance/skank behind the 3D speaker stacks and talk DJ-style over tracks, with
+automatic music ducking and tape-delay mic echo, and can trigger manual **PULL UP! / WHEEL UP!**
+rewinds and airhorns. Strictly creator-owned tracks may be streamed and one-click downloaded from
+`docs/tracks/`; users may also load local audio files for 100% client-side, in-browser RAM playback
+only. **Copyright safeguard:** user files are NEVER uploaded to any server, stored remotely, or
+distributed to other players.
+
+### [TODO] B14 — "World Clash" Arcade Tour & International Bookings
+
+Classic fighting-game world ladder with lightweight promoter-booking progression — never an open
+world — where winning clashes unlocks international bookings from Jamaica (Home Beach Arena) to
+Toronto, Montreal, New York, London (England) and Japan, each with a distinct 3D stage atmosphere
+and an international rival.
+
+### [TODO] B15 — Panicking Promoter Commentator & Personal Crowd Shout-Outs
+
+Reactive event-promoter voice slot who panics whenever fighters collide near the speaker stacks
+("Dat coming out yuh fee!", "Yuh nah get paid fi dat!", "Me never booking yuh sound again!"), plus
+creator-approved crowd shout-out slots dedicated to real-life friends, family and local supporters
+(with their permission, avoiding unapproved celebrity names).
+
+## 9. Research, Cultural Accuracy & Permanent Development Principles
 
 • Prioritize primary cultural references and the creator's lived cultural knowledge—never reduce sound clash culture to superficial stereotypes.
 • Follow the 10 Permanent Development Principles: (1) Sound clash culture is the foundation; (2) Epic fighting is the primary gameplay; (3) Character designs stay consistent; (4) Original animations are creator-led; (5) Cultural authenticity informs gameplay, sound, and personality; (6) Existing Godot 4.5 systems are not unnecessarily replaced; (7) Major creative changes require creator approval; (8) New features are added incrementally and verified; (9) Preserve humour, Jamaican expressions, and competitive swagger; (10) Avoid superficial stereotypes.

@@ -1,0 +1,76 @@
+[gd_resource type="AudioBusLayout" load_steps=5 format=3]
+
+[sub_resource type="AudioEffectDelay" id="AudioEffectDelay_mwo4r"]
+dry = 0.55
+tap1_delay_ms = 265.0
+tap1_level_db = -5.0
+tap2_delay_ms = 530.0
+tap2_level_db = -13.0
+feedback_active = true
+feedback_delay_ms = 300.0
+feedback_level_db = -9.5
+feedback_lowpass = 3600.0
+
+[sub_resource type="AudioEffectLowPassFilter" id="AudioEffectLowPassFilter_pldmy"]
+cutoff_hz = 4200.0
+resonance = 0.35
+
+[sub_resource type="AudioEffectReverb" id="AudioEffectReverb_1c8n0"]
+predelay_msec = 28.0
+room_size = 0.62
+damping = 0.45
+spread = 0.9
+hipass = 220.0
+dry = 0.85
+wet = 0.32
+
+[sub_resource type="AudioEffectDelay" id="AudioEffectDelay_uvk5q"]
+dry = 0.7
+tap1_delay_ms = 180.0
+tap1_level_db = -8.0
+
+[resource]
+bus/1/name = &"Music"
+bus/1/solo = false
+bus/1/mute = false
+bus/1/bypass_fx = false
+bus/1/volume_db = -2.0
+bus/1/send = &"Master"
+bus/2/name = &"SFX"
+bus/2/solo = false
+bus/2/mute = false
+bus/2/bypass_fx = false
+bus/2/volume_db = 0.0
+bus/2/send = &"Master"
+bus/3/name = &"Crowd"
+bus/3/solo = false
+bus/3/mute = false
+bus/3/bypass_fx = false
+bus/3/volume_db = -6.0
+bus/3/send = &"Master"
+bus/4/name = &"DJTag"
+bus/4/solo = false
+bus/4/mute = false
+bus/4/bypass_fx = false
+bus/4/volume_db = 0.0
+bus/4/send = &"Master"
+bus/4/effect/0/effect = SubResource("AudioEffectDelay_mwo4r")
+bus/4/effect/0/enabled = true
+bus/4/effect/1/effect = SubResource("AudioEffectLowPassFilter_pldmy")
+bus/4/effect/1/enabled = true
+bus/4/effect/2/effect = SubResource("AudioEffectReverb_1c8n0")
+bus/4/effect/2/enabled = true
+bus/5/name = &"Selector"
+bus/5/solo = false
+bus/5/mute = false
+bus/5/bypass_fx = false
+bus/5/volume_db = -1.0
+bus/5/send = &"Master"
+bus/5/effect/0/effect = SubResource("AudioEffectDelay_uvk5q")
+bus/5/effect/0/enabled = true
+bus/6/name = &"Stinger"
+bus/6/solo = false
+bus/6/mute = false
+bus/6/bypass_fx = false
+bus/6/volume_db = -1.0
+bus/6/send = &"Master"

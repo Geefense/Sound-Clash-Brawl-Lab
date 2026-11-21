@@ -76,6 +76,9 @@ var anim_scale: Dictionary = {}
 var anim_source_max: Dictionary = {}
 var anim_source_max_default: float = ANIM_SOURCE_MAX_DEFAULT
 var _reach_applied: bool = false
+## Presentation-only switch set by the 3D arena. Hides the 2D sprite/shadow/dust; the FSM,
+## the CharacterBody2D, the hitboxes and every combat value stay exactly as they are.
+var _presentation_3d: bool = false
 ## Attacks that ship their own drawn pose, so the arena's generic strike smear must not be
 ## painted over them (Lickshot's Sonic Clap and high kick — FighterRoster §9 item 27).
 var _no_strike_tell: Array = []
@@ -1486,6 +1489,23 @@ func _set_facing(dir: int) -> void:
 		return
 	facing = dir
 	_play_state_anim()
+
+
+## 3D presentation hand-off (AGENTS.md §9 item 43). The fighter keeps running its 2D FSM;
+## only the drawing layer moves to the 3D proxy, so hitboxes, hurtboxes, input buffering and
+## beat judgement are untouched. Turning it off restores the 2D sprite exactly as it was.
+func set_3d_presentation(on: bool) -> void:
+	_presentation_3d = on
+	if sprite != null:
+		sprite.visible = not on
+	if shadow != null:
+		shadow.visible = not on
+	if dust != null:
+		dust.visible = not on
+
+
+func is_3d_presentation() -> bool:
+	return _presentation_3d
 
 
 ## Time-of-day shadows: the arena points every contact shadow away from the light source and

@@ -59,3 +59,7 @@ Thumbs.db
 
 # Python bytecode from the art-prep scripts
 __pycache__/
+
+# Decimation build scaffolding (python venv + extracted libOpenGL); not part of the game
+.venv/
+.local-libs/

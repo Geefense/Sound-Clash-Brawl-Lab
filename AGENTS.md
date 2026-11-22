@@ -1919,8 +1919,8 @@ here is gameplay-verified; implementation status is stated per item.
       | File | Mesh | Rig | Face | Embedded albedo |
       | --- | --- | --- | --- | --- |
       | `feedback_v2.fbx` | **29,025 tris** / 23,612 verts | none (static) | +Z | 1024² PNG **RGBA** |
-      | `lickshot.fbx` | **270,074 tris** / 151,028 verts | none (static) | +X | 1024² PNG RGB |
-      | `likkle_moore.fbx` | **246,654 tris** / 139,168 verts | none (static) | +X | 1024² PNG RGB |
+      | `lickshot.fbx` | **270,074 tris** / 151,028 verts → **28,000** after item 50 | none (static) | +X | 1024² PNG RGB |
+      | `likkle_moore.fbx` | **246,654 tris** / 139,168 verts → **28,000** after item 50 | none (static) | +X | 1024² PNG RGB |
     - **Texture fix / WebP audit** — every embedded `Video/Content` blob is a standard PNG
       (`\x89PNG`), 8-bit 1024 × 1024, **no WebP/RIFF data**; the earlier WebP concern does not
       apply to this set. The albedos were extracted to `feedback_v2_albedo.png`,
@@ -1965,6 +1965,74 @@ here is gameplay-verified; implementation status is stated per item.
       orientation, mirror tint and actual frame rate have not been seen. The 270k/247k-triangle
       meshes are wired exactly as uploaded; Godot's generated LODs are enabled, but a real
       Chromebook frame-time measurement is still required before treating them as shipping-safe.
+
+
+50. **Three tournament-ready movesets, signature 3D motion and 28k meshes (2026-11-22).**
+
+    Owner request on `feature/3d-cel-shaded` at `f98244b`: give Feedback, L!ckshot and L!kkle Moore
+    complete, distinct movesets with readable 3D differentiation, decimate the two large uploads to
+    ~28k triangles, assert it headlessly, rebuild `/docs`, document and push. **Implemented,
+    headlessly verified; rendered 3D and device frame rate are not verified (no GPU/display).**
+
+    - **Feedback keeps 100 % of his combat data.** `FighterRoster` has no `moves` entry for him, so
+      `jab 4/3/9`, `strong 9/4/18`, `tump 12/4/12`, `upper_box 8/4/16`, every damage, knockback and
+      hitbox value, hitstop and grab timing are unchanged. His differentiation is presentation:
+      J open-palm lunge, I rising launch with lift/pitch and Rasta note burst, K bass surge with a
+      1.75× speaker-cone punch and note trail, L high Clarks kick with 0.20 m lift and 0.40 rad
+      twist, U collar lunge, T lean-back groove, S gold-rim/vinyl parry.
+    - **L!ckshot's own numbers** (`FighterRoster.moves`): J mic snap `3/3/7`, 7 dmg, 96×34 box;
+      I heavy cross `14/4/20`, 18 dmg, 124×58 box, 380 px knockback, 6-tick hitstop and heavy
+      camera shake; K Sonic Clap `11/3/22` plus a travelling **ProjectileWave** — 16 dmg, 4 chip,
+      24 stun, 560 px/s for 1.35 s, 78×110; L advancing knee `10/3/16`, 14 dmg, 96×84, 900 px/s
+      advance (~190 px through active + recovery). Throw: hold 14, recovery 16, 16 dmg, launch
+      540 px/s, big sand burst + the existing tape-delay DJ tag. T builds 12 Hype and always fires
+      a Patois callout.
+    - **L!kkle Moore's own numbers**: J `3/3/6`, 7 dmg, 109×32 (keeps the +25 px reach);
+      I home-run swing `13/5/20`, 18 dmg, **150×78** box, 340 px knockback, note trail; K dictionary
+      `12/3/20` plus a short **ProjectileWave** — 17 dmg, 5 chip, **30 stun**, 470 px/s for 0.52 s;
+      L sweep `10/3/14`, 11 dmg, 124×38 low box, `low_profile` (crouch hurtbox 79 px) and
+      `knockdown`, 500 px/s advance. Throw: hold 9, recovery 8, 10 dmg. T builds 10 Hype and always
+      calls out. A counter-hit with I or K routes to **TEK WEH HIM MIC!** instead of the generic
+      heavy line.
+    - **3D differentiation** — `FighterModel3D.MOVE_STYLES` gives each fighter a startup coil and
+      contact drive per attack (lean, forward lunge, lift, depth pitch, yaw twist, squash). The
+      static uploads still have no skeleton, so this remains whole-body procedural motion; no
+      hitbox, hurtbox or timing reads it. `GRAB` now lunges forward, and the three taunts differ:
+      Feedback leans back, L!ckshot drops into a deeper selector lean with a slow shoulder turn,
+      the kid bounces with 0.42 rad footwork twist.
+    - **Signature effects** — `BaseFighter` emits `attack_became_active` and `projectile_spawned`;
+      `TestArena` stages per-move flourishes through `Arena3D`: a spinning gold-rimmed dubplate or
+      school dictionary, CPUParticles3D sand bursts, Rasta note trails, cone punches and a
+      black-vinyl/gold parry disc. Projectiles live in the `projectiles` group and are cleared at
+      round start/end. `ProjectileWave` is authoritative combat: it tests the live hurtbox and
+      calls the shared `receive_strike`, so guard/parry/damage/KO rules stay in one place.
+    - **Decimation to 28,000 triangles** — `godot/tools/decimate_fbx.py` parses the FBX, sends
+      per-corner UVs through pymeshlab's texture-preserving quadric collapse, then rewrites only
+      the `Geometry` children of the original node tree. L!ckshot: 270,074 → **28,000 tris /
+      20,797 verts / 3,003,222 B**. L!kkle Moore: 246,654 → **28,000 tris / 20,825 verts /
+      2,888,610 B**. Boundary locking was disabled because it plateaued at ~31.8k; the embedded
+      1024² PNG is byte-identical (1,418,402 B / 1,299,084 B), the root ×1000 scale is untouched,
+      and Godot still measures 1.58 m / 1.27 m. The `models-for-mixamo/` copies were regenerated
+      from the decimated files at 180 cm / 128 cm with `UnitScaleFactor 1.0`.
+    - **Verified headless** — **276 PASS / 0 FAIL**, `ALL CHECKS PASSED` (256 before this pass).
+      New assertions: twelve unique move signatures; Feedback's original timings; L!ckshot's
+      fast jab, heavy cross and advancing knee; the 150 px home-run box; the low sweep's live
+      crouched hurtbox (top 521, height 79) whiffing a standing jab; dubplate/dictionary specs;
+      every model under **35,000** tris (29,025 / 28,000 / 28,000); two signature moves per fighter
+      producing different 3D pivots; the dubplate spawning both a combat wave and its 3D proxy and
+      landing 100 → 84 hp through `receive_strike`; and accelerated kid throw timing.
+    - **`/docs` rebuilt** with `--headless --path godot --export-release "Web" ../docs/index.html`:
+      `index.pck` **38,626,932 B** (55,143,080 B before decimation), `index.wasm` 38,057,390 B,
+      `index.js` 305,185 B, `index.html` 5,449 B. Only the known fontconfig/ufbx warnings.
+    - **Not verified** — no GPU/display/audio here, so the actual 3D move silhouettes, disc/book
+      props, sand bursts, gold parry rim, cel look and the **60 FPS on Chromebook / iPhone Safari**
+      target have not been seen or measured. The triangle budget and the headless hit logic are
+      verified; Safari playback still needs a real-device check.
+    - **Files changed** — `godot/scripts/BaseFighter.gd`, `godot/scripts/fighters/
+      FighterRoster.gd`, `FighterModel3D.gd`, new `ProjectileWave.gd`, `godot/scripts/TestArena.gd`,
+      `godot/scripts/stages/Arena3D.gd`, new `godot/tools/decimate_fbx.py`,
+      `godot/tools/headless_roster_check.gd`, both decimated FBXs, `models-for-mixamo/`,
+      `MODELS.md`, `docs/`, `AGENTS.md` and `godot/AGENTS.md`.
 
 
 ### Approved Backlog / Roadmap — master list (2026-11-16)
@@ -2848,3 +2916,35 @@ writer.
 orientation, mirror tint and the actual frame rate of the 270k/247k-triangle meshes have not been
 seen on screen. Godot's import generates LODs, but these triangle counts are exactly as uploaded
 and still need a real Chromebook frame-time check before being treated as shipping-safe.
+
+### Tournament movesets, 28k meshes — headless verification, November 22, 2026
+
+Owner request on `feature/3d-cel-shaded` at `f98244b`: complete distinct movesets for all three
+fighters, per-move 3D differentiation, and 28k-triangle Lickshot/Likkle Moore meshes. Recorded as
+§9 item 50.
+
+```bash
+godot --headless --path godot --import
+godot --headless --path godot --script res://tools/headless_roster_check.gd
+godot --headless --path godot --export-release "Web" ../docs/index.html
+```
+
+**276 PASS / 0 FAIL**, `ALL CHECKS PASSED` (256 before this pass). The new checks assert twelve
+unique move signatures; Feedback's original 4/3/9, 9/4/18, 12/4/12 and 8/4/16 timings; L!ckshot's
+3/3/7 jab, 14/4/20 cross and advancing 10/3/16 knee; L!kkle Moore's 3/3/6 jab, 150 px home-run box
+and tripping 124×38 low sweep with a crouched live hurtbox that a standing jab misses; the
+dubplate and dictionary projectile specs; 29,025 / 28,000 / 28,000 triangles under the 35,000
+budget; separate 3D pivots for two signature moves per fighter; and a live dubplate wave that
+spawns its 3D proxy and lands through the shared `receive_strike` (100 → 84 hp).
+
+**Decimation.** Both large uploads are exactly 28,000 triangles now (20,797 / 20,825 verts) with
+per-corner UVs preserved, a byte-identical embedded 1024² PNG and the original ×1000 root scale;
+Godot still measures 1.58 m / 1.27 m. The Mixamo-ready copies were regenerated from those files at
+180 cm / 128 cm.
+
+**`/docs` rebuilt**: `index.pck` **38,626,932 B**, `index.wasm` 38,057,390 B, `index.js` 305,185 B,
+`index.html` 5,449 B.
+
+**Not verified — no GPU/display/audio.** The new 3D poses, dubplate/dictionary props, sand bursts,
+vinyl parry, cel look and the 60 FPS target on Chromebook / iPhone Safari have not been seen or
+measured. The headless combat logic and triangle budgets are verified; device playback is not.

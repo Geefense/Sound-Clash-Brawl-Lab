@@ -99,6 +99,62 @@ func _assert_procedural_stance(model: FighterModel3D, f: BaseFighter, label: Str
 		model._animate_pose(0.1)
 
 
+## Build one fighter's live attack table from the shared scene, then free the probe. This
+## reads exactly what `BaseFighter.apply_fighter_profile()` builds at match start, so a
+## roster edit that silently stops applying fails here.
+func _attacks_for(key: StringName) -> Dictionary:
+	var probe := load("res://scenes/BaseFighter.tscn").instantiate() as BaseFighter
+	root.add_child(probe)
+	probe.apply_fighter_profile(key)
+	var copy := {}
+	for id in [&"jab", &"strong", &"tump", &"upper_box"]:
+		copy[id] = (probe.attacks[id] as Dictionary).duplicate(true)
+	probe.free()
+	return copy
+
+
+func _move_signature(a: Dictionary) -> String:
+	return "%d/%d/%d dmg%d stun%d kb%s hb%s" % [
+		int(a["startup"]), int(a["active"]), int(a["recovery"]), int(a["damage"]),
+		int(a["hitstun"]), a["knockback"], a["hitbox_size"]]
+
+
+## The static uploads have no skeleton, so differentiation is entirely the per-move
+## whole-body profile. Drive two signature moves through `_animate_pose` and require their
+## assembled pivots (yaw twist, lift, lean) to separate.
+func _assert_move_pose_difference(model: FighterModel3D, f: BaseFighter, label: String) -> void:
+	if model == null or f == null or model._pivot == null:
+		_check(false, label + " has a per-move 3D pose")
+		return
+	var pairs := {
+		&"feedback": [&"tump", &"upper_box"],
+		&"lickshot": [&"strong", &"tump"],
+		&"young_selecta": [&"upper_box", &"tump"],
+	}
+	var ids: Array = pairs.get(f.fighter_key, [])
+	if ids.size() < 2:
+		_check(false, label + " has two styled signature moves")
+		return
+	var saved_state: int = f.state
+	var saved_attack: StringName = f._attack_id
+	var poses: Array[Vector3] = []
+	for id in ids:
+		f.state = BaseFighter.State.ATTACK_ACTIVE
+		f._attack_id = id
+		for i in 14:
+			model._animate_pose(0.08)
+		poses.append(Vector3(model._pivot.rotation.y, model._pivot.position.y,
+			model._pivot.rotation.z))
+	f.state = saved_state
+	f._attack_id = saved_attack
+	for i in 4:
+		model._animate_pose(0.1)
+	var delta := (poses[0] - poses[1]).abs()
+	_check(delta.x > 0.10 or delta.y > 0.05 or delta.z > 0.10,
+		label + " gives its signature moves separate 3D poses",
+		"%s vs %s -> yaw %.2f / lift %.2f / lean %.2f" % [ids[0], ids[1], delta.x, delta.y, delta.z])
+
+
 func _anim_floor_y(f: BaseFighter, key: StringName, index: int = 0) -> float:
 	var frames := f.sprite.sprite_frames
 	if frames == null or not frames.has_animation(key):
@@ -161,6 +217,73 @@ func _run() -> void:
 			and String(FighterModel3D.MODEL_SOURCES[&"lickshot"]["path"]).ends_with("lickshot.fbx")
 			and String(FighterModel3D.MODEL_SOURCES[&"young_selecta"]["path"]).ends_with("likkle_moore.fbx"),
 		"the three owner uploads are filed as feedback_v2, lickshot and likkle_moore")
+
+	# ---- Three tournament movesets (2026-11-22) --------------------------
+	var fb_moves := _attacks_for(&"feedback")
+	var ls_moves := _attacks_for(&"lickshot")
+	var km_moves := _attacks_for(&"young_selecta")
+	var all_sigs := []
+	for table in [fb_moves, ls_moves, km_moves]:
+		for id in [&"jab", &"strong", &"tump", &"upper_box"]:
+			all_sigs.append(_move_signature(table[id]))
+	var unique_sigs := {}
+	for sig in all_sigs:
+		unique_sigs[sig] = true
+	_check(unique_sigs.size() == 12,
+		"all twelve normal/special moves carry distinct frame data and hitboxes",
+		"%d unique signatures" % unique_sigs.size())
+	_check(int(fb_moves[&"jab"]["startup"]) == 4 and int(fb_moves[&"jab"]["active"]) == 3
+			and int(fb_moves[&"strong"]["recovery"]) == 18
+			and int(fb_moves[&"tump"]["startup"]) == 12
+			and int(fb_moves[&"upper_box"]["recovery"]) == 16,
+		"Feedback's original frame data is untouched")
+	_check(int(ls_moves[&"jab"]["recovery"]) == 7
+			and int(ls_moves[&"upper_box"]["damage"]) == 18
+			and (ls_moves[&"upper_box"]["hitbox_size"] as Vector2).x == 124.0
+			and (ls_moves[&"tump"]["advance"] as float) > 0.0,
+		"L!ckshot owns fast-jab, heavy-cross and advancing-knee data",
+		_move_signature(ls_moves[&"upper_box"]))
+	var ls_wave: Dictionary = ls_moves[&"strong"].get("projectile", {})
+	_check(String(ls_wave.get("kind", &"")) == "dubplate"
+			and int(ls_wave.get("damage", 0)) == 16 and float(ls_wave.get("speed", 0.0)) >= 500.0
+			and float(ls_wave.get("life", 0.0)) >= 1.0,
+		"K launches a long-lived travelling sub-bass dubplate wave",
+		"%s dmg %d" % [ls_wave.get("kind", &""), int(ls_wave.get("damage", 0))])
+	_check(int(km_moves[&"jab"]["recovery"]) == 6
+			and (km_moves[&"jab"]["hitbox_size"] as Vector2).x == 109.0
+			and (km_moves[&"upper_box"]["hitbox_size"] as Vector2).x == 150.0,
+		"L!kkle Moore keeps the 25 px reach on a fast jab and swings a 150 px home run")
+	var km_sweep: Dictionary = km_moves[&"tump"]
+	_check(bool(km_sweep.get("low_profile", false)) and bool(km_sweep.get("knockdown", false))
+			and float(km_sweep.get("advance", 0.0)) > 0.0
+			and (km_sweep["hitbox_size"] as Vector2).y <= 40.0,
+		"L sweeps low, advances and trips instead of knocking back")
+	var km_wave: Dictionary = km_moves[&"strong"].get("projectile", {})
+	_check(String(km_wave.get("kind", &"")) == "dictionary"
+			and int(km_wave.get("hitstun", 0)) >= 30 and float(km_wave.get("life", 9.0)) < 0.7,
+		"K hurls the dictionary for the longest stun in the roster",
+		"%d stun" % int(km_wave.get("hitstun", 0)))
+	_check(fb_moves[&"strong"].get("projectile", {}).is_empty()
+			and fb_moves[&"tump"].get("low_profile", false) == false,
+		"Feedback gains no projectile or low-profile override")
+	var ls_profile: Dictionary = FighterRoster.profile(&"lickshot")
+	var km_profile: Dictionary = FighterRoster.profile(&"young_selecta")
+	var fb_profile: Dictionary = FighterRoster.profile(&"feedback")
+	_check(int(ls_profile["throw"]["hold"]) == 14
+			and (ls_profile["throw"]["forward_launch"] as Vector2).x > 500.0
+			and int(ls_profile["taunt_hype"]) == 12 and bool(ls_profile["taunt_callout"]),
+		"L!ckshot's mic-drop throw is heavier and his skank builds 12 Hype",
+		"hold %d" % int(ls_profile["throw"]["hold"]))
+	_check(int(km_profile["throw"]["hold"]) == 9
+			and int(km_profile["throw"]["recovery"]) == 8
+			and int(km_profile["taunt_hype"]) == 10 and bool(km_profile["taunt_callout"]),
+		"L!kkle Moore's ankle trip snaps out fast and his footwork builds 10 Hype",
+		"hold %d / recovery %d" % [int(km_profile["throw"]["hold"]),
+			int(km_profile["throw"]["recovery"])])
+	_check(fb_profile.get("throw", {}).is_empty()
+			and int(fb_profile.get("taunt_hype", 0)) == 0
+			and not bool(fb_profile.get("taunt_callout", false)),
+		"Feedback keeps the original grab timing and on-beat-only taunt reward")
 
 	# ---- Menu music bed: title only, silent in fights (AGENTS.md §9 item 48) ---
 	_check(music_bed != null, "the MusicBed autoload exists")
@@ -591,8 +714,9 @@ func _run() -> void:
 	_check(fb3d != null and fb3d.triangle_count() == 29025,
 		"Feedback loads feedback_v2 as a cel-shaded FighterModel3D",
 		"%d tris" % (fb3d.triangle_count() if fb3d != null else -1))
-	_check(lick3d != null and lick3d.triangle_count() == 270074,
-		"L!ckshot loads his 270 074-triangle upload as a cel-shaded FighterModel3D",
+	_check(lick3d != null and lick3d.triangle_count() < 35000
+			and lick3d.triangle_count() >= 20000,
+		"L!ckshot's decimated upload stays under the 35 000-triangle budget",
 		"%d tris" % (lick3d.triangle_count() if lick3d != null else -1))
 	_check(model2 is FighterModel3D and not (model2 is FighterBillboard3D),
 		"L!ckshot now renders from real 3D geometry, not a Sprite3D billboard")
@@ -622,6 +746,57 @@ func _run() -> void:
 		"both fighter materials carry the inverted-hull ink outline pass")
 	_assert_procedural_stance(fb3d, p1, "Feedback")
 	_assert_procedural_stance(lick3d, p2, "L!ckshot")
+	_assert_move_pose_difference(fb3d, p1, "Feedback")
+	_assert_move_pose_difference(lick3d, p2, "L!ckshot")
+
+	# ---- L!ckshot's special actually resolves a travelling strike ----------
+	# The wave is a real combat node: it must move, hit the defender's hurtbox through the
+	# shared `receive_strike`, spawn the 3D dubplate proxy and free itself on contact.
+	var saved_p1 := p1.global_position
+	var saved_p2 := p2.global_position
+	var saved_hp := p1.health
+	p1.input_locked = true
+	p2.input_locked = true
+	p2.global_position = Vector2(360.0, saved_p2.y)
+	p1.global_position = Vector2(560.0, saved_p1.y)
+	p2.facing = 1
+	p2._attack = p2.attacks[&"strong"]
+	p2._attack_id = &"strong"
+	p2._spawn_projectile()
+	var waves := get_nodes_in_group("projectiles")
+	var wave: Node2D = waves[-1] if not waves.is_empty() else null
+	_check(wave != null and stage3d != null and stage3d.active_projectiles() >= 1,
+		"the dubplate launches a combat wave and its 3D proxy",
+		"%d wave / %d prop" % [waves.size(), stage3d.active_projectiles() if stage3d != null else -1])
+	if wave != null:
+		var start_x := wave.global_position.x
+		for i in 40:
+			await physics_frame
+			if not is_instance_valid(wave) or wave.is_queued_for_deletion():
+				break
+		_check(p1.health < saved_hp,
+			"the travelling wave lands through the shared strike resolver",
+			"%d -> %d hp" % [saved_hp, p1.health])
+		_check(not is_instance_valid(wave) or wave.is_queued_for_deletion()
+				or wave.global_position.x > start_x + 40.0,
+			"the wave either frees on contact or keeps travelling forward")
+	p1.health = saved_hp
+	p1.health_changed.emit(p1.health, p1.max_health)
+	p1.global_position = saved_p1
+	p2.global_position = saved_p2
+	p1.velocity = Vector2.ZERO
+	p2.velocity = Vector2.ZERO
+	p1._stun_frames = 0
+	p1._hitstop_frames = 0
+	p2._hitstop_frames = 0
+	p2._attack = {}
+	p2._attack_id = &""
+	if p1.state == BaseFighter.State.HITSTUN:
+		p1.change_state(BaseFighter.State.IDLE)
+	p1.input_locked = false
+	p2.input_locked = false
+	arena._clear_projectiles()
+	await process_frame
 
 	# Shader compile checks: `get_shader_uniform_list()` is empty for a shader that failed to
 	# parse, so this is a real GLSL parse check in a headless run.
@@ -898,8 +1073,9 @@ func _run() -> void:
 	var kid_stage: Arena3D = arena.arena3d
 	var kid_model = kid_stage.model_for(p2) if kid_stage != null else null
 	_check(kid_model is FighterModel3D, "L!kkle Moore renders from his real 3D upload")
-	_check(kid_model != null and kid_model.triangle_count() == 246654,
-		"L!kkle Moore loads his 246 654-triangle mesh as a cel-shaded FighterModel3D",
+	_check(kid_model != null and kid_model.triangle_count() < 35000
+			and kid_model.triangle_count() >= 20000,
+		"L!kkle Moore's decimated mesh stays under the 35 000-triangle budget",
 		"%d tris" % (kid_model.triangle_count() if kid_model != null else -1))
 	_check(kid_model is FighterModel3D and not (kid_model is FighterBillboard3D),
 		"the kid no longer falls back to a Sprite3D billboard")
@@ -917,6 +1093,32 @@ func _run() -> void:
 	_check(not p2.sprite.visible and p2.is_3d_presentation(),
 		"the 2D sprite is hidden while the 3D model carries his art")
 	_assert_procedural_stance(kid_model, p2, "L!kkle Moore")
+	_assert_move_pose_difference(kid_model, p2, "L!kkle Moore")
+
+	# ---- Low sweep ducks high jabs and trips ------------------------------
+	var saved_kid_state: int = p2.state
+	var saved_kid_attack: Dictionary = p2._attack
+	p2._attack = p2.attacks[&"tump"]
+	p2._attack_id = &"tump"
+	p2.state = BaseFighter.State.ATTACK_ACTIVE
+	var low_hurt := p2.hurt_rect()
+	_check(is_equal_approx(low_hurt.size.y, p2.crouch_size.y)
+			and low_hurt.position.y > -90.0,
+		"the low sweep ducks the standing hurtbox under a high jab",
+		"hurt top %.1f / height %.1f" % [low_hurt.position.y, low_hurt.size.y])
+	var high_jab := Rect2(Vector2(p2.global_position.x - 42.0, p2.global_position.y - 129.0),
+		Vector2(84, 38))
+	_check(not high_jab.intersects(low_hurt),
+		"a normal high jab volume whiffs over the sweeping kid")
+	p2.state = saved_kid_state
+	p2._attack = saved_kid_attack
+	p2._attack_id = &""
+	p2.state_frame = 0
+	p2._play_state_anim()
+	_check(p2._grab_hold_ticks == 9 and p2._grab_hold_ticks < BaseFighter.GRAB_HOLD_TICKS
+			and p2._grab_recovery_ticks < BaseFighter.GRAB_RECOVERY_TICKS,
+		"L!kkle Moore's trip throw commits and recovers faster than the shared adult grab",
+		"hold %d / recovery %d" % [p2._grab_hold_ticks, p2._grab_recovery_ticks])
 
 	# ---- Facing, props, crowd acting and the time-of-day pass (2026-11-17) ----------
 	# `p1` above belongs to the previous arena instance, which the scene change freed.

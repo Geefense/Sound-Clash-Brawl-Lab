@@ -7,8 +7,8 @@ baked combat poses). They are **not loaded by the game**; the game uses
 | File | Geometry / texture | Scale on import |
 | --- | --- | --- |
 | `feedback_mixamo_ready.fbx` | 29,025 tris, 1024² RGBA PNG albedo | 180 cm |
-| `lickshot_mixamo_ready.fbx` | 270,074 tris, 1024² RGB PNG albedo | 180 cm |
-| `likkle_moore_mixamo_ready.fbx` | 246,654 tris, 1024² RGB PNG albedo | 128 cm |
+| `lickshot_mixamo_ready.fbx` | 28,000 tris (decimated), 1024² RGB PNG albedo | 180 cm |
+| `likkle_moore_mixamo_ready.fbx` | 28,000 tris (decimated), 1024² RGB PNG albedo | 128 cm |
 
 ## What was changed
 
@@ -27,6 +27,11 @@ The original hierarchy would have imported as a 1000-unit-tall object; these cop
 1.8 m and 1.28 m characters, which is what Mixamo expects when placing a rig. Mixamo can still
 override character height in the upload dialog.
 
+Since 2026-11-22 the two new copies carry the **28,000-triangle decimated** game mesh, rebuilt by
+`godot/tools/decimate_fbx.py` with its per-corner UVs intact; the embedded 1024² PNG is the same
+byte-identical atlas. The copies therefore match the runtime models, not the original 270k/247k
+uploads. Feedback is unchanged at 29,025 tris.
+
 ## Uploading
 
 1. Upload one `.fbx` at <https://www.mixamo.com/> → *Upload Character*.
@@ -41,6 +46,6 @@ their heights are not normalised to each other.
 
 ```
 b9d9e7551f5397e37262e521cb02eb5991005bceefef689fac0abe1daac83f29  feedback_mixamo_ready.fbx
-2d9dee22d8adfade920397bca9138440066d5f8a5d60ab6758b428e233042542  lickshot_mixamo_ready.fbx
-ceafe85a49bf56be9e9dbfe5ec558a64f8b7ffa02ce319843176fd7c88ae99cd  likkle_moore_mixamo_ready.fbx
+e6af0538ca90cc1ee07f71fb63dfc3953d0f8cf21e49497ed14be66dfc044c45  lickshot_mixamo_ready.fbx
+ed37836669b99395e2fec4893601c85e84d09294abcad0ae6e1be4a556c44d7d  likkle_moore_mixamo_ready.fbx
 ```

@@ -35,6 +35,11 @@ signal grab_connected(attacker: BaseFighter, defender: BaseFighter)
 signal throw_broken(attacker: BaseFighter, defender: BaseFighter)
 signal throw_connected(attacker: BaseFighter, defender: BaseFighter, kind: StringName)
 signal speaker_slam_triggered(victim: BaseFighter, side: int)   # -1 left stack, +1 right stack
+## Move presentation hooks (2026-11-22). The combat values still resolve in this node; the
+## arena only uses these to stage projectiles and per-move 3D/effect flourishes.
+signal attack_became_active(attacker: BaseFighter, attack_id: StringName)
+signal projectile_spawned(attacker: BaseFighter, attack_id: StringName, wave: Node2D)
+signal taunt_callout(fighter: BaseFighter)
 
 ## One tick of input. Local keyboard fills it; AI/dummy/replay can set it instead.
 class Command:
@@ -140,6 +145,22 @@ const GRAB_STARTUP_TICKS := 5         # fast: beats a held guard before it can r
 const GRAB_TECH_TICKS := 8            # defender's break window, in ticks
 const GRAB_HOLD_TICKS := 16           # how long the attacker holds before committing
 const GRAB_RECOVERY_TICKS := 12
+# Per-fighter throw timing (FighterRoster "throw"): L!ckshot's mic-drop slam holds a beat
+# longer; L!kkle Moore's ankle trip snaps out and recovers fast.
+var _grab_hold_ticks: int = GRAB_HOLD_TICKS
+var _grab_recovery_ticks: int = GRAB_RECOVERY_TICKS
+var _throw_forward_damage: int = THROW_FORWARD_DAMAGE
+var _throw_back_damage: int = THROW_BACK_DAMAGE
+var _throw_forward_launch: Vector2 = THROW_LAUNCH
+var _throw_back_launch: Vector2 = THROW_BACK_LAUNCH
+## Taunt identity: the new fighters build a little Hype even off the beat and always get
+## their callout; Feedback keeps the original on-beat-only reward.
+var _taunt_hype: int = 0
+var _taunt_callout_enabled: bool = false
+## Record Static Parry presentation window, read by the 3D proxy for the gold/vinyl flash.
+var _parry_flash_ticks: int = 0
+
+const PROJECTILE_SCRIPT := preload("res://scripts/fighters/ProjectileWave.gd")
 const GRAB_HOLD_GAP := 46.0           # victim stands this far in front of the attacker
 const THROW_FORWARD_DAMAGE := 14
 const THROW_FORWARD_HYPE := 15
@@ -488,6 +509,25 @@ func apply_fighter_profile(key: StringName) -> void:
 		for field in overrides[id]:
 			entry[field] = overrides[id][field]
 
+	# Per-fighter combat identity (2026-11-22). Feedback has no `moves` entry, so his
+	# original table is untouched; the two new fighters replace frame data, hitboxes and
+	# optional projectile/sweep fields here rather than forking the FSM.
+	var moves: Dictionary = data.get("moves", {})
+	for id in moves:
+		if not attacks.has(id):
+			continue
+		for field in moves[id]:
+			attacks[id][field] = moves[id][field]
+	var throw_data: Dictionary = data.get("throw", {})
+	_grab_hold_ticks = int(throw_data.get("hold", GRAB_HOLD_TICKS))
+	_grab_recovery_ticks = int(throw_data.get("recovery", GRAB_RECOVERY_TICKS))
+	_throw_forward_damage = int(throw_data.get("forward_damage", THROW_FORWARD_DAMAGE))
+	_throw_back_damage = int(throw_data.get("back_damage", THROW_BACK_DAMAGE))
+	_throw_forward_launch = throw_data.get("forward_launch", THROW_LAUNCH)
+	_throw_back_launch = throw_data.get("back_launch", THROW_BACK_LAUNCH)
+	_taunt_hype = int(data.get("taunt_hype", 0))
+	_taunt_callout_enabled = bool(data.get("taunt_callout", false))
+
 	if not bool(data["uses_scene_frames"]):
 		var frames := FighterRoster.build_frames(key)
 		if frames != null and sprite != null:
@@ -548,6 +588,8 @@ func _physics_process(_delta: float) -> void:
 			set_hit_flash(0.0)
 			if sprite != null:
 				sprite.modulate = Color.WHITE
+	if _parry_flash_ticks > 0:
+		_parry_flash_ticks -= 1
 
 	# Celebration pose window (round win / Hype Surge). Presentation only.
 	if _celebrate_ticks > 0:
@@ -646,6 +688,13 @@ func _enter_state(s: State) -> void:
 			_poll_hitbox()      # immediate check: the Area2D only reports overlaps on the next physics frame
 			if _attack_id in HEAVY_ATTACK_IDS:
 				_puff(0.85, -float(facing))    # the planted heavy step kicks sand away from the plant
+			if bool(_attack.get("low_profile", false)):
+				_puff(1.2, -float(facing))     # the sweep drags a low sand fan off the planted foot
+			var advance := float(_attack.get("advance", 0.0))
+			if advance > 0.0:
+				velocity.x = advance * float(facing)   # gap-closer: the active window carries him in
+			_attack_became_active()
+			_spawn_projectile()
 		State.TAUNT:
 			velocity.x = 0.0
 			_taunt_slot = 0
@@ -779,6 +828,8 @@ func _tick_attack_startup() -> void:
 
 func _tick_attack_active() -> void:
 	_apply_gravity()
+	# An advancing strike coasts through its active window and plants on recovery.
+	velocity.x = move_toward(velocity.x, 0.0, 2400.0 * get_physics_process_delta_time())
 	_buffer_attack_input()
 	_poll_hitbox()
 	if state_frame >= int(_attack["active"]):
@@ -787,6 +838,8 @@ func _tick_attack_active() -> void:
 
 func _tick_attack_recovery() -> void:
 	_apply_gravity()
+	# Plant after an advancing strike instead of sliding through the recovery.
+	velocity.x = move_toward(velocity.x, 0.0, 2400.0 * get_physics_process_delta_time())
 	_buffer_attack_input()
 	# A surging fighter shakes off recovery 25% faster (integer ticks, never below 1).
 	var recovery: int = int(_attack["recovery"])
@@ -823,6 +876,28 @@ func _take_buffered_attack() -> Dictionary:
 	return out
 
 
+## Presentation/projectile hook, emitted once per active window. The strike itself already
+## exists in `_attack`; the arena only needs the cue for cones, note trails and 3D props.
+func _attack_became_active() -> void:
+	attack_became_active.emit(self, _attack_id)
+
+
+## Spawn the move's travelling wave, if it declares one. The projectile owns its collision
+## check and calls back through `receive_strike`, so the shared damage/guard/parry rules
+## still decide the outcome.
+func _spawn_projectile() -> void:
+	var spec: Dictionary = _attack.get("projectile", {})
+	if spec.is_empty():
+		return
+	var parent := get_parent()
+	if parent == null:
+		return
+	var wave := PROJECTILE_SCRIPT.new()
+	parent.add_child(wave)
+	wave.launch(self, spec, facing)
+	projectile_spawned.emit(self, _attack_id, wave)
+
+
 func _configure_hitbox(a: Dictionary) -> void:
 	var size: Vector2 = a["hitbox_size"]
 	var pos: Vector2 = a["hitbox_pos"]
@@ -857,7 +932,11 @@ func _hitbox_rect() -> Rect2:
 
 ## Body rectangle opponents can hit. Simulation shape, independent of the sprite.
 func hurt_rect() -> Rect2:
-	var size := crouch_size if state == State.CROUCH else stand_size
+	# A low-profile move (Likkle Moore's footwork sweep) ducks the whole hurtbox for the
+	# committed window, so a high jab whiffs over him while the sweep trips the opponent.
+	var low := state == State.CROUCH or (state in [State.ATTACK_STARTUP, State.ATTACK_ACTIVE,
+		State.ATTACK_RECOVERY] and bool(_attack.get("low_profile", false)))
+	var size := crouch_size if low else stand_size
 	return Rect2(global_position + Vector2(-size.x * 0.5, -size.y), size)
 
 
@@ -1021,6 +1100,10 @@ func _tick_taunt() -> void:
 		var on_beat := bool(_taunt_beat.get("on_beat", false))
 		if on_beat:
 			_add_hype(ON_BEAT_HYPE)       # [TODO] amount and interruptibility
+		if _taunt_hype > 0:
+			_add_hype(_taunt_hype)        # L!ckshot / L!kkle Moore: the skank builds the meter
+		if _taunt_callout_enabled:
+			taunt_callout.emit(self)
 		_taunt_beat = {}
 		change_state(State.IDLE)
 		taunt_finished.emit(on_beat)
@@ -1057,11 +1140,11 @@ func _tick_grab() -> void:
 			if victim != null:
 				_begin_grab_hold(victim)
 			else:
-				_grab_recovery = GRAB_RECOVERY_TICKS   # a whiffed grab still commits
+				_grab_recovery = _grab_recovery_ticks   # a whiffed grab still commits
 		return
 	_grab_hold += 1
 	_hold_target_in_place()
-	if _grab_hold >= GRAB_HOLD_TICKS:
+	if _grab_hold >= _grab_hold_ticks:
 		_throw_target()
 
 
@@ -1085,7 +1168,7 @@ func _find_grab_target() -> BaseFighter:
 
 func _begin_grab_hold(victim: BaseFighter) -> void:
 	if not victim.begin_grabbed(self):
-		_grab_recovery = GRAB_RECOVERY_TICKS
+		_grab_recovery = _grab_recovery_ticks
 		return
 	_grab_target = victim
 	_grab_hold = 0
@@ -1106,17 +1189,17 @@ func _hold_target_in_place() -> void:
 func _throw_target() -> void:
 	var victim := _grab_target
 	_grab_target = null
-	_grab_recovery = GRAB_RECOVERY_TICKS
+	_grab_recovery = _grab_recovery_ticks
 	if victim == null or not is_instance_valid(victim):
 		return
 	var holding_back := absf(command.move_x) > 0.1 and signf(command.move_x) != float(facing)
 	if holding_back:
 		_add_hype(THROW_BACK_HYPE)
-		victim.receive_back_throw(self, THROW_BACK_DAMAGE)
+		victim.receive_back_throw(self, _throw_back_damage)
 		throw_connected.emit(self, victim, &"back")
 	else:
 		_add_hype(THROW_FORWARD_HYPE)
-		victim.receive_forward_throw(self, THROW_FORWARD_DAMAGE)
+		victim.receive_forward_throw(self, _throw_forward_damage)
 		throw_connected.emit(self, victim, &"forward")
 		# The forward release reads as the drawn double-palm shove: the same pose as the
 		# throw break, held through the grab recovery (AGENTS.md §9 item 33).
@@ -1178,7 +1261,7 @@ func _tech_throw() -> void:
 
 func _on_throw_broken() -> void:
 	_grab_target = null
-	_grab_recovery = GRAB_RECOVERY_TICKS
+	_grab_recovery = _grab_recovery_ticks
 	velocity.x = -float(facing) * THROW_BREAK_PUSH
 	# The attacker is still in State.GRAB during recovery, so its shove pose comes from the
 	# grab-state override rather than from hitstun.
@@ -1201,7 +1284,8 @@ func receive_forward_throw(attacker: BaseFighter, damage: int) -> void:
 	_wall_bounced = false
 	var ko := _take_throw_damage(damage)
 	global_position.x = clampf(global_position.x, STAGE_LEFT, STAGE_RIGHT)
-	velocity = Vector2(THROW_LAUNCH.x * dir, THROW_LAUNCH.y)
+	var launch: Vector2 = attacker._throw_forward_launch if attacker != null else THROW_LAUNCH
+	velocity = Vector2(launch.x * dir, launch.y)
 	_puff(0.9, -dir)                         # launch kick-up along the throw
 	if ko:
 		change_state(State.KO)
@@ -1218,7 +1302,8 @@ func receive_back_throw(attacker: BaseFighter, damage: int) -> void:
 	# Spun around and dropped behind the attacker.
 	global_position.x = clampf(attacker.global_position.x - dir * GRAB_HOLD_GAP,
 		STAGE_LEFT, STAGE_RIGHT)
-	velocity = Vector2(-dir * THROW_BACK_LAUNCH.x, THROW_BACK_LAUNCH.y)
+	var launch: Vector2 = attacker._throw_back_launch if attacker != null else THROW_BACK_LAUNCH
+	velocity = Vector2(-dir * launch.x, launch.y)
 	if ko:
 		change_state(State.KO)
 		return
@@ -1348,6 +1433,7 @@ func _parry_window_open() -> bool:
 ## left stunned and the defender gains hype.
 func _resolve_static_parry(attacker: BaseFighter, strike: Dictionary) -> Dictionary:
 	_add_hype(PARRY_HYPE)
+	_parry_flash_ticks = 8          # 3D proxy: gold rim + vinyl burst
 	camera_shake_requested.emit(SHAKE_HEAVY, SHAKE_SECONDS)
 	static_parry_triggered.emit(self, attacker)
 	attacker._take_parry_stun(PARRY_ATTACKER_STUN_TICKS)

@@ -286,6 +286,51 @@ const FIGHTERS := {
 		# Every attack now ships its own drawn pose, so none of them also gets the generic
 		# strike smear: the jab's placeholder smear is retired.
 		"no_strike_tell": [&"strong", &"tump", &"jab", &"upper_box"],
+		# Signature moveset (2026-11-22). Frame data, damage, knockback and hitboxes are
+		# L!ckshot's own; K launches a travelling sub-bass dubplate, L is an advancing knee.
+		"moves": {
+			&"jab": {
+				"startup": 3, "active": 3, "recovery": 7,
+				"damage": 7, "blocked_damage": 2,
+				"hitstun": 12, "knockback": Vector2(150, 0), "knockdown": false,
+				"hitbox_pos": Vector2(88, -112), "hitbox_size": Vector2(96, 34),
+			},
+			&"upper_box": {
+				"startup": 14, "active": 4, "recovery": 20,
+				"damage": 18, "blocked_damage": 5,
+				"hitstun": 26, "knockback": Vector2(380, -50), "knockdown": false,
+				"hitbox_pos": Vector2(100, -118), "hitbox_size": Vector2(124, 58),
+			},
+			# K = Sub-Bass Dubplate Wave: the close clap still carries a small hitbox, then
+			# the wave travels across the sand and controls the mid-range.
+			&"strong": {
+				"startup": 11, "active": 3, "recovery": 22,
+				"damage": 10, "blocked_damage": 3,
+				"hitstun": 14, "knockback": Vector2(100, -30), "knockdown": false,
+				"hitbox_pos": Vector2(80, -118), "hitbox_size": Vector2(92, 72),
+				"projectile": {
+					"kind": &"dubplate", "speed": 560.0, "life": 1.35,
+					"attack_id": &"strong", "damage": 16, "blocked_damage": 4,
+					"hitstun": 24, "knockback": Vector2(300, -90), "knockdown": false,
+					"hitbox_size": Vector2(78, 110),
+				},
+			},
+			# L = Jumping Sound-Clash Knee: advances through the active window.
+			&"tump": {
+				"startup": 10, "active": 3, "recovery": 16,
+				"damage": 14, "blocked_damage": 4,
+				"hitstun": 20, "knockback": Vector2(240, -80), "knockdown": false,
+				"hitbox_pos": Vector2(86, -96), "hitbox_size": Vector2(96, 84),
+				"advance": 900.0,       # carries him roughly 190 px through the active + recovery
+			},
+		},
+		"throw": {
+			"hold": 14, "recovery": 16,
+			"forward_damage": 16, "back_damage": 12,
+			"forward_launch": Vector2(540, -440), "back_launch": Vector2(160, -260),
+		},
+		"taunt_hype": 12,
+		"taunt_callout": true,
 	},
 	# Fighter #3 — Likkle Moore, the ten-year-old school-uniform prodigy (formerly Young Selecta;
 	# renamed 2026-11-19, AGENTS.md §9 item 35). The key stays `young_selecta` and the art folder
@@ -375,6 +420,53 @@ const FIGHTERS := {
 				"anim_recovery": &"sparta_recovery",
 			},
 		},
+		# Compact-prodigy moveset (2026-11-22): long poke, wide home-run swing, thrown
+		# dictionary and a low sweeping trip that ducks high jabs. The +25 px reach is
+		# already folded into the jab width (109) that the existing reach check expects.
+		"moves": {
+			&"jab": {
+				"startup": 3, "active": 3, "recovery": 6,
+				"damage": 7, "blocked_damage": 2,
+				"hitstun": 12, "knockback": Vector2(140, 0), "knockdown": false,
+				"hitbox_pos": Vector2(98, -96), "hitbox_size": Vector2(109, 32),
+			},
+			# I = mic-stand home-run swing: the widest box of the three fighters.
+			&"upper_box": {
+				"startup": 13, "active": 5, "recovery": 20,
+				"damage": 18, "blocked_damage": 5,
+				"hitstun": 26, "knockback": Vector2(340, -40), "knockdown": false,
+				"hitbox_pos": Vector2(94, -108), "hitbox_size": Vector2(150, 78),
+			},
+			# K = dictionary / backpack hurl. It travels only a short way, but the stun is
+			# the longest in the roster and the guard chip is high.
+			&"strong": {
+				"startup": 12, "active": 3, "recovery": 20,
+				"damage": 12, "blocked_damage": 3,
+				"hitstun": 18, "knockback": Vector2(160, -40), "knockdown": false,
+				"hitbox_pos": Vector2(74, -112), "hitbox_size": Vector2(84, 60),
+				"projectile": {
+					"kind": &"dictionary", "speed": 470.0, "life": 0.52,
+					"attack_id": &"strong", "damage": 17, "blocked_damage": 5,
+					"hitstun": 30, "knockback": Vector2(200, -70), "knockdown": false,
+					"hitbox_size": Vector2(66, 90),
+				},
+			},
+			# L = low spinning sweep: crouched hurtbox, advancing, and it trips.
+			&"tump": {
+				"startup": 10, "active": 3, "recovery": 14,
+				"damage": 11, "blocked_damage": 3,
+				"hitstun": 20, "knockback": Vector2(180, -10), "knockdown": true,
+				"hitbox_pos": Vector2(78, -30), "hitbox_size": Vector2(124, 38),
+				"low_profile": true, "advance": 500.0,
+			},
+		},
+		"throw": {
+			"hold": 9, "recovery": 8,
+			"forward_damage": 10, "back_damage": 9,
+			"forward_launch": Vector2(430, -360), "back_launch": Vector2(140, -240),
+		},
+		"taunt_hype": 10,
+		"taunt_callout": true,
 	},
 }
 

@@ -34,6 +34,44 @@ const OUTLINE_SHADER := preload("res://assets/shaders/toon_outline.gdshader")
 const MIRROR_TINT := Color(0.80, 0.90, 1.10, 1.0)
 const MIRROR_HUE := 0.030
 const MIRROR_RIM := Color(1.0, 0.70, 0.26, 1.0)
+const PARRY_RIM := Color(1.0, 0.86, 0.24, 1.0)
+
+## Per-move whole-body profiles (2026-11-22). Every fighter shares the same FSM, so the 3D
+## differentiation lives here: `w_` is the startup coil, `s_` the contact drive. Lean and
+## lunge are the 2.5D plane; lift, depth pitch and yaw twist give each strike a distinct
+## silhouette even though the uploads are static meshes. No hitbox or timing reads these.
+const MOVE_STYLES := {
+	&"feedback": {
+		&"jab": {"w_lean": -0.03, "w_lunge": -0.02, "s_lean": 0.18, "s_lunge": 0.26,
+			"s_pitch": 0.04, "s_twist": 0.10, "s_squash": 1.03},
+		&"strong": {"w_lean": -0.12, "w_lunge": -0.08, "s_lean": 0.27, "s_lunge": 0.46,
+			"s_pitch": 0.14, "s_twist": -0.28, "s_squash": 1.06},
+		&"tump": {"w_lean": 0.10, "w_lunge": -0.05, "s_lean": -0.26, "s_lunge": 0.28,
+			"s_pitch": -0.16, "s_lift": 0.20, "s_twist": 0.40, "s_squash": 0.98},
+		&"upper_box": {"w_lean": -0.16, "w_lunge": -0.06, "s_lean": 0.06, "s_lunge": 0.32,
+			"s_pitch": -0.22, "s_lift": 0.24, "s_twist": -0.16, "s_squash": 1.04},
+	},
+	&"lickshot": {
+		&"jab": {"w_lean": -0.02, "w_lunge": 0.02, "s_lean": 0.14, "s_lunge": 0.20,
+			"s_pitch": 0.02, "s_twist": 0.20, "s_squash": 1.02},
+		&"upper_box": {"w_lean": -0.22, "w_lunge": -0.10, "s_lean": 0.32, "s_lunge": 0.50,
+			"s_pitch": 0.18, "s_twist": 0.48, "s_squash": 1.05},
+		&"strong": {"w_lean": 0.18, "w_lunge": -0.12, "w_squash": 0.90, "s_lean": 0.08,
+			"s_lunge": 0.16, "s_pitch": -0.06, "s_lift": 0.30, "s_twist": 0.0, "s_squash": 1.08},
+		&"tump": {"w_lean": 0.12, "w_lunge": -0.08, "w_squash": 0.94, "s_lean": -0.12,
+			"s_lunge": 0.42, "s_pitch": -0.30, "s_lift": 0.34, "s_twist": 0.22, "s_squash": 1.0},
+	},
+	&"young_selecta": {
+		&"jab": {"w_lean": -0.04, "w_lunge": -0.02, "s_lean": 0.12, "s_lunge": 0.30,
+			"s_pitch": 0.02, "s_twist": 0.08, "s_squash": 1.02},
+		&"upper_box": {"w_lean": -0.30, "w_lunge": -0.12, "w_twist": -0.55, "w_squash": 0.95,
+			"s_lean": 0.22, "s_lunge": 0.30, "s_pitch": 0.10, "s_twist": 1.15, "s_squash": 1.02},
+		&"strong": {"w_lean": 0.22, "w_lunge": -0.06, "w_pitch": -0.14, "w_lift": 0.18,
+			"s_lean": 0.40, "s_lunge": 0.34, "s_pitch": 0.30, "s_squash": 0.94},
+		&"tump": {"w_lean": 0.16, "w_lunge": -0.04, "w_squash": 0.84, "s_lean": -0.16,
+			"s_lunge": 0.30, "s_pitch": -0.18, "s_twist": -1.30, "s_squash": 0.80},
+	},
+}
 
 ## Per-fighter model wiring. `height` is the on-screen fighting height in world metres
 ## (the arena uses 140 px = 1 m, so 1.55 m reads between 55 % and 65 % of the 720 px frame
@@ -104,6 +142,10 @@ var _clock: float = 0.0
 var _lean: float = 0.0
 var _lunge: float = 0.0
 var _squash: float = 1.0
+var _pitch: float = 0.0
+var _twist: float = 0.0
+var _lift: float = 0.0
+var _parry_lit: bool = false
 var _fall: float = 0.0
 var _spin: float = 0.0
 var _spin_angle: float = 0.0
@@ -388,6 +430,11 @@ func _process(delta: float) -> void:
 # =========================================================================
 # Whole-body procedural stance (works for rigged and static uploads)
 # =========================================================================
+func _move_style() -> Dictionary:
+	var table: Dictionary = MOVE_STYLES.get(fighter_key, {})
+	return table.get(fighter._attack_id, {})
+
+
 func _animate_pose(delta: float) -> void:
 	var state: int = fighter.state
 	var bob := sin(_clock * TAU * 1.12) * 0.012 + sin(_clock * TAU * 2.24) * 0.004
@@ -395,6 +442,13 @@ func _animate_pose(delta: float) -> void:
 	var lunge_target := 0.0
 	var squash_target := 1.0
 	var fall_target := 0.0
+	var pitch_target := 0.0
+	var twist_target := 0.0
+	var lift_target := 0.0
+	var style: Dictionary = {}
+	if state in [BaseFighter.State.ATTACK_STARTUP, BaseFighter.State.ATTACK_ACTIVE,
+			BaseFighter.State.ATTACK_RECOVERY]:
+		style = _move_style()
 	match state:
 		BaseFighter.State.WALK:
 			bob = sin(_clock * TAU * 1.85) * 0.030
@@ -407,21 +461,35 @@ func _animate_pose(delta: float) -> void:
 			squash_target = 0.82
 			lean_target = 0.04
 		BaseFighter.State.ATTACK_STARTUP:
-			lean_target = -0.085
-			lunge_target = -0.06
+			lean_target = -0.085 + float(style.get("w_lean", 0.0))
+			lunge_target = -0.06 + float(style.get("w_lunge", 0.0))
+			pitch_target = float(style.get("w_pitch", 0.0))
+			twist_target = float(style.get("w_twist", 0.0))
+			lift_target = float(style.get("w_lift", 0.0))
+			squash_target = float(style.get("w_squash", 0.93))
 		BaseFighter.State.ATTACK_ACTIVE:
 			var attack_id: StringName = fighter._attack_id
 			var heavy := attack_id in BaseFighter.HEAVY_ATTACK_IDS
-			lean_target = 0.20 if heavy else 0.14
-			lunge_target = 0.34 if heavy else 0.22
-			squash_target = 1.035
+			lean_target = float(style.get("s_lean", 0.20 if heavy else 0.14))
+			lunge_target = float(style.get("s_lunge", 0.34 if heavy else 0.22))
+			pitch_target = float(style.get("s_pitch", 0.0))
+			twist_target = float(style.get("s_twist", 0.0))
+			lift_target = float(style.get("s_lift", 0.0))
+			squash_target = float(style.get("s_squash", 1.035))
 		BaseFighter.State.ATTACK_RECOVERY:
-			lean_target = 0.05
-			lunge_target = 0.08
+			lean_target = 0.05 + float(style.get("s_lean", 0.0)) * 0.22
+			lunge_target = 0.08 + float(style.get("s_lunge", 0.0)) * 0.22
+			pitch_target = float(style.get("s_pitch", 0.0)) * 0.22
+			twist_target = float(style.get("s_twist", 0.0)) * 0.22
+			lift_target = float(style.get("s_lift", 0.0)) * 0.22
 		BaseFighter.State.HITSTUN:
 			lean_target = -0.20
 			lunge_target = -0.09
 			squash_target = 0.97
+		BaseFighter.State.GRAB:
+			# Collar-snatch lunge: weight forward, then the hold plants.
+			lean_target = 0.13
+			lunge_target = 0.18
 		BaseFighter.State.GRABBED:
 			lean_target = -0.12
 			lunge_target = -0.05
@@ -432,8 +500,19 @@ func _animate_pose(delta: float) -> void:
 			lean_target = 0.0
 			lunge_target = 0.0
 		BaseFighter.State.TAUNT:
+			# Three different skanks: Feedback's lean-back groove, L!ckshot's deeper selector
+			# lean with a slow shoulder turn, and the kid's bouncy footwork.
 			bob = sin(_clock * TAU * 1.9) * 0.028
-			lean_target = -0.07
+			if fighter_key == &"lickshot":
+				lean_target = -0.24
+				twist_target = sin(_clock * TAU * 0.66) * 0.32
+				lift_target = absf(sin(_clock * TAU * 1.9)) * 0.02
+			elif fighter_key == &"young_selecta":
+				lean_target = 0.04
+				bob = absf(sin(_clock * TAU * 2.5)) * 0.055
+				twist_target = sin(_clock * TAU * 1.25) * 0.42
+			else:
+				lean_target = -0.07
 		_:
 			bob += sin(_clock * TAU * 0.5) * 0.003
 	if _spin > 0.0 and state != BaseFighter.State.THROWN:
@@ -447,10 +526,15 @@ func _animate_pose(delta: float) -> void:
 	_lunge = _approach(_lunge, lunge_target, 18.0, delta)
 	_squash = _approach(_squash, squash_target, 16.0, delta)
 	_fall = _approach(_fall, fall_target, 7.5 if fall_target > 0.0 else 12.0, delta)
+	_pitch = _approach(_pitch, pitch_target, 14.0, delta)
+	_twist = _approach(_twist, twist_target, 16.0, delta)
+	_lift = _approach(_lift, lift_target, 18.0, delta)
 
 	var face := float(facing_sign)
-	_pivot.position = Vector3(_lunge * face, bob, 0.0)
-	_pivot.scale = Vector3(1.0, _squash, 1.0)
+	_pivot.position = Vector3(_lunge * face, bob + _lift, 0.0)
+	_pivot.scale = Vector3(1.0 + (1.0 - _squash) * 0.35, _squash, 1.0)
+	_pivot.rotation.x = _pitch
+	_pivot.rotation.y = _twist * face
 	_pivot.rotation.z = -_lean * face - _fall * face * PI * 0.5 * 0.94 + _spin_angle
 
 
@@ -517,8 +601,15 @@ func _add_bone(bone_name: String, axis: Vector3, angle: float) -> void:
 
 func _push_flash() -> void:
 	# The 2D fighter counts its own impact-flash ticks; the 3D material follows the same
-	# two-tick window so hit confirmation reads identically.
-	var target := 1.0 if fighter._impact_flash_ticks > 0 else 0.0
+	# two-tick window so hit confirmation reads identically. A Record Static Parry lights the
+	# same flash plus a gold rim, which is the 3D half of the vinyl-static read.
+	var parry := fighter._parry_flash_ticks > 0
+	var target := 1.0 if fighter._impact_flash_ticks > 0 or parry else 0.0
+	if parry != _parry_lit:
+		_parry_lit = parry
+		var rim := PARRY_RIM if parry else (MIRROR_RIM if mirror_variant else _base_rim)
+		for mat in materials:
+			mat.set_shader_parameter("rim_colour", rim)
 	if is_equal_approx(target, _flash):
 		return
 	_flash = target

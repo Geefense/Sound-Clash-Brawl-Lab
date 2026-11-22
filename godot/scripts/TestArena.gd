@@ -342,6 +342,14 @@ func _ready() -> void:
 	p2.speaker_slam_triggered.connect(_on_speaker_slam)
 	p1.strike_resolved.connect(_on_strike_resolved)
 	p2.strike_resolved.connect(_on_strike_resolved)
+	# Signature-move staging (2026-11-22): the arena only reacts to cues; damage and hitboxes
+	# already resolved inside BaseFighter / ProjectileWave.
+	p1.attack_became_active.connect(_on_attack_active)
+	p2.attack_became_active.connect(_on_attack_active)
+	p1.projectile_spawned.connect(_on_projectile_spawned)
+	p2.projectile_spawned.connect(_on_projectile_spawned)
+	p1.taunt_callout.connect(_on_taunt_callout)
+	p2.taunt_callout.connect(_on_taunt_callout)
 	p1.died.connect(_on_fighter_died)
 	p2.died.connect(_on_fighter_died)
 
@@ -510,9 +518,13 @@ func _on_strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dic
 	# upper-box / tump contact or a counter-hit; TEK WEH HIM MIC! answers a stun/down.
 	var hit_id := StringName(result.get("attack_id", &""))
 	var unblocked := not bool(result.get("blocked", false))
+	# L!kkle Moore's dictionary slam on a counter is his named moment: TEK WEH HIM MIC!
+	# replaces the generic heavy line instead of stacking two pills.
+	var kid_mic_counter := attacker != null and attacker.fighter_key == &"young_selecta" \
+		and bool(result.get("counter", false)) and (hit_id == &"strong" or hit_id == &"upper_box")
 	if unblocked and (hit_id == &"upper_box" or hit_id == &"tump"
 			or bool(result.get("counter", false))):
-		_announce_callout(&"heavy")
+		_announce_callout(&"stun" if kid_mic_counter else &"heavy")
 	if arena3d != null:
 		arena3d.hit_kick(0.9 if bool(result.get("counter", false)) else 0.3)
 		arena3d.pulse_speakers(0.8 if unblocked else 0.3)
@@ -547,6 +559,7 @@ func _on_fighter_died() -> void:
 ## Round win: the winner throws its celebration pose while the result banner runs
 ## (AGENTS.md §9 items 33–34). winner -1 is the time-out tie, which has nobody to celebrate.
 func _on_round_ended(_round_index: int, winner: int) -> void:
+	_clear_projectiles()
 	var champion: BaseFighter = null
 	if winner == 0:
 		champion = p1
@@ -617,7 +630,11 @@ func _on_hype_milestone(_percent: int) -> void:
 func _on_static_parry(defender: BaseFighter, attacker: BaseFighter) -> void:
 	if defender == null or attacker == null:
 		return
-	_add_spark((defender.global_position + attacker.global_position) * 0.5 + Vector2(0.0, -110.0))
+	var mid := (defender.global_position + attacker.global_position) * 0.5 + Vector2(0.0, -110.0)
+	_add_spark(mid)
+	if arena3d != null:
+		arena3d.spawn_vinyl_parry(mid)
+		arena3d.pulse_speakers(0.5)
 	_on_shake(0.5, 0.12)
 	Sfx.play(&"parry")
 	if SoundClash != null:
@@ -646,15 +663,90 @@ func _on_throw_broken(attacker: BaseFighter, defender: BaseFighter) -> void:
 
 
 ## A landed throw: the spinback pops the crowd (the slam's shake comes from the fighter).
-func _on_throw_connected(_attacker: BaseFighter, _defender: BaseFighter, kind: StringName) -> void:
+func _on_throw_connected(attacker: BaseFighter, defender: BaseFighter, kind: StringName) -> void:
 	Sfx.play(&"whoosh")
 	if kind == &"back":
 		crowd.celebrate()
 	if SoundClash != null:
 		SoundClash.set_crowd_intensity(0.85)
-		SoundClash.on_throw(_attacker)
-	if arena3d != null:
+		SoundClash.on_throw(attacker)
+	if arena3d != null and defender != null:
 		arena3d.pulse_speakers(1.1)
+		# L!ckshot's collar snatch ends in a mic-drop slam: a bigger sand burst and an
+		# extra stack kick read the heavier throw without touching its damage values.
+		var slam := attacker != null and attacker.fighter_key == &"lickshot"
+		arena3d.spawn_sand_burst(defender.global_position, 1.6 if slam else 0.9)
+		if slam:
+			arena3d.hit_kick(0.7)
+			Sfx.play(&"slam")
+
+
+## Once per active window: per-move 3D flourish. These are presentation only; the hitbox
+## and frame data were already fixed in FighterRoster / BaseFighter.
+func _on_attack_active(attacker: BaseFighter, attack_id: StringName) -> void:
+	if attacker == null or arena3d == null:
+		return
+	var front := attacker.global_position + Vector2(float(attacker.facing) * 78.0, -110.0)
+	match attacker.fighter_key:
+		&"feedback":
+			if attack_id == &"strong":
+				# Sound-System Bass Jab / Feedback Surge: the stack answers the surge.
+				arena3d.pulse_speakers(1.75)
+				arena3d.hit_kick(0.3)
+				_add_note_trail(front, attacker.facing, true)
+			elif attack_id == &"upper_box":
+				_add_note_trail(front, attacker.facing, true)
+			elif attack_id == &"tump":
+				arena3d.hit_kick(0.25)
+		&"lickshot":
+			if attack_id == &"strong":
+				arena3d.pulse_speakers(1.9)     # the dubplate launches off the sub
+			elif attack_id == &"tump":
+				arena3d.hit_kick(0.45)
+				arena3d.spawn_sand_burst(attacker.global_position, 0.8)
+				_add_spark(front, &"hit")
+			elif attack_id == &"upper_box":
+				_add_note_trail(front, attacker.facing, true)
+		&"young_selecta":
+			if attack_id == &"tump":
+				arena3d.spawn_sand_burst(attacker.global_position, 1.1)
+				arena3d.hit_kick(0.3)
+			elif attack_id == &"upper_box":
+				_add_note_trail(front, attacker.facing, true)
+			elif attack_id == &"strong":
+				arena3d.hit_kick(0.3)
+
+
+## Projectiles are real combat nodes; the arena mirrors each one with its own 3D prop.
+func _on_projectile_spawned(attacker: BaseFighter, _attack_id: StringName, wave: Node2D) -> void:
+	if attacker == null or wave == null:
+		return
+	Sfx.play(&"whoosh")
+	if arena3d == null:
+		return
+	arena3d.spawn_projectile(wave.kind, wave.global_position.x, int(signf(wave.dir)),
+		wave.lifetime, wave.travel_distance())
+	arena3d.pulse_speakers(1.9)
+	_add_note_trail(Vector2(wave.global_position.x, attacker.global_position.y - 104.0),
+		attacker.facing, true)
+
+
+## L!ckshot and L!kkle Moore always get their taunt callout, on or off the beat.
+func _on_taunt_callout(fighter: BaseFighter) -> void:
+	if fighter == null:
+		return
+	_announce_callout(&"taunt")
+	if arena3d != null:
+		arena3d.spawn_sand_burst(fighter.global_position, 0.6)
+		arena3d.pulse_speakers(0.7)
+
+
+## A projectile or its 3D proxy must never survive into the next round.
+func _clear_projectiles() -> void:
+	for node in get_tree().get_nodes_in_group("projectiles"):
+		node.queue_free()
+	for node in get_tree().get_nodes_in_group("arena_projectiles"):
+		node.queue_free()
 
 
 ## Speaker-Stack Bounce: electric impact right where the thrown fighter hit the stack.
@@ -968,6 +1060,7 @@ func _on_tag_played(_key: StringName, _priority: int) -> void:
 
 
 func _on_round_started(_round_index: int) -> void:
+	_clear_projectiles()
 	if SoundClash != null:
 		SoundClash.play_round_start()
 	if arena3d != null:

@@ -729,6 +729,168 @@ func _make_contact_shadow() -> MeshInstance3D:
 	return shadow
 
 
+# =========================================================================
+# Signature-move props (2026-11-22)
+# =========================================================================
+## 3D proxy for a travelling special. L!ckshot throws a spinning dubplate with a gold rim;
+## L!kkle Moore throws his school dictionary. The real hit test lives in `ProjectileWave`;
+## this mesh follows the same distance and lifetime so the visual and the hitbox agree.
+func spawn_projectile(kind: StringName, at_px: float, dir: int, seconds: float,
+		distance_px: float) -> void:
+	var node := Node3D.new()
+	node.name = "MoveProjectile_%s" % kind
+	add_child(node)
+	node.add_to_group("arena_projectiles")
+	var from := px_to_world(Vector2(at_px, FLOOR_PX - 108.0))
+	node.position = from
+	var spinner := Node3D.new()
+	spinner.name = "Spin"
+	node.add_child(spinner)
+
+	var fade_mats: Array[StandardMaterial3D] = []
+	if kind == &"dictionary":
+		var cover := _mat(Color(0.10, 0.20, 0.42), 0.85)
+		cover.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		var pages := _mat(Color(0.94, 0.89, 0.72), 1.0)
+		pages.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_add_box(spinner, "DictionaryCover", Vector3(0.36, 0.27, 0.10),
+			Vector3.ZERO, cover)
+		_add_box(spinner, "DictionaryPages", Vector3(0.33, 0.24, 0.085),
+			Vector3(0.0, 0.0, 0.035), pages)
+		fade_mats = [cover, pages]
+		spinner.rotation.z = 0.25
+	else:
+		var disc := CylinderMesh.new()
+		disc.top_radius = 0.34
+		disc.bottom_radius = 0.34
+		disc.height = 0.045
+		disc.radial_segments = 24
+		disc.rings = 1
+		var vinyl := _mat(Color(0.035, 0.035, 0.045), 0.32, 0.45)
+		vinyl.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		var disc_node := MeshInstance3D.new()
+		disc_node.name = "Dubplate"
+		disc_node.mesh = disc
+		disc_node.material_override = vinyl
+		disc_node.rotation.x = PI * 0.5
+		disc_node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		spinner.add_child(disc_node)
+		var rim := TorusMesh.new()
+		rim.inner_radius = 0.30
+		rim.outer_radius = 0.355
+		rim.rings = 24
+		rim.ring_segments = 6
+		var gold := _mat(Color(1.0, 0.80, 0.24), 0.45, 0.35)
+		gold.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		var rim_node := MeshInstance3D.new()
+		rim_node.name = "GoldRim"
+		rim_node.mesh = rim
+		rim_node.material_override = gold
+		rim_node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		spinner.add_child(rim_node)
+		var label := CylinderMesh.new()
+		label.top_radius = 0.115
+		label.bottom_radius = 0.115
+		label.height = 0.05
+		label.radial_segments = 16
+		var rasta := _mat(Color(0.95, 0.82, 0.20), 0.7)
+		rasta.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		var label_node := MeshInstance3D.new()
+		label_node.name = "Label"
+		label_node.mesh = label
+		label_node.material_override = rasta
+		label_node.rotation.x = PI * 0.5
+		label_node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		spinner.add_child(label_node)
+		fade_mats = [vinyl, gold, rasta]
+
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(node, "position:x", from.x + float(dir) * distance_px / PX_PER_M,
+		seconds).set_trans(Tween.TRANS_LINEAR)
+	tween.tween_property(spinner, "rotation:y" if kind != &"dictionary" else "rotation:z",
+		TAU * (3.0 if kind != &"dictionary" else 2.0), seconds).set_trans(Tween.TRANS_LINEAR)
+	for mat in fade_mats:
+		tween.tween_property(mat, "albedo_color:a", 0.0, seconds * 0.22).set_delay(seconds * 0.78)
+	tween.chain().tween_callback(node.queue_free)
+
+
+func active_projectiles() -> int:
+	return get_tree().get_nodes_in_group("arena_projectiles").size()
+
+
+## Sand kicked up by a grab slam, a throw landing or a low sweep. CPUParticles3D only:
+## the WebGL2 path never uses GPU particles.
+func spawn_sand_burst(at: Vector2, strength: float = 1.0) -> void:
+	var puff := CPUParticles3D.new()
+	puff.name = "SandBurst"
+	puff.amount = clampi(int(8.0 + 16.0 * strength), 8, 24)
+	puff.one_shot = true
+	puff.explosiveness = 1.0
+	puff.lifetime = 0.65
+	puff.direction = Vector3(0.0, 1.0, 0.0)
+	puff.spread = 55.0
+	puff.initial_velocity_min = 0.5 + strength * 0.8
+	puff.initial_velocity_max = 1.2 + strength * 1.6
+	puff.gravity = Vector3(0.0, -4.6, 0.0)
+	puff.scale_amount_min = 0.7
+	puff.scale_amount_max = 1.8
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.055, 0.055)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.86, 0.72, 0.48, 1.0)
+	mat.vertex_color_use_as_albedo = true
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	puff.mesh = quad
+	puff.material_override = mat
+	puff.position = px_to_world(Vector2(at.x, FLOOR_PX - 6.0))
+	add_child(puff)
+	puff.emitting = true
+	puff.finished.connect(puff.queue_free)
+
+
+## Record Static Parry: a black vinyl disc with a gold rim snaps open and fades over the
+## contact point. Presentation only — the parry itself resolved in `BaseFighter`.
+func spawn_vinyl_parry(at: Vector2) -> void:
+	var node := Node3D.new()
+	node.name = "VinylParry"
+	add_child(node)
+	node.position = px_to_world(Vector2(at.x, FLOOR_PX - 110.0))
+	var disc := CylinderMesh.new()
+	disc.top_radius = 0.34
+	disc.bottom_radius = 0.34
+	disc.height = 0.035
+	disc.radial_segments = 24
+	var vinyl := _mat(Color(0.04, 0.04, 0.05), 0.25, 0.5)
+	vinyl.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var disc_node := MeshInstance3D.new()
+	disc_node.mesh = disc
+	disc_node.material_override = vinyl
+	disc_node.rotation.x = PI * 0.5
+	disc_node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	node.add_child(disc_node)
+	var rim := TorusMesh.new()
+	rim.inner_radius = 0.34
+	rim.outer_radius = 0.40
+	rim.rings = 24
+	rim.ring_segments = 6
+	var gold := _mat(Color(1.0, 0.84, 0.26), 0.4, 0.4)
+	gold.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var rim_node := MeshInstance3D.new()
+	rim_node.mesh = rim
+	rim_node.material_override = gold
+	rim_node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	node.add_child(rim_node)
+	node.scale = Vector3.ONE * 0.45
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(node, "scale", Vector3.ONE * 2.1, 0.45)
+	tween.tween_property(vinyl, "albedo_color:a", 0.0, 0.45)
+	tween.tween_property(gold, "albedo_color:a", 0.0, 0.45)
+	tween.chain().tween_callback(node.queue_free)
+
+
 func _spawn_burst(at: Vector3, power: float, angle: float) -> void:
 	# Prune freed bursts first, then recycle the oldest if the cap is reached, so a long
 	# brawl can never stack note geometry.

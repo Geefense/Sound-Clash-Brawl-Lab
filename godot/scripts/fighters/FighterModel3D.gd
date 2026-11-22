@@ -8,37 +8,43 @@ extends Node3D
 ## stay exactly as they were. The whole 3D layer can be switched off without touching a
 ## single combat value.
 ##
-## One model source is wired:
-##   * `feedback_fighting_idle_rigged.fbx` — the owner's uploaded 40 000-triangle mesh with
-##     the 25-bone Mixamo rig and its baked 3.30 s `mixamo_com` idle clip. The baked clip
-##     drives the neutral/walk base, and the eight fight states are layered additively on
-##     the skeleton (procedural stances) until per-state Mixamo tracks arrive.
-##     Both P1 and P2 use it, so the default FEEDBACK vs FEEDBACK showcase is a true mirror
-##     match; P2 gets the cool/gold alternate accent below so the two rigs stay readable.
-##   * `lickshot_placeholder_static.fbx` is **archived for reference only** and is no longer
-##     assigned to anyone. L!ckshot renders as a `FighterBillboard3D` from his approved 2D
-##     sprites until his own rigged model is uploaded.
+## Three model sources are wired (owner uploads, 2026-11-22):
+##   * `feedback_v2.fbx`    — 29 025 tris, faces +Z
+##   * `lickshot.fbx`       — 270 074 tris, faces +X
+##   * `likkle_moore.fbx`   — 246 654 tris, faces +X
+## All three are static GLB→FBX bakes: no skeleton, no Mixamo clip. Their whole-body
+## stance (idle bob, walk lean, strike lunge, hit recoil, knockdown/spin) is procedural on
+## `PosePivot`, so they are immediately playable without per-state animation tracks. The
+## additive skeleton layer below is kept for a future rigged upload but idles out here.
+## Both P1 and P2 can select the same fighter, so a mirror match gives **P2** the cool/gold
+## alternate accent below to keep two identical meshes readable.
+##
+## `feedback_fighting_idle_rigged.fbx` and `lickshot_placeholder_static.fbx` stay archived
+## in the same folder for reference only; neither is assigned to a fighter.
 ##
 ## Materials are the toon/cel shader with an inverted-hull ink `next_pass`; both are
-## WebGL2-safe. The outfit texture is the owner's baked albedo (also used by the billboard).
+## WebGL2-safe. The albedo is the owner's baked texture, extracted from the upload's
+## embedded PNG and imported as uncompressed RGBA (no VRAM compression).
 
 const TOON_SHADER := preload("res://assets/shaders/toon_cel.gdshader")
 const OUTLINE_SHADER := preload("res://assets/shaders/toon_outline.gdshader")
 
 ## Mirror-match accents. P1 keeps the owner's warm cream rim; P2 gets a cool jacket tint and
-## a gold rim, so two identical Feedback rigs read as two players instead of one clone.
+## a gold rim, so two identical fighters read as two players instead of one clone.
 const MIRROR_TINT := Color(0.80, 0.90, 1.10, 1.0)
 const MIRROR_HUE := 0.030
 const MIRROR_RIM := Color(1.0, 0.70, 0.26, 1.0)
 
 ## Per-fighter model wiring. `height` is the on-screen fighting height in world metres
 ## (the arena uses 140 px = 1 m, so 1.55 m reads between 55 % and 65 % of the 720 px frame
-## at the neutral camera). `yaw_offset` turns the model's +Z face onto the fighting axis.
+## at the neutral camera). `yaw_offset` turns each upload's own authored face onto the
+## fighting +X axis: Feedback was exported facing +Z, the two Tripo exports face +X.
+## L!kkle Moore keeps the roster's 82 % kid height (1.55 × 0.82 ≈ 1.27 m).
 const MODEL_SOURCES := {
 	&"feedback": {
-		"path": "res://assets/models/fighters/feedback_fighting_idle_rigged.fbx",
-		"albedo": "res://assets/models/fighters/feedback_fitted_jacket_albedo.jpg",
-		"label": "Feedback — rigged Mixamo idle",
+		"path": "res://assets/models/fighters/feedback_v2.fbx",
+		"albedo": "res://assets/models/fighters/feedback_v2_albedo.png",
+		"label": "Feedback — 3D cel upload (feedback_v2)",
 		"height": 1.55,
 		"tint": Color(1.0, 1.0, 1.0, 1.0),
 		"hue_shift": 0.0,
@@ -46,9 +52,32 @@ const MODEL_SOURCES := {
 		"ink": Color(0.022, 0.016, 0.030, 1.0),
 		"rim": Color(1.0, 0.88, 0.62, 1.0),
 	},
+	&"lickshot": {
+		"path": "res://assets/models/fighters/lickshot.fbx",
+		"albedo": "res://assets/models/fighters/lickshot_albedo.png",
+		"label": "L!ckshot — 3D cel upload",
+		"height": 1.58,
+		"tint": Color(1.0, 1.0, 1.0, 1.0),
+		"hue_shift": 0.0,
+		"yaw_offset": -PI * 0.5,
+		"ink": Color(0.022, 0.016, 0.030, 1.0),
+		"rim": Color(1.0, 0.82, 0.38, 1.0),
+	},
+	&"young_selecta": {
+		"path": "res://assets/models/fighters/likkle_moore.fbx",
+		"albedo": "res://assets/models/fighters/likkle_moore_albedo.png",
+		"label": "L!kkle Moore — 3D cel upload",
+		"height": 1.27,
+		"tint": Color(1.0, 1.0, 1.0, 1.0),
+		"hue_shift": 0.0,
+		"yaw_offset": -PI * 0.5,
+		"ink": Color(0.022, 0.016, 0.030, 1.0),
+		"rim": Color(1.0, 0.90, 0.70, 1.0),
+	},
 }
-## `lickshot_placeholder_static.fbx` (the static bake of the same mesh) stays archived in
-## `assets/models/fighters/` for reference; it is intentionally not a selectable model.
+## `feedback_fighting_idle_rigged.fbx`, `lickshot_placeholder_static.fbx` and
+## `feedback_fitted_jacket_albedo.jpg` stay archived in `assets/models/fighters/` for
+## reference; none of them is a selectable model.
 
 var fighter: BaseFighter = null
 var fighter_key: StringName = &""
@@ -63,6 +92,8 @@ var mirror_variant: bool = false
 var triangles: int = 0
 var bone_count: int = 0
 var has_rig: bool = false
+var albedo_texture: Texture2D = null
+var albedo_size: Vector2i = Vector2i.ZERO
 var facing_sign: int = 1
 var base_yaw: float = 0.0
 var feet_offset: float = 0.0
@@ -141,11 +172,38 @@ func describe() -> Dictionary:
 		"height": model_height,
 		"feet": feet_offset,
 		"materials": materials.size(),
+		"albedo": albedo_size,
+		"has_albedo": has_albedo_texture(),
 	}
 
 
 func triangle_count() -> int:
 	return triangles
+
+
+## Real assembled crown-to-sole height in metres, measured from the live mesh AABBs and
+## every ancestor transform. The headless check compares this with the authored height, so a
+## model whose ×1000 GLB→FBX root scale escaped normalisation fails instead of looking huge.
+func measured_height() -> float:
+	var low := INF
+	var high := -INF
+	# Stop at the facing node: the PosePivot squash/lean is a live pose, not the model's
+	# authored size, and must not change the measurement.
+	var top: Node3D = _yaw if _yaw != null else self
+	for mi in meshes:
+		var box: AABB = _relative_transform(mi, top) * mi.mesh.get_aabb()
+		low = minf(low, box.position.y)
+		high = maxf(high, box.position.y + box.size.y)
+	if low == INF or high == -INF:
+		return 0.0
+	return high - low
+
+
+## True when the model has both a decoded albedo and a real (non-1×1) texture size.
+## The headless check asserts this for all three fighters, so a skipped/missing upload
+## fails the build instead of quietly rendering a grey mesh.
+func has_albedo_texture() -> bool:
+	return albedo_texture != null and albedo_size.x > 1 and albedo_size.y > 1
 
 
 func model_source_label() -> String:
@@ -154,8 +212,8 @@ func model_source_label() -> String:
 	return String(MODEL_SOURCES[fighter_key]["label"])
 
 
-## Player 2 in a mirror match: a cool jacket tint and gold rim so two identical Feedback
-## rigs are still distinguishable. Presentation only — no material, tint or shader value
+## Player 2 in a mirror match: a cool jacket tint and gold rim so two identical fighter
+## meshes are still distinguishable. Presentation only — no material, tint or shader value
 ## reaches the combat simulation.
 func set_mirror_variant(enabled: bool) -> void:
 	if enabled == mirror_variant:
@@ -182,6 +240,7 @@ func _apply_variant() -> void:
 		mat.set_shader_parameter("tint", tint)
 		mat.set_shader_parameter("hue_shift", hue)
 		mat.set_shader_parameter("rim_colour", rim)
+
 
 
 func _collect(inst: Node3D) -> void:
@@ -211,8 +270,9 @@ func _collect(inst: Node3D) -> void:
 		break
 
 
-## Scale/seat the mesh from its own measured bounds so neither upload's authored unit scale
-## (the rig is ~1.9 m, the static mesh is authored 100× smaller) can leak into the arena.
+## Scale/seat the mesh from its own measured bounds so no upload's authored unit scale leaks
+## into the arena: a Mixamo rig may measure ~1.9 m, while these GLB→FBX bakes carry a ×1000
+## root scale and assemble to 1 m.
 func _normalize(inst: Node3D) -> void:
 	var height_units := 0.0
 	var lowest := 0.0
@@ -233,14 +293,20 @@ func _normalize(inst: Node3D) -> void:
 		height_units = maxf(top - bottom, 0.01)
 		lowest = bottom
 	else:
+		# Measure through the upload's own node transforms, not the mesh AABB alone: the
+		# GLB→FBX bakes carry a ×1000 root scale, so the raw AABB is 1 mm tall while the
+		# assembled model is 1 m tall. Ignoring the ancestors would normalise it 1000× too
+		# large. The arena owns the returned scale, so this is still one shared height rule.
 		var aabb := AABB()
 		var first := true
 		for mi in meshes:
+			var xf := _relative_transform(mi, inst)
+			var box: AABB = xf * mi.mesh.get_aabb()
 			if first:
-				aabb = mi.mesh.get_aabb()
+				aabb = box
 				first = false
 			else:
-				aabb = aabb.merge(mi.mesh.get_aabb())
+				aabb = aabb.merge(box)
 		height_units = maxf(aabb.size.y, 0.0001)
 		lowest = aabb.position.y
 	var factor := model_height / height_units
@@ -249,8 +315,26 @@ func _normalize(inst: Node3D) -> void:
 	inst.position.y = feet_offset
 
 
+## Compose one mesh's transform up to (not including) `ancestor`. Node3D.transform is
+## local, so walking to the scene root is exact and independent of when the node enters
+## the tree; `global_transform` is unavailable during `_ready` ordering.
+func _relative_transform(node: Node3D, ancestor: Node3D) -> Transform3D:
+	var xf := Transform3D.IDENTITY
+	var cursor: Node = node
+	while cursor != null and cursor != ancestor:
+		if cursor is Node3D:
+			xf = (cursor as Node3D).transform * xf
+		cursor = cursor.get_parent()
+	return xf
+
+
 func _apply_materials(src: Dictionary) -> void:
 	var texture := load(String(src["albedo"])) as Texture2D
+	if texture == null:
+		push_warning("FighterModel3D: missing albedo %s" % src["albedo"])
+	else:
+		albedo_texture = texture
+		albedo_size = texture.get_size()
 	for mi in meshes:
 		var mat := ShaderMaterial.new()
 		mat.shader = TOON_SHADER
@@ -285,8 +369,9 @@ func _apply_facing() -> void:
 	if _yaw == null or fighter == null:
 		return
 	facing_sign = 1 if fighter.facing >= 0 else -1
-	# The uploaded rig faces +Z with its left hand on +X; turning +90° about Y puts that
-	# face on +X, which is the fighter's right-facing side on the 2.5D plane.
+	# Each upload's authored face has its own yaw_offset (Feedback faces +Z, the two Tripo
+	# exports face +X). Adding ±90° puts that face on ±X, the fighter's facing on the 2.5D
+	# plane, so the same transform works for every source.
 	_yaw.rotation.y = facing_sign * PI * 0.5 + base_yaw
 
 

@@ -1699,11 +1699,15 @@ here is gameplay-verified; implementation status is stated per item.
     camera-facing `Sprite3D` at **1.57 m**. `lickshot_placeholder_static.fbx` stays archived in
     `assets/models/fighters/` for reference and must not be assigned to a fighter. Replace it
     with his own rigged upload when it arrives; no combat or billboard code changes.
+    **Superseded 2026-11-22 by item 49:** L!ckshot now renders from the uploaded `lickshot.fbx`
+    as a `FighterModel3D`; the billboard remains only as the fallback for a missing upload.
 
     **L!kkle Moore fallback.** He has no 3D upload, so `FighterBillboard3D.gd` mirrors his
     current approved `AnimatedSprite2D` frame onto a camera-facing `Sprite3D` on the 3D plane,
     normalised to his 82 % relative height (1.27 m). His shared FSM, y 592 art and +25 px reach
     are untouched.
+    **Superseded 2026-11-22 by item 49:** he now renders from `likkle_moore.fbx` as a
+    `FighterModel3D` at the same 82 % height; the 2D art stays as the fallback.
 
     **Combat preservation.** `BaseFighter.set_3d_presentation(true)` hides only `Sprite`,
     `Shadow` and `Dust`; the body, hurtbox, hitbox, collision shapes and every numeric table stay
@@ -1901,6 +1905,66 @@ here is gameplay-verified; implementation status is stated per item.
     - **Not heard:** this environment has no audio device, so the actual mix, fade feel, loop
       points and browser/iPhone playback have not been listened to. The bed is intentionally
       absent from combat; if it is ever heard mid-round, that is a regression.
+
+
+49. **Three uploaded 3D fighters — Feedback v2, L!ckshot and L!kkle Moore playable in the cel-shaded arena (2026-11-22).**
+
+    Owner request on `feature/3d-cel-shaded`: inspect, organise and wire the three new `.fbx`
+    uploads that landed at the branch root, replacing L!ckshot's and L!kkle Moore's `Sprite3D`
+    billboards with real geometry, and export Mixamo-ready copies. **Implemented and checked
+    headlessly; the rendered look is not verified (no GPU/display).**
+    - **Files** — the three uploads were moved to `godot/assets/models/fighters/` as
+      `feedback_v2.fbx`, `lickshot.fbx` and `likkle_moore.fbx` and removed from the repository
+      root. Full inventory, import contract and checksums: `assets/models/fighters/MODELS.md`.
+      | File | Mesh | Rig | Face | Embedded albedo |
+      | --- | --- | --- | --- | --- |
+      | `feedback_v2.fbx` | **29,025 tris** / 23,612 verts | none (static) | +Z | 1024² PNG **RGBA** |
+      | `lickshot.fbx` | **270,074 tris** / 151,028 verts | none (static) | +X | 1024² PNG RGB |
+      | `likkle_moore.fbx` | **246,654 tris** / 139,168 verts | none (static) | +X | 1024² PNG RGB |
+    - **Texture fix / WebP audit** — every embedded `Video/Content` blob is a standard PNG
+      (`\x89PNG`), 8-bit 1024 × 1024, **no WebP/RIFF data**; the earlier WebP concern does not
+      apply to this set. The albedos were extracted to `feedback_v2_albedo.png`,
+      `lickshot_albedo.png`, `likkle_moore_albedo.png`, alpha-normalised to **RGBA8**, and
+      imported lossless with mipmaps and `detect_3d/compress_to=0`, so Godot keeps standard RGBA
+      instead of a VRAM-compressed texture. The FBXs import with
+      `fbx/embedded_image_handling=0` so the PCK does not carry a second copy of each atlas.
+    - **Wiring** — `FighterModel3D.MODEL_SOURCES` maps `feedback`, `lickshot` and `young_selecta`
+      (L!kkle Moore's stable roster key) to the three files; `Arena3D._make_fighter()` therefore
+      builds a `FighterModel3D` for every slot, and `FighterBillboard3D` is only a missing-upload
+      fallback now. Heights are 1.55 m / 1.58 m / **1.27 m** (82 % kid proportion). Yaw offsets
+      put each authored face on the fighting axis (Feedback +Z; the Tripo exports +X).
+    - **Static-rig limit** — the uploads contain no skeleton, skin or Mixamo clip, so all fight
+      motion is the existing whole-body procedural layer: idle bob, walk lean, strike lunge,
+      forward/back tilt, hit recoil, crouch squash, throw spin and the knockdown/KO tip. The
+      additive skeletal layer is retained for a future rigged upload but idles out.
+    - **Normalisation bug fixed** — the GLB→FBX bakes carry a ×1000 root `Lcl Scaling` with
+      `UnitScaleFactor 0.1`. `_normalize()` now measures the AABB **through the node transform
+      chain**, not the raw mesh AABB, then scales to the authored height and seats the lowest
+      bound on world y 0. The raw-AABB path would have scaled these models 1000× too large.
+    - **Cel presentation** — every surface gets the Spatial Toon shader plus the inverted-hull
+      ink `next_pass` and directional rim band. In a mirror match P2 keeps the cool jacket tint
+      (`0.80, 0.90, 1.10`), 0.030 hue shift and gold rim (`1.0, 0.70, 0.26`); P1 keeps white and
+      the warm cream rim. Presentation only; no combat value changes.
+    - **Mixamo-ready copies** — `models-for-mixamo/` (repository root, outside the game build)
+      holds `feedback_mixamo_ready.fbx`, `lickshot_mixamo_ready.fbx` and
+      `likkle_moore_mixamo_ready.fbx`. Geometry, UVs and the embedded 1024² PNG atlas are
+      byte-identical to the uploads; only the root `Lcl Scaling` and `UnitScaleFactor` were
+      rewritten, so the adults open at **180 cm** and the kid at **128 cm** (1 unit = 1 cm).
+      README there records the procedure and checksums.
+    - **Verified headless** — **256 PASS / 0 FAIL**, `ALL CHECKS PASSED` (231 before this pass).
+      New checks cover each model/albedo existing on disk, all three loading as cel-shaded
+      `FighterModel3D` nodes with the expected triangle counts, 1024² albedos, Feedback's albedo
+      decoding as `FORMAT_RGBA8`, both heights/feet offsets, the ink `next_pass`, the procedural
+      lunge following facing and the knockdown tipping the mesh, L!ckshot/L!kkle Moore no longer
+      being billboards, and the archived placeholder still present but unassigned.
+    - **`/docs` rebuilt** with `--headless --path godot --export-release "Web" ../docs/index.html`:
+      `index.pck` **55,143,080 B** (30,243,396 B before these models), `index.wasm` 38,057,390 B,
+      `index.js` 305,185 B, `index.html` 5,449 B. Export log has only the known non-fatal
+      fontconfig noise; FBX import logs non-fatal ufbx `Bad UTF-8 string` warnings.
+    - **Not verified** — no GPU/display here, so the cel bands, ink weight, rim, on-screen texture
+      orientation, mirror tint and actual frame rate have not been seen. The 270k/247k-triangle
+      meshes are wired exactly as uploaded; Godot's generated LODs are enabled, but a real
+      Chromebook frame-time measurement is still required before treating them as shipping-safe.
 
 
 ### Approved Backlog / Roadmap — master list (2026-11-16)
@@ -2739,3 +2803,48 @@ archived fourth upload, `godot/assets/audio/README.md`, `production/README.md`,
 **Not heard — no audio device.** The songs' actual sound, fade shape, loop seam, loudness against
 the sting and DJ tags, and Web/iPhone playback are unverified by ear. Browser autoplay is handled
 by restarting the bed in `_enter_setup()` on the first gesture, but that needs a real-device check.
+
+### Three uploaded 3D fighters — headless verification, November 22, 2026
+
+Owner request on `feature/3d-cel-shaded`: inspect the three `.fbx` uploads at the branch root,
+fix/validate their embedded textures, file them into the game, and replace L!ckshot's and
+L!kkle Moore's billboards with real 3D models. Recorded as §9 item 49.
+
+```bash
+godot --headless --path godot --import
+godot --headless --path godot --script res://tools/headless_roster_check.gd
+godot --headless --path godot --export-release "Web" ../docs/index.html
+```
+
+**256 PASS / 0 FAIL**, `ALL CHECKS PASSED` (231 before this pass). The new checks assert every
+model and albedo exists on disk; all three instantiate as `FighterModel3D` with **29,025 /
+270,074 / 246,654** triangles; each albedo decodes at 1024 × 1024 and Feedback's is
+`Image.FORMAT_RGBA8`; heights are 1.55 / 1.58 / 1.27 m with feet on world y 0; every material
+carries the inverted-hull ink `next_pass`; the procedural lunge moves toward the fighter's facing
+and the knockdown tips the mesh; and L!ckshot/L!kkle Moore are no longer `FighterBillboard3D`
+while the archived placeholder FBX is still present and unassigned.
+
+**Texture audit.** All embedded images in the three uploads are standard 8-bit PNG at 1024² —
+**no WebP data was present**. The albedos were extracted, alpha-normalised to RGBA8, imported
+lossless with mipmaps and `detect_3d/compress_to=0`, and the FBXs skip their embedded images at
+import so the PCK carries one atlas per fighter.
+
+**Mixamo copies.** `models-for-mixamo/feedback_mixamo_ready.fbx`,
+`lickshot_mixamo_ready.fbx` and `likkle_moore_mixamo_ready.fbx` keep the exact geometry and
+embedded PNG but are rescaled to 180 cm (adults) / 128 cm (kid) with `UnitScaleFactor = 1.0`,
+so they open at human scale in Mixamo's auto-rigger.
+
+**Files changed** — `godot/assets/models/fighters/` (three FBX + three albedo PNG + updated
+`MODELS.md`, old uploads archived), `godot/scripts/fighters/FighterModel3D.gd`,
+`godot/scripts/stages/Arena3D.gd` (comment-only), `godot/tools/headless_roster_check.gd`,
+`models-for-mixamo/` (three FBX + `README.md`), `AGENTS.md` and `godot/AGENTS.md`.
+
+**`/docs` rebuilt**: `index.pck` **55,143,080 B**, `index.wasm` 38,057,390 B, `index.js`
+305,185 B, `index.html` 5,449 B. Export logged only the environment's known non-fatal fontconfig
+warnings; the FBX import logs non-fatal ufbx `Bad UTF-8 string` warnings from the ImageToStl
+writer.
+
+**Not verified — no GPU/display/audio.** The rendered cel bands, ink width, rim lighting, texture
+orientation, mirror tint and the actual frame rate of the 270k/247k-triangle meshes have not been
+seen on screen. Godot's import generates LODs, but these triangle counts are exactly as uploaded
+and still need a real Chromebook frame-time check before being treated as shipping-safe.

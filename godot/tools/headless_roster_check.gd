@@ -2,10 +2,12 @@ extends SceneTree
 ## Headless roster + title-screen check (AGENTS.md §9 backlog item B1).
 ## Run with: godot --headless --path godot --script res://tools/headless_roster_check.gd
 ##
-## Boots TitleScreen, verifies the default FEEDBACK vs FEEDBACK 3D showcase (both rigged,
-## P2's mirror accent), then boots TestArena with Lickshot as P2, rebuilds it with Likkle
-## Moore (L!KKLE MOORE) and checks the shared FSM, sprite frames, +25 px reach, the AI mode
-## and the Esc return path. Prints one line per check and exits non-zero if any check fails.
+## Boots TitleScreen, verifies the three uploaded 3D fighters (Feedback, L!ckshot and
+## L!kkle Moore) load as cel-shaded FighterModel3D nodes with decoded albedos, checks the
+## default FEEDBACK vs FEEDBACK mirror accent, then boots TestArena with Lickshot as P2,
+## rebuilds it with Likkle Moore (L!KKLE MOORE) and checks the shared FSM, sprite frames,
+## +25 px reach, the AI mode and the Esc return path. Prints one line per check and exits
+## non-zero if any check fails.
 
 const PASS := "PASS"
 const FAIL := "FAIL"
@@ -57,6 +59,46 @@ func _solid_crown_to_sole(img: Image) -> int:
 	return 0 if crown < 0 or sole < 0 else sole - crown + 1
 
 
+## Drive a static 3D model through the whole-body procedural rig the arena uses for all
+## three uploads: idle settle, strike lunge, knockdown tip. This is the same `_animate_pose`
+## path `_process` calls, so a mesh that is not actually connected to the transforms fails
+## here instead of only on a device.
+func _assert_procedural_stance(model: FighterModel3D, f: BaseFighter, label: String) -> void:
+	_check(model != null and model._pivot != null and model._yaw != null,
+		label + " is bound to the procedural stance pivot")
+	if model == null or model._pivot == null or f == null:
+		return
+	# The model syncs its yaw in `_process`; the check may run between a facing change and
+	# the next frame, so apply the same sync before measuring the forward lunge.
+	model._apply_facing()
+	var saved_state: int = f.state
+	var saved_attack: StringName = f._attack_id
+	f.state = BaseFighter.State.IDLE
+	f._attack_id = &""
+	for i in 8:
+		model._animate_pose(0.1)
+	var rest_x: float = model._pivot.position.x
+	f.state = BaseFighter.State.ATTACK_ACTIVE
+	f._attack_id = &"jab"
+	for i in 8:
+		model._animate_pose(0.1)
+	# P2 faces left, so "forward" is negative on X; the same transform must follow facing.
+	var forward := float(f.facing)
+	_check((model._pivot.position.x - rest_x) * forward > 0.05,
+		label + " strike lunges the static mesh forward",
+		"x %.3f -> %.3f (facing %d)" % [rest_x, model._pivot.position.x, f.facing])
+	f.state = BaseFighter.State.KNOCKDOWN
+	for i in 22:
+		model._animate_pose(0.1)
+	_check(absf(model._pivot.rotation.z) > 0.4,
+		label + " knockdown transform tips the mesh over",
+		"z %.2f rad" % model._pivot.rotation.z)
+	f.state = saved_state
+	f._attack_id = saved_attack
+	for i in 4:
+		model._animate_pose(0.1)
+
+
 func _anim_floor_y(f: BaseFighter, key: StringName, index: int = 0) -> float:
 	var frames := f.sprite.sprite_frames
 	if frames == null or not frames.has_animation(key):
@@ -101,6 +143,24 @@ func _run() -> void:
 		str(setup.p2_fighter))
 	_check(setup.ai_mode == 1, "AI defaults to Counter-Puncher", str(setup.ai_mode))
 	_check(setup.subtitles == true, "Patois subtitles default on")
+
+	# ---- Three uploaded 3D fighter models (2026-11-22) ----------------------
+	# Every roster key must point at a real FBX and a real extracted albedo. The arenas below
+	# then prove each one actually instantiates as a cel-shaded FighterModel3D.
+	for key in [&"feedback", &"lickshot", &"young_selecta"]:
+		var src: Dictionary = FighterModel3D.MODEL_SOURCES.get(key, {})
+		var model_path := String(src.get("path", ""))
+		var albedo_path := String(src.get("albedo", ""))
+		_check(not model_path.is_empty() and FileAccess.file_exists(model_path)
+				and not albedo_path.is_empty() and FileAccess.file_exists(albedo_path),
+			"%s has its uploaded 3D model and albedo on disk" % key,
+			"%s + %s" % [model_path.get_file(), albedo_path.get_file()])
+	_check(String(FighterModel3D.MODEL_SOURCES[&"young_selecta"]["label"]).contains("L!kkle Moore"),
+		"the young_selecta slot is labelled L!kkle Moore")
+	_check(String(FighterModel3D.MODEL_SOURCES[&"feedback"]["path"]).ends_with("feedback_v2.fbx")
+			and String(FighterModel3D.MODEL_SOURCES[&"lickshot"]["path"]).ends_with("lickshot.fbx")
+			and String(FighterModel3D.MODEL_SOURCES[&"young_selecta"]["path"]).ends_with("likkle_moore.fbx"),
+		"the three owner uploads are filed as feedback_v2, lickshot and likkle_moore")
 
 	# ---- Menu music bed: title only, silent in fights (AGENTS.md §9 item 48) ---
 	_check(music_bed != null, "the MusicBed autoload exists")
@@ -172,16 +232,26 @@ func _run() -> void:
 	var mp2_model: FighterModel3D = mirror_stage.model_for(mp2) as FighterModel3D
 	_check(mp1.fighter_key == &"feedback" and mp2.fighter_key == &"feedback",
 		"the default arena is FEEDBACK vs FEEDBACK", "%s vs %s" % [mp1.fighter_key, mp2.fighter_key])
-	_check(mp1_model != null and mp1_model.has_rig and mp1_model.bone_count == 25
-			and mp1_model.triangle_count() == 40000,
-		"P1 Feedback uses the rigged 25-bone 40 000-triangle upload",
-		"%d bones / %d tris" % [mp1_model.bone_count if mp1_model != null else -1,
-			mp1_model.triangle_count() if mp1_model != null else -1])
-	_check(mp2_model != null and mp2_model.has_rig and mp2_model.bone_count == 25
-			and mp2_model.triangle_count() == 40000,
-		"P2 Feedback uses the same rigged model in the mirror match",
-		"%d bones / %d tris" % [mp2_model.bone_count if mp2_model != null else -1,
-			mp2_model.triangle_count() if mp2_model != null else -1])
+	_check(mp1_model != null and not mp1_model.has_rig and mp1_model.triangle_count() == 29025,
+		"P1 Feedback loads feedback_v2 as a cel-shaded FighterModel3D",
+		"%d tris / rig %s" % [mp1_model.triangle_count() if mp1_model != null else -1,
+			mp1_model.has_rig if mp1_model != null else "?"])
+	_check(mp2_model != null and not mp2_model.has_rig and mp2_model.triangle_count() == 29025,
+		"P2 Feedback uses the same 3D upload in the mirror match",
+		"%d tris" % (mp2_model.triangle_count() if mp2_model != null else -1))
+	_check(mp1_model != null and mp2_model != null and mp1_model.has_albedo_texture()
+			and mp2_model.has_albedo_texture()
+			and mp1_model.albedo_size == Vector2i(1024, 1024),
+		"both mirror models decode their 1024 x 1024 albedo",
+		"%s" % [mp1_model.albedo_size if mp1_model != null else Vector2i.ZERO])
+	_check(mp1_model != null and mp1_model.albedo_texture != null
+			and mp1_model.albedo_texture.get_image().get_format() == Image.FORMAT_RGBA8,
+		"Feedback's albedo imports as uncompressed standard RGBA",
+		"format %d" % (mp1_model.albedo_texture.get_image().get_format()
+			if mp1_model != null and mp1_model.albedo_texture != null else -1))
+	_check(mp1_model != null and absf(mp1_model.measured_height() - 1.55) < 0.02,
+		"Feedback's assembled mesh measures 1.55 m after the root-scale normalisation",
+		"%.3f m" % (mp1_model.measured_height() if mp1_model != null else 0.0))
 	_check(mp1_model != null and mp2_model != null
 			and not mp1_model.is_mirror_variant() and mp2_model.is_mirror_variant(),
 		"only P2 carries the mirror-match alternate accent")
@@ -193,10 +263,8 @@ func _run() -> void:
 	var p2_rim: Color = mp2_model.materials[0].get_shader_parameter("rim_colour") \
 			if mp2_model != null and not mp2_model.materials.is_empty() else Color.WHITE
 	_check(p2_rim.r > p2_rim.b, "P2's rim accent shifts gold in the mirror match", str(p2_rim))
-	_check(mp1_model != null and mp2_model != null and mp1_model.animation != null
-			and mp2_model.animation != null
-			and mp1_model.animation.is_playing() and mp2_model.animation.is_playing(),
-		"both mirror-match rigs play the baked Mixamo idle")
+	_assert_procedural_stance(mp1_model, mp1, "P1 Feedback")
+	_assert_procedural_stance(mp2_model, mp2, "P2 Feedback")
 
 	# ---- MusicBed must stay silent through the active round -----------------
 	_check(music_bed.state_name() == "off" and not music_bed.is_playing(),
@@ -518,36 +586,42 @@ func _run() -> void:
 
 	var model1 = stage3d.model_for(p1) if stage3d != null else null
 	var model2 = stage3d.model_for(p2) if stage3d != null else null
-	var rigged: FighterModel3D = model1 as FighterModel3D
-	var lick_billboard: FighterBillboard3D = model2 as FighterBillboard3D
-	_check(rigged != null and rigged.has_rig and rigged.bone_count == 25,
-		"Feedback uses the uploaded rigged model with its 25 Mixamo bones",
-		"%d bones" % (rigged.bone_count if rigged != null else -1))
-	_check(rigged != null and rigged.triangle_count() == 40000,
-		"Feedback's uploaded mesh is 40 000 triangles",
-		"%d" % (rigged.triangle_count() if rigged != null else -1))
-	_check(lick_billboard != null and lick_billboard.sprite != null
-			and lick_billboard.sprite.texture != null,
-		"L!ckshot renders as a camera-facing Sprite3D billboard, not the static clone")
-	_check(model2 is FighterBillboard3D and not (model2 is FighterModel3D),
-		"no FighterModel3D proxy is created for L!ckshot")
-	_check(not FighterModel3D.MODEL_SOURCES.has(&"lickshot")
+	var fb3d: FighterModel3D = model1 as FighterModel3D
+	var lick3d: FighterModel3D = model2 as FighterModel3D
+	_check(fb3d != null and fb3d.triangle_count() == 29025,
+		"Feedback loads feedback_v2 as a cel-shaded FighterModel3D",
+		"%d tris" % (fb3d.triangle_count() if fb3d != null else -1))
+	_check(lick3d != null and lick3d.triangle_count() == 270074,
+		"L!ckshot loads his 270 074-triangle upload as a cel-shaded FighterModel3D",
+		"%d tris" % (lick3d.triangle_count() if lick3d != null else -1))
+	_check(model2 is FighterModel3D and not (model2 is FighterBillboard3D),
+		"L!ckshot now renders from real 3D geometry, not a Sprite3D billboard")
+	_check(lick3d != null and lick3d.has_albedo_texture()
+			and lick3d.albedo_size == Vector2i(1024, 1024),
+		"L!ckshot's albedo decodes as a 1024 x 1024 texture",
+		"%s" % [lick3d.albedo_size if lick3d != null else Vector2i.ZERO])
+	_check(not String(FighterModel3D.MODEL_SOURCES[&"lickshot"]["path"]).contains("placeholder")
 			and FileAccess.file_exists("res://assets/models/fighters/lickshot_placeholder_static.fbx"),
-		"the static output.fbx stays archived but is no longer assigned to L!ckshot")
-	_check(rigged != null and absf(rigged.model_height - 1.55) < 0.02,
-		"Feedback is normalised to its authored fighting height",
-		"%.2f m" % (rigged.model_height if rigged != null else 0.0))
-	_check(lick_billboard != null and lick_billboard.model_height > 1.4
-			and lick_billboard.model_height < 1.7,
-		"L!ckshot's billboard keeps the adult stand height on the 3D plane",
-		"%.2f m" % (lick_billboard.model_height if lick_billboard != null else 0.0))
-	_check(rigged != null and rigged.feet_offset > 0.0,
-		"Feedback is seated feet-down on the world floor")
-	_check(rigged != null and rigged.animation != null and rigged.animation.is_playing(),
-		"the baked Mixamo idle clip is playing on the rigged model")
-	_check(rigged != null and not rigged.materials.is_empty()
-			and rigged.materials[0].next_pass != null,
-		"the fighter material carries the inverted-hull ink outline pass")
+		"the static placeholder stays archived but is no longer assigned to L!ckshot")
+	_check(fb3d != null and absf(fb3d.model_height - 1.55) < 0.02
+			and absf(fb3d.measured_height() - 1.55) < 0.02,
+		"Feedback's assembled mesh measures its authored 1.55 m height",
+		"%.2f m config / %.3f m measured" % [fb3d.model_height if fb3d != null else 0.0,
+			fb3d.measured_height() if fb3d != null else 0.0])
+	_check(lick3d != null and absf(lick3d.model_height - 1.58) < 0.02
+			and absf(lick3d.measured_height() - 1.58) < 0.02,
+		"L!ckshot's assembled mesh measures his 1.58 m adult height",
+		"%.2f m config / %.3f m measured" % [lick3d.model_height if lick3d != null else 0.0,
+			lick3d.measured_height() if lick3d != null else 0.0])
+	_check(fb3d != null and lick3d != null and fb3d.feet_offset > 0.0
+			and lick3d.feet_offset > 0.0,
+		"both uploaded models are seated feet-down on the world floor")
+	_check(fb3d != null and lick3d != null and not fb3d.materials.is_empty()
+			and not lick3d.materials.is_empty()
+			and fb3d.materials[0].next_pass != null and lick3d.materials[0].next_pass != null,
+		"both fighter materials carry the inverted-hull ink outline pass")
+	_assert_procedural_stance(fb3d, p1, "Feedback")
+	_assert_procedural_stance(lick3d, p2, "L!ckshot")
 
 	# Shader compile checks: `get_shader_uniform_list()` is empty for a shader that failed to
 	# parse, so this is a real GLSL parse check in a headless run.
@@ -823,13 +897,26 @@ func _run() -> void:
 	# FSM and the y 592 art stay exactly as they are.
 	var kid_stage: Arena3D = arena.arena3d
 	var kid_model = kid_stage.model_for(p2) if kid_stage != null else null
-	_check(kid_model is FighterBillboard3D and kid_model.sprite != null,
-		"L!kkle Moore falls back to a 2D sprite billboard on the 3D plane")
-	_check(kid_model != null and kid_model.model_height > 1.1 and kid_model.model_height < 1.45,
-		"the kid billboard keeps his 82 % relative height",
-		"%.2f m" % (kid_model.model_height if kid_model != null else 0.0))
+	_check(kid_model is FighterModel3D, "L!kkle Moore renders from his real 3D upload")
+	_check(kid_model != null and kid_model.triangle_count() == 246654,
+		"L!kkle Moore loads his 246 654-triangle mesh as a cel-shaded FighterModel3D",
+		"%d tris" % (kid_model.triangle_count() if kid_model != null else -1))
+	_check(kid_model is FighterModel3D and not (kid_model is FighterBillboard3D),
+		"the kid no longer falls back to a Sprite3D billboard")
+	_check(kid_model != null and kid_model.has_albedo_texture()
+			and kid_model.albedo_size == Vector2i(1024, 1024),
+		"L!kkle Moore's albedo decodes as a 1024 x 1024 texture",
+		"%s" % [kid_model.albedo_size if kid_model != null else Vector2i.ZERO])
+	_check(kid_model != null and absf(kid_model.model_height - 1.27) < 0.02
+			and absf(kid_model.measured_height() - 1.27) < 0.02,
+		"the kid's assembled mesh measures his 82 % relative height",
+		"%.2f m config / %.3f m measured" % [kid_model.model_height if kid_model != null else 0.0,
+			kid_model.measured_height() if kid_model != null else 0.0])
+	_check(kid_model != null and kid_model.feet_offset > 0.0,
+		"the kid model is seated feet-down on the world floor")
 	_check(not p2.sprite.visible and p2.is_3d_presentation(),
-		"the 2D sprite is hidden while the billboard carries his art")
+		"the 2D sprite is hidden while the 3D model carries his art")
+	_assert_procedural_stance(kid_model, p2, "L!kkle Moore")
 
 	# ---- Facing, props, crowd acting and the time-of-day pass (2026-11-17) ----------
 	# `p1` above belongs to the previous arena instance, which the scene change freed.

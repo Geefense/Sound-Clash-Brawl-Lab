@@ -176,9 +176,9 @@ func setup(p1: BaseFighter, p2: BaseFighter) -> void:
 	_apply_mirror_variants()
 
 
-## Default FEEDBACK vs FEEDBACK showcase: both sides use the rigged upload, so P2 gets the
-## alternate cool/gold accent. Only a genuine mirror match is tinted; a different opponent
-## keeps its own material.
+## Default FEEDBACK vs FEEDBACK showcase: both sides use the same uploaded 3D mesh, so P2
+## gets the alternate cool/gold accent. Only a genuine mirror match is tinted; a different
+## opponent keeps its own material.
 func _apply_mirror_variants() -> void:
 	var p1: BaseFighter = fighters.get("p1")
 	var p2: BaseFighter = fighters.get("p2")

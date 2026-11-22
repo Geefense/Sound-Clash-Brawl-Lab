@@ -528,6 +528,13 @@ func _on_strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dic
 	if arena3d != null:
 		arena3d.hit_kick(0.9 if bool(result.get("counter", false)) else 0.3)
 		arena3d.pulse_speakers(0.8 if unblocked else 0.3)
+		# DJs and crowd answer the contact itself (owner request, 2026-11-22). The cue only
+		# starts their staggered timers; no combat value is read back out of the yard.
+		if unblocked and attacker != null:
+			var heavy_contact := hit_id in BaseFighter.HEAVY_ATTACK_IDS \
+				or bool(result.get("counter", false))
+			arena3d.notify_combat_event(&"heavy_hit" if heavy_contact else &"hit",
+				_corner_of(attacker))
 
 	# 2.5D impact juice (AGENTS.md §9 item 41): musical-note trails on heavies and on-beat
 	# contacts, and the black-and-gold comic frame plus a micro-zoom on a counter-hit. Light
@@ -554,6 +561,9 @@ func _on_fighter_died() -> void:
 	if arena3d != null:
 		arena3d.hit_kick(1.3)
 		arena3d.pulse_speakers(1.6)
+		# The corner that is still standing erupts; the other bank puts its hands on its head.
+		var winner_side := 1 if p1 != null and p1.state == BaseFighter.State.KO else 0
+		arena3d.notify_combat_event(&"ko", winner_side)
 
 
 ## Round win: the winner throws its celebration pose while the result banner runs
@@ -579,6 +589,7 @@ func _on_round_ended(_round_index: int, winner: int) -> void:
 		SoundClash.set_crowd_intensity(1.0)
 	if arena3d != null:
 		arena3d.pulse_speakers(1.4)
+		arena3d.notify_combat_event(&"victory", winner)
 
 
 ## Match over: guarantee the victory bed is running (no-op if the final K.O. already started
@@ -601,6 +612,7 @@ func _on_hype_surge(seconds: float) -> void:
 	if arena3d != null:
 		arena3d.hit_kick(0.55)
 		arena3d.pulse_speakers(1.5)
+		arena3d.notify_combat_event(&"hype", -1)
 	# 100 % Crowd Hype punches the camera in and throws the comic frame (AGENTS.md §9 item 41).
 	_zoom_punch_burst(0.075)
 	_add_impact_frame(&"surge")
@@ -867,6 +879,7 @@ func _on_beat(_beat_index: int) -> void:
 		speaker_rings.pulse()
 	if arena3d != null:
 		arena3d.pulse_speakers(1.0)
+		arena3d.beat_pulse()
 
 
 # =========================================================================
@@ -966,6 +979,8 @@ func _on_fighter_state_changed(old_state: int, new_state: int, fighter: BaseFigh
 			SoundClash.on_knockdown(fighter)
 		if arena3d != null:
 			arena3d.hit_kick(0.75)
+			# The other corner scored the knockdown and gets the roar.
+			arena3d.notify_combat_event(&"knockdown", 1 - _corner_of(fighter))
 	if new_state != BaseFighter.State.ATTACK_ACTIVE or fighter == null:
 		return
 	if not fighter.shows_strike_tell():
@@ -1057,6 +1072,8 @@ func _setup_3d_presentation() -> void:
 func _on_tag_played(_key: StringName, _priority: int) -> void:
 	if arena3d != null:
 		arena3d.pulse_speakers(1.35)
+		# A DJ tag is the booth's own cue: horn up, crowd on its feet.
+		arena3d.notify_combat_event(&"tag", -1)
 
 
 func _on_round_started(_round_index: int) -> void:
@@ -1091,6 +1108,12 @@ func _follow_action(delta: float = 0.0) -> void:
 	# Zooming in only ever shrinks the visible area, so the thump and the punch never expose
 	# an edge of the single-layer stage art.
 	camera.zoom = Vector2(_zoom_smooth, _zoom_smooth) * (1.0 + THUMP_ZOOM * _thump + _zoom_punch)
+
+
+## Which loyalty bank a fighter belongs to: 0 = P1's left corner, 1 = P2's right corner.
+## Presentation only — the crowd's side never feeds back into the fight.
+func _corner_of(fighter: BaseFighter) -> int:
+	return 0 if fighter == p1 else 1
 
 
 func _on_shake(intensity: float, duration: float) -> void:

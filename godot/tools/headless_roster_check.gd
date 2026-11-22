@@ -1439,6 +1439,142 @@ func _run() -> void:
 		"the framing zoom eases instead of snapping",
 		"%.4f -> %.4f" % [smooth_before, arena2._zoom_smooth])
 
+	# ---- Active 3D atmosphere: DJ booth + staggered silhouette crowd (2026-11-22) ------
+	# Owner request: 1–2 rim-lit DJs behind a turntable/mixer rig between the mid-ground
+	# speaker stacks, and 16–24 varied dark-silhouette spectators (flags, lighters, airhorn
+	# operators) that react on staggered, zone-loyal clocks. Everything is presentation
+	# only; the checks below also prove the cues cannot touch health or fighter state.
+	var atmosphere: Arena3D = arena2.arena3d
+	var crowd3d: CrowdController3D = atmosphere.crowd3d
+	var booth: DJBooth3D = atmosphere.dj_booth
+	_check(booth != null and atmosphere.dj_count() == 2,
+		"two 3D DJs work the decks between the speaker stacks",
+		"%d DJs" % atmosphere.dj_count())
+	_check(booth != null and absf(booth.position.x) < 0.01 and booth.position.z < -2.55,
+		"the DJ booth is centred between the stacks and behind the crowd barrier",
+		"%s" % [booth.position if booth != null else Vector3.ZERO])
+	_check(booth != null and booth._records.size() == 2
+			and booth._records[0].find_children("Vinyl", "MeshInstance3D", false, false).size() == 1
+			and booth.find_children("Mixer", "MeshInstance3D", true, false).size() == 1
+			and booth._faders.size() == 3,
+		"the rig has two turntables with vinyl, a mixer and three channel faders")
+	_check(booth != null and booth._body_material != null
+			and booth._body_material.shader.get_shader_uniform_list().size() >= 6,
+		"the silhouette rim shader compiles for the booth",
+		"%d uniforms" % (booth._body_material.shader.get_shader_uniform_list().size()
+			if booth != null and booth._body_material != null else -1))
+	var crowd_source := FileAccess.get_file_as_string("res://assets/shaders/silhouette_rim.gdshader")
+	var crowd_lint: Array[String] = []
+	for token in ["hint_screen_texture", "SCREEN_TEXTURE", "DEPTH_TEXTURE", "#include", "while ("]:
+		if crowd_source.contains(token):
+			crowd_lint.append(token)
+	_check(not crowd_source.is_empty() and crowd_lint.is_empty(),
+		"the silhouette shader is WebGL2-safe (no screen/depth reads, includes or loops)",
+		", ".join(crowd_lint))
+	_check(crowd3d != null and crowd3d.count() >= 16 and crowd3d.count() <= 24
+			and atmosphere.crowd_count() == crowd3d.count(),
+		"the capsule placeholder bank is replaced by 16–24 varied silhouettes",
+		"%d spectators" % atmosphere.crowd_count())
+	_check(crowd3d.zone_count(0) == 10 and crowd3d.zone_count(1) == 10,
+		"the crowd splits into two equal loyalty banks",
+		"%d / %d" % [crowd3d.zone_count(0), crowd3d.zone_count(1)])
+	_check(crowd3d.flag_count() == 3 and crowd3d.lighter_slots() >= 4
+			and crowd3d.airhorn_count() == 2,
+		"the crowd carries flags, raised lighters and two airhorn operators",
+		"%d flags / %d lighters / %d horns" % [crowd3d.flag_count(),
+			crowd3d.lighter_slots(), crowd3d.airhorn_count()])
+	_check(atmosphere.get_node_or_null("Crowd00") == null
+			and crowd3d.get_node_or_null("Spectator00") != null,
+		"the old capsule crowd nodes are gone")
+
+	# Staggered heavy-hit reaction: ringside first, back rows last.
+	crowd3d.settle()
+	booth.settle()
+	_check(crowd3d.reacting_count() == 0, "the yard starts neutral")
+	atmosphere.notify_combat_event(&"heavy_hit", 0)
+	_check(crowd3d.reacting_count() == 0 and crowd3d.pending_count() == crowd3d.count(),
+		"nobody answers on the impact frame itself",
+		"%d queued" % crowd3d.pending_count())
+	crowd3d.tick(0.14)
+	var ringside := crowd3d.row_reacting(0)
+	var back_rows := crowd3d.row_reacting(2)
+	_check(ringside > 0, "ringside starts cheering inside 0.14 s", "%d person(s)" % ringside)
+	_check(ringside > back_rows and back_rows == 0,
+		"the back rows wait their turn instead of jumping in unison",
+		"front %d / back %d" % [ringside, back_rows])
+	crowd3d.tick(0.8)
+	_check(crowd3d.reacting_count() == crowd3d.count(),
+		"the whole yard answers inside a beat",
+		"%d / %d" % [crowd3d.reacting_count(), crowd3d.count()])
+	_check(crowd3d.zone_state_count(0, CrowdController3D.STATE_CHEER)
+			+ crowd3d.zone_state_count(0, CrowdController3D.STATE_HYPE) == 10,
+		"P1's bank erupts in cheers")
+	_check(crowd3d.zone_state_count(1, CrowdController3D.STATE_DISBELIEF) == 10,
+		"the rival bank throws its hands on its head",
+		"%d in disbelief" % crowd3d.zone_state_count(1, CrowdController3D.STATE_DISBELIEF))
+	_check(crowd3d.lighter_count() >= 1 and crowd3d.lit_flame_count() >= 1,
+		"lighters spark up on a heavy hit",
+		"%d lit / %d flames" % [crowd3d.lighter_count(), crowd3d.lit_flame_count()])
+	_check(booth.pointing(), "a DJ points at the fighters on a heavy hit")
+	var fader_before := booth.fader_position()
+	var spin_before := booth.record_spin()
+	booth.tick(0.4)
+	_check(not is_equal_approx(fader_before, booth.fader_position())
+			and not is_equal_approx(spin_before, booth.record_spin()),
+		"the DJs work the faders and keep both records spinning",
+		"fader %.3f -> %.3f / spin %.2f -> %.2f" % [fader_before, booth.fader_position(),
+			spin_before, booth.record_spin()])
+
+	# Knockdown, K.O. and DJ tag: horns up and the booth celebrates.
+	crowd3d.settle()
+	booth.settle()
+	atmosphere.notify_combat_event(&"knockdown", 1)
+	crowd3d.tick(0.6)
+	booth.tick(0.1)
+	_check(booth.airhorn_up() and crowd3d.horn_raised() == 2,
+		"a knockdown lifts the airhorn, on the decks and in both corners",
+		"booth %s / %d raised" % [booth.airhorn_up(), crowd3d.horn_raised()])
+	crowd3d.settle()
+	booth.settle()
+	atmosphere.notify_combat_event(&"ko", 1)
+	crowd3d.tick(0.6)
+	booth.tick(0.1)
+	_check(booth.celebrating() and crowd3d.zone_state_count(1, CrowdController3D.STATE_HYPE) == 10,
+		"a K.O. sends the winning bank into a jump and the booth into a celebration")
+	crowd3d.settle()
+	booth.settle()
+	atmosphere.notify_combat_event(&"tag", -1)
+	_check(booth.airhorn_up(), "a DJ tag is answered by the booth's airhorn")
+	atmosphere.notify_combat_event(&"hype", -1)
+	crowd3d.tick(0.6)
+	_check(crowd3d.lighter_count() == crowd3d.lighter_slots(),
+		"a Hype surge raises every lighter in the yard")
+
+	# Cues are presentation only: health, state and frame data never move.
+	var hp_before := [p1b.health, p2.health]
+	var state_before := [p1b.state, p2.state]
+	atmosphere.notify_combat_event(&"ko", 0)
+	_check(p1b.health == hp_before[0] and p2.health == hp_before[1]
+			and p1b.state == state_before[0] and p2.state == state_before[1],
+		"crowd and DJ cues never touch health or fighter state")
+
+	# Budget: measured from the meshes that were actually built.
+	var crowd_tris := crowd3d.triangle_count()
+	var booth_tris := booth.triangle_count()
+	_check(crowd_tris > 0 and booth_tris > 0 and atmosphere.atmosphere_triangles() < 15000,
+		"the new DJ booth and crowd stay under 15 000 triangles",
+		"%d total (crowd %d / booth %d)" % [atmosphere.atmosphere_triangles(),
+			crowd_tris, booth_tris])
+
+	# Palette: the phase rim reaches every silhouette through the one shared material.
+	atmosphere.apply_phase(2)
+	var night_rim: Color = crowd3d._body_material.get_shader_parameter("rim_colour")
+	_check(night_rim.b > night_rim.r,
+		"the crowd's rim follows the night cyan palette", str(night_rim))
+	atmosphere.apply_phase(0)
+	crowd3d.settle()
+	booth.settle()
+
 	# y 592 floor alignment is untouched by any of this.
 	_check(is_equal_approx(BaseFighter.REACTION_FLOOR_Y, 592.0),
 		"the y 592 sand alignment constant is unchanged")

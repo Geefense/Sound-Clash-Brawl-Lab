@@ -35,6 +35,8 @@ const NOTE_HEAVY := 1.0
 
 const MODEL_SCRIPT := preload("res://scripts/fighters/FighterModel3D.gd")
 const BILLBOARD_SCRIPT := preload("res://scripts/fighters/FighterBillboard3D.gd")
+const CROWD_SCRIPT := preload("res://scripts/stages/CrowdController3D.gd")
+const BOOTH_SCRIPT := preload("res://scripts/stages/DJBooth3D.gd")
 const BURST_SCRIPT := preload("res://scripts/stages/MusicNoteBurst.gd")
 const CONTACT_SHADOW := preload("res://assets/shaders/contact_shadow.gdshader")
 const LIGHT_POOL := preload("res://assets/shaders/light_pool.gdshader")
@@ -132,7 +134,10 @@ var models: Dictionary = {}            # "p1"/"p2" -> FighterModel3D or FighterB
 var shadows: Dictionary = {}           # "p1"/"p2" -> MeshInstance3D
 
 var _cones: Array[MeshInstance3D] = []
-var _crowd: Array[Dictionary] = []
+## 3D atmosphere (owner request, 2026-11-22): the DJ booth behind the decks and the
+## staggered silhouette crowd. Both are presentation only and are ticked from `_process`.
+var crowd3d: CrowdController3D = null
+var dj_booth: DJBooth3D = null
 var _pulse: float = 0.0
 var _kick: float = 0.0
 var _shake: float = 0.0
@@ -154,6 +159,7 @@ func _ready() -> void:
 	_build_yard()
 	_build_speakers()
 	_build_truss_and_lights()
+	_build_dj_booth()
 	_build_crowd()
 	_apply_phase(PHASES[0])
 
@@ -251,6 +257,45 @@ func cone_pulse() -> float:
 	return _pulse
 
 
+# =========================================================================
+# Active atmosphere — DJ booth and staggered crowd (owner request, 2026-11-22)
+# =========================================================================
+## One cue in, one coordinated reaction out. `TestArena` forwards the combat events it
+## already receives (HIT_LANDED, HEAVY_HIT, KNOCKDOWN, K.O., VICTORY, plus DJ tags and Hype
+## surges); nothing about the fight, the hitboxes or the audio is changed here.
+## `side` 0 = P1's left corner, 1 = P2's right corner, −1 = a neutral roar.
+func notify_combat_event(kind: StringName, side: int = -1) -> void:
+	if dj_booth != null:
+		dj_booth.react(kind, side)
+	if crowd3d != null:
+		crowd3d.react(kind, side)
+
+
+## 132 BPM downbeat: the DJs nod and the mixer keeps moving even in a quiet moment.
+func beat_pulse() -> void:
+	if dj_booth != null:
+		dj_booth.nod()
+
+
+func crowd_count() -> int:
+	return crowd3d.count() if crowd3d != null else 0
+
+
+func dj_count() -> int:
+	return dj_booth.dj_count() if dj_booth != null else 0
+
+
+## Real triangle cost of everything this pass added to the yard, measured from the meshes
+## that were actually built. The headless check keeps it under 15 000.
+func atmosphere_triangles() -> int:
+	var total := 0
+	if crowd3d != null:
+		total += crowd3d.triangle_count()
+	if dj_booth != null:
+		total += dj_booth.triangle_count()
+	return total
+
+
 func model_for(fighter: BaseFighter) -> Node3D:
 	for key in models:
 		if fighters.get(key) == fighter:
@@ -345,13 +390,12 @@ func _update_speakers() -> void:
 
 
 func _update_crowd(delta: float) -> void:
-	# Unsynchronised head/shoulder sway, so the crowd is never a uniform bounce loop.
-	for person in _crowd:
-		var node: Node3D = person["node"]
-		if node == null:
-			continue
-		person["phase"] = float(person["phase"]) + delta * float(person["rate"])
-		node.rotation.z = sin(float(person["phase"])) * float(person["sway"])
+	# Each spectator and DJ runs its own clock and its own staggered reaction timer; the
+	# arena only advances them, so nothing here can ever touch the simulation.
+	if crowd3d != null:
+		crowd3d.tick(delta)
+	if dj_booth != null:
+		dj_booth.tick(delta)
 
 
 func _update_phase(delta: float) -> void:
@@ -407,6 +451,12 @@ func _push_palette(p: Dictionary) -> void:
 	if rim != null:
 		rim.light_color = p["rim"]
 		rim.light_energy = float(p["rim_energy"])
+	# The crowd and the DJ booth share one silhouette-rim material each, so the phase palette
+	# repaints every silhouette in the yard with a single shader parameter write.
+	if crowd3d != null:
+		crowd3d.set_palette(p["rim"], p["spot_colour"], float(p["rim_energy"]))
+	if dj_booth != null:
+		dj_booth.set_palette(p["rim"], p["spot_colour"], float(p["rim_energy"]))
 	if spot_left != null:
 		spot_left.light_color = p["spot_colour"]
 		spot_left.light_energy = float(p["spot_energy"])
@@ -639,63 +689,25 @@ func _build_truss_and_lights() -> void:
 	add_child(rim)
 
 
+## 3D DJ booth between the mid-ground stacks (owner request, 2026-11-22). It stands behind
+## the barrier and behind the fighting lane, in the centre bay both crowd banks leave open,
+## so the decks sit between the speaker stacks exactly as a real sound system is set up.
+func _build_dj_booth() -> void:
+	dj_booth = BOOTH_SCRIPT.new()
+	dj_booth.name = "DJBooth3D"
+	dj_booth.position = Vector3(0.0, 0.0, -3.20)
+	add_child(dj_booth)
+	dj_booth.build()
+
+
+## 20 staggered, zone-loyal 3D silhouettes replace the old 26-capsule placeholder bank,
+## which read as bowling pins. `CrowdController3D` owns their rigs, props and acting; this
+## method only builds and places it.
 func _build_crowd() -> void:
-	var shirts := [
-		Color(0.16, 0.16, 0.19), Color(0.22, 0.20, 0.18), Color(0.28, 0.16, 0.15),
-		Color(0.12, 0.24, 0.16), Color(0.30, 0.26, 0.12), Color(0.18, 0.20, 0.28),
-	]
-	for i in 26:
-		var person := Node3D.new()
-		person.name = "Crowd%02d" % i
-		var x := _rng.randf_range(-6.4, 6.4)
-		var z := _rng.randf_range(-6.6, -3.4)
-		person.position = Vector3(x, 0.0, z)
-		person.rotation.y = _rng.randf_range(-0.5, 0.5)
-		add_child(person)
-		var shirt := _mat(shirts[i % shirts.size()], 1.0)
-		var body := MeshInstance3D.new()
-		var capsule := CapsuleMesh.new()
-		capsule.radius = 0.17
-		capsule.height = _rng.randf_range(0.72, 0.92)
-		capsule.radial_segments = 8
-		capsule.rings = 2
-		body.mesh = capsule
-		body.material_override = shirt
-		body.position.y = capsule.height * 0.5
-		body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		person.add_child(body)
-		var head := MeshInstance3D.new()
-		var sphere := SphereMesh.new()
-		sphere.radius = 0.13
-		sphere.height = 0.26
-		sphere.radial_segments = 8
-		sphere.rings = 4
-		head.mesh = sphere
-		head.material_override = _mat(Color(0.32, 0.22, 0.16), 1.0)
-		head.position.y = capsule.height + 0.10
-		head.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		person.add_child(head)
-		if i % 4 == 0:
-			# A raised arm or two keeps the back rows from reading as bowling pins.
-			var arm := MeshInstance3D.new()
-			var cyl := CylinderMesh.new()
-			cyl.top_radius = 0.035
-			cyl.bottom_radius = 0.045
-			cyl.height = 0.52
-			cyl.radial_segments = 6
-			cyl.rings = 1
-			arm.mesh = cyl
-			arm.material_override = _mat(Color(0.30, 0.21, 0.15), 1.0)
-			arm.position = Vector3(0.22 if i % 8 == 0 else -0.22, capsule.height + 0.24, 0.0)
-			arm.rotation.z = 0.35 if i % 8 == 0 else -0.35
-			arm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			person.add_child(arm)
-		_crowd.append({
-			"node": person,
-			"phase": _rng.randf_range(0.0, TAU),
-			"rate": _rng.randf_range(0.6, 1.4),
-			"sway": _rng.randf_range(0.015, 0.05),
-		})
+	crowd3d = CROWD_SCRIPT.new()
+	crowd3d.name = "CrowdController3D"
+	add_child(crowd3d)
+	crowd3d.build()
 
 
 func _make_fighter(fighter: BaseFighter) -> Node3D:

@@ -2035,6 +2035,76 @@ here is gameplay-verified; implementation status is stated per item.
       `MODELS.md`, `docs/`, `AGENTS.md` and `godot/AGENTS.md`.
 
 
+51. **Active 3D DJs and a staggered, zone-loyal silhouette crowd (2026-11-22).**
+
+    Owner request on `feature/3d-cel-shaded` at `0a5eac1`: give the arena an active 3D DJ booth
+    between the mid-ground speaker stacks, replace the placeholder crowd with 16–24 varied
+    dark-silhouette spectators carrying flags, lighters and airhorns, wire both to the combat
+    events on staggered, side-loyal clocks, keep the whole addition under **15,000 triangles**, and
+    leave the existing audio engine completely untouched — no crowd voice audio was added, and the
+    custom Patois voice clips remain the owner's later upload. **Implemented, headlessly verified;
+    the rendered look and the 60 FPS target are not verified (no GPU/display).**
+
+    - **DJ booth and rig (`DJBooth3D`)** — a 2.5 m deck with plinth, cabinet, Rasta-striped front
+      panel, two turntables (platter, spinning vinyl + gold label, tonearm), a centre mixer with
+      three channel faders, a sliding crossfader and four knobs, booth monitors, and a small gantry
+      sign. It stands at world `(0, 0, -3.2)` — centred between the ±2.55 m speaker stacks and
+      behind the barrier — in the bay both crowd banks leave open.
+    - **Two rim-lit DJs** work it: bucket-hat selector and headwrapped/dreadlocked partner, each a
+      hips/torso/head/shoulder rig with a chain detail and forward `reach` so the hands sit over the
+      deck instead of behind the cabinet. Acting states: **neutral** (beat nod + skank), **fader**
+      (right hand riding the channel faders), **point** (arm out at the side that just connected on
+      a heavy hit), **airhorn** (horn lifted on a knockdown, K.O. or DJ tag) and **celebrate**
+      (both arms up, records spinning faster). They nod on every 132 BPM downbeat, because
+      `Arena3D.beat_pulse()` is called from the existing `_on_beat`.
+    - **Silhouette crowd (`CrowdController3D`)** — the 26-capsule placeholder bank is gone. **20**
+      spectators (inside the requested 16–24) stand in **two loyalty banks of 10** across three
+      rows, each with a varied height (1.55–1.90 m), build, yaw, hat / headwrap / locks / cap /
+      beanie, and an articulated waist-plus-torso, head and two two-bone arms with hands. Props:
+      **3 waving Jamaican flags** (green / gold / black cloth, whipping harder when excited),
+      **6 raised lighters** whose warm flame quads flicker and spark up on heavy hits and Hype
+      moments, and **2 airhorn operators** at the inner edge of each bank beside the speaker stacks.
+    - **Staggered, zone reactions** — `Arena3D.notify_combat_event(kind, side)` fans one cue to the
+      booth and the crowd. Every spectator's delay is its row base (0.12 s per row back) plus
+      0.028 s per metre out along the bank plus a seeded jitter, so ringside answers first and the
+      ripple reaches the back rows last; nobody moves on the impact frame itself. The scoring bank
+      erupts (jump, arms overhead, flags up) while the rival bank throws both hands on its head in
+      disbelief; DJ tags, Hype surges and a 0–0 tie lift both banks. Knockdowns, K.O.s and DJ tags
+      put the airhorns up. **HIT_LANDED / HEAVY_HIT / KNOCKDOWN / KO / VICTORY** are the cues, sent
+      from the handlers `TestArena` already had (`_on_strike_resolved`, the knockdown state change,
+      `_on_fighter_died`, `_on_round_ended`), plus `_on_tag_played` and `_on_hype_surge`.
+    - **Cost, not a look claim** — one shared `silhouette_rim.gdshader` `ShaderMaterial` per layer
+      (a WebGL2-safe single pass, no screen/depth reads), shared primitive meshes cached per size,
+      and **13,644 triangles measured from the built meshes** (crowd 11,520 / booth 2,124) against
+      the 15,000 budget. `Arena3D.atmosphere_triangles()` reports the real number; the shader's rim
+      colour is pushed from the same afternoon/sunset/night palette as the fighters.
+    - **Presentation only** — the cues never write to `BaseFighter`, and the headless suite asserts
+      health and fighter state are byte-identical before and after a K.O. cue. No audio node,
+      bus, synthesised cue or crowd-voice slot was added or changed.
+    - **Verified headless** — **302 PASS / 0 FAIL**, `ALL CHECKS PASSED` (276 before this pass).
+      The 26 new checks boot the real arena and assert: two DJs, the booth's centred/behind-barrier
+      placement, two vinyl turntables + mixer + three faders, the shader compiling (6 uniforms) and
+      passing the WebGL2 static lint, 20 spectators in 10/10 banks, 3 flags / 6 lighters / 2 airhorn
+      operators, the old capsule nodes being gone, front-row-only reaction at 0.14 s with the back
+      rows still neutral, all 20 answering within a beat, P1's bank cheering while P2's 10 are in
+      disbelief, lighters lit, a DJ pointing, faders and records still moving, the knockdown/K.O./
+      tag airhorn and celebration states, a Hype surge lighting every lighter, untouched health and
+      state, the 13,644-triangle budget and the night rim palette.
+    - **`/docs` rebuilt** with `--headless --path godot --export-release "Web" ../docs/index.html`:
+      `index.pck` **38,664,500 B** (38,626,932 B before this pass), `index.wasm` 38,057,390 B,
+      `index.js` 305,185 B, `index.html` 5,449 B. Only the known non-fatal fontconfig noise.
+    - **Not verified** — no GPU, display or audio device here, so the crowd and DJ silhouettes, the
+      rim, the flag cloth and lighter flames, the stagger's *feel*, booth framing behind the
+      fighters and 60 FPS on a Chromebook / iPhone Safari have not been seen or measured. The
+      counts, states, stagger order, palette values and triangle cost are verified; the look is not.
+    - **Files added** — `godot/scripts/stages/CrowdController3D.gd`, `DJBooth3D.gd`,
+      `godot/assets/shaders/silhouette_rim.gdshader`.
+    - **Files changed** — `godot/scripts/stages/Arena3D.gd` (booth/crowd construction, event API,
+      beat pulse, triangle budget, palette push), `godot/scripts/TestArena.gd` (six cue call sites,
+      `_corner_of`), `godot/tools/headless_roster_check.gd`, `AGENTS.md` and `godot/AGENTS.md`;
+      plus the rebuilt `docs/` export.
+
+
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 
 Recorded at build `ad27516` (`stage/sound-clash-sand`); §9 items 1–19 above are the decisions that
@@ -2948,3 +3018,42 @@ Godot still measures 1.58 m / 1.27 m. The Mixamo-ready copies were regenerated f
 **Not verified — no GPU/display/audio.** The new 3D poses, dubplate/dictionary props, sand bursts,
 vinyl parry, cel look and the 60 FPS target on Chromebook / iPhone Safari have not been seen or
 measured. The headless combat logic and triangle budgets are verified; device playback is not.
+
+
+### Active 3D DJs and staggered silhouette crowd — headless verification, November 22, 2026
+
+Owner request on `feature/3d-cel-shaded` at `0a5eac1`: add active 3D DJs behind a turntable/mixer
+rig between the mid-ground speaker stacks, replace the placeholder crowd with 16–24 varied,
+rim-lit dark-silhouette spectators (flags, raised lighters, airhorn operators) whose reactions are
+staggered and side-loyal, and keep the whole addition under 15,000 triangles — **without adding or
+changing any crowd voice audio**. Recorded as §9 item 51.
+
+```bash
+godot --headless --path godot --import
+godot --headless --path godot --script res://tools/headless_roster_check.gd
+godot --headless --path godot --export-release "Web" ../docs/index.html
+```
+
+**302 PASS / 0 FAIL**, `ALL CHECKS PASSED` (276 before this pass). The **26 new checks** boot the
+real `TestArena.tscn` and assert: exactly **two** DJs; the booth centred at x 0 and behind the
+z −2.55 barrier; two vinyl turntables + one mixer + three channel faders; the new silhouette shader
+**compiling** (6 uniforms) and passing the WebGL2 static lint; **20** spectators (in the 16–24
+range) split **10 / 10** across the loyalty banks; **3** flags, **6** lighter slots and **2**
+airhorn operators; the old capsule crowd nodes gone; a heavy hit queuing all 20 with **zero**
+answering on the impact frame, **only ringside** reacting at 0.14 s while the back rows stay
+neutral, and all 20 answering within a beat; P1's bank cheering while all 10 of P2's bank are in
+disbelief; lighters lit with visible flames; a DJ pointing; faders and records still moving; the
+knockdown, K.O. and DJ-tag airhorn/celebration states; a Hype surge lighting every lighter; health
+and fighter state byte-identical across a K.O. cue; **13,644 measured triangles** (crowd 11,520 /
+booth 2,124) under the 15,000 budget; and the crowd rim recolouring to the night cyan palette.
+
+**`/docs` rebuilt** with `--headless --path godot --export-release "Web" ../docs/index.html`:
+`index.pck` **38,664,500 B**, `index.wasm` 38,057,390 B, `index.js` 305,185 B, `index.html`
+5,449 B. The export logged only the environment's known non-fatal fontconfig warnings.
+
+**Not verified — no GPU/display/audio.** Nothing was seen on screen: the DJ poses, the stagger's
+timing as an audience feels it, the flag cloth and lighter flames, the rim strength against the
+three lighting phases, whether the booth reads clearly behind two 1.5 m fighters, and whether the
+Chromebook / iPhone Safari frame rate stays at 60 FPS with 20 articulated rigs and 2,124 extra booth
+triangles are all unmeasured. The audio engine was deliberately not touched, so there is still no
+crowd voice audio — that stays [TODO] until the owner's custom Patois clips are uploaded.

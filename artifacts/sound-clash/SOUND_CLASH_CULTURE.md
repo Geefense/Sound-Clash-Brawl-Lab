@@ -93,7 +93,19 @@ and an international rival.
 Reactive event-promoter voice slot who panics whenever fighters collide near the speaker stacks
 ("Dat coming out yuh fee!", "Yuh nah get paid fi dat!", "Me never booking yuh sound again!"), plus
 creator-approved crowd shout-out slots dedicated to real-life friends, family and local supporters
-(with their permission, avoiding unapproved celebrity names).
+(with their permission, avoiding unapproved celebrity names). **Line pool update 2026-11-22:** the
+owner's 31-entry Patwa collection adds `BRUK POCKET` ("Short on cash") to the promoter's panicking
+lines. Recorded for this future slot only; no commentator state or audio exists.
+
+### 2026-11-22 status note — 31-entry Patwa proverbs
+
+The owner's full 31-entry Jamaican Patwa proverbs & expressions collection is now wired as data in
+`TestArena.gd` (`PATWA_COLLECTION`, `CALLOUTS`, `CALLOUT_GLOSSES`, `PROVERB_BANNER`): 22 in-match
+callouts across heavy/counter/stun/parry/throw-break/taunt/hype/round-win (plus `WASH-BELLY` for
+L!kkle Moore) and 9 traditional proverbs rotating on the match-intro wisdom banner. The Patwa text
+is verbatim; the English meaning lives only in the V-key subtitle gloss. No voice recordings were
+added — the custom Patois voice clips remain [TODO]. The three menu/victory beats remain on
+Title/Select and post-KO only; active rounds stay music-free.
 
 ## 9. Research, Cultural Accuracy & Permanent Development Principles
 

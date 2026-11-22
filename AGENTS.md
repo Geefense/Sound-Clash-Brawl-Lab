@@ -419,6 +419,68 @@ This register includes all phrases recoverable from the visible conversation, su
 | `TEK WEH HIM MIC!` | “Take away his microphone!” Crowd shout when the opponent is stunned, dizzied or knocked down. | Implemented as the `&"stun"` pool in `TestArena.CALLOUTS` (fires on `KNOCKDOWN`). Owner wording, verbatim; gloss kept separate. |
 | `TUMP OUT HIM TEET!` | “Knock out his teeth!” Heavy punch / Upper Box / counter-hit callout. | Implemented as the `&"heavy"` pool (unblocked `upper_box` / `tump` or a counter-hit). Owner wording, verbatim; gloss kept separate. |
 
+### Jamaican Patwa proverbs & expressions — the owner's 31-entry collection (2026-11-22)
+
+Owner-supplied on `feature/3d-cel-shaded` (commit `c7e408c`). Preserve every spelling and
+punctuation mark verbatim; the pronunciation column is a learner aid, never a replacement
+spelling, and the English gloss is a separate subtitle field only. **Implemented** in
+`TestArena.gd` as `PATWA_COLLECTION` (the 31 entries), `CALLOUTS`, `CALLOUT_GLOSSES` and
+`PROVERB_BANNER`, and the headless suite asserts all 31 resolve to a gloss and a live trigger.
+`TEK WEH HIM MIC!` and `TUMP OUT HIM TEET!` were already approved and wired on 2026-11-21; they
+are entries 7 and 8 of this collection, not duplicates. `BRUK POCKET` is **not** one of the 31;
+it is logged in the **[TODO] B15** promoter line pool only.
+
+| # | Phrase (verbatim) | Learner pronunciation | Clean English subtitle gloss (V key) | Wired trigger |
+| --- | --- | --- | --- | --- |
+| 1 | `WHO CYAAN HEAR, MUS FEEL` | “hoo kyaan hear, mos feel” | Those who refuse warnings must learn through consequences. | `&"heavy"` |
+| 2 | `COCK MOUTH KILL COCK` | “kok mout kill kok” | Careless talking exposes your own downfall. | `&"heavy"` |
+| 3 | `WEN YUH A DIG HOLE, DIG TWO` | “wen yuh a dig hole, dig two” | A trap set for someone else can backfire on you. | `&"counter"` |
+| 4 | `NOBODY NEVA KICK DEAD DAWG` | “no-bah-dee neh-vah kick ded dawg” | Criticism only targets people who are active and making waves. | `&"round_win"` |
+| 5 | `SAME KNIFE TICK DI SHEEP, TICK DI GOAT` | “same knife tick di sheep, tick di goat” | What hits one rival can hit you next. | `&"counter"` |
+| 6 | `YUH NUH FI EAT HOT RICE` | “yuh nuh fi eat hot rice” | Don't react blindly in anger; stay cool. | `&"parry"` |
+| 7 | `TEK WEH HIM MIC!` | “tek weh him mike” | Take away his microphone! | `&"stun"` |
+| 8 | `TUMP OUT HIM TEET!` | “tump out him teet” | Knock out his teeth! | `&"heavy"` |
+| 9 | `MI NUH TEK CHAT` | “mi nuh tek chat” | I don't tolerate disrespect or foolishness. | `&"taunt"` |
+| 10 | `BOASY` | “boh-see” | Showy, flashy, proudly showing off. | `&"taunt"` |
+| 11 | `FALLA FASHION` | “fah-lah fah-shun” | Stop copying the crowd; think for yourself. | `&"taunt"` |
+| 12 | `YUH ZIMMI?` | “yuh zim-mee?” | Do you understand me? Are you following? | `&"taunt"` |
+| 13 | `GINNAL` | “gin-nahl” | Trickster or con artist. | `&"taunt"` |
+| 14 | `TEK SET PON MI` | “tek set pon mi” | Repeatedly targeting or pressuring me. | `&"taunt"` |
+| 15 | `NUH WAIT TILL DRUM BEAT BEFORE YUH GRINE YUH AXE` | “nuh wait till drum beat before yuh grine yuh axe” | Prepare early before the clash begins. | `&"taunt"` |
+| 16 | `NUH PUT YUH SELF IN A BARREL WHEN MATCHBOX CAN HOL YUH` | “nuh put yuh self in a barrel when matchbox can hol yuh” | Stay grounded; don't overreach. | `&"taunt"` |
+| 17 | `GWAAN SUH!` | “gwaan suh!” | Keep going! Keep up the pressure! | `&"hype"` |
+| 18 | `EVERY MIKKLE MEK A MUKKLE` | “ev-ree mikk-le mek a mukk-le” | Every small hit and effort adds up to victory. | `&"hype"` |
+| 19 | `CHAIR DROP A GRUNG AN BENCH GIT UP` | “chair drop a grung an bench git up” | When one steps down, another steps up. | `&"hype"` |
+| 20 | `COCKROACH NUH BUSINESS INNA FOWL FIGHT / COWS HAVE NO BUSINESS IN HORSEPLAY` | “kok-roach nuh biz-ness in-na fowl fight / cows have no biz-ness in horse-play” | Stay out of a heavy clash that isn't yours. | `&"throw_break"` |
+| 21 | `WASH-BELLY` | “wash-bel-lee” | The youngest prodigy in the crew. | `&"wash_belly"` — L!kkle Moore only |
+| 22 | `NICE UP YUHSELF` | “nice up yuh-self” | Carry yourself sharp and strong. | `&"hype"` |
+| 23 | `EMPTY YUH PURSE INNA YUH HEAD` | “emp-tee yuh purse in-na yuh head” | Spend on your mind before your pocket; knowledge is the best investment. | match-intro banner |
+| 24 | `SORRY FI MAWGA DOG, MAWGA DOG TURN ROUND BITE YUH` | “sor-ree fi maw-ga dawg, maw-ga dawg turn round bite yuh” | Misplaced pity can be repaid with betrayal. | match-intro banner |
+| 25 | `IF WIND NUH BLOW, FOWL BATTY NUH SHOW` | “if wind nuh blow, fowl bat-ty nuh show” | What is hidden is only exposed when circumstances stir. | match-intro banner |
+| 26 | `PUSS NO AVE HAND, IM USE IM FOOT WIPE IM FACE` | “puss no ave hand, im use im foot wipe im face” | Work with what you have and make a way. | match-intro banner |
+| 27 | `FOWL DRINK WATER BUT FOWL NUH PEE` | “fowl drink water but fowl nuh pee” | What goes in does not always come back out. | match-intro banner |
+| 28 | `BEFORE DAWG GO WIDOUT SUPPA, IM NYAM COCKROACH` | “before dawg go wid-out sup-pa, im nyam kok-roach” | People will do what they must to survive. | match-intro banner |
+| 29 | `IF YUH WANT GOOD, YUH NOSE HAFFI RUN` | “if yuh want good, yuh nose haf-fi run” | Nothing worthwhile comes without hardship. | match-intro banner |
+| 30 | `SEE AND BLIND, HEAR AND DEAF` | “see and blind, hear and deaf” | Discretion: see and hear without repeating it. | match-intro banner |
+| 31 | `WHEN PUSS BELLY FULL, HIM SEH RAT BATTY BITTER` | “when puss bel-lee full, im seh rat bat-ty bit-ter” | A satisfied person dismisses what others still need. | match-intro banner |
+
+**Wiring, 2026-11-22.** The in-match pools rotate so a phrase leads the first time and every
+approved line keeps coming back: `heavy` (1, 2, 8), `counter` (3, 5), `stun` (7), `parry`
+(`YUH NUH FI EAT HOT RICE` joins the existing parry lines), `throw_break` (20 joins
+`WHOLE-AWN-DEH!`), `taunt` (9–16), `hype` (17–19, 22), `round_win` (4). `WASH-BELLY` (21) is
+weighted to **L!kkle Moore**: `_impact_callout()` returns `&"wash_belly"` for his unblocked heavy
+or counter contact, and a round he wins uses it instead of the generic round-win line. The nine
+traditional proverbs (23–31) rotate on the match-intro wisdom banner, one per match, under a
+`YARD WISDOM` heading; the Patwa stays visible with subtitles off and the English gloss follows
+the **V** key. Counter hits now get the counter pool instead of the heavy line.
+
+**Translation provenance.** Rows 1–22 use the owner's supplied meanings. The nine banner
+glosses are clean English subtitle readings written for this pass and marked **[TODO]** for the
+owner's wording check; they are subtitles, not new Patwa lines or cultural claims. Do not
+"correct" any Patwa spelling while reviewing them. The display-title **I → !** rule still applies
+to character names (`L!CKSHOT`, `L!KKLE MOORE`); the proverb body is preserved verbatim, so no
+proverb is rewritten to force the style, and the `YARD WISDOM` heading deliberately contains no I.
+
 ### Comedy, taunt and move register
 
 - **`cricket box`**: owner-proposed name for a cricket-bowling-inspired BOX/slap, potentially for another character. No fighter assigned; concept/backlog only, not an implemented move or added launch requirement. Preserve the owner's name. Keep separate from Feedback's current BOX direction: original rear three-quarter camera, right-knee lift, plant/turn into the existing slap/follow-through. The earlier raised-knee illustration changed the camera/build and is not approved production art.
@@ -2105,6 +2167,70 @@ here is gameplay-verified; implementation status is stated per item.
       plus the rebuilt `docs/` export.
 
 
+52. **Owner's 31-entry Jamaican Patwa collection wired across the game; menu/victory beats audited (2026-11-22).**
+
+    Owner request on `feature/3d-cel-shaded` at `c7e408c`: confirm the three uploaded reggae
+    hip-hop beats are wired for **Title / Character Select and post-KO victory only** (never during
+    a round), give **M** a visible audition cycle on both screens, and embed the full 31-entry
+    Patwa proverbs & expressions collection in `TestArena.gd` with V-key English glosses and a
+    match-intro wisdom banner. **Implemented, headlessly verified; no audio device and no GPU here,
+    so nothing was heard or seen.**
+
+    - **Beat inventory (exact production filenames).** The three owner uploads already live in
+      `godot/assets/audio/production/beats/`; no file was re-encoded, renamed or moved by this pass.
+
+      | Slot | Production file | Original upload name | Decoded duration | MD5 |
+      | --- | --- | --- | --- | --- |
+      | Beat 1 | `beat_01.mp3` | `Buck Shots (2) wonder productions .mp3` | 23.38 s | `084e4f13d7ea61a6bc8c2460bff6bd49` |
+      | Beat 2 | `beat_02.mp3` | `Easy Rider.mp3` | 262.84 s | `adfbb2b753955b1baee896cc85ed0359` |
+      | Beat 3 | `beat_03.mp3` | `Lonely Gyal wonder productions.mp3` | 90.04 s | `b9a4575dc472d9c902b70f38d4534b9f` |
+
+      The fourth upload, `Wonder Production (untitled upload, same duration as beat_03).mp3`, stays
+      archived under `artifacts/sound-clash/audio-source/beats/` (MD5
+      `3d5b7956a312407d0056b80defc02fcb`, 90.04 s, different payload from Beat 3); it is not in the
+      playlist. Rotation is **Beat 1 → Beat 2 → Beat 3 → Beat 1** across matches.
+    - **Title / Select** — `TitleScreen._ready()` calls `MusicBed.play_title()`; the bed fades out in
+      `_start()` before `MatchSetup.start_match()`, so the 6 s round sting ("Step up!" → stab on
+      FIGHT!) takes over with no music under it. **M** on the splash or the select screen cycles
+      Beat 1 → Beat 2 → Beat 3 → Off and flashes `MUSIC · BEAT n — TITLE · M TO CYCLE` in the
+      top-right corner for 2.2 s; the select screen also keeps its persistent footer line.
+    - **Active rounds** — `MusicBed` is off from FIGHT! through the final blow. **M** during a fight
+      remains the existing Master-bus mute toggle and cannot start a beat.
+    - **Post-KO / victory** — the final-round K.O. celebration calls `MusicBed.play_victory()`,
+      advancing to the next beat and fading it in under the pose; `match_ended` does not advance a
+      second time. **M** on the post-KO screen cycles the audition and flashes the same corner label
+      (`MUSIC · BEAT n — TITLE · M TO CYCLE`).
+    - **31-entry collection** — `PATWA_COLLECTION` holds all 31 phrases; `CALLOUT_GLOSSES` is the
+      single gloss field (the Patwa spelling is never folded into it). The 22 in-match lines fill
+      `heavy`, `counter`, `stun`, `parry`, `throw_break`, `taunt`, `hype`, `round_win` and
+      `wash_belly`; the 9 traditional proverbs fill `PROVERB_BANNER`. `WASH-BELLY` is reserved for
+      L!kkle Moore through `_impact_callout()`. The match-intro banner shows one proverb per match
+      under `YARD WISDOM`, Patwa always readable, English gloss only while subtitles are on.
+      Full table, glosses, wiring map and the I → ! rule note: **§8**.
+    - **Verified headless** — **314 PASS / 0 FAIL**, `ALL CHECKS PASSED` (302 before this pass).
+      The 12 new checks assert: all three production beats load at their decoded durations
+      (23.38 / 262.84 / 90.04 s) and loop; the title screen starts Beat 1 and M's corner label; the
+      post-KO bed advances Beat 1 → 2 → 3 across matches; MusicBed stays silent through FIGHTING
+      and M stays mute there; the final K.O. celebration starts Beat 2 and the post-KO M cycle
+      shows its label; all 31 Patwa entries are unique, resolve to a `(Translation: …)` gloss and
+      are wired to a pool or the banner; WASH-BELLY and the counter/heavy routing are
+      character/contact correct; the intro banner rotates two different proverbs and V-off hides
+      only the English subtitle.
+    - **`/docs` rebuilt** with `godot --headless --path godot --export-release "Web"
+      ../docs/index.html` (Godot 4.5.stable): `index.pck` **38,674,548 B** (38,664,500 B before),
+      `index.wasm` 38,057,390 B, `index.js` 305,185 B, `index.html` 5,449 B. Only the environment's
+      known non-fatal fontconfig warnings.
+    - **Not verified** — there is no audio device, GPU or display in this sandbox. The songs' actual
+      sound, the fades and loop seams, the M-key label's on-screen placement, the banner's fit over
+      the 3D yard, and Web/iPhone autoplay are unverified by ear or eye. The 31 phrases were checked
+      as data (spelling, gloss, trigger), not as voice performances.
+    - **Files changed** — `godot/scripts/TestArena.gd`, `godot/scripts/ui/TestHud.gd`,
+      `godot/scripts/ui/TitleScreen.gd`, `godot/tools/headless_roster_check.gd`, `AGENTS.md`,
+      `godot/AGENTS.md`, `artifacts/sound-clash/SOUND_CLASH_CULTURE.md` and the rebuilt `docs/`
+      export. `godot/scripts/audio/MusicBed.gd` and the three beat files were already in place and
+      were not re-encoded.
+
+
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 
 Recorded at build `ad27516` (`stage/sound-clash-sand`); §9 items 1–19 above are the decisions that
@@ -2285,7 +2411,9 @@ or unlock save. Open design: bout count per city, difficulty curve, how a stage'
 Reactive event-promoter voice slot who panics whenever fighters collide near the speaker stacks
 (“Dat coming out yuh fee!”, “Yuh nah get paid fi dat!”, “Me never booking yuh sound again!”), plus
 creator-approved crowd shout-out slots dedicated to real-life friends, family and local supporters
-(with their permission, avoiding unapproved celebrity names). Not built: no commentator state, no
+(with their permission, avoiding unapproved celebrity names). **Line pool update 2026-11-22:** the
+owner's 31-entry Patwa collection adds `BRUK POCKET` (“Short on cash”) to the promoter's panicking
+lines — recorded for this future slot only, not wired to any audio or trigger. Not built: no commentator state, no
 proximity trigger against the speaker stacks, no shout-out list or audio. Open design: exact
 promoter lines/glosses and owner approval, voice recording source, cooldowns against the existing
 DJ-tag priority rules, and a written consent record for every shout-out name.
@@ -3057,3 +3185,37 @@ three lighting phases, whether the booth reads clearly behind two 1.5 m fighters
 Chromebook / iPhone Safari frame rate stays at 60 FPS with 20 articulated rigs and 2,124 extra booth
 triangles are all unmeasured. The audio engine was deliberately not touched, so there is still no
 crowd voice audio — that stays [TODO] until the owner's custom Patois clips are uploaded.
+
+### 31-entry Patwa collection + menu/victory beat audit — headless verification, November 22, 2026
+
+Owner request on `feature/3d-cel-shaded` at `c7e408c`: verify the three uploaded reggae hip-hop
+beats are used on Title/Select and post-KO only, make the M-key audition visible, and wire the full
+31-entry Jamaican Patwa proverbs & expressions collection through `TestArena.gd` with V-key English
+glosses and a match-intro banner. Recorded as §9 item 52; the lexicon table is in §8.
+
+```bash
+godot --headless --path godot --import
+godot --headless --path godot --script res://tools/headless_roster_check.gd
+godot --headless --path godot --export-release "Web" ../docs/index.html
+```
+
+**314 PASS / 0 FAIL**, `ALL CHECKS PASSED` (302 before this pass). New coverage: the three beats
+load from `assets/audio/production/beats/` at **23.38 s / 262.84 s / 90.04 s** and loop; the Title
+screen starts Beat 1, M cycles 1 → 2 → 3 → Off → 1 and shows the corner label; MusicBed is silent
+from FIGHT! through the active round and M stays the mute key there; the final K.O. starts Beat 2,
+`match_ended` does not advance twice, the post-KO M cycle shows its label, and the victory bed
+rotates Beat 1 → 2 → 3 across matches. The **31/31** Patwa checks assert the exact count, no
+duplicates, a separate `(Translation: …)` gloss for every entry, a live pool/banner trigger for
+every entry, WASH-BELLY restricted to L!kkle Moore, counter/heavy routing, two different rotating
+intro proverbs, and V-off hiding only the English subtitle. `BRUK POCKET` is logged in the B15
+promoter pool, not in the 31.
+
+**`/docs` rebuilt**: `index.pck` **38,674,548 B**, `index.wasm` 38,057,390 B, `index.js`
+305,185 B, `index.html` 5,449 B. The export log contained only the environment's known non-fatal
+fontconfig warnings.
+
+**Not verified — no audio device, GPU or display.** Nothing was heard: the songs' sound, the fade
+shapes, loop seams and loudness against the round sting are unmeasured. Nothing was seen: the corner
+beat label, the `YARD WISDOM` banner's fit over the 3D yard and the Web/iPhone autoplay path still
+need a real-device check. The Patwa collection is verified as data and trigger wiring, not as voice
+performance.

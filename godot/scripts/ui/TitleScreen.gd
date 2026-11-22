@@ -22,8 +22,12 @@ const ROW_AI := 2
 const ROW_SUBTITLES := 3
 const ROW_COUNT := 4
 
+const BEAT_TOAST_SECONDS := 2.2
+
 var phase: Phase = Phase.SPLASH
 var row: int = ROW_P1
+var _beat_toast: String = ""
+var _beat_toast_life: float = 0.0
 
 
 func _ready() -> void:
@@ -37,8 +41,24 @@ func _ready() -> void:
 	set_process(true)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if _beat_toast_life > 0.0:
+		_beat_toast_life = maxf(0.0, _beat_toast_life - delta)
+		if _beat_toast_life == 0.0:
+			_beat_toast = ""
 	queue_redraw()
+
+
+## M auditions Beat 1 → Beat 2 → Beat 3 → Off and flashes the current state in the corner,
+## so the menu cycle is visible instead of blind (AGENTS.md §9 item 48).
+func _audition_beat() -> void:
+	MusicBed.cycle()
+	_beat_toast = "MUSIC · %s · M TO CYCLE" % MusicBed.label()
+	_beat_toast_life = BEAT_TOAST_SECONDS
+
+
+func beat_toast_text() -> String:
+	return _beat_toast
 
 
 # =========================================================================
@@ -51,6 +71,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if phase == Phase.SPLASH:
 		if key == KEY_ESCAPE:
 			return                      # the splash is already the top level
+		if key == KEY_M:
+			_audition_beat()             # audition without leaving the splash
+			return
 		_enter_setup()
 		return
 
@@ -70,7 +93,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			MatchSetup.toggle_subtitles()
 		KEY_M:
 			# Audit the three menu beats without leaving Character Select.
-			MusicBed.cycle()
+			_audition_beat()
 		KEY_ENTER, KEY_KP_ENTER, KEY_SPACE:
 			_start()
 		KEY_Q:
@@ -177,6 +200,7 @@ func _draw() -> void:
 		_draw_splash(width, height)
 	else:
 		_draw_setup(width, height)
+	_draw_beat_toast(width)
 
 
 ## Sunset yard: warm bands top to bottom, a low sun, a dark sand lane and two speaker
@@ -272,6 +296,21 @@ func _draw_setup(width: float, height: float) -> void:
 	_text(Vector2(0, height * 0.958), music_line, FONT_BODY,
 		_fit(FONT_BODY, music_line, 14, width - 80.0),
 		Color(1.0, 0.86, 0.32, 0.8), HORIZONTAL_ALIGNMENT_CENTER, width)
+
+
+## Corner label for the M-key beat audition. Both the splash and the select screen use it.
+func _draw_beat_toast(width: float) -> void:
+	if _beat_toast == "" or _beat_toast_life <= 0.0:
+		return
+	var fade := clampf(_beat_toast_life / 0.5, 0.0, 1.0)
+	var font_size := _fit(FONT_BODY, _beat_toast, 14, 400.0)
+	var text_w := FONT_BODY.get_string_size(_beat_toast, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	var box_w := clampf(text_w + 30.0, 240.0, 430.0)
+	var box := Rect2(Vector2(width - 24.0 - box_w, 24.0), Vector2(box_w, 34.0))
+	draw_rect(box, Color(0.05, 0.04, 0.07, 0.74 * fade), true)
+	draw_rect(box, Color(1.0, 0.86, 0.32, 0.8 * fade), false, 1.0)
+	_text(Vector2(box.position.x, box.position.y + 22.0), _beat_toast, FONT_BODY, font_size,
+		Color(1.0, 0.92, 0.70, fade), HORIZONTAL_ALIGNMENT_CENTER, box_w)
 
 
 func _setup_row(index: int, label: String, value: String) -> void:

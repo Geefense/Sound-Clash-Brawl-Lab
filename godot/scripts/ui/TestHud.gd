@@ -26,6 +26,13 @@ const SUBTITLE_Y := 655.0
 ## Bottom-edge key legend (below the subtitle pill at 630–680, inside the 720 canvas).
 const LEGEND_Y := 698.0
 const SUBTITLE_FADE := 0.45
+## Match-intro proverb banner (AGENTS.md §8, 2026-11-22) sits under the round banner, so the
+## round name and the yard wisdom read as one intro card. The English gloss is only drawn
+## while subtitles are on (V).
+const WISDOM_Y := 206.0
+const WISDOM_FADE := 0.4
+## Brief corner label after M auditions the menu/victory beats (AGENTS.md §9 item 48).
+const MUSIC_TOAST_SECONDS := 2.2
 
 var subtitles_enabled: bool = true
 
@@ -33,6 +40,11 @@ var _sub: String = ""              # Patois shout
 var _sub_translation: String = ""  # deadpan English
 var _sub_life: float = 0.0
 var _sub_cooldown: float = 0.0
+var _proverb: String = ""
+var _proverb_gloss: String = ""
+var _proverb_life: float = 0.0
+var _music_toast: String = ""
+var _music_life: float = 0.0
 
 
 func _process(delta: float) -> void:
@@ -42,6 +54,15 @@ func _process(delta: float) -> void:
 			_sub = ""
 			_sub_translation = ""
 	_sub_cooldown = maxf(0.0, _sub_cooldown - delta)
+	if _proverb_life > 0.0:
+		_proverb_life = maxf(0.0, _proverb_life - delta)
+		if _proverb_life == 0.0:
+			_proverb = ""
+			_proverb_gloss = ""
+	if _music_life > 0.0:
+		_music_life = maxf(0.0, _music_life - delta)
+		if _music_life == 0.0:
+			_music_toast = ""
 
 
 # =========================================================================
@@ -82,6 +103,39 @@ func subtitle_cooldown_left() -> float:
 	return _sub_cooldown
 
 
+## Match-intro yard wisdom. The Patwa stays up for the announce; the gloss follows the V
+## toggle, so turning subtitles off never hides the proverb itself.
+func show_proverb(patois: String, translation: String, seconds: float = 3.4) -> bool:
+	if patois == "":
+		return false
+	_proverb = patois
+	_proverb_gloss = translation
+	_proverb_life = maxf(seconds, 0.5)
+	queue_redraw()
+	return true
+
+
+func proverb_text() -> String:
+	return _proverb
+
+
+func proverb_gloss() -> String:
+	return _proverb_gloss if subtitles_enabled else ""
+
+
+## Brief corner label for the M-key beat audition on the post-KO screen.
+func show_music_toast(text: String) -> void:
+	if text == "":
+		return
+	_music_toast = text
+	_music_life = MUSIC_TOAST_SECONDS
+	queue_redraw()
+
+
+func music_toast_text() -> String:
+	return _music_toast
+
+
 # =========================================================================
 # Draw
 # =========================================================================
@@ -103,6 +157,8 @@ func _draw() -> void:
 	_round_pips(width)
 	_surge_banner(Vector2(width * 0.5, size.y * 0.34))
 	_round_banner(width)
+	_wisdom_banner(width)
+	_music_toast_label(width)
 	_subtitle_pill(width)
 
 
@@ -297,7 +353,48 @@ func _subtitle_pill(width: float) -> void:
 		Color(0.78, 0.82, 0.9, fade), HORIZONTAL_ALIGNMENT_CENTER, pill_w)
 
 
+## Rotating match-intro proverb card. A short gold heading keeps it distinct from the
+## round banner; the Patwa line is verbatim, and the English gloss only appears with V on.
+func _wisdom_banner(width: float) -> void:
+	if _proverb == "" or _proverb_life <= 0.0:
+		return
+	var fade := clampf(_proverb_life / WISDOM_FADE, 0.0, 1.0)
+	var gloss := _proverb_gloss if subtitles_enabled else ""
+	var max_w := width - 2.0 * MARGIN - 80.0
+	var line_size := _fit_size(FONT_INLINE, _proverb, 22, max_w)
+	var line_w := FONT_INLINE.get_string_size(_proverb, HORIZONTAL_ALIGNMENT_LEFT, -1, line_size).x
+	var gloss_w := FONT_SUB.get_string_size(gloss, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+	var box_w := clampf(maxf(line_w, gloss_w) + 76.0, 420.0, max_w + 76.0)
+	var box_h := 72.0 if gloss != "" else 54.0
+	var box := Rect2(Vector2(width * 0.5 - box_w * 0.5, WISDOM_Y), Vector2(box_w, box_h))
+	draw_rect(box, Color(0.05, 0.04, 0.07, 0.62 * fade), true)
+	draw_rect(box, Color(1.0, 0.86, 0.32, 0.55 * fade), false, 1.0)
+	_text(box.position + Vector2(0.0, 15.0), "YARD WISDOM", FONT_SUB, 10,
+		Color(1.0, 0.86, 0.32, 0.85 * fade), HORIZONTAL_ALIGNMENT_CENTER, box_w)
+	_text(box.position + Vector2(0.0, 15.0 + line_size), _proverb, FONT_INLINE, line_size,
+		Color(1.0, 0.96, 0.86, fade), HORIZONTAL_ALIGNMENT_CENTER, box_w)
+	if gloss != "":
+		_text(box.position + Vector2(0.0, box_h - 10.0), gloss, FONT_SUB, 11,
+			Color(0.78, 0.82, 0.9, fade), HORIZONTAL_ALIGNMENT_CENTER, box_w)
+
+
+## Corner HUD label shown briefly after M auditions a beat, so the cycle is never blind.
+func _music_toast_label(width: float) -> void:
+	if _music_toast == "" or _music_life <= 0.0:
+		return
+	var fade := clampf(_music_life / 0.5, 0.0, 1.0)
+	var text_size := _fit_size(FONT_SUB, _music_toast, 13, 360.0)
+	var text_w := FONT_SUB.get_string_size(_music_toast, HORIZONTAL_ALIGNMENT_LEFT, -1, text_size).x
+	var box_w := clampf(text_w + 28.0, 220.0, 380.0)
+	var box := Rect2(Vector2(width - MARGIN - box_w, MARGIN + BAR_H + 44.0),
+		Vector2(box_w, 30.0))
+	draw_rect(box, Color(0.05, 0.04, 0.07, 0.72 * fade), true)
+	draw_rect(box, Color(1.0, 0.86, 0.32, 0.75 * fade), false, 1.0)
+	_text(Vector2(box.position.x, box.position.y + 19.0), _music_toast, FONT_SUB, text_size,
+		Color(1.0, 0.92, 0.70, fade), HORIZONTAL_ALIGNMENT_CENTER, box_w)
+
+
 func _legend(pos: Vector2) -> void:
-	var keys := "J jab · K box · L tump · I upper box · U grab/tech · T taunt · C crouch · Y AI mode · B bird · N time of day · V subtitles · R reset · G dummy guard · M mute"
+	var keys := "J jab · K box · L tump · I upper box · U grab/tech · T taunt · C crouch · Y AI mode · B bird · N time of day · V subtitles · R reset · G dummy guard · M mute/beats"
 	_text(pos, keys, FONT_SUB, _fit_size(FONT_SUB, keys, 12, size.x - 2.0 * MARGIN),
 		Color(0.72, 0.75, 0.82))

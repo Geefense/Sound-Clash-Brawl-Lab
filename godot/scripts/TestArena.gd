@@ -176,40 +176,159 @@ const CROWD_FLINCH_COOLDOWN := 0.85
 ## so they are never on screen even for one frame.
 const PREWARM_OFFSCREEN := Vector2(-4000.0, -4000.0)
 
-## Patois callout rotation (AGENTS.md §8, owner-approved 2026-11-19). Each trigger owns a
-## pool and the pool rotates, so the new line leads the first time and the approved lines
-## that already played here still come round again. Spellings are the owner's, verbatim;
-## the English gloss is a separate field, which is the only place it belongs.
+## Patois callout rotation (AGENTS.md §8). Each trigger owns a pool and the pool rotates, so
+## every approved line keeps coming round instead of being replaced. Spellings are the
+## owner's, verbatim; the English gloss lives only in CALLOUT_GLOSSES, which is the only
+## place it belongs.
+##
+## 2026-11-22: the owner's 31-entry Jamaican Patwa proverbs & expressions collection is
+## wired here. PATWA_COLLECTION is the canonical list (22 in-match lines + the 9 match-intro
+## proverbs below); the headless checks assert every entry resolves to a gloss and to a live
+## trigger. PROVERB_BANNER rotates the traditional proverbs on the match-intro banner, so a
+## clash opens on a different piece of yard wisdom every match.
+const CALLOUT_GLOSSES := {
+	"TUMP OUT HIM TEET!": "(Translation: Knock out his teeth!)",
+	"WHO CYAAN HEAR, MUS FEEL": "(Translation: Those who refuse warnings must learn through consequences.)",
+	"COCK MOUTH KILL COCK": "(Translation: Careless talking exposes your own downfall.)",
+	"TEK WEH HIM MIC!": "(Translation: Take away his microphone!)",
+	"SAME KNIFE TICK DI SHEEP, TICK DI GOAT": "(Translation: What hits one rival can hit you next.)",
+	"WEN YUH A DIG HOLE, DIG TWO": "(Translation: A trap set for someone else can backfire on you.)",
+	"YUH NUH FI EAT HOT RICE": "(Translation: Don't react blindly in anger; stay cool.)",
+	"MI NUH TEK CHAT": "(Translation: I don't tolerate disrespect or foolishness.)",
+	"BOASY": "(Translation: Showy, flashy, proudly showing off.)",
+	"FALLA FASHION": "(Translation: Stop copying the crowd; think for yourself.)",
+	"YUH ZIMMI?": "(Translation: Do you understand me? Are you following?)",
+	"GINNAL": "(Translation: Trickster or con artist.)",
+	"TEK SET PON MI": "(Translation: Repeatedly targeting or pressuring me.)",
+	"NUH WAIT TILL DRUM BEAT BEFORE YUH GRINE YUH AXE": "(Translation: Prepare early before the clash begins.)",
+	"NUH PUT YUH SELF IN A BARREL WHEN MATCHBOX CAN HOL YUH": "(Translation: Stay grounded; don't overreach.)",
+	"GWAAN SUH!": "(Translation: Keep going! Keep up the pressure!)",
+	"EVERY MIKKLE MEK A MUKKLE": "(Translation: Every small hit and effort adds up to victory.)",
+	"CHAIR DROP A GRUNG AN BENCH GIT UP": "(Translation: When one steps down, another steps up.)",
+	"COCKROACH NUH BUSINESS INNA FOWL FIGHT / COWS HAVE NO BUSINESS IN HORSEPLAY": "(Translation: Stay out of a heavy clash that isn't yours.)",
+	"WASH-BELLY": "(Translation: The youngest prodigy in the crew.)",
+	"NICE UP YUHSELF": "(Translation: Carry yourself sharp and strong.)",
+	"NOBODY NEVA KICK DEAD DAWG": "(Translation: Criticism only targets people who are active and making waves.)",
+	"EMPTY YUH PURSE INNA YUH HEAD": "(Translation: Spend on your mind before your pocket; knowledge is the best investment.)",
+	"SORRY FI MAWGA DOG, MAWGA DOG TURN ROUND BITE YUH": "(Translation: Misplaced pity can be repaid with betrayal.)",
+	"IF WIND NUH BLOW, FOWL BATTY NUH SHOW": "(Translation: What is hidden is only exposed when circumstances stir.)",
+	"PUSS NO AVE HAND, IM USE IM FOOT WIPE IM FACE": "(Translation: Work with what you have and make a way.)",
+	"FOWL DRINK WATER BUT FOWL NUH PEE": "(Translation: What goes in does not always come back out.)",
+	"BEFORE DAWG GO WIDOUT SUPPA, IM NYAM COCKROACH": "(Translation: People will do what they must to survive.)",
+	"IF YUH WANT GOOD, YUH NOSE HAFFI RUN": "(Translation: Nothing worthwhile comes without hardship.)",
+	"SEE AND BLIND, HEAR AND DEAF": "(Translation: Discretion: see and hear without repeating it.)",
+	"WHEN PUSS BELLY FULL, HIM SEH RAT BATTY BITTER": "(Translation: A satisfied person dismisses what others still need.)",
+	"WHOLE-AWN-DEH!": "(Translation: Hold on a second!)",
+	"BIG TUNE!": "(Translation: Cleanest block in the dance!)",
+	"PLAYAH NEX TUNE!": "(Translation: Play another song!)",
+	"WHEEL AND COME AGAIN!": "(Translation: Rewind the track — rematch!)",
+	"POPPYSHOW!": "(Translation: Show-off! / Clown!)",
+	"YUH TOO BOD MINE!!": "(Translation: You're way too jealous!)",
+}
+
+## The 31-entry owner collection: 22 in-match lines plus the 9 match-intro proverbs.
+const PATWA_COLLECTION := [
+	"WHO CYAAN HEAR, MUS FEEL",
+	"COCK MOUTH KILL COCK",
+	"WEN YUH A DIG HOLE, DIG TWO",
+	"NOBODY NEVA KICK DEAD DAWG",
+	"SAME KNIFE TICK DI SHEEP, TICK DI GOAT",
+	"YUH NUH FI EAT HOT RICE",
+	"TEK WEH HIM MIC!",
+	"TUMP OUT HIM TEET!",
+	"MI NUH TEK CHAT",
+	"BOASY",
+	"FALLA FASHION",
+	"YUH ZIMMI?",
+	"GINNAL",
+	"TEK SET PON MI",
+	"NUH WAIT TILL DRUM BEAT BEFORE YUH GRINE YUH AXE",
+	"NUH PUT YUH SELF IN A BARREL WHEN MATCHBOX CAN HOL YUH",
+	"GWAAN SUH!",
+	"EVERY MIKKLE MEK A MUKKLE",
+	"CHAIR DROP A GRUNG AN BENCH GIT UP",
+	"COCKROACH NUH BUSINESS INNA FOWL FIGHT / COWS HAVE NO BUSINESS IN HORSEPLAY",
+	"WASH-BELLY",
+	"NICE UP YUHSELF",
+	"EMPTY YUH PURSE INNA YUH HEAD",
+	"SORRY FI MAWGA DOG, MAWGA DOG TURN ROUND BITE YUH",
+	"IF WIND NUH BLOW, FOWL BATTY NUH SHOW",
+	"PUSS NO AVE HAND, IM USE IM FOOT WIPE IM FACE",
+	"FOWL DRINK WATER BUT FOWL NUH PEE",
+	"BEFORE DAWG GO WIDOUT SUPPA, IM NYAM COCKROACH",
+	"IF YUH WANT GOOD, YUH NOSE HAFFI RUN",
+	"SEE AND BLIND, HEAR AND DEAF",
+	"WHEN PUSS BELLY FULL, HIM SEH RAT BATTY BITTER",
+]
+
 const CALLOUTS := {
 	&"heavy": [
-		["TUMP OUT HIM TEET!", "(Translation: Knock out his teeth!)"],
+		"TUMP OUT HIM TEET!",
+		"WHO CYAAN HEAR, MUS FEEL",
+		"COCK MOUTH KILL COCK",
 	],
 	&"stun": [
-		["TEK WEH HIM MIC!", "(Translation: Take away his microphone!)"],
+		"TEK WEH HIM MIC!",
+	],
+	&"counter": [
+		"SAME KNIFE TICK DI SHEEP, TICK DI GOAT",
+		"WEN YUH A DIG HOLE, DIG TWO",
 	],
 	&"parry": [
-		["WHOLE-AWN-DEH!", "(Translation: Hold on a second!)"],
-		["BIG TUNE!", "(Translation: Cleanest block in the dance!)"],
+		"WHOLE-AWN-DEH!",
+		"BIG TUNE!",
+		"YUH NUH FI EAT HOT RICE",
 	],
 	&"throw_break": [
-		["WHOLE-AWN-DEH!", "(Translation: Hold on a second!)"],
+		"WHOLE-AWN-DEH!",
+		"COCKROACH NUH BUSINESS INNA FOWL FIGHT / COWS HAVE NO BUSINESS IN HORSEPLAY",
 	],
 	&"hype": [
-		["PLAYAH NEX TUNE!", "(Translation: Play another song!)"],
-		["WHEEL AND COME AGAIN!", "(Translation: Rewind the track — rematch!)"],
+		"PLAYAH NEX TUNE!",
+		"GWAAN SUH!",
+		"EVERY MIKKLE MEK A MUKKLE",
+		"CHAIR DROP A GRUNG AN BENCH GIT UP",
+		"NICE UP YUHSELF",
 	],
 	&"round_win": [
-		["PLAYAH NEX TUNE!", "(Translation: Play another song!)"],
+		"PLAYAH NEX TUNE!",
+		"NOBODY NEVA KICK DEAD DAWG",
 	],
 	&"taunt": [
-		["POPPYSHOW!", "(Translation: Show-off! / Clown!)"],
-		["YUH TOO BOD MINE!!", "(Translation: You're way too jealous!)"],
+		"POPPYSHOW!",
+		"YUH TOO BOD MINE!!",
+		"MI NUH TEK CHAT",
+		"BOASY",
+		"FALLA FASHION",
+		"YUH ZIMMI?",
+		"GINNAL",
+		"TEK SET PON MI",
+		"NUH WAIT TILL DRUM BEAT BEFORE YUH GRINE YUH AXE",
+		"NUH PUT YUH SELF IN A BARREL WHEN MATCHBOX CAN HOL YUH",
 	],
 	&"punish": [
-		["POPPYSHOW!", "(Translation: Show-off! / Clown!)"],
+		"POPPYSHOW!",
+	],
+	&"wash_belly": [
+		"WASH-BELLY",
 	],
 }
+
+## Match-intro wisdom banner: one traditional proverb per match, rotating the full set.
+const PROVERB_BANNER := [
+	"EMPTY YUH PURSE INNA YUH HEAD",
+	"SORRY FI MAWGA DOG, MAWGA DOG TURN ROUND BITE YUH",
+	"IF WIND NUH BLOW, FOWL BATTY NUH SHOW",
+	"PUSS NO AVE HAND, IM USE IM FOOT WIPE IM FACE",
+	"FOWL DRINK WATER BUT FOWL NUH PEE",
+	"BEFORE DAWG GO WIDOUT SUPPA, IM NYAM COCKROACH",
+	"IF YUH WANT GOOD, YUH NOSE HAFFI RUN",
+	"SEE AND BLIND, HEAR AND DEAF",
+	"WHEN PUSS BELLY FULL, HIM SEH RAT BATTY BITTER",
+]
+const PROVERB_BANNER_SECONDS := 3.4
 var _callout_cursor := {}
+var _proverb_cursor: int = 0
 
 ## Push separation (AGENTS.md §9 backlog item B7). 64 px is wider than the 60 px body, so
 ## the fighters never visually overlap; grabs (96 px) still reach comfortably.
@@ -403,6 +522,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			# Post-KO the M key auditions the beats; during the fight it stays the mute toggle.
 			if _match_over:
 				MusicBed.cycle()
+				hud.show_music_toast("MUSIC · %s · M TO CYCLE" % MusicBed.label())
 			else:
 				_set_muted(not _muted)
 		KEY_B:
@@ -514,17 +634,22 @@ func _on_strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dic
 	if bool(result.get("punish", false)) and not bool(result.get("blocked", false)):
 		_announce_callout(&"punish")
 
-	# New Patois callouts (AGENTS.md §8, item 47). TUMP OUT HIM TEET! answers a heavy
-	# upper-box / tump contact or a counter-hit; TEK WEH HIM MIC! answers a stun/down.
+	# Patois callouts (AGENTS.md §8). TUMP OUT HIM TEET! answers a heavy upper-box / tump
+	# contact, the proverbs answer counters, and TEK WEH HIM MIC! answers a stun/down.
 	var hit_id := StringName(result.get("attack_id", &""))
 	var unblocked := not bool(result.get("blocked", false))
 	# L!kkle Moore's dictionary slam on a counter is his named moment: TEK WEH HIM MIC!
-	# replaces the generic heavy line instead of stacking two pills.
+	# replaces the generic line instead of stacking two pills.
 	var kid_mic_counter := attacker != null and attacker.fighter_key == &"young_selecta" \
 		and bool(result.get("counter", false)) and (hit_id == &"strong" or hit_id == &"upper_box")
-	if unblocked and (hit_id == &"upper_box" or hit_id == &"tump"
-			or bool(result.get("counter", false))):
-		_announce_callout(&"stun" if kid_mic_counter else &"heavy")
+	if unblocked:
+		if kid_mic_counter:
+			_announce_callout(&"stun")
+		else:
+			var impact_kind := _impact_callout(hit_id, bool(result.get("counter", false)),
+				attacker.fighter_key if attacker != null else &"")
+			if impact_kind != &"":
+				_announce_callout(impact_kind)
 	if arena3d != null:
 		arena3d.hit_kick(0.9 if bool(result.get("counter", false)) else 0.3)
 		arena3d.pulse_speakers(0.8 if unblocked else 0.3)
@@ -577,8 +702,9 @@ func _on_round_ended(_round_index: int, winner: int) -> void:
 		champion = p2
 	if champion != null:
 		champion.play_celebration(140)
-		# The crowd wants the next tune, not this one again.
-		_announce_callout(&"round_win")
+		# The crowd wants the next tune, not this one again. L!kkle Moore gets WASH-BELLY:
+		# the youngest prodigy in the crew is his line, not a generic round-win callout.
+		_announce_callout(&"wash_belly" if champion.fighter_key == &"young_selecta" else &"round_win")
 	# Final-round K.O.: the winner poses out to the next beat as soon as the celebration starts,
 	# instead of waiting through the round-over banner.
 	if winner >= 0 and winner < rounds.wins.size() and rounds.wins[winner] >= rounds.rounds_to_win:
@@ -629,8 +755,8 @@ func _announce_callout(kind: StringName) -> bool:
 		return false
 	var index := int(_callout_cursor.get(kind, 0)) % pool.size()
 	_callout_cursor[kind] = index + 1
-	var line: Array = pool[index]
-	return hud.announce_subtitle(String(line[0]), String(line[1]))
+	var phrase := String(pool[index])
+	return hud.announce_subtitle(phrase, String(CALLOUT_GLOSSES.get(phrase, "")))
 
 
 ## 50 % Crowd Hype: the line reshuffles itself even before the surge lands.
@@ -1076,12 +1202,37 @@ func _on_tag_played(_key: StringName, _priority: int) -> void:
 		arena3d.notify_combat_event(&"tag", -1)
 
 
-func _on_round_started(_round_index: int) -> void:
+func _on_round_started(round_index: int) -> void:
 	_clear_projectiles()
 	if SoundClash != null:
 		SoundClash.play_round_start()
 	if arena3d != null:
 		arena3d.pulse_speakers(1.6)
+	# Match intro (round 1 only): the rotating Patwa wisdom banner, with the V-key gloss.
+	if round_index == 0:
+		_show_match_proverb()
+
+
+## Show the next match-intro proverb and advance the rotation. Returns false only when the
+## pool is empty; the HUD decides whether the English gloss is visible (V).
+func _show_match_proverb(seconds: float = PROVERB_BANNER_SECONDS) -> bool:
+	if PROVERB_BANNER.is_empty():
+		return false
+	var phrase := String(PROVERB_BANNER[_proverb_cursor % PROVERB_BANNER.size()])
+	_proverb_cursor += 1
+	return hud.show_proverb(phrase, String(CALLOUT_GLOSSES.get(phrase, "")), seconds)
+
+
+## Which in-match proverb pool a contact belongs to. WASH-BELLY is reserved for L!kkle
+## Moore, the crew's youngest prodigy; every fighter uses the shared counter/heavy pools.
+func _impact_callout(hit_id: StringName, counter: bool, fighter_key: StringName) -> StringName:
+	if fighter_key == &"young_selecta" and (counter or hit_id in BaseFighter.HEAVY_ATTACK_IDS):
+		return &"wash_belly"
+	if counter:
+		return &"counter"
+	if hit_id == &"upper_box" or hit_id == &"tump":
+		return &"heavy"
+	return &""
 
 
 func _follow_action(delta: float = 0.0) -> void:

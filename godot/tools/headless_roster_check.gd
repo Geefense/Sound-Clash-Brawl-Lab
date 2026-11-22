@@ -317,6 +317,9 @@ func _run() -> void:
 	title._unhandled_input(m_key)
 	_check(music_bed.state_name() == "beat_2" and music_bed.is_playing(),
 		"M on Title / Select cycles Beat 1 to Beat 2")
+	_check(title.beat_toast_text().contains("BEAT 2") and title.beat_toast_text().contains("M TO CYCLE"),
+		"M on Title / Select flashes the current beat in the corner HUD label",
+		title.beat_toast_text())
 	title._unhandled_input(m_key)
 	_check(music_bed.state_name() == "beat_3" and music_bed.is_playing(),
 		"M cycles Beat 2 to Beat 3")
@@ -351,6 +354,7 @@ func _run() -> void:
 	var mp1: BaseFighter = mirror_arena.get_node("P1")
 	var mp2: BaseFighter = mirror_arena.get_node("P2")
 	var mirror_stage: Arena3D = mirror_arena.arena3d
+	var mirror_hud: Control = mirror_arena.get_node("HUD/Ui/Hud")
 	var mp1_model: FighterModel3D = mirror_stage.model_for(mp1) as FighterModel3D
 	var mp2_model: FighterModel3D = mirror_stage.model_for(mp2) as FighterModel3D
 	_check(mp1.fighter_key == &"feedback" and mp2.fighter_key == &"feedback",
@@ -417,12 +421,27 @@ func _run() -> void:
 	mirror_arena._unhandled_input(m_key)
 	_check(music_bed.state_name() == "beat_3",
 		"M on the post-KO screen auditions Beat 3")
+	_check(mirror_hud.music_toast_text().contains("BEAT 3"),
+		"M on the post-KO screen flashes the current beat in the corner HUD label",
+		mirror_hud.music_toast_text())
 	mirror_arena._unhandled_input(m_key)
 	_check(music_bed.state_name() == "off" and not music_bed.is_playing(),
 		"M on the post-KO screen cycles Beat 3 to Off")
 	mirror_arena._unhandled_input(m_key)
 	_check(music_bed.state_name() == "beat_1" and music_bed.is_playing(),
 		"M resumes the victory audition from Beat 1")
+	# Across matches the victory bed advances on its own: Beat 1 → 2 → 3 → 1.
+	music_bed.stop_for_fight()
+	await create_timer(0.6).timeout
+	music_bed.play_victory()
+	var victory_a := String(music_bed.state_name())
+	music_bed.play_victory()
+	var victory_b := String(music_bed.state_name())
+	music_bed.play_victory()
+	var victory_c := String(music_bed.state_name())
+	_check(victory_a == "beat_2" and victory_b == "beat_3" and victory_c == "beat_1",
+		"the post-KO bed rotates Beat 1 -> Beat 2 -> Beat 3 across matches",
+		"%s / %s / %s" % [victory_a, victory_b, victory_c])
 	music_bed.stop_for_fight()
 	await create_timer(0.6).timeout
 
@@ -980,14 +999,72 @@ func _run() -> void:
 		and hud.subtitle_text().contains("TEK WEH HIM MIC!")
 	_check(heavy_call and stun_call,
 		"TUMP OUT HIM TEET! and TEK WEH HIM MIC! are wired to their triggers")
-	_check(str(arena.CALLOUTS[&"heavy"][0][1]).contains("teeth")
-			and str(arena.CALLOUTS[&"stun"][0][1]).contains("microphone"),
+	_check(String(arena.CALLOUT_GLOSSES["TUMP OUT HIM TEET!"]).contains("teeth")
+			and String(arena.CALLOUT_GLOSSES["TEK WEH HIM MIC!"]).contains("microphone"),
 		"both new callouts keep a separate English gloss")
 	# Glosses stay in their own field, never folded into the spoken spelling.
-	_check(str(arena.CALLOUTS[&"parry"][0][1]).contains("Hold on a second")
-			and str(arena.CALLOUTS[&"hype"][0][1]).contains("Play another song")
-			and str(arena.CALLOUTS[&"punish"][0][1]).contains("Show-off"),
+	_check(String(arena.CALLOUT_GLOSSES["WHOLE-AWN-DEH!"]).contains("Hold on a second")
+			and String(arena.CALLOUT_GLOSSES["PLAYAH NEX TUNE!"]).contains("Play another song")
+			and String(arena.CALLOUT_GLOSSES["POPPYSHOW!"]).contains("Show-off"),
 		"each new callout keeps a separate English gloss")
+
+	# ---- 31-entry Jamaican Patwa proverbs & expressions (AGENTS.md §8) ------
+	var collection: Array = arena.PATWA_COLLECTION
+	_check(collection.size() == 31, "the Patwa collection carries all 31 entries",
+		"%d" % collection.size())
+	var patwa_seen := {}
+	var patwa_duplicates := []
+	var patwa_missing_gloss := []
+	var patwa_missing_trigger := []
+	var patwa_wired := {}
+	for kind in arena.CALLOUTS:
+		for phrase in arena.CALLOUTS[kind]:
+			patwa_wired[String(phrase)] = true
+	for phrase in arena.PROVERB_BANNER:
+		patwa_wired[String(phrase)] = true
+	for phrase in collection:
+		var text := String(phrase)
+		if patwa_seen.has(text):
+			patwa_duplicates.append(text)
+		patwa_seen[text] = true
+		var gloss_text := String(arena.CALLOUT_GLOSSES.get(text, ""))
+		if gloss_text == "" or not gloss_text.begins_with("(Translation:"):
+			patwa_missing_gloss.append(text)
+		if not patwa_wired.has(text):
+			patwa_missing_trigger.append(text)
+	_check(patwa_duplicates.is_empty(), "no Patwa entry is duplicated",
+		"%s" % [patwa_duplicates])
+	_check(patwa_missing_gloss.is_empty(),
+		"every Patwa entry resolves to a clean English subtitle gloss",
+		"%s" % [patwa_missing_gloss])
+	_check(patwa_missing_trigger.is_empty(),
+		"every Patwa entry is wired to a callout pool or the intro banner",
+		"%s" % [patwa_missing_trigger])
+	# WASH-BELLY is L!kkle Moore's line; the shared heavy/counter pools cover the rest.
+	_check(arena.CALLOUTS[&"wash_belly"] == ["WASH-BELLY"]
+			and arena._impact_callout(&"tump", false, &"young_selecta") == &"wash_belly"
+			and arena._impact_callout(&"tump", false, &"feedback") == &"heavy",
+		"WASH-BELLY is weighted to L!kkle Moore, not the whole roster")
+	_check(arena._impact_callout(&"jab", true, &"feedback") == &"counter"
+			and arena._impact_callout(&"upper_box", false, &"lickshot") == &"heavy",
+		"counter hits and heavies route to their own proverb pools")
+	# The match-intro banner rotates its nine traditional proverbs and carries the V gloss.
+	var first_proverb := String(arena.PROVERB_BANNER[
+		arena._proverb_cursor % arena.PROVERB_BANNER.size()])
+	_check(arena._show_match_proverb() and hud.proverb_text() == first_proverb
+			and hud.proverb_gloss().begins_with("(Translation:"),
+		"the match-intro banner shows a Patwa proverb with its V-key gloss",
+		hud.proverb_text())
+	var second_proverb := String(arena.PROVERB_BANNER[
+		arena._proverb_cursor % arena.PROVERB_BANNER.size()])
+	_check(second_proverb != first_proverb and arena._show_match_proverb()
+			and hud.proverb_text() == second_proverb,
+		"the next match intro rotates to a different proverb", hud.proverb_text())
+	hud.subtitles_enabled = false
+	hud.show_proverb(first_proverb, String(arena.CALLOUT_GLOSSES[first_proverb]), 3.0)
+	_check(hud.proverb_text() == first_proverb and hud.proverb_gloss() == "",
+		"V-off keeps the Patwa banner readable and hides only the English subtitle")
+	hud.subtitles_enabled = true
 	hud.toggle_subtitles()
 	hud.toggle_subtitles()
 

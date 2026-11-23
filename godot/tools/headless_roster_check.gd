@@ -1638,8 +1638,11 @@ func _run() -> void:
 	# Budget: measured from the meshes that were actually built.
 	var crowd_tris := crowd3d.triangle_count()
 	var booth_tris := booth.triangle_count()
-	_check(crowd_tris > 0 and booth_tris > 0 and atmosphere.atmosphere_triangles() < 15000,
-		"the new DJ booth and crowd stay under 15 000 triangles",
+	# The delivered ringside characters (8 × ≤3 500) and both decks (2 × ≤3 500) replace
+	# the 2-triangle silhouette quads on those slots, so the atmosphere cap moves from
+	# 15 000 to 40 000. Every individual character is still held to 3 500 below.
+	_check(crowd_tris > 0 and booth_tris > 0 and atmosphere.atmosphere_triangles() < 40000,
+		"the 3D booth and ringside characters stay under 40 000 triangles",
 		"%d total (crowd %d / booth %d)" % [atmosphere.atmosphere_triangles(),
 			crowd_tris, booth_tris])
 
@@ -1691,8 +1694,80 @@ func _run() -> void:
 	_check(DirAccess.dir_exists_absolute(CharacterModelSlots.DJ_DIR)
 			and DirAccess.dir_exists_absolute(CharacterModelSlots.CROWD_DIR),
 		"the .fbx drop-in folders exist for DJs and the crowd")
-	_check(crowd3d.using_fallback() and booth.using_fallback(),
-		"with no .fbx uploaded yet the silhouettes are the visible stand-ins")
+	_check(not crowd3d.using_fallback() and not booth.using_fallback(),
+		"the delivered .fbx characters replace the silhouettes on the ringside row and decks",
+		"crowd %d models / booth %d models" % [crowd3d.model_slots().size(),
+			booth.model_slots().size()])
+
+	# ---- Delivered Mixamo crowd/DJ characters (2026-11-23) ----------------------------
+	# Every delivered character must be a real 68-bone `mixamorig` rig with its animation
+	# take, decimated to the 3 500-triangle crowd/DJ budget, wearing the toon + ink pass,
+	# and crossfading its clips from the arena's own event cues.
+	var delivered: Array = []
+	delivered.append_array(crowd3d.model_slots())
+	delivered.append_array(booth.model_slots())
+	var rig_failures: Array[String] = []
+	var budget_failures: Array[String] = []
+	var clip_failures: Array[String] = []
+	var cel_failures: Array[String] = []
+	for model in delivered:
+		var model_name := String(model.name)
+		var bones := CharacterModelSlots.character_bones(model)
+		if bones <= 20:
+			rig_failures.append("%s:%d" % [model_name, bones])
+		var tris := CharacterModelSlots.character_triangles(model)
+		if tris <= 0 or tris > 3500:
+			budget_failures.append("%s:%d" % [model_name, tris])
+		var player := CharacterModelSlots.animation_player(model)
+		var clips: Array = player.get_animation_list() if player != null else []
+		var tracks := 0
+		if player != null and not clips.is_empty():
+			tracks = player.get_animation(clips[0]).get_track_count()
+		if player == null or clips.size() < 3 or tracks < 50:
+			clip_failures.append("%s:%d clips/%d tracks" % [model_name, clips.size(), tracks])
+		if CharacterModelSlots.cel_surfaces(model) == 0:
+			cel_failures.append(model_name)
+	_check(delivered.size() == 10 and rig_failures.is_empty(),
+		"all 10 delivered characters carry a real Mixamo skeleton (> 20 bones)",
+		"%d characters, failures %s" % [delivered.size(), rig_failures])
+	_check(not delivered.is_empty() and budget_failures.is_empty(),
+		"every delivered crowd/DJ mesh is decimated to ≤ 3 500 triangles",
+		", ".join(budget_failures))
+	_check(not delivered.is_empty() and clip_failures.is_empty(),
+		"every delivered character has acting clips with real AnimationPlayer tracks",
+		", ".join(clip_failures))
+	_check(not delivered.is_empty() and cel_failures.is_empty(),
+		"every delivered character wears the toon shader plus inverted-hull ink",
+		", ".join(cel_failures))
+	_check(crowd3d.hand_attached_props() >= 4 and booth.hand_attached_props() == 1,
+		"flags, lighters and the booth airhorn ride a BoneAttachment3D on mixamorig_RightHand",
+		"%d crowd / %d booth hand props" % [crowd3d.hand_attached_props(),
+			booth.hand_attached_props()])
+
+	# Acting: the same combat cues crossfade the delivered characters, per bank.
+	crowd3d.settle()
+	booth.settle()
+	var neutral_clip := crowd3d.model_clip_of(0)
+	atmosphere.notify_combat_event(&"heavy_hit", 0)
+	crowd3d.tick(0.9)
+	booth.tick(0.1)
+	_check(crowd3d.model_act_of(0) == CharacterModelSlots.ACT_CHEER
+			and crowd3d.model_act_of(10) == CharacterModelSlots.ACT_DISBELIEF,
+		"the delivered banks crossfade to cheer and disbelief on a heavy hit",
+		"left %s / right %s" % [crowd3d.model_act_of(0), crowd3d.model_act_of(10)])
+	_check(crowd3d.model_clip_of(0) == "mixamo_cheer"
+			and crowd3d.model_clip_of(0) != neutral_clip,
+		"the cheer clip is actually playing, not just recorded as a state",
+		"%s (neutral %s)" % [crowd3d.model_clip_of(0), neutral_clip])
+	_check(booth.model_act_of(0) == CharacterModelSlots.ACT_HYPE,
+		"the selectors crossfade to the hype take when they point at the fighters",
+		String(booth.model_act_of(0)))
+	crowd3d.settle()
+	booth.settle()
+	_check(crowd3d.model_act_of(0) == CharacterModelSlots.ACT_NEUTRAL
+			and crowd3d.model_clip_of(0) == neutral_clip,
+		"a settled yard crossfades back to each character's own loop",
+		crowd3d.model_clip_of(0))
 	_check(SilhouetteArt.material_count() >= 8 and SilhouetteArt.texture_count() >= 8,
 		"the silhouette masks are painted and cached per variant and pose",
 		"%d materials / %d masks" % [SilhouetteArt.material_count(), SilhouetteArt.texture_count()])

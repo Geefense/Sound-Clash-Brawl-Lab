@@ -25,6 +25,10 @@ const STATE_FADER := &"fader"
 const STATE_POINT := &"point"
 const STATE_AIRHORN := &"airhorn"
 const STATE_CELEBRATE := &"celebrate"
+const STATE_DISBELIEF := &"disbelief"
+const DJ_TINT := Color(1.0, 0.98, 0.93)
+const DJ_RIM := Color(1.0, 0.78, 0.34)
+const HAND_BONE := "mixamorig_RightHand"
 
 const BOOTH_W := 2.50
 const BOOTH_H := 0.94
@@ -41,6 +45,10 @@ class DJ:
 	var node: Node3D
 	var body: StageSilhouette
 	var model: Node3D = null
+	var player: AnimationPlayer = null
+	var clips: Dictionary = {}
+	var act: StringName = &""
+	var hand_attachment: BoneAttachment3D = null
 	var horn: Node3D = null
 	var base_y: float = 0.0
 	var phase: float = 0.0
@@ -100,6 +108,10 @@ func react(kind: StringName, side: int = -1) -> void:
 				dj.hold = 1.3
 		&"knockdown":
 			_raise_horn(1.8)
+			# The other selector answers the knockdown with disbelief, not a cheer.
+			if _djs.size() > 1:
+				_djs[1].state = STATE_DISBELIEF
+				_djs[1].hold = 1.4
 		&"ko":
 			_celebrate(3.0)
 		&"victory":
@@ -111,6 +123,8 @@ func react(kind: StringName, side: int = -1) -> void:
 			_celebrate(2.6)
 		_:
 			_celebrate(1.4)
+	for dj in _djs:
+		_play_model_act(dj, dj.state)
 
 
 ## Beat accent from `Arena3D.beat_pulse()`: the booth nods on the 132 BPM click.
@@ -138,6 +152,7 @@ func tick(delta: float) -> void:
 			dj.hold -= delta
 			if dj.hold <= 0.0:
 				dj.state = STATE_IDLE
+				_play_model_act(dj, dj.state)
 		dj.nod = maxf(0.0, dj.nod - delta * 3.2)
 		dj.phase = fposmod(dj.phase + dj.rate * delta, TAU)
 		_pose_dj(dj, delta)
@@ -149,7 +164,9 @@ func settle() -> void:
 		dj.state = STATE_IDLE
 		dj.hold = 0.0
 		dj.nod = 0.0
+		dj.act = &""
 		_pose_dj(dj, 0.0)
+		_play_model_act(dj, dj.state)
 
 
 func dj_count() -> int:
@@ -174,6 +191,43 @@ func celebrating() -> bool:
 		if dj.state == STATE_CELEBRATE:
 			return true
 	return false
+
+
+func disbelieving() -> bool:
+	for dj in _djs:
+		if dj.state == STATE_DISBELIEF:
+			return true
+	return false
+
+
+## Selectors currently played by a real Mixamo character.
+func animated_model_count() -> int:
+	var n := 0
+	for dj in _djs:
+		if dj.player != null:
+			n += 1
+	return n
+
+
+func model_act_of(index: int) -> StringName:
+	if index < 0 or index >= _djs.size():
+		return &""
+	return _djs[index].act
+
+
+func model_clip_of(index: int) -> String:
+	if index < 0 or index >= _djs.size():
+		return ""
+	var player := _djs[index].player
+	return player.current_animation if player != null else ""
+
+
+func hand_attached_props() -> int:
+	var n := 0
+	for dj in _djs:
+		if dj.hand_attachment != null:
+			n += 1
+	return n
 
 
 func pointing() -> bool:
@@ -238,8 +292,57 @@ func _load_models() -> void:
 		var model := CharacterModelSlots.spawn_one(dj.node, paths[i % paths.size()], DJ_HEIGHT)
 		if model == null:
 			continue
+		CharacterModelSlots.apply_cel(model, DJ_TINT, DJ_RIM, 10 + i)
+		dj.clips = CharacterModelSlots.install_act_clips(model)
+		dj.player = dj.clips.get("player") as AnimationPlayer
+		if dj.player != null:
+			dj.player.speed_scale = dj.rate
+		dj.act = &""
 		dj.model = model
 		dj.body.visible = false
+		# The airhorn rides the selector's right hand, so it lifts with the real clip
+		# instead of floating beside a standing body.
+		if dj.horn != null:
+			dj.hand_attachment = _attach_to_hand(model, dj.horn, "AirhornHand")
+		_play_model_act(dj, dj.state)
+
+
+## Crossfade the delivered selector to the act its booth state calls for.
+func _play_model_act(dj: DJ, state: StringName) -> void:
+	if dj.model == null or dj.player == null or dj.clips.is_empty():
+		return
+	var act: StringName = CharacterModelSlots.ACT_NEUTRAL
+	match state:
+		STATE_CELEBRATE:
+			act = CharacterModelSlots.ACT_CHEER
+		STATE_DISBELIEF:
+			act = CharacterModelSlots.ACT_DISBELIEF
+		STATE_POINT, STATE_AIRHORN:
+			act = CharacterModelSlots.ACT_HYPE
+	if act == dj.act:
+		return
+	dj.act = act
+	CharacterModelSlots.play_act(dj.model, dj.clips, act, CharacterModelSlots.ACT_FADE)
+
+
+## BoneAttachment3D is the same hand-parenting the fighters use for their mics: a prop
+## reparented under `mixamorig_RightHand` follows every idle, point and celebration pose.
+func _attach_to_hand(model: Node3D, prop: Node3D, node_name: String) -> BoneAttachment3D:
+	if model == null or prop == null:
+		return null
+	var skeleton: Skeleton3D = null
+	for child in model.find_children("*", "Skeleton3D", true, false):
+		skeleton = child as Skeleton3D
+		break
+	if skeleton == null or skeleton.find_bone(HAND_BONE) < 0:
+		return null
+	var attachment := BoneAttachment3D.new()
+	attachment.name = node_name
+	attachment.bone_name = HAND_BONE
+	skeleton.add_child(attachment)
+	prop.reparent(attachment, false)
+	prop.transform = Transform3D.IDENTITY
+	return attachment
 
 
 func triangle_count() -> int:
@@ -305,8 +408,13 @@ func _pose_dj(dj: DJ, _delta: float) -> void:
 			pose = &"airhorn"
 		STATE_CELEBRATE:
 			pose = &"celebrate"
+		STATE_DISBELIEF:
+			pose = &"idle"
 	dj.body.set_pose(pose)
 	var bob := absf(sin(t * 1.6)) * 0.024 + dj.nod * 0.03
+	if dj.model != null:
+		# The Mixamo clip owns the body motion; a second procedural bob would double it.
+		bob = 0.0
 	dj.node.position.y = dj.base_y + bob
 	var lean := sin(t * 0.8) * 0.05
 	match dj.state:

@@ -23,10 +23,28 @@ extends Node3D
 ##
 ## Real character art drops straight in: `CharacterModelSlots` instances any `.fbx`/`.glb`
 ## in `assets/models/crowd/` and hides the silhouette for those spectators, so replacing the
-## placeholders later needs no change here.
+## placeholders later needs no change here. Delivered characters are decimated Mixamo rigs
+## (68 bones, ≤3 500 tris) and wear the same cel/ink treatment as the fighters (2026-11-23).
+##
+## Only the ringside row gets full 3D characters: 8 animated bodies across both banks branch
+## their acting from the same `mixamorig` clip library (cheer / disbelief / hype), while the
+## back rows keep the painted silhouettes so the bank stays cheap on a Chromebook.
 
 ## 20 spectators across two banks and three rows, matching the 16–24 owner range.
 const COUNT := 20
+## Row 0 is the ringside row on each bank. The other rows stay silhouettes.
+const MODEL_ROWS := 1
+const MODEL_TINTS := [Color(1.0, 0.99, 0.94), Color(0.92, 0.97, 1.06)]
+const MODEL_RIMS := [Color(1.0, 0.82, 0.42), Color(0.70, 0.86, 1.0)]
+## The delivered crowd takes share one Mixamo character skin, so each ringside body gets
+## its own small tint/hue break-up through the toon shader. Presentation only.
+const MODEL_LOOKS := [
+	Color(1.0, 1.0, 1.0),
+	Color(1.03, 0.97, 0.93),
+	Color(0.94, 0.99, 1.05),
+	Color(1.04, 0.95, 0.99),
+]
+const MODEL_HUES := [0.0, 0.035, -0.03, 0.06]
 const ZONE_LEFT := 0
 const ZONE_RIGHT := 1
 const ROW_Z := [-4.30, -5.60, -6.90]
@@ -56,6 +74,9 @@ class Member:
 	var node: Node3D                       # anchor on the row; props ride with it
 	var body: StageSilhouette              # the 2.5D silhouette (hidden once a model lands)
 	var model: Node3D = null               # imported .fbx character, when one exists
+	var player: AnimationPlayer = null     # the character's own Mixamo AnimationPlayer
+	var clips: Dictionary = {}             # {base, cheer, disbelief, hype, player}
+	var act: StringName = &""              # act currently crossfaded in
 	var height: float = 1.72
 	var base_y: float = 0.0
 	var zone: int = 0
@@ -185,14 +206,72 @@ func _load_models() -> void:
 	var paths := CharacterModelSlots.model_paths(CharacterModelSlots.CROWD_DIR)
 	if paths.is_empty():
 		return
-	for i in _members.size():
-		var m := _members[i]
-		var model := CharacterModelSlots.spawn_one(m.node, paths[i % paths.size()], m.height)
+	var slot := 0
+	for m in _members:
+		if m.row >= MODEL_ROWS:
+			continue
+		var model := CharacterModelSlots.spawn_one(m.node, paths[slot % paths.size()], m.height)
+		slot += 1
 		if model == null:
 			continue
+		var look := (slot - 1) % MODEL_LOOKS.size()
+		CharacterModelSlots.apply_cel(model, MODEL_TINTS[m.zone] * MODEL_LOOKS[look],
+			MODEL_RIMS[m.zone], m.zone * MODEL_LOOKS.size() + look, MODEL_HUES[look])
+		m.clips = CharacterModelSlots.install_act_clips(model)
+		m.player = m.clips.get("player") as AnimationPlayer
+		if m.player != null:
+			m.player.speed_scale = m.rate
+		m.act = &""
 		m.model = model
 		m.body.visible = false
 		_models.append(model)
+		_attach_hand_props(m)
+		_play_model_act(m, m.state)
+
+
+## Flags, lighters and airhorns ride the character's right hand through a
+## BoneAttachment3D (the same hand-parenting the fighters use for their mics), so a prop
+## lifts with the real clip instead of hovering beside a standing body.
+func _attach_hand_props(m: Member) -> void:
+	var skeleton: Skeleton3D = null
+	for child in m.model.find_children("*", "Skeleton3D", true, false):
+		skeleton = child as Skeleton3D
+		break
+	if skeleton == null or skeleton.find_bone("mixamorig_RightHand") < 0:
+		return
+	var props: Array[Node3D] = []
+	if m.flag != null:
+		props.append(m.flag)
+	if m.horn != null:
+		props.append(m.horn)
+	if m.flame != null and m.flame.get_parent() is Node3D:
+		props.append(m.flame.get_parent() as Node3D)
+	for i in props.size():
+		var attachment := BoneAttachment3D.new()
+		attachment.name = "HandProp%d" % i
+		attachment.bone_name = "mixamorig_RightHand"
+		skeleton.add_child(attachment)
+		props[i].reparent(attachment, false)
+		props[i].transform = Transform3D.IDENTITY
+
+
+## Crossfade a delivered character to the act its state calls for. A clip that has not
+## been delivered falls back to the character's own loop inside `CharacterModelSlots`.
+func _play_model_act(m: Member, state: StringName) -> void:
+	if m.model == null or m.player == null or m.clips.is_empty():
+		return
+	var act: StringName = CharacterModelSlots.ACT_NEUTRAL
+	match state:
+		STATE_CHEER:
+			act = CharacterModelSlots.ACT_CHEER
+		STATE_DISBELIEF:
+			act = CharacterModelSlots.ACT_DISBELIEF
+		STATE_HYPE:
+			act = CharacterModelSlots.ACT_HYPE
+	if act == m.act:
+		return
+	m.act = act
+	CharacterModelSlots.play_act(m.model, m.clips, act, CharacterModelSlots.ACT_FADE)
 
 
 func _add_flag(m: Member, colour: int) -> Node3D:
@@ -320,6 +399,7 @@ func tick(delta: float) -> void:
 				m.state = m.pending
 				m.pending = &""
 				m.hold = _hold_for(m.state)
+				_play_model_act(m, m.state)
 		elif m.hold > 0.0:
 			m.hold -= delta
 			if m.hold <= 0.0:
@@ -327,6 +407,7 @@ func tick(delta: float) -> void:
 				m.horn_up = false
 				if m.lighter:
 					m.lit = false
+				_play_model_act(m, m.state)
 		m.phase = fposmod(m.phase + m.rate * delta, TAU)
 		_pose_member(m, delta)
 
@@ -340,9 +421,11 @@ func settle() -> void:
 		m.hold = 0.0
 		m.lit = false
 		m.horn_up = false
+		m.act = &""
 		if m.flame != null:
 			m.flame.visible = false
 		_pose_member(m, 0.0)
+		_play_model_act(m, STATE_IDLE)
 
 
 func _hold_for(state: StringName) -> float:
@@ -403,9 +486,10 @@ func _pose_member(m: Member, _delta: float) -> void:
 		m.flag_cloth.rotation.y = sin(t * 2.1) * amp
 		m.flag_cloth.rotation.z = sin(t * 1.7 + 0.5) * amp * 0.5
 	if m.horn != null:
-		var lift := -0.62 if m.horn_up else 0.0
-		m.horn.rotation.z = lerpf(m.horn.rotation.z, lift, 0.25)
-		m.horn.position.y = 1.20 + (0.10 if m.horn_up else 0.0)
+		if not (m.horn.get_parent() is BoneAttachment3D):
+			var lift := -0.62 if m.horn_up else 0.0
+			m.horn.rotation.z = lerpf(m.horn.rotation.z, lift, 0.25)
+			m.horn.position.y = 1.20 + (0.10 if m.horn_up else 0.0)
 	if m.flame != null:
 		var want := m.lit and m.state != STATE_IDLE
 		m.flame.visible = want
@@ -550,6 +634,37 @@ func model_slots() -> Array[Node3D]:
 ## True while the silhouettes are the visible stand-ins.
 func using_fallback() -> bool:
 	return _models.is_empty()
+
+
+## Spectators currently played by a real Mixamo character.
+func animated_model_count() -> int:
+	var n := 0
+	for m in _members:
+		if m.player != null:
+			n += 1
+	return n
+
+
+## Props currently riding a real character's `mixamorig_RightHand`.
+func hand_attached_props() -> int:
+	var n := 0
+	for m in _members:
+		if m.model != null:
+			n += m.model.find_children("HandProp*", "BoneAttachment3D", true, false).size()
+	return n
+
+
+func model_act_of(index: int) -> StringName:
+	if index < 0 or index >= _members.size():
+		return &""
+	return _members[index].act
+
+
+func model_clip_of(index: int) -> String:
+	if index < 0 or index >= _members.size():
+		return ""
+	var player := _members[index].player
+	return player.current_animation if player != null else ""
 
 
 ## Leftover capsule-mannequin geometry. Must stay at zero: the silhouettes replaced it.

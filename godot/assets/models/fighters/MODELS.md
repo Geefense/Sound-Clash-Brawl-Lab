@@ -116,6 +116,61 @@ new fighters that means the **28,000-triangle decimated mesh**, not the original
 root `Lcl Scaling` and `UnitScaleFactor` were rewritten, so the adults open at **180 cm** and the
 kid at **128 cm** with 1 unit = 1 cm. See that folder's `README.md` for checksums and the reason.
 
+## Crowd & DJ Mixamo uploads (2026-11-23)
+
+The owner pushed 45 Mixamo `.fbx` files to the root of `feature/3d-cel-shaded` (commit
+`a46be08`): 10 Feedback clips, 11 L!ckshot clips, 17 L!kkle Moore clips and 7 `Crowd …`
+characters. All are With Skin exports — a 68-bone `mixamorig` rig, one take and embedded
+textures — and the set contains **no DJ-specific character**.
+
+**Delivery gap.** This workspace received only 3 of the 45 binaries: `Crowd Male Angry
+Gesture`, `Crowd Male Cheering` and `Crowd Male Rallying`. The other 42 blobs are absent
+from the local object store (`git fsck` reports them missing), so no fighter clip, no female
+crowd model and no DJ art could be inspected. **Fighter retargeting, the fighter
+`AnimationPlayer` state machine and the fighter hand-attached mics are not implemented**
+[TODO]; see `AGENTS.md` §9 for the exact missing list.
+
+| Game file | Role | Tris | Bones | Take |
+| --- | --- | --- | --- | --- |
+| `crowd/Crowd Male Angry Gesture.fbx` | crowd disbelief | **3 491** (from 10 220) | 68 | `mixamo_com`, 3.267 s |
+| `crowd/Crowd Male Cheering.fbx` | crowd cheer / booth celebrate | **3 491** | 68 | `mixamo_com`, 2.900 s |
+| `crowd/Crowd Male Rallying.fbx` | crowd hype / booth point + airhorn | **3 491** | 68 | `mixamo_com`, 6.200 s |
+
+`dj/` holds the Cheering and Rallying copies (same bytes) for the two selector slots, because
+the upload has no DJ character. The untouched owner originals are archived at
+`art-source/mixamo/crowd/`; the root copies were removed.
+
+### Decimation
+
+`godot/tools/decimate_mixamo_blender.py` runs headless Blender's COLLAPSE Decimate, which
+interpolates vertex groups, so the armature, skin weights, materials, embedded textures and
+take all survive. The older `decimate_fbx.py` only rebuilds static geometry and would silently
+drop the skin clusters. Settings: ratio `3500 / 10220`, triangulate, images packed, FBX export
+with `FBX_SCALE_ALL`, `embed_textures`, all actions baked. Output: 1 909 verts / 3 491 tris.
+Godot extracts the embedded images to `*_0/1/2.png`, imported lossless
+(`compress/mode=0`) with mipmaps.
+
+### Wiring
+
+- **Crowd** — `CrowdController3D.MODEL_ROWS = 1`: the ringside row (8 bodies, 4 per bank)
+  gets the real characters, while the back rows keep the 2-triangle painted silhouettes.
+  That keeps the yard at **36 310** measured atmosphere triangles (crowd 28 448 + booth
+  7 862) under the revised **40 000** cap, with each character checked at ≤3 500.
+- **Acting** — `CharacterModelSlots` reads the role from the uploaded filename, builds one
+  shared `Animation` per act and installs it on every character (identical track paths:
+  `Armature/Skeleton3D:mixamorig_*`). `CrowdController3D` and `DJBooth3D` crossfade 0.12 s
+  into cheer / disbelief / hype on their own event cues; neutral plays each character's own
+  take. Missing acts fall back to that base loop.
+- **Cel** — every surface gets `toon_cel.gdshader` with the upload's own albedo plus the
+  `toon_outline.gdshader` inverted hull. Left bank warm, right bank cool, booth gold; the
+  three delivered takes share one character skin, so each ringside body also gets a small
+  tint/hue break-up (presentation only).
+- **BoneAttachment3D** — crowd flags, lighters and airhorns and the booth airhorn are
+  reparented under `mixamorig_RightHand`, so props follow the real poses. The DJs' procedural
+  bob is disabled when a clip owns the body.
+- **DJs** — `DJBooth3D` fills both slots and adds a `disbelief` reaction (the second selector
+  answers a knockdown) on top of the existing point / airhorn / celebrate states.
+
 ## Verification
 
 - `godot --headless --path godot --import` imports all three with only the known ufbx
@@ -128,11 +183,23 @@ kid at **128 cm** with 1 unit = 1 cm. See that folder's `README.md` for checksum
   moves produce separate 3D poses, the dubplate wave spawns its prop and lands through
   `receive_strike`, the sweep's live hurtbox ducks a standing jab, and L!ckshot/L!kkle Moore are
   no longer billboards.
+**Crowd/DJ additions to the same run (2026-11-23):** **341 PASS / 0 FAIL**. The new checks
+assert that all 10 delivered characters load with a real `mixamorig` skeleton (>20 bones), each
+is ≤3 500 triangles (3 491 measured on the character meshes, hand props excluded from the
+budget), each carries acting clips with real `AnimationPlayer` tracks (4 clips / 79–89 tracks),
+every surface has the toon + ink pass, 6 crowd props and 1 booth airhorn ride a
+`BoneAttachment3D` on `mixamorig_RightHand`, the left bank crossfades to `mixamo_cheer` while
+the right bank plays `mixamo_disbelief` on a heavy hit, the selectors crossfade to the hype
+take when they point, and a settled yard returns to each character's own loop.
+
 **Not verified:** there is no GPU or display in the authoring environment, so the rendered cel
 look, ink width, rim strength, texture orientation on screen, mirror tint, the new animated poses,
 the 3D disc/book meshes and the actual frame rate have not been seen. The triangle budgets are
 verified (28k each, 29k Feedback); a real Chromebook/iPhone Safari frame-time and Safari playback
-measurement is still required before calling the 60 FPS target proven.
+measurement is still required before calling the 60 FPS target proven. The delivered crowd
+characters were also never viewed, the three takes share one Mixamo skin (so the ringside row is
+one character with hue break-up), and no fighter Mixamo retarget exists because 42 of the 45
+uploaded binaries never reached this workspace.
 
 ## Checksums (SHA-256)
 

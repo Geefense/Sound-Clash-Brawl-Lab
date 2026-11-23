@@ -3331,3 +3331,63 @@ lighting phases, the pop timing, or the frame rate on a Chromebook / iPhone Safa
 verified as state, not by ear. No real Mixamo character has been dropped into the `.fbx` slots yet,
 so that path is a contract and an empty-folder fallback, not a working import. Crowd voice audio is
 still untouched and [TODO].
+
+### Mixamo upload pass: crowd/DJ characters delivered, fighter clips blocked — November 23, 2026
+
+Owner pushed 45 Mixamo `.fbx` files to the **root** of `feature/3d-cel-shaded` (commit `a46be08`,
+"Add Mixamo animations part 1") and asked for the full fighter retarget, hand-attached mics and the
+crowd/DJ integration. **Only 3 of the 45 binaries reached this workspace.** `git fsck` reports the
+other 42 blobs missing from the local object store; a branch refresh, a reset-to-parent re-pull and
+both managed fetch paths all return the commit and trees without those blobs. The three delivered
+files — `Crowd Male Angry Gesture`, `Crowd Male Cheering`, `Crowd Male Rallying` — are 68-bone
+`mixamorig` **With Skin** exports with one take each. The upload contains **no DJ-specific
+character** and no female crowd model (7 `Crowd …` files total).
+
+**Implemented this pass (crowd/DJ only):**
+
+- **Organised** the three delivered characters. Untouched owner originals are archived at
+  `art-source/mixamo/crowd/`; decimated game copies are in `godot/assets/models/crowd/`, and the
+  Cheering/Rallying copies fill `godot/assets/models/dj/`; the root copies were removed.
+- **Decimation** — new `godot/tools/decimate_mixamo_blender.py` runs headless Blender's COLLAPSE
+  Decimate, which interpolates vertex groups, so the armature, skin weights, materials, embedded
+  textures and take survive. **10 220 → 3 491 tris** each, 68 bones, 1 909 verts. Textures are
+  extracted to `*_0/1/2.png` and imported lossless 1024² with mipmaps. The older
+  `decimate_fbx.py` only rebuilds static geometry and would drop the skin clusters.
+- **Acting** — `CharacterModelSlots` builds one shared `Animation` per role from the uploaded
+  filenames (cheer / disbelief / hype), installs them on every character (identical track paths
+  `Armature/Skeleton3D:mixamorig_*`) and falls back to the character's own loop. `CrowdController3D`
+  and `DJBooth3D` crossfade **0.12 s** on cheer, disbelief, hype, point, airhorn and celebrate.
+- **Crowd** — `MODEL_ROWS = 1`: the ringside row (8 bodies, 4 per bank) is real geometry; the back
+  rows keep the painted silhouettes. Flags, lighters and airhorns are reparented to
+  `mixamorig_RightHand` with **BoneAttachment3D**. Left bank warm, right bank cool, per-body
+  tint/hue break-up because the takes share one skin. Measured atmosphere cost **36 310 tris**
+  (crowd 28 448 / booth 7 862) under the revised **40 000** cap.
+- **DJ booth** — both decks animated from the same library, airhorn on the right hand, procedural
+  bob disabled while a clip owns the body, and a new `disbelief` reaction to a knockdown.
+- **Cel treatment** — every delivered surface carries `toon_cel.gdshader` with the upload's own
+  albedo plus the `toon_outline.gdshader` inverted hull.
+
+**Verification:** `godot --headless --path godot --import`, then
+`godot --headless --path godot --script res://tools/headless_roster_check.gd` — **341 PASS /
+0 FAIL** (`ALL CHECKS PASSED`). New checks: 10 delivered characters with >20 bones (68 each),
+≤3 500 tris on the character mesh (3 491; hand props excluded), acting clips with real tracks
+(4 clips / 79–89 tracks), cel + ink on every surface, 6 crowd + 1 booth `BoneAttachment3D` props,
+left bank playing `mixamo_cheer` and right bank `mixamo_disbelief` after a heavy hit, selectors on
+the hype take while pointing, and a settled yard back on the base loop. Only the environment's known
+non-fatal fontconfig warning appeared.
+
+**`/docs` rebuilt:** `index.pck` **54 007 664 B** (38 693 836 before the new characters — the five
+imported copies add ~15 MB), `index.wasm` 38 057 390 B, `index.js` 305 185 B, `index.html` 5 449 B.
+
+**NOT implemented — blocked on the 42 missing binaries:** all 38 fighter clips (10 Feedback, 11
+L!ckshot, 17 L!kkle Moore), the four `Crowd female …` models and any DJ replacement art; fighter
+retargeting onto `feedback_v2.fbx` / `lickshot.fbx` / `likkle_moore.fbx` (those meshes are still
+static, with no skeleton); the `FighterModel3D` AnimationPlayer state machine; and the fighter
+hand-attached wireless mic, mic stand and dictionary props. The 42 files remain tracked at the repo
+root and were **not** deleted or overwritten. Next: re-deliver the missing binaries (zip attachment
+or a fresh push), then run this same decimate + retarget pass on the fighter set.
+
+**Not verified — no GPU, display or audio device.** Nothing was seen: the cel/ink look on real
+characters, the crowd animation, the prop parenting, or the frame rate on Chromebook / iPhone
+Safari. The three delivered takes share one Mixamo skin, so the ringside row is one character with
+hue break-up, not seven distinct people.

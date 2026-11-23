@@ -397,8 +397,9 @@ var _vis_tween: Tween = null
 
 func _ready() -> void:
 	# Active rounds carry no background music: the round sting, DJ tags, selector and crowd
-	# own the fight. This also covers loading the arena directly after a victory beat.
-	MusicBed.stop_for_fight()
+	# own the fight. A hard stop (not a fade) covers loading the arena while a victory beat or
+	# a menu audition is still running (owner playtest, 2026-11-23).
+	MusicBed.stop()
 	p1.beat_service = beat
 	p2.beat_service = beat
 	beat.audio_player = music
@@ -676,6 +677,13 @@ func _on_strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dic
 			_add_impact_frame(&"counter")
 			_zoom_punch_burst(0.06)
 			_on_shake(1.0, 0.20)
+
+
+## Headless probe (owner playtest, 2026-11-23): no background beat may be audible while a
+## round is live. True when the bed is off and its player is stopped at silence.
+func music_bed_silent() -> bool:
+	return MusicBed.is_off() and not MusicBed.is_playing() \
+		and MusicBed.current_db() <= MusicBed.SILENT_DB + 0.01
 
 
 ## A fighter entering KO: the dramatic arcade drop (fired once per K.O.).
@@ -1204,6 +1212,16 @@ func _on_tag_played(_key: StringName, _priority: int) -> void:
 
 func _on_round_started(round_index: int) -> void:
 	_clear_projectiles()
+	# Every round start runs through here — Match 1, Match 2, Match 3 and each rematch, which
+	# restarts inside this scene after MATCH_OVER. The music bed is cut *before* the 6 s round
+	# sting, so no post-K.O. victory beat can bleed under the next match's rounds
+	# (owner playtest, 2026-11-23).
+	MusicBed.stop()
+	_match_over = false
+	_victory_music_started = false
+	if arena3d != null:
+		# No new round opens on last round's celebration.
+		arena3d.reset_atmosphere()
 	if SoundClash != null:
 		SoundClash.play_round_start()
 	if arena3d != null:

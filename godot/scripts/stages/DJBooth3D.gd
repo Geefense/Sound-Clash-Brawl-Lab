@@ -1,23 +1,23 @@
 class_name DJBooth3D
 extends Node3D
-## Active 3D Sound-System DJ booth behind the decks (owner request, 2026-11-22).
+## Active Sound-System DJ booth behind the decks (owner playtest, 2026-11-23).
 ##
-## Two stylized rim-lit DJs work a turntable-and-mixer rig between the mid-ground speaker
-## stacks. Presentation only: this node never touches the combat simulation, hitboxes,
-## frame data, the beat clock or the audio engine — it only poses geometry to the cues
-## `Arena3D.notify_combat_event()` already receives.
+## Two rim-lit 2.5D DJ silhouettes work a turntable-and-mixer rig between the mid-ground
+## speaker stacks. Presentation only: this node never touches the combat simulation,
+## hitboxes, frame data, the beat clock or the audio engine — it only poses the layers to
+## the cues `Arena3D.notify_combat_event()` already receives.
 ##
-## Acting:
-##   * neutral  — nod/skank on the beat, hands loose, weight shifting
-##   * fader    — right hand rides the channel faders and the crossfader slides
-##   * point    — arm out towards the fighters on a heavy hit
-##   * airhorn  — horn lifted and blown on a knockdown, K.O. or DJ tag
-##   * celebrate— both arms up, head back, records spinning on a K.O. / victory / Hype surge
+## The DJs are no longer lathed capsule mannequins. Each one is a camera-facing
+## `StageSilhouette` wearing a mask painted by `SilhouetteArt`: neutral skank, hand on the
+## faders, arm out at the fighters, horn up, or both arms up. The turntables, platters,
+## records, mixer, faders, knobs, monitors and sign are still real geometry — those are
+## props, not stand-in people.
 ##
-## Everything is low-poly primitives with shared meshes and one shared silhouette material,
-## included in `Arena3D.atmosphere_triangles()` under the 15 000-triangle budget.
-
-const SILHOUETTE_SHADER := preload("res://assets/shaders/silhouette_rim.gdshader")
+## Real character art drops straight in: `CharacterModelSlots` instances any `.fbx`/`.glb` in
+## `assets/models/dj/` behind the deck and hides the silhouette for that slot.
+##
+## Everything is low-poly with shared meshes, included in `Arena3D.atmosphere_triangles()`
+## under the 15 000-triangle budget.
 
 const DJ_COUNT := 2
 const STATE_IDLE := &"idle"
@@ -28,6 +28,7 @@ const STATE_CELEBRATE := &"celebrate"
 
 const BOOTH_W := 2.50
 const BOOTH_H := 0.94
+const DJ_HEIGHT := 1.62
 
 const RASTA := [
 	Color(0.12, 0.42, 0.16, 1.0),
@@ -38,13 +39,10 @@ const RASTA := [
 
 class DJ:
 	var node: Node3D
-	var torso: Node3D
-	var head: Node3D
-	var arm_l: Node3D
-	var arm_r: Node3D
-	var fore_l: Node3D
-	var fore_r: Node3D
+	var body: StageSilhouette
+	var model: Node3D = null
 	var horn: Node3D = null
+	var base_y: float = 0.0
 	var phase: float = 0.0
 	var rate: float = 1.0
 	var state: StringName = STATE_IDLE
@@ -81,6 +79,7 @@ func build() -> void:
 	_build_deck()
 	_make_dj(0, -0.62, true)
 	_make_dj(1, 0.62, false)
+	_load_models()
 
 
 # =========================================================================
@@ -150,6 +149,7 @@ func settle() -> void:
 		dj.state = STATE_IDLE
 		dj.hold = 0.0
 		dj.nod = 0.0
+		_pose_dj(dj, 0.0)
 
 
 func dj_count() -> int:
@@ -191,6 +191,57 @@ func record_spin() -> float:
 	return _records[0].rotation.y if not _records.is_empty() and _records[0] != null else 0.0
 
 
+# =========================================================================
+# 2.5D DJs and .fbx slots
+# =========================================================================
+## DJs currently drawn as rim-lit 2.5D silhouettes.
+func silhouette_count() -> int:
+	var n := 0
+	for dj in _djs:
+		if dj.body != null and dj.body.visible:
+			n += 1
+	return n
+
+
+## Imported `.fbx`/`.glb` DJ characters (empty until art is delivered).
+func model_slots() -> Array[Node3D]:
+	var found: Array[Node3D] = []
+	for dj in _djs:
+		if dj.model != null:
+			found.append(dj.model)
+	return found
+
+
+## True while the silhouettes are the visible stand-ins.
+func using_fallback() -> bool:
+	for dj in _djs:
+		if dj.model != null:
+			return false
+	return true
+
+
+## Leftover capsule-mannequin geometry. Must stay at zero: the silhouettes replaced it.
+func legacy_mannequin_count() -> int:
+	var n := 0
+	for legacy in ["LegL", "LegR", "Chest", "Skull", "Torso", "ArmL", "ArmR"]:
+		n += find_children(legacy, "MeshInstance3D", true, false).size()
+	return n
+
+
+## Any `.fbx`/`.glb` in `assets/models/dj/` replaces a DJ silhouette, in filename order.
+func _load_models() -> void:
+	var paths := CharacterModelSlots.model_paths(CharacterModelSlots.DJ_DIR)
+	if paths.is_empty():
+		return
+	for i in _djs.size():
+		var dj := _djs[i]
+		var model := CharacterModelSlots.spawn_one(dj.node, paths[i % paths.size()], DJ_HEIGHT)
+		if model == null:
+			continue
+		dj.model = model
+		dj.body.visible = false
+
+
 func triangle_count() -> int:
 	var total := 0
 	for node in find_children("*", "MeshInstance3D", true, false):
@@ -201,10 +252,12 @@ func triangle_count() -> int:
 
 
 func set_palette(rim_a: Color, rim_b: Color, strength: float) -> void:
-	if _body_material == null:
-		return
-	_body_material.set_shader_parameter("rim_colour", rim_a.lerp(rim_b, 0.45))
-	_body_material.set_shader_parameter("rim_strength", clampf(strength * 0.95, 0.2, 2.6))
+	var rim := rim_a.lerp(rim_b, 0.45)
+	var boost := clampf(strength * 0.95, 0.2, 2.6)
+	SilhouetteArt.set_palette(rim, boost)
+	if _body_material != null:
+		_body_material.set_shader_parameter("rim_colour", rim)
+		_body_material.set_shader_parameter("rim_strength", boost)
 
 
 # =========================================================================
@@ -236,74 +289,41 @@ func _energy() -> float:
 	return 0.0
 
 
+## The acting frame: the state picks the painted mask (neutral, fader, point, horn,
+## celebrate) and the DJ's own phase adds the nod, lean and little skank bounce.
 func _pose_dj(dj: DJ, _delta: float) -> void:
-	if dj.node == null:
+	if dj.body == null:
 		return
 	var t := dj.phase
-	var nod := dj.nod * 0.14
-	var bob := absf(sin(t * 1.6)) * 0.025
-	var torso_x := 0.04 + sin(t * 1.1) * 0.02
-	var torso_z := sin(t * 0.8) * 0.06
-	var head_x := -0.05 + sin(t * 1.6) * 0.06 + nod
-	var arm_l := -0.20 + sin(t * 0.9) * 0.06
-	var arm_r := 0.20 - sin(t * 0.9) * 0.06
-	var fore_l := -0.30
-	var fore_r := 0.30
-	# `reach` swings an arm forward over the deck (negative X rotation = towards camera,
-	# which is the way the booth faces). Without it the hands hang behind the cabinet.
-	var reach_l := -0.42
-	var reach_r := -0.72
-	var elbow_x := 0.0
+	var pose: StringName = STATE_IDLE
 	match dj.state:
 		STATE_FADER:
-			# Right hand over the mixer, small precise moves; left keeps the rhythm.
-			arm_r = 0.62 + sin(t * 3.2) * 0.10
-			fore_r = 0.55
-			arm_l = -0.18
-			reach_r = -1.16
-			reach_l = -0.38
-			elbow_x = -0.22
-			head_x = 0.10 + nod * 0.6
-			torso_x = 0.10
+			pose = &"fader"
 		STATE_POINT:
-			# Arm straight out at the fighters on the side that just connected.
-			arm_l = -1.52 if dj.point_dir < 0.0 else -0.55
-			fore_l = -0.12
-			reach_l = -1.34
-			torso_z = 0.10 * dj.point_dir
-			head_x = -0.10
+			pose = &"point"
 		STATE_AIRHORN:
-			arm_r = 2.55 + sin(t * 2.4) * 0.08
-			fore_r = 0.18
-			reach_r = -0.34
-			arm_l = -0.30
-			reach_l = -0.50
-			torso_x = -0.10
-			head_x = -0.22
+			pose = &"airhorn"
 		STATE_CELEBRATE:
-			bob = absf(sin(t * 2.0)) * 0.07
-			torso_x = -0.14
-			torso_z = sin(t * 2.0) * 0.10
-			head_x = -0.26
-			arm_l = -2.55 + sin(t * 2.3) * 0.12
-			arm_r = 2.55 - sin(t * 2.3 + 0.6) * 0.12
-			fore_l = -0.28
-			fore_r = 0.28
-			reach_l = -0.18
-			reach_r = -0.18
-		_:
-			# Neutral skank: shoulders loose, head nodding, hands resting on the rig.
-			arm_l = -0.26 + sin(t * 1.3) * 0.08
-			arm_r = 0.30 - sin(t * 1.3 + 0.8) * 0.08
-			fore_l = -0.38
-			fore_r = 0.42
-	dj.node.position.y = bob
-	dj.torso.rotation = Vector3(torso_x, sin(t * 0.5) * 0.10, torso_z)
-	dj.head.rotation = Vector3(head_x, sin(t * 0.7) * 0.12, sin(t * 1.1) * 0.05)
-	dj.arm_l.rotation = Vector3(reach_l, 0.0, arm_l)
-	dj.arm_r.rotation = Vector3(reach_r, 0.0, arm_r)
-	dj.fore_l.rotation = Vector3(elbow_x, 0.0, fore_l)
-	dj.fore_r.rotation = Vector3(elbow_x, 0.0, fore_r)
+			pose = &"celebrate"
+	dj.body.set_pose(pose)
+	var bob := absf(sin(t * 1.6)) * 0.024 + dj.nod * 0.03
+	dj.node.position.y = dj.base_y + bob
+	var lean := sin(t * 0.8) * 0.05
+	match dj.state:
+		STATE_POINT:
+			lean += 0.08 * dj.point_dir
+		STATE_AIRHORN:
+			lean -= 0.07
+		STATE_CELEBRATE:
+			lean += sin(t * 2.0) * 0.08
+		STATE_FADER:
+			lean += 0.05
+	dj.body.lean(lean)
+	dj.body.squash(-0.03 if dj.state == STATE_CELEBRATE else 0.0)
+	if dj.horn != null:
+		dj.horn.visible = dj.state == STATE_AIRHORN
+		if dj.horn.visible:
+			dj.horn.rotation.z = -0.25 + sin(t * 2.4) * 0.10
 
 
 # =========================================================================
@@ -370,6 +390,8 @@ func _build_deck() -> void:
 		Vector3(0.0, BOOTH_H + 1.0, -0.30), _deck_material)
 
 
+## One DJ: a 2.5D silhouette behind the decks (between the speaker stacks and the front
+## crowd row) plus the airhorn prop that only the selector carries.
 func _make_dj(index: int, x: float, with_horn: bool) -> void:
 	var dj := DJ.new()
 	dj.phase = _rng.randf_range(0.0, TAU)
@@ -377,90 +399,29 @@ func _make_dj(index: int, x: float, with_horn: bool) -> void:
 
 	var node := Node3D.new()
 	node.name = "DJ%d" % (index + 1)
-	# Behind the decks: further from the camera than the booth, in the gap between the
-	# speaker stacks and the front crowd row.
 	node.position = Vector3(x, 0.0, -0.62)
 	add_child(node)
 
-	_add_mesh(node, "LegL", _cylinder(0.075, 0.065, 0.80, 6),
-		Vector3(-0.10, 0.40, 0.0), _body_material)
-	_add_mesh(node, "LegR", _cylinder(0.075, 0.065, 0.80, 6),
-		Vector3(0.10, 0.40, 0.0), _body_material)
-	_add_mesh(node, "Hips", _cylinder(0.20, 0.18, 0.26, 8),
-		Vector3(0.0, 0.90, 0.0), _body_material)
-
-	var torso := Node3D.new()
-	torso.name = "Torso"
-	torso.position = Vector3(0.0, 1.00, 0.0)
-	node.add_child(torso)
-	_add_mesh(torso, "Chest", _cylinder(0.195, 0.170, 0.46, 8),
-		Vector3(0.0, 0.23, 0.0), _body_material)
-	_add_mesh(torso, "Shoulders", _cylinder(0.235, 0.215, 0.11, 8),
-		Vector3(0.0, 0.42, 0.0), _body_material)
-	# Mesh string vest / chain hint: one thin bright band across the chest.
-	_add_mesh(torso, "Chain", _box(Vector3(0.22, 0.014, 0.02)),
-		Vector3(0.0, 0.33, 0.165), _metal_material)
-	dj.torso = torso
-
-	var head := Node3D.new()
-	head.name = "Head"
-	head.position = Vector3(0.0, 0.52, 0.0)
-	torso.add_child(head)
-	_add_mesh(head, "Skull", _sphere(0.122, 6, 3), Vector3.ZERO, _body_material)
-	_add_mesh(head, "Neck", _cylinder(0.056, 0.062, 0.08, 6),
-		Vector3(0.0, -0.11, 0.0), _body_material)
-	if index == 0:
-		# Bucket hat, held high — the selector's silhouette.
-		_add_mesh(head, "HatCrown", _cylinder(0.138, 0.152, 0.12, 8),
-			Vector3(0.0, 0.095, 0.0), _body_material)
-		_add_mesh(head, "HatBrim", _cylinder(0.225, 0.225, 0.020, 8),
-			Vector3(0.0, 0.032, 0.0), _body_material)
-	else:
-		# Locks and a headwrap for the second DJ.
-		_add_mesh(head, "Headwrap", _cylinder(0.140, 0.150, 0.09, 8),
-			Vector3(0.0, 0.075, 0.0), _body_material)
-		for i in 6:
-			var angle := -1.1 + float(i) * 0.44
-			_add_mesh(head, "Lock%d" % i,
-				_cylinder(0.022, 0.013, _rng.randf_range(0.26, 0.36), 4),
-				Vector3(sin(angle) * 0.105, -0.12, cos(angle) * 0.085), _body_material)
-	dj.head = head
-
-	dj.arm_l = _make_arm(torso, -1.0, "ArmL")
-	dj.arm_r = _make_arm(torso, 1.0, "ArmR")
-	dj.fore_l = dj.arm_l.get_node("Forearm")
-	dj.fore_r = dj.arm_r.get_node("Forearm")
-	if with_horn:
-		dj.horn = _make_horn(dj.fore_r)
+	var body := StageSilhouette.new()
+	body.name = "Body"
+	body.configure("dj", index, DJ_HEIGHT)
+	node.add_child(body)
 
 	dj.node = node
+	dj.body = body
+	dj.base_y = 0.0
+	if with_horn:
+		dj.horn = _make_horn(node)
+		dj.horn.visible = false
 	_pose_dj(dj, 0.0)
 	_djs.append(dj)
 
 
-func _make_arm(torso: Node3D, side: float, node_name: String) -> Node3D:
-	var shoulder := Node3D.new()
-	shoulder.name = node_name
-	shoulder.position = Vector3(side * 0.225, 0.38, 0.0)
-	torso.add_child(shoulder)
-	_add_mesh(shoulder, "UpperArm", _cylinder(0.058, 0.048, 0.30, 6),
-		Vector3(0.0, -0.15, 0.0), _body_material)
-	var elbow := Node3D.new()
-	elbow.name = "Forearm"
-	elbow.position = Vector3(0.0, -0.30, 0.0)
-	shoulder.add_child(elbow)
-	_add_mesh(elbow, "LowerArm", _cylinder(0.048, 0.038, 0.28, 6),
-		Vector3(0.0, -0.14, 0.0), _body_material)
-	_add_mesh(elbow, "Hand", _box(Vector3(0.070, 0.095, 0.060)),
-		Vector3(0.0, -0.31, 0.0), _body_material)
-	return shoulder
-
-
-func _make_horn(forearm: Node3D) -> Node3D:
+func _make_horn(parent: Node3D) -> Node3D:
 	var horn := Node3D.new()
 	horn.name = "Airhorn"
-	horn.position = Vector3(0.0, -0.33, 0.03)
-	forearm.add_child(horn)
+	horn.position = Vector3(0.34, 1.28, 0.12)
+	parent.add_child(horn)
 	_add_mesh(horn, "HornBody", _cylinder(0.062, 0.042, 0.22, 6),
 		Vector3(0.0, 0.07, 0.0), _metal_material)
 	_add_mesh(horn, "HornBell", _cylinder(0.115, 0.052, 0.13, 6),
@@ -474,12 +435,7 @@ func _make_horn(forearm: Node3D) -> Node3D:
 # Shared materials and primitives
 # =========================================================================
 func _build_materials() -> void:
-	_body_material = ShaderMaterial.new()
-	_body_material.shader = SILHOUETTE_SHADER
-	_body_material.set_shader_parameter("body_colour", Color(0.055, 0.05, 0.07))
-	_body_material.set_shader_parameter("rim_colour", Color(1.0, 0.74, 0.34))
-	_body_material.set_shader_parameter("rim_strength", 1.05)
-	_body_material.set_shader_parameter("rim_power", 2.4)
+	_body_material = SilhouetteArt.material_for("dj", 0, STATE_IDLE)
 	_deck_material = _mat(Color(0.07, 0.07, 0.085), 0.85, 0.10)
 	_metal_material = _mat(Color(0.62, 0.62, 0.58), 0.38, 0.75)
 	_vinyl_material = _mat(Color(0.03, 0.03, 0.04), 0.30, 0.35)
@@ -525,18 +481,6 @@ func _cylinder(top: float, bottom: float, height: float, segments: int = 8) -> C
 		mesh.height = height
 		mesh.radial_segments = segments
 		mesh.rings = 1
-		_mesh_cache[key] = mesh
-	return _mesh_cache[key]
-
-
-func _sphere(radius: float, segments: int, rings: int) -> SphereMesh:
-	var key := "sph_%.3f_%d_%d" % [radius, segments, rings]
-	if not _mesh_cache.has(key):
-		var mesh := SphereMesh.new()
-		mesh.radius = radius
-		mesh.height = radius * 2.0
-		mesh.radial_segments = segments
-		mesh.rings = rings
 		_mesh_cache[key] = mesh
 	return _mesh_cache[key]
 

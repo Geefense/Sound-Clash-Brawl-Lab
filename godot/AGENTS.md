@@ -2230,6 +2230,77 @@ here is gameplay-verified; implementation status is stated per item.
       export. `godot/scripts/audio/MusicBed.gd` and the three beat files were already in place and
       were not re-encoded.
 
+53. **Four owner playtest fixes: music bleed into Match 2+, real sound-system stacks, arcade type,
+    clean human-rig slots (2026-11-23).**
+
+    Owner live-playtested `c74faaf` on `feature/3d-cel-shaded` and reported four high-priority
+    presentation / audio problems. **Implemented and headlessly verified; not seen or heard** — the
+    sandbox has no GPU, display or audio device.
+
+    - **1. MusicBed can no longer bleed into Match 2+ (critical).** A rematch restarts inside
+      `TestArena.tscn` after `RoundController.Phase.MATCH_OVER`, so `_ready()` never re-ran and the
+      victory beat started on the previous match's result kept playing under the next match.
+      `MusicBed.stop()` is now a new hard cut (kills the fade tween, stops the stream, forces
+      −60 dB); `TestArena._on_round_started()` calls it **before** `SoundClash.play_round_start()`,
+      and that hook fires for Match 1, Match 2, Match 3 and every rematch / replayed round.
+      `_ready()` also hard-stops instead of fading, and `stop_for_fight()` keeps only a 0.15 s fade
+      for screen changes. Round start also clears `_match_over` / `_victory_music_started`, so **M**
+      returns to the mute toggle and the booth/crowd reset via `Arena3D.reset_atmosphere()`.
+    - **2. Authentic Jamaican sound-system stacks.** `Arena3D._build_sound_stack()` replaces the old
+      three plain boxes per side with, bottom to top: a plinth; **two stacked double-18" sub bins**
+      with a recessed baffle, two 18" drivers in metal surrounds and **metallic protective corner
+      brackets**; a mid/bass cabinet with two 15" drivers and a reflex port; a **radial horn tweeter
+      box**; and a **rack-mount amp/EQ** with a glowing face, EQ knobs and two channels of
+      green → yellow → red **VU LEDs** whose lit count follows the arena's audio-peak cue
+      (`_pulse`) on hits, tags and surges. Rasta trim: a woven band across the cabinet seam plus a
+      green/gold flag on each horn box. Measured **40 corner brackets**, **40 VU LEDs** (4 lit at
+      rest, 40 at a peak), 4 sub bins, 2 racks.
+    - **3. Arcade cabinet typography.** `TestHud._text()` now draws every label with a three-step
+      extruded drop shadow, a thick black ink outline (`maxi(3, size × 0.24)`), a one-pixel gold rim
+      under the face and the crisp face on top. Round / K.O. / rematch banners, `FORWARD!`, the
+      `YARD WISDOM` card, fighter names, the round clock and the Patwa callout pill all use gold /
+      Rasta accent faces with a **scale-pop entrance** (`POP_GAIN` 0.34 over `POP_SECONDS` 0.26,
+      stamped when the banner text changes, when a callout or proverb is shown, and when a Hype
+      surge starts). Banners carry a three-block green/gold/red strip along their top edge.
+    - **4. Clean human-rig slots — no capsule mannequins.** The capsule/cylinder DJ and spectator
+      bodies are gone. Every crowd member and DJ is now a `StageSilhouette`: one camera-facing quad
+      (two triangles) wearing a mask painted at start-up by `SilhouetteArt` (signed-distance
+      strokes → body coverage + dilated rim channel) through `silhouette_mask.gdshader`. Masks carry
+      the bucket hat / headwrap / locks, the neutral skank, arms up, hands-on-head disbelief, the hip
+      hop, the fader hand, the point, the horn and the celebration. **`CharacterModelSlots`** adds
+      the drop-in slots `godot/assets/models/dj/` and `godot/assets/models/crowd/`: any `.fbx`,
+      `.glb` or `.gltf` is instanced at build time, fitted to the slot's height from its own bounds,
+      feet on the floor line, first animation started, and the silhouette for that slot is hidden.
+      With no files delivered the silhouettes stay on screen (`using_fallback()` is true), so the
+      build never depends on missing art. Both folders carry a README with the contract.
+    - **Verified headless** — **332 PASS / 0 FAIL**, `ALL CHECKS PASSED` (314 before this pass). New
+      coverage: the victory bed is hard-stopped with `-60 dB` before a round start;
+      2 stacks / 4 double-18 sub bins / 2 racks / 40 corner brackets; the VU meters climb from 4 to
+      40 lit LEDs; 20 + 2 silhouettes with 0 legacy mannequin meshes; the two model-slot folders
+      exist and the fallback is active; 20 cached masks/materials; the pop constants and the ink
+      outline are present. The existing 302 checks still pass, including the crowd stagger, zone
+      loyalty, lighter/flame, horn and palette assertions.
+    - **Measured cost** — the new atmosphere budget reads **1,400 triangles (crowd 520 / booth 880)**, down from 13,644, because the 22 articulated rigs became 22 quads. The speaker stacks are yard
+      geometry outside `atmosphere_triangles()` and were not added to that budget.
+    - **`/docs` rebuilt** with `godot --headless --path godot --export-release "Web"
+      ../docs/index.html`: `index.pck` **38,693,836 B**, `index.wasm` 38,057,390 B, `index.js`
+      305,185 B, `index.html` 5,449 B. Only the environment's known non-fatal fontconfig warnings.
+    - **Not verified — no GPU, display or audio device.** Nothing was seen or heard: the new stack
+      proportions, the VU meters ticking, the silhouette art itself (procedurally painted, never
+      rendered here), the rim strength through the three lighting phases, the pop timing as an
+      audience feels it, and whether a Chromebook / iPhone Safari holds 60 FPS. The music fix is
+      verified as state (off, stopped, −60 dB), not by ear. The `.fbx` slots are verified as an
+      empty-folder contract; no real Mixamo character has been dropped in or loaded yet.
+    - **Files** — added `godot/assets/shaders/silhouette_mask.gdshader`,
+      `godot/scripts/stages/{SilhouetteArt,StageSilhouette,CharacterModelSlots}.gd`,
+      `godot/assets/models/dj/README.md`, `godot/assets/models/crowd/README.md`; removed
+      `godot/assets/shaders/silhouette_rim.gdshader`; edited `godot/scripts/stages/Arena3D.gd`,
+      `CrowdController3D.gd`, `DJBooth3D.gd`, `godot/scripts/audio/MusicBed.gd`,
+      `godot/scripts/TestArena.gd`, `godot/scripts/ui/TestHud.gd`,
+      `godot/tools/headless_roster_check.gd`, `AGENTS.md`, `godot/AGENTS.md` and the rebuilt `docs/`
+      export. The audio engine, the beat clock and every combat value are untouched; no crowd voice
+      audio was added (still [TODO] until the custom Patois clips arrive).
+
 
 ### Approved Backlog / Roadmap — master list (2026-11-16)
 
@@ -3219,3 +3290,44 @@ shapes, loop seams and loudness against the round sting are unmeasured. Nothing 
 beat label, the `YARD WISDOM` banner's fit over the 3D yard and the Web/iPhone autoplay path still
 need a real-device check. The Patwa collection is verified as data and trigger wiring, not as voice
 performance.
+
+### Owner playtest fixes: music bleed, sound-system stacks, arcade type, rig slots — headless verification, November 23, 2026
+
+Owner live-playtested `c74faaf` on `feature/3d-cel-shaded` and reported four high-priority issues:
+a music bed bleeding into Match 2+, basic speaker boxes instead of Jamaican sound-system stacks,
+flat on-screen typography, and capsule mannequins standing in for the DJs and crowd. All four are
+implemented and recorded as §9 item 53.
+
+```bash
+godot --headless --path godot --import
+godot --headless --path godot --script res://tools/headless_roster_check.gd
+godot --headless --path godot --export-release "Web" ../docs/index.html
+```
+
+**332 PASS / 0 FAIL**, `ALL CHECKS PASSED` (314 before this pass). New coverage:
+
+- **Music bed** — `music_bed.play_victory()` starts the bed, `TestArena._on_round_started(0)` then
+  leaves `MusicBed` **off**, the player **stopped** and the bus at **−60 dB**; `music_bed_silent()`
+  asserts all three together. The same hook is the Match 2 / Match 3 / rematch path.
+- **Stacks** — 2 towers, 4 double-18" sub bins, 2 amp/EQ racks, **40 metallic corner brackets**, and
+  **40 VU LEDs** rising from 4 lit at rest to 40 at a peak when `_pulse` is punched.
+- **Rigs** — 20 crowd silhouettes + 2 DJ silhouettes, **0** legacy mannequin meshes, both
+  `.fbx` slot folders present, fallback active while they are empty, and 20 cached silhouette
+  masks/materials.
+- **Type** — the HUD's pop constants, gold ink and three-block Rasta strip are present, every label
+  draws a `draw_string_outline` ink pass plus a `for step in [3, 2, 1]` extruded shadow, and both the
+  round banner and the Patwa callout pill use the scale-pop entrance.
+
+The pre-existing 302 checks still pass unchanged: crowd stagger (`ringside` first, back rows last),
+zone loyalty, lighters/flames, airhorns, the night rim palette, the 15 000-triangle ceiling
+(now **1 400** measured), and that atmosphere cues never touch health or fighter state.
+
+**`/docs` rebuilt**: `index.pck` **38,693,836 B**, `index.wasm` 38,057,390 B, `index.js` 305,185 B,
+`index.html` 5,449 B. Only the environment's known non-fatal fontconfig warnings.
+
+**Not verified — no GPU, display or audio device.** Nothing was seen or heard: the new stack
+proportions, the VU meters ticking, the procedurally painted silhouettes, the rim through the three
+lighting phases, the pop timing, or the frame rate on a Chromebook / iPhone Safari. The music fix is
+verified as state, not by ear. No real Mixamo character has been dropped into the `.fbx` slots yet,
+so that path is a contract and an empty-folder fallback, not a working import. Crowd voice audio is
+still untouched and [TODO].

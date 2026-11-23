@@ -1540,7 +1540,7 @@ func _run() -> void:
 		"the silhouette rim shader compiles for the booth",
 		"%d uniforms" % (booth._body_material.shader.get_shader_uniform_list().size()
 			if booth != null and booth._body_material != null else -1))
-	var crowd_source := FileAccess.get_file_as_string("res://assets/shaders/silhouette_rim.gdshader")
+	var crowd_source := FileAccess.get_file_as_string("res://assets/shaders/silhouette_mask.gdshader")
 	var crowd_lint: Array[String] = []
 	for token in ["hint_screen_texture", "SCREEN_TEXTURE", "DEPTH_TEXTURE", "#include", "while ("]:
 		if crowd_source.contains(token):
@@ -1651,6 +1651,82 @@ func _run() -> void:
 	atmosphere.apply_phase(0)
 	crowd3d.settle()
 	booth.settle()
+
+	# ---- Authentic sound-system stacks (owner playtest, 2026-11-23) ---------------------
+	_check(atmosphere.speaker_stack_count() == 2,
+		"two Jamaican sound-system towers stand either side of the yard",
+		"%d stack(s)" % atmosphere.speaker_stack_count())
+	_check(atmosphere.sub_bin_count() == 4,
+		"each tower stacks a pair of double-18\" sub bins",
+		"%d sub bins" % atmosphere.sub_bin_count())
+	_check(atmosphere.rack_count() == 2,
+		"each tower carries a rack-mount amp/EQ unit",
+		"%d racks" % atmosphere.rack_count())
+	_check(atmosphere.corner_bracket_count() >= 16,
+		"the sub bins wear metallic protective corner brackets",
+		"%d brackets" % atmosphere.corner_bracket_count())
+	atmosphere._pulse = 0.0
+	atmosphere._update_speakers(0.0)
+	var quiet_leds := atmosphere.vu_lit_count()
+	atmosphere._pulse = 2.0
+	atmosphere._update_speakers(0.0)
+	var loud_leds := atmosphere.vu_lit_count()
+	_check(atmosphere.vu_led_count() >= 40 and loud_leds > quiet_leds,
+		"the green/yellow/red VU meters climb with the audio peak",
+		"%d lit of %d (quiet %d)" % [loud_leds, atmosphere.vu_led_count(), quiet_leds])
+	atmosphere._pulse = 0.0
+	atmosphere._update_speakers(0.0)
+
+	# ---- Clean human-rig slots instead of capsule mannequins (2026-11-23) --------------
+	_check(crowd3d.silhouette_count() + crowd3d.model_slots().size() == crowd3d.count(),
+		"every spectator is a rim-lit 2.5D silhouette (or a dropped-in model)",
+		"%d silhouettes / %d models" % [crowd3d.silhouette_count(), crowd3d.model_slots().size()])
+	_check(booth.silhouette_count() + booth.model_slots().size() == booth.dj_count(),
+		"both DJs are rim-lit 2.5D silhouettes (or dropped-in models)",
+		"%d silhouettes / %d models" % [booth.silhouette_count(), booth.model_slots().size()])
+	_check(crowd3d.legacy_mannequin_count() == 0 and booth.legacy_mannequin_count() == 0,
+		"no capsule or cylinder mannequin bodies are left on screen",
+		"%d / %d legacy body meshes" % [crowd3d.legacy_mannequin_count(),
+			booth.legacy_mannequin_count()])
+	_check(DirAccess.dir_exists_absolute(CharacterModelSlots.DJ_DIR)
+			and DirAccess.dir_exists_absolute(CharacterModelSlots.CROWD_DIR),
+		"the .fbx drop-in folders exist for DJs and the crowd")
+	_check(crowd3d.using_fallback() and booth.using_fallback(),
+		"with no .fbx uploaded yet the silhouettes are the visible stand-ins")
+	_check(SilhouetteArt.material_count() >= 8 and SilhouetteArt.texture_count() >= 8,
+		"the silhouette masks are painted and cached per variant and pose",
+		"%d materials / %d masks" % [SilhouetteArt.material_count(), SilhouetteArt.texture_count()])
+
+	# ---- Music bed cannot bleed into Match 2+ (owner playtest, 2026-11-23) --------------
+	music_bed.play_victory()
+	_check(music_bed.is_playing() and not music_bed.is_off(),
+		"the victory bed starts on the match-over screen")
+	arena2._on_round_started(0)
+	_check(arena2.music_bed_silent(),
+		"a new match / rematch hard-stops the bed before the round sting",
+		"%s / playing %s / %.1f dB" % [music_bed.state_name(), str(music_bed.is_playing()),
+			music_bed.current_db()])
+
+	# ---- Arcade cabinet typography (owner playtest, 2026-11-23) -------------------------
+	# Read the HUD's own constants and draw path instead of poking its banner timers, so the
+	# check does not depend on a banner being on screen at this exact moment.
+	var hud_script := load("res://scripts/ui/TestHud.gd") as GDScript
+	var hud_consts: Dictionary = hud_script.get_script_constant_map() if hud_script != null else {}
+	var pop_gain := float(hud_consts.get("POP_GAIN", 0.0))
+	var pop_seconds := float(hud_consts.get("POP_SECONDS", 0.0))
+	var gold: Color = hud_consts.get("GOLD", Color.BLACK)
+	var rasta: Array = hud_consts.get("RASTA_STRIP", [])
+	_check(pop_gain >= 0.2 and pop_seconds > 0.0,
+		"banners carry a scale-pop entrance", "gain %.2f over %.2f s" % [pop_gain, pop_seconds])
+	_check(gold.r > 0.9 and rasta.size() == 3,
+		"the HUD carries gold ink and a three-block Rasta accent strip")
+	var hud_source := FileAccess.get_file_as_string("res://scripts/ui/TestHud.gd")
+	_check(hud_source.contains("draw_string_outline") and hud_source.contains("for step in [3, 2, 1]"),
+		"every HUD label draws a thick ink outline and a 3D extruded shadow")
+	_check(hud_source.contains("_pop_size(&\"round\"") and hud_source.contains("_pop_size(&\"sub\""),
+		"round banners and Patwa callouts both pop their type on entrance")
+	_check(hud_source.contains("outline := maxi(3") or hud_source.contains("outline := maxi(3,"),
+		"the ink outline is thick at every size")
 
 	# y 592 floor alignment is untouched by any of this.
 	_check(is_equal_approx(BaseFighter.REACTION_FLOOR_Y, 592.0),

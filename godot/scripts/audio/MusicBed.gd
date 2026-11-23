@@ -18,6 +18,9 @@ const TITLE_DB := -7.0
 const VICTORY_DB := -4.0
 const FADE_IN := 0.8
 const FADE_OUT := 0.45
+## Match start gets a much shorter fade than a screen change: the 6 s round sting must never
+## share the speakers with a bed from the previous match (owner playtest, 2026-11-23).
+const FIGHT_FADE_OUT := 0.15
 
 ## Cycle order is Beat 1 → Beat 2 → Beat 3 → Off. The `source` names are the exact owner
 ## uploads, kept for provenance in AGENTS.md §9 / the beats README.
@@ -93,11 +96,24 @@ func play_victory() -> bool:
 func stop_for_fight() -> void:
 	context = mode if mode != Mode.OFF else context
 	mode = Mode.OFF
-	if player == null or not player.playing:
-		if player != null:
-			player.stop()
+	if player == null:
 		return
-	_fade_to(SILENT_DB, FADE_OUT, true)
+	if not player.playing:
+		player.stop()
+		player.volume_db = SILENT_DB
+		return
+	_fade_to(SILENT_DB, FIGHT_FADE_OUT, true)
+
+
+## Hard cut, no fade and no queued tween. Every round start (Match 1's, Match 2's and every
+## rematch) calls this *before* the 6 s round sting: a victory bed started on the previous
+## match's result kept playing under the next match because a rematch restarts inside the
+## same scene and never re-runs `TestArena._ready()` (owner playtest, 2026-11-23).
+func stop() -> void:
+	mode = Mode.OFF
+	_stop_now()
+	if player != null:
+		player.volume_db = SILENT_DB
 
 
 ## M on Title/Select and the post-KO screen: Beat 1 → Beat 2 → Beat 3 → Off → Beat 1.
@@ -148,6 +164,7 @@ func _fade_to(db: float, seconds: float, stop_after: bool = false) -> void:
 func _stop_now() -> void:
 	if _tween != null and _tween.is_valid():
 		_tween.kill()
+	_tween = null
 	if player != null:
 		player.stop()
 

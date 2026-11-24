@@ -161,8 +161,49 @@ static func _read_clip(key: StringName, stem: String, skeleton_path: String) -> 
 				var bone := track_path.split(":")[1] if track_path.contains(":") else ""
 				if bone != "":
 					anim.track_set_path(track, NodePath(skeleton_path + ":" + bone))
+			_strip_root_yaw(anim, node as Node3D)
 	node.free()
 	return anim
+
+
+## Root motion disabled (playtest fix 2026-11-24, issue 1 step 6). Every delivered take
+## bakes its own turn into the hips: the melee and KO takes measured **45°–108° of hips
+## yaw**, which is what was swinging the fighters off the fighting axis mid-animation, and
+## why L!kkle Moore read as "stuck" even with the pivot facing right. Strip the yaw, keep
+## everything else — lean, bob, punch twist, fall and get-up all survive, only the heading
+## goes. `VisualPivot` then owns the direction a fighter looks, alone.
+## Tracks on the model node itself (no `bone` part) are flattened too, because an exported
+## scene-level rotation track has the same effect.
+static func _strip_root_yaw(anim: Animation, node: Node3D) -> void:
+	var skeleton: Skeleton3D = null
+	if node != null:
+		for child in node.find_children("*", "Skeleton3D", true, false):
+			skeleton = child as Skeleton3D
+			break
+	for track in anim.get_track_count():
+		if anim.track_get_type(track) != Animation.TYPE_ROTATION_3D:
+			continue
+		var path := String(anim.track_get_path(track))
+		var bone := path.split(":")[1] if path.contains(":") else ""
+		var is_root_node := bone == ""
+		if not is_root_node and not (bone.ends_with("Hips") or bone.ends_with("Root")):
+			continue
+		# The yaw to KEEP is the bone's own rest yaw, not zero. Two of the three rigs carry a
+		# non-identity Hips rest (L!ckshot's is −59.6°), and a track value is the pose's final
+		# local rotation, so flattening to 0 would rotate the body by exactly that rest yaw.
+		# Flattening to the rest yaw leaves the take's steel frame in its bind orientation.
+		var rest_yaw := 0.0
+		if not is_root_node and skeleton != null:
+			var idx := skeleton.find_bone(bone)
+			if idx >= 0:
+				rest_yaw = skeleton.get_bone_rest(idx).basis.get_euler(EULER_ORDER_YXZ).y
+		for k in anim.track_get_key_count(track):
+			var q: Quaternion = anim.track_get_key_value(track, k)
+			# YXZ keeps the yaw on its own axis, so pinning it to the rest yaw removes the
+			# turn without touching the pitch/roll that carries the body's lean and fall.
+			var e := Basis(q).get_euler(EULER_ORDER_YXZ)
+			var flat := Basis.from_euler(Vector3(e.x, rest_yaw, e.z), EULER_ORDER_YXZ)
+			anim.track_set_key_value(track, k, flat.get_rotation_quaternion())
 
 
 ## Install the library on one fighter's AnimationPlayer. Returns `{role: anim_name}` with
@@ -176,7 +217,9 @@ static func install_for(player: AnimationPlayer, key: StringName,
 	var clips := library_for(key, skeleton_path)
 	if clips.is_empty():
 		return out
-	var lib := player.get_animation_library(&"mixamo")
+	var lib: AnimationLibrary = null
+	if player.has_animation_library(&"mixamo"):
+		lib = player.get_animation_library(&"mixamo")
 	if lib == null:
 		lib = AnimationLibrary.new()
 		player.add_animation_library(&"mixamo", lib)

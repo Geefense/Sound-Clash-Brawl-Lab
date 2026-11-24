@@ -330,6 +330,12 @@ const DEFAULT_P1_KEYS := {
 	"grab": [KEY_U],
 }
 
+## States in which the fighter may still turn to face the opponent (playtest fix 2026-11-24,
+## issue 1 step 5). Everything else — ATTACK_ACTIVE, ATTACK_RECOVERY, TAUNT, HITSTUN,
+## KNOCKDOWN, KO and the grab chain — keeps the facing it latched, so a strike that was
+## aimed does not swing round mid-contact.
+const TURNABLE_STATES := [State.IDLE, State.WALK, State.JUMP, State.CROUCH, State.ATTACK_STARTUP]
+
 # Single transition authority (§5). Anything not listed is rejected.
 const LEGAL := {
 	State.IDLE: [State.WALK, State.JUMP, State.CROUCH, State.ATTACK_STARTUP, State.TAUNT, State.HITSTUN, State.KNOCKDOWN, State.KO, State.GRAB, State.GRABBED],
@@ -617,6 +623,10 @@ func _physics_process(_delta: float) -> void:
 		command = _poll_local_input()
 	if input_locked:
 		command = Command.new()     # round announce / KO: no actions, physics still runs
+
+	# Every tick: turn towards the opponent, but only in the states that may still turn.
+	# `_face_opponent()` is the one gate, so the rule cannot drift between call sites.
+	_face_opponent()
 
 	match state:
 		State.IDLE, State.WALK: _tick_grounded()
@@ -1552,7 +1562,7 @@ func reset_for_round(at: Vector2) -> void:
 ## For a match controller or the arena's auto-face step. Ignored mid-attack: the attack's
 ## facing is latched at `_configure_hitbox()` and must never flip once the strike is armed.
 func face_toward(x: float) -> void:
-	if state in [State.IDLE, State.WALK, State.CROUCH, State.JUMP]:
+	if state in TURNABLE_STATES:
 		_set_facing(1 if x >= global_position.x else -1)
 
 
@@ -1561,15 +1571,28 @@ func face_toward(x: float) -> void:
 func _face_opponent() -> bool:
 	if duel_opponent == null or not is_instance_valid(duel_opponent):
 		return false
-	if state in [State.ATTACK_STARTUP, State.ATTACK_ACTIVE, State.ATTACK_RECOVERY, State.TAUNT,
-			State.HITSTUN, State.KNOCKDOWN, State.KO, State.GRAB, State.GRABBED, State.THROWN]:
+	if not (state in TURNABLE_STATES):
 		return true                     # committed: keep the latching state's own facing
-	face_toward(duel_opponent.global_position.x)
+	var dx: float = duel_opponent.global_position.x - global_position.x
+	if is_zero_approx(dx):
+		return true                     # exactly stacked: no side to pick, keep the latch
+	_set_facing(int(signf(dx)))
 	return true
 
 
+## Public facing entry (playtest fix 2026-11-24, issue 1 step 4). `+1` faces +X, `-1` faces
+## −X. The 3D proxy reads `facing` every frame and rotates its `VisualPivot`; the root stays
+## unrotated and the AnimationPlayer targets are never touched. Also used to seed P1 (+1)
+## and P2 (−1) at spawn.
+func set_facing(dir: int) -> void:
+	if dir == 0:
+		return
+	_set_facing(1 if dir > 0 else -1)
+
+
 ## Facing turn. `<anim>_left` art wins when it exists; otherwise `_play_state_anim()` mirrors
-## the sprite so the turn is still visible (owner playtest, 2026-11-17).
+## the sprite so the turn is still visible (owner playtest, 2026-11-17). The 3D path never
+## mirrors: it rotates `VisualPivot`, which keeps the mic in the same hand on both sides.
 func _set_facing(dir: int) -> void:
 	if dir == 0 or dir == facing:
 		return

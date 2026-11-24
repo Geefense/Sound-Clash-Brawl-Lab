@@ -427,6 +427,10 @@ func _ready() -> void:
 	# and turn when they swap sides. RoundController resets it between rounds.
 	p1.duel_opponent = p2
 	p2.duel_opponent = p1
+	# Spawn facing (playtest fix 2026-11-24, issue 1 step 5): P1 opens facing +X and P2 −X,
+	# so the very first frame reads as a face-off instead of both looking the same way.
+	p1.set_facing(1)
+	p2.set_facing(-1)
 	p1.face_toward(p2.global_position.x)
 	p2.face_toward(p1.global_position.x)
 
@@ -503,6 +507,52 @@ func _process(delta: float) -> void:
 	hud.queue_redraw()
 
 
+## F3 playtest readout (issue 1 step 8). Prints, for every fighter, the facing yaw of the
+## `VisualPivot`, the body's world-space forward, the angle between that forward and the
+## nearest ±X axis, and the animation that is actually playing. A forward further than 5°
+## off ±X is flagged WRONG so a broken upload cannot pass by looking plausible in motion.
+func print_facing_debug() -> void:
+	print("\n=== FACING (F3) ===")
+	for side in ["p1", "p2"]:
+		var fighter: BaseFighter = _fighter_of(side)
+		if fighter == null:
+			continue
+		var model := _model_of(side)
+		var name := FighterRoster.display_name(fighter.fighter_key)
+		var anim := _anim_of(fighter)
+		if model == null:
+			print("%-14s key=%s  facing=%+d  NO 3D MODEL (2D sprite)  anim=%s"
+				% [side.to_upper() + " " + name, fighter.fighter_key, fighter.facing, anim])
+			continue
+		var fwd := model.world_forward()
+		var err := rad_to_deg(acos(clampf(absf(fwd.x), 0.0, 1.0)))
+		print("%-14s key=%-14s state=%-14s facing=%+d  pivot_yaw=%+7.1f deg  forward=(%+.3f, %+.3f)  off±X=%5.1f deg  %s  anim=%s"
+			% [side.to_upper() + " " + name, fighter.fighter_key,
+				BaseFighter.State.keys()[fighter.state], fighter.facing,
+				model.facing_yaw_deg(), fwd.x, fwd.z, err,
+				"OK" if err <= 5.0 else "WRONG", anim])
+	print("=== END FACING ===\n")
+
+
+func _fighter_of(side: String) -> BaseFighter:
+	return p1 if side == "p1" else p2
+
+
+func _model_of(side: String) -> FighterModel3D:
+	if arena3d == null or arena3d.models == null:
+		return null
+	return arena3d.models.get(side) as FighterModel3D
+
+
+func _anim_of(fighter: BaseFighter) -> String:
+	var model := _model_of("p1" if fighter == p1 else "p2")
+	if model != null:
+		var clip := model.current_animation_name()
+		if clip != "":
+			return clip
+	return BaseFighter.State.keys()[fighter.state]
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey) or not event.pressed or event.echo:
 		return
@@ -532,6 +582,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			cycle_time_of_day()
 		KEY_V:
 			hud.toggle_subtitles()
+		KEY_F3:
+			print_facing_debug()
 
 
 # =========================================================================

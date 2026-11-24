@@ -75,9 +75,23 @@ const MOVE_STYLES := {
 
 ## Per-fighter model wiring. `height` is the on-screen fighting height in world metres
 ## (the arena uses 140 px = 1 m, so 1.55 m reads between 55 % and 65 % of the 720 px frame
-## at the neutral camera). `yaw_offset` turns each upload's own authored face onto the
-## fighting +X axis: Feedback was exported facing +Z, the two Tripo exports face +X.
+## at the neutral camera). `forward_yaw_deg` is the pivot rotation that puts the upload's
+## own authored face onto the fighting +X axis, and it is a MEASURED value, not a guess.
 ## L!kkle Moore keeps the roster's 82 % kid height (1.55 × 0.82 ≈ 1.27 m).
+##
+## Facing audit (2026-11-24, `tools/diag_playtest.gd`, rest pose, no clips). Each model's
+## forward came from its own mesh: per foot, the vertex furthest from that foot's centroid
+## is the toe, so the mean of the two centroid→toe vectors is the authored face. The method
+## reproduces the one independently known case — Feedback is documented +Z and measures
+## −1.4° off +Z — so it is trustworthy for the other two:
+##   feedback           authored +Z  (−1.4° from +Z)  -> pivot +90°
+##   lickshot           authored +X  (+92.0° from +Z) -> pivot 0°
+##   young_selecta      authored +X  (+94.4° from +Z) -> pivot 0°
+## Both Tripo-derived bodies (L!ckshot, L!kkle Moore) are the same owner mesh family and
+## `MODELS.md` independently records their source uploads as +X, so the two agree.
+## NOTE: the `mixamorig_Hips` rest axis disagrees for those two (−60° / −51°). That is the
+## rig's bind pose, which the inverse bind matrices compensate for; the rendered mesh is the
+## authority for which way a character looks, so the mesh numbers above are used.
 const MODEL_SOURCES := {
 	&"feedback": {
 		"path": "res://assets/models/fighters/feedback_rigged.fbx",
@@ -86,7 +100,7 @@ const MODEL_SOURCES := {
 		"height": 1.55,
 		"tint": Color(1.0, 1.0, 1.0, 1.0),
 		"hue_shift": 0.0,
-		"yaw_offset": 0.0,
+		"forward_yaw_deg": 90.0,
 		"ink": Color(0.022, 0.016, 0.030, 1.0),
 		"rim": Color(1.0, 0.88, 0.62, 1.0),
 	},
@@ -97,7 +111,7 @@ const MODEL_SOURCES := {
 		"height": 1.58,
 		"tint": Color(1.0, 1.0, 1.0, 1.0),
 		"hue_shift": 0.0,
-		"yaw_offset": -PI * 0.5,
+		"forward_yaw_deg": 0.0,
 		"ink": Color(0.022, 0.016, 0.030, 1.0),
 		"rim": Color(1.0, 0.82, 0.38, 1.0),
 	},
@@ -108,7 +122,7 @@ const MODEL_SOURCES := {
 		"height": 1.27,
 		"tint": Color(1.0, 1.0, 1.0, 1.0),
 		"hue_shift": 0.0,
-		"yaw_offset": -PI * 0.5,
+		"forward_yaw_deg": 0.0,
 		"ink": Color(0.022, 0.016, 0.030, 1.0),
 		"rim": Color(1.0, 0.90, 0.70, 1.0),
 	},
@@ -139,11 +153,16 @@ var has_rig: bool = false
 var albedo_texture: Texture2D = null
 var albedo_size: Vector2i = Vector2i.ZERO
 var facing_sign: int = 1
-var base_yaw: float = 0.0
+## Per-fighter facing constant (playtest fix 2026-11-24). The pivot yaw that makes this
+## upload face +X; loaded from MODEL_SOURCES and kept exported so a designer can re-tune a
+## future upload from the inspector without touching the facing code.
+@export var model_forward_yaw_offset_deg: float = 0.0
 var feet_offset: float = 0.0
 
+## The fighter root (this node) is never rotated and only ever follows the fighter's X.
+## ALL facing lives on this one child pivot, with the model under it.
 var _pivot: Node3D = null
-var _yaw: Node3D = null
+var _visual_pivot: Node3D = null
 var _clock: float = 0.0
 var _lean: float = 0.0
 var _lunge: float = 0.0
@@ -189,16 +208,16 @@ func bind(target: BaseFighter, key: StringName) -> bool:
 	_base_tint = src["tint"]
 	_base_hue = float(src["hue_shift"])
 	_base_rim = src["rim"]
-	base_yaw = float(src["yaw_offset"])
+	model_forward_yaw_offset_deg = float(src["forward_yaw_deg"])
 
 	_pivot = Node3D.new()
 	_pivot.name = "PosePivot"
 	add_child(_pivot)
-	_yaw = Node3D.new()
-	_yaw.name = "Facing"
-	_pivot.add_child(_yaw)
+	_visual_pivot = Node3D.new()
+	_visual_pivot.name = "VisualPivot"
+	_pivot.add_child(_visual_pivot)
 	model_root = inst
-	_yaw.add_child(inst)
+	_visual_pivot.add_child(inst)
 
 	_collect(inst)
 	_normalize(inst)
@@ -208,7 +227,7 @@ func bind(target: BaseFighter, key: StringName) -> bool:
 	_play_baked_idle()
 	facing_sign = target.facing if target != null else 1
 	_last_facing = facing_sign
-	_apply_facing()
+	set_facing(facing_sign)
 	return true
 
 
@@ -239,7 +258,7 @@ func measured_height() -> float:
 	var high := -INF
 	# Stop at the facing node: the PosePivot squash/lean is a live pose, not the model's
 	# authored size, and must not change the measurement.
-	var top: Node3D = _yaw if _yaw != null else self
+	var top: Node3D = _visual_pivot if _visual_pivot != null else self
 	if has_rig and skeleton != null:
 		# Skinned bounds come from the rest bones through the skeleton's own unit scale — the
 		# same quantity `_normalize()` scaled against, so the two can never disagree.
@@ -428,14 +447,94 @@ func _play_baked_idle() -> void:
 	animation.play(pick)
 
 
+## THE one facing function (playtest fix 2026-11-24). `dir` is +1 to face +X, −1 to face
+## −X. It rotates the pivot — never the root, never the AnimationPlayer targets, and never
+## a mirror (negative scale or `flip_h`), so the mic stays in the same hand on both sides.
+func set_facing(dir: int) -> void:
+	facing_sign = 1 if dir >= 0 else -1
+	if _visual_pivot != null:
+		var yaw := deg_to_rad(model_forward_yaw_offset_deg)
+		if facing_sign < 0:
+			yaw += PI
+		_visual_pivot.rotation.y = yaw
+
+
+## Kept as the per-frame name the rest of this class already calls.
 func _apply_facing() -> void:
-	if _yaw == null or fighter == null:
+	if _visual_pivot == null or fighter == null:
 		return
-	facing_sign = 1 if fighter.facing >= 0 else -1
-	# Each upload's authored face has its own yaw_offset (Feedback faces +Z, the two Tripo
-	# exports face +X). Adding ±90° puts that face on ±X, the fighter's facing on the 2.5D
-	# plane, so the same transform works for every source.
-	_yaw.rotation.y = facing_sign * PI * 0.5 + base_yaw
+	set_facing(fighter.facing)
+
+
+## The upload's own authored forward, in the model's local space. Derived from the measured
+## pivot offset: rotating this by `model_forward_yaw_offset_deg` must land exactly on +X.
+func authored_forward() -> Vector3:
+	var yaw := deg_to_rad(model_forward_yaw_offset_deg)
+	return Vector3(cos(yaw), 0.0, sin(yaw))
+
+
+## World-space forward of the rendered body, flattened onto the fighting plane. This is what
+## the F3 playtest readout prints and what the headless facing audit asserts on: the pivot's
+## facing composed with the rig's own hips yaw for the clip that is playing, so a clip with a
+## baked turn cannot hide behind a correct pivot.
+func world_forward() -> Vector3:
+	var fwd := authored_forward()
+	if _visual_pivot != null:
+		fwd = _visual_pivot.global_transform.basis * fwd
+	fwd.y = 0.0
+	if fwd.length() < 0.0001:
+		return Vector3.RIGHT
+	fwd = fwd.normalized()
+	var yaw := hips_yaw_delta()
+	if not is_zero_approx(yaw):
+		fwd = fwd.rotated(Vector3.UP, yaw)
+	return fwd.normalized()
+
+
+## How far the playing clip has turned the body away from the rig's own rest pose, in
+## radians. Measured from the hip-socket axis rather than from a quaternion, because the
+## Hips rest rotation is an arbitrary rig convention (it reads −60° on L!ckshot while his
+## mesh faces +X). Comparing the POSED hip axis with the REST hip axis cancels that
+## convention out, so a zero result really means "the take did not turn the character".
+## Zero whenever no clip is driving the body, so a procedural stance never reads as a turn.
+func hips_yaw_delta() -> float:
+	if skeleton == null or animation == null or not animation.is_playing() or clips.is_empty():
+		return 0.0
+	var hips := _bone_suffix("Hips")
+	if hips < 0:
+		return 0.0
+	# Heading is the Y term of (pose x rest-inverse) in YXZ order. Taking it from the hips'
+	# BASIS rather than from the leg axis keeps a falling body honest: a KO topples through
+	# many degrees of pitch/roll but must not report that as a change of heading.
+	var rel := skeleton.get_bone_global_pose(hips).basis \
+		* skeleton.get_bone_global_rest(hips).basis.inverse()
+	return wrapf(rel.get_euler(EULER_ORDER_YXZ).y, -PI, PI)
+
+
+## Current animation name, for the F3 readout. The imported take owns the AnimationPlayer
+## when a clip is installed; otherwise the 2D FSM's own state name is the honest answer.
+func current_animation_name() -> String:
+	if animation != null and animation.is_playing():
+		return animation.current_animation
+	if clips.has("player") and clips["player"] != null:
+		var p := clips["player"] as AnimationPlayer
+		if p.is_playing():
+			return p.current_animation
+	return ""
+
+
+## Yaw of the facing pivot in degrees (the authored offset plus the −1 flip).
+func facing_yaw_deg() -> float:
+	return rad_to_deg(_visual_pivot.rotation.y) if _visual_pivot != null else 0.0
+
+
+func _bone_suffix(suffix: String) -> int:
+	if skeleton == null:
+		return -1
+	for i in skeleton.get_bone_count():
+		if skeleton.get_bone_name(i).ends_with(suffix):
+			return i
+	return -1
 
 
 func _process(delta: float) -> void:
@@ -445,8 +544,47 @@ func _process(delta: float) -> void:
 	_apply_facing()
 	_animate_pose(delta)
 	_drive_clips()
+	_lock_root_yaw()
+	_compensate_clip_yaw()
 	_animate_rig()
 	_push_flash()
+
+
+## Facing is authoritative (playtest fix 2026-11-24). A few delivered takes (stun, stumble,
+## knocked-out, getting-up) throw the pelvis far enough that no single bone lock can keep the
+## heading on ±X. Whatever heading the take adds is therefore cancelled on `VisualPivot`, so
+## the body always points the way the fight says it does while the take keeps every degree of
+## its topple, lean and get-up. This is the last word on facing: `world_forward()` is ±X by
+## construction once this has run.
+func _compensate_clip_yaw() -> void:
+	if _visual_pivot == null or clips.is_empty():
+		return
+	var yaw := deg_to_rad(model_forward_yaw_offset_deg) + (0.0 if facing_sign > 0 else PI)
+	_visual_pivot.rotation.y = yaw - hips_yaw_delta()
+
+
+## Root motion disabled, enforced every frame (playtest fix 2026-11-24, issue 1 step 6).
+## The takes bake their own heading into the Hips: `fighting-idle-3` carries −72° there, and
+## the melee/KO takes 45°–155°. `MixamoClips` already flattens those tracks, but a clip can
+## still arrive through a cached library, so the pose is pinned to the rig's own rest yaw
+## here as well. Only the Y angle is touched — pitch and roll keep the lean, punch twist,
+## topple and get-up exactly as authored. `VisualPivot` is then the sole owner of facing.
+func _lock_root_yaw() -> void:
+	# Deliberately not gated on `is_playing()`: a paused/seeking player still owns the pose,
+	# and the heading must stay pinned whenever a take is driving the body.
+	if skeleton == null or animation == null or clips.is_empty():
+		return
+	if String(animation.current_animation) == "":
+		return
+	var index := _bone_suffix("Hips")
+	if index < 0:
+		return
+	var rest := skeleton.get_bone_rest(index).basis.get_euler(EULER_ORDER_YXZ)
+	var now := Basis(skeleton.get_bone_pose_rotation(index)).get_euler(EULER_ORDER_YXZ)
+	if absf(wrapf(now.y - rest.y, -PI, PI)) < 0.0005:
+		return
+	skeleton.set_bone_pose_rotation(index,
+		Basis.from_euler(Vector3(now.x, rest.y, now.z), EULER_ORDER_YXZ).get_rotation_quaternion())
 
 
 # =========================================================================
@@ -620,8 +758,26 @@ func _animate_pose(delta: float) -> void:
 	_pivot.position = Vector3(_lunge * face, bob + _lift, 0.0)
 	_pivot.scale = Vector3(1.0 + (1.0 - _squash) * 0.35, _squash, 1.0)
 	_pivot.rotation.x = _pitch
-	_pivot.rotation.y = _twist * face
+	# NOTHING on this pivot may yaw: `VisualPivot` owns facing alone, so the whole body's
+	# forward stays within a few degrees of ±X in every animation (playtest fix 2026-11-24).
+	# The per-move body twist still reads, because it rides the spine in `_apply_twist()`.
 	_pivot.rotation.z = -_lean * face - _fall * face * PI * 0.5 * 0.94 + _spin_angle
+	_apply_twist(face)
+
+
+## The retired body-yaw twist, now spent on the torso instead of the facing axis. A strike
+## still visibly turns through the shoulders/hips without moving the character's heading.
+## No skeleton (a future static upload) simply means no visible twist — never a yawed body.
+func _apply_twist(face: float) -> void:
+	if skeleton == null or is_zero_approx(_twist):
+		return
+	# Only while a clip owns the body; otherwise `_animate_rig()` already spends the twist
+	# inside its own additive stance set.
+	if clips.is_empty() or animation == null or not animation.is_playing():
+		return
+	# Spine only. The Hips bone is deliberately left to the clip, so `hips_yaw_delta()`
+	# keeps measuring the take's own turn rather than our cosmetic twist.
+	_add_bone("mixamorig_Spine1", Vector3.UP, _twist * face)
 
 
 func _approach(value: float, target: float, speed: float, delta: float) -> float:

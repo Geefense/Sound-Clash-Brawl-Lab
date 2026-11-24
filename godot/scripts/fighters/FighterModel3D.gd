@@ -220,6 +220,9 @@ func bind(target: BaseFighter, key: StringName) -> bool:
 	_visual_pivot.add_child(inst)
 
 	_collect(inst)
+	# No take may translate the body (playtest fix 2026-11-24, issue 2): the body's own baked
+	# export in the default library is sanitised here, before anything can play it.
+	MixamoClips.strip_root_motion(animation, skeleton)
 	_normalize(inst)
 	_apply_materials(src)
 	_install_clips()
@@ -437,6 +440,13 @@ func _apply_materials(src: Dictionary) -> void:
 func _play_baked_idle() -> void:
 	if animation == null:
 		return
+	# The installed Mixamo library is the only thing allowed to drive a rigged fighter
+	# (playtest fix 2026-11-24, issue 1). `get_animation_list()` also lists library entries,
+	# so this used to restart an arbitrary role — `mixamo/getup` for Feedback — or the body's
+	# raw baked export, whose own root translation put the fighter ~76 m above the sand and
+	# out of frame. That is what made an opponent look missing.
+	if not clips.is_empty():
+		return
 	var names := animation.get_animation_list()
 	if names.is_empty():
 		return
@@ -473,10 +483,10 @@ func authored_forward() -> Vector3:
 	return Vector3(cos(yaw), 0.0, sin(yaw))
 
 
-## World-space forward of the rendered body, flattened onto the fighting plane. This is what
-## the F3 playtest readout prints and what the headless facing audit asserts on: the pivot's
-## facing composed with the rig's own hips yaw for the clip that is playing, so a clip with a
-## baked turn cannot hide behind a correct pivot.
+## World-space forward of the RENDERED body, flattened onto the fighting plane. Two honest
+## halves: the authored forward turned by the pivot that actually shipped, plus the turn the
+## PLAYING take adds on top of the rig's own rest pose (`pose_turn_yaw()`). A clip that baked
+## in its own heading, or a pivot that failed to apply, therefore shows up here.
 func world_forward() -> Vector3:
 	var fwd := authored_forward()
 	if _visual_pivot != null:
@@ -485,10 +495,35 @@ func world_forward() -> Vector3:
 	if fwd.length() < 0.0001:
 		return Vector3.RIGHT
 	fwd = fwd.normalized()
-	var yaw := hips_yaw_delta()
-	if not is_zero_approx(yaw):
-		fwd = fwd.rotated(Vector3.UP, yaw)
+	var turn := pose_turn_yaw()
+	if not is_zero_approx(turn):
+		fwd = fwd.rotated(Vector3.UP, turn)
 	return fwd.normalized()
+
+
+## How far the playing take has turned the body away from its own rest pose, about the world
+## up axis, in radians. Both headings come from the pelvis' horizontal reference axis in
+## SKELETON space, so the facing pivot cancels out and this is the pose's contribution alone.
+## A rest-referenced difference is essential here: the pelvis bind basis of the two
+## Tripo-derived rigs is rotated 30°–40° about Y (L!ckshot measures (−0.87, 0.50) at rest),
+## while their meshes face +X, so comparing either raw bone axis to ±X reports a turn that is
+## not there. Zero without a rig, so a sprite-only body never reads as turned.
+func pose_turn_yaw() -> float:
+	if skeleton == null:
+		return 0.0
+	var hips := _bone_suffix("Hips")
+	if hips < 0:
+		return 0.0
+	var rest_dir := _heading_dir(skeleton.get_bone_global_rest(hips).basis)
+	var pose_dir := _heading_dir(skeleton.get_bone_global_pose(hips).basis)
+	if rest_dir == Vector3.ZERO or pose_dir == Vector3.ZERO:
+		return 0.0
+	# R_y(θ) applied to rest gives pose: sin θ = rest × pose (Y), cos θ = rest · pose.
+	var sin_t := rest_dir.z * pose_dir.x - rest_dir.x * pose_dir.z
+	var cos_t := rest_dir.x * pose_dir.x + rest_dir.z * pose_dir.z
+	if absf(sin_t) < 0.0001 and cos_t > 0.0:
+		return 0.0
+	return wrapf(atan2(sin_t, cos_t), -PI, PI)
 
 
 ## How far the playing clip has turned the body away from the rig's own rest pose, in
@@ -497,18 +532,25 @@ func world_forward() -> Vector3:
 ## mesh faces +X). Comparing the POSED hip axis with the REST hip axis cancels that
 ## convention out, so a zero result really means "the take did not turn the character".
 ## Zero whenever no clip is driving the body, so a procedural stance never reads as a turn.
+## The pose's heading change, and the value `_compensate_clip_yaw()` cancels. It used to be
+## the Y term of `pose * rest-inverse` in YXZ order, which is not a heading: on rigs whose
+## pelvis carries a large bind yaw a few degrees of pitch/roll leaked into that Euler term and
+## reported a phantom 30°–40° turn, which the pivot then applied for real. Kept as the
+## per-frame name the class already calls; the measurement now lives in `pose_turn_yaw()`.
 func hips_yaw_delta() -> float:
 	if skeleton == null or animation == null or not animation.is_playing() or clips.is_empty():
 		return 0.0
-	var hips := _bone_suffix("Hips")
-	if hips < 0:
-		return 0.0
-	# Heading is the Y term of (pose x rest-inverse) in YXZ order. Taking it from the hips'
-	# BASIS rather than from the leg axis keeps a falling body honest: a KO topples through
-	# many degrees of pitch/roll but must not report that as a change of heading.
-	var rel := skeleton.get_bone_global_pose(hips).basis \
-		* skeleton.get_bone_global_rest(hips).basis.inverse()
-	return wrapf(rel.get_euler(EULER_ORDER_YXZ).y, -PI, PI)
+	return pose_turn_yaw()
+
+
+## The pelvis' horizontal reference axis, whichever of its two basis axes still has a
+## resolvable projection. A body standing on its head has no usable X, so Z covers it.
+func _heading_dir(basis: Basis) -> Vector3:
+	for axis in [basis.x, basis.z]:
+		var flat := Vector3(axis.x, 0.0, axis.z)
+		if flat.length() > 0.2:
+			return flat.normalized()
+	return Vector3.ZERO
 
 
 ## Current animation name, for the F3 readout. The imported take owns the AnimationPlayer
@@ -547,7 +589,33 @@ func _process(delta: float) -> void:
 	_lock_root_yaw()
 	_compensate_clip_yaw()
 	_animate_rig()
+	_clamp_to_floor()
 	_push_flash()
+
+
+## Nothing the fighter draws may end up under the sand (playtest fix 2026-11-24, issue 2).
+## With the clips' root translation stripped, a knockdown take that lays the body flat pivots
+## it about the standing pelvis, which can push a shoulder or a head below world y 0 — the
+## body visibly sank into the beach. This lifts the pose pivot by exactly the amount needed,
+## using the posed bone origins (65 transforms, no vertex work, same cost every frame). It
+## only ever lifts, so a standing fighter is untouched and no animation gains a fake offset.
+## Presentation only: `CharacterBody2D` position, the 2D sprite and every hitbox are unchanged.
+## `_animate_pose()` rebuilds `_pivot.position` from scratch every frame, so the correction is
+## added fresh each frame and can never stack.
+const FLOOR_BONE_CLEARANCE := 0.10
+
+func _clamp_to_floor() -> void:
+	if skeleton == null or _pivot == null:
+		return
+	var lowest := INF
+	var skel_xf := skeleton.global_transform
+	for i in skeleton.get_bone_count():
+		lowest = minf(lowest, (skel_xf * skeleton.get_bone_global_pose(i).origin).y)
+	if lowest == INF:
+		return
+	var want := FLOOR_BONE_CLEARANCE - lowest
+	if want > 0.0:
+		_pivot.position.y += want
 
 
 ## Facing is authoritative (playtest fix 2026-11-24). A few delivered takes (stun, stumble,
@@ -607,10 +675,17 @@ func _play_role(role: StringName) -> void:
 	if clips.is_empty() or animation == null:
 		return
 	var resolved := MixamoClips.resolve(clips, role)
-	if resolved == &"" or resolved == clip_role:
+	if resolved == &"":
+		return
+	var anim_name := String(clips[resolved])
+	# Compare the animation that is ACTUALLY playing, not merely the role last requested
+	# (playtest fix 2026-11-24, issue 3). A base clip left on the player used to leave the
+	# body frozen on the wrong take while every state change was short-circuited here, so a
+	# punch changed the combat state but nothing appeared on screen.
+	if resolved == clip_role and animation.current_animation == anim_name and animation.is_playing():
 		return
 	clip_role = resolved
-	animation.play(String(clips[resolved]), MixamoClips.CROSSFADE)
+	animation.play(anim_name, MixamoClips.CROSSFADE)
 
 
 ## Follow the fighter state with crossfades. Combat resolution is untouched: this reads

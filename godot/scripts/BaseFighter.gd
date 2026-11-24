@@ -112,6 +112,10 @@ const GUARD_ENTRY_TICKS := 8
 const GUARD_RECOVERY_TICKS := 8
 const BLOCK_PUSHBACK := 120.0
 const INPUT_BUFFER_TICKS := 12
+## Press latch (playtest fix 2026-11-24, issue 3). Attack presses are polled at the very top
+## of the tick and held for INPUT_BUFFER_TICKS, so a punch thrown while hitstop has the game
+## frozen is not silently dropped. Input timing only: no frame data, damage or hitbox changes.
+const LATCHED_INPUTS := ["light", "heavy", "tump", "upper_box", "taunt", "grab"]
 const STUN_FRICTION := 900.0
 
 # Sand stage presentation (AGENTS.md §9). Cosmetic only: never touches combat.
@@ -377,6 +381,8 @@ var _pending_strikes: Array[Dictionary] = []
 var _resolve_queued: bool = false
 var _snap_guarding: bool = false
 var _buffered: Dictionary = {}
+## suffix -> ticks left on a latched press (see LATCHED_INPUTS).
+var _press_ttl: Dictionary = {}
 var _stun_frames: int = 0
 var _stun_is_block: bool = false
 var _hitstop_frames: int = 0
@@ -586,6 +592,11 @@ func _apply_reach_bonus(bonus: float) -> void:
 # Tick
 # =========================================================================
 func _physics_process(_delta: float) -> void:
+	# Poll attack presses first (playtest fix 2026-11-24, issue 3). Hitstop returns early
+	# below, and a press that arrived during those 4–9 frozen ticks used to be lost
+	# entirely, which reads as buttons that do not respond after a contact.
+	if use_local_input:
+		_latch_local_presses()
 	# The impact flash counts down before the hitstop early-return, so a frozen contact
 	# still releases it on the second tick instead of holding a bright frame.
 	if _impact_flash_ticks > 0:
@@ -1519,6 +1530,7 @@ func reset_for_round(at: Vector2) -> void:
 	_pending_strikes.clear()
 	_resolve_queued = false
 	_buffered = {}
+	_press_ttl.clear()          # a new round never opens with last round's queued press
 	_stun_frames = 0
 	_stun_is_block = false
 	_hitstop_frames = 0
@@ -1876,18 +1888,43 @@ func _import_cap_ratio(key: String, anim: StringName) -> float:
 	return float(anim_source_max.get(key, anim_source_max_default)) / decoded
 
 
+## Read the press actions once per physics tick and keep each press alive for the input
+## buffer window. Held actions (guard, crouch, movement) stay instant reads.
+func _latch_local_presses() -> void:
+	if input_locked:
+		_press_ttl.clear()
+		return
+	for suffix in LATCHED_INPUTS:
+		if Input.is_action_just_pressed(input_prefix + suffix):
+			_press_ttl[suffix] = INPUT_BUFFER_TICKS
+	for suffix in _press_ttl.keys():
+		var left := int(_press_ttl[suffix]) - 1
+		if left <= 0:
+			_press_ttl.erase(suffix)
+		else:
+			_press_ttl[suffix] = left
+
+
+## Consume a latched press. One press fires one action, never a queued burst.
+func _take_press(suffix: String) -> bool:
+	if not _press_ttl.has(suffix):
+		return false
+	_press_ttl.erase(suffix)
+	return true
+
+
 func _poll_local_input() -> Command:
 	var c := Command.new()
 	c.move_x = Input.get_axis(input_prefix + "left", input_prefix + "right")
 	c.jump = Input.is_action_just_pressed(input_prefix + "jump")
 	c.guard = Input.is_action_pressed(input_prefix + "guard")
 	c.crouch = Input.is_action_pressed(input_prefix + "crouch")
-	c.light = Input.is_action_just_pressed(input_prefix + "light")
-	c.heavy = Input.is_action_just_pressed(input_prefix + "heavy")
-	c.tump = Input.is_action_just_pressed(input_prefix + "tump")
-	c.upper_box = Input.is_action_just_pressed(input_prefix + "upper_box")
-	c.taunt = Input.is_action_just_pressed(input_prefix + "taunt")
-	c.grab = Input.is_action_just_pressed(input_prefix + "grab")
+	c.light = _take_press("light")
+	c.heavy = _take_press("heavy")
+	c.tump = _take_press("tump")
+	c.upper_box = _take_press("upper_box")
+	c.taunt = _take_press("taunt")
+	c.grab = _take_press("grab")
 	return c
 
 

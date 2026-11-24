@@ -1,0 +1,382 @@
+extends SceneTree
+## Live-match verification (2026-11-24 playtest, PART 1).
+## Run with: godot --headless --path godot --script res://tools/live_match_check.gd
+##
+## Boots the REAL `TestArena.tscn` — round controller, 3D yard, Mixamo bodies and all — for
+## every roster pairing and asserts the three failures the owner reported:
+##
+##   (a) BOTH fighters render: the 3D proxy is visible, has at least one mesh with at least
+##       one surface, and its live skinned-mesh bounds project inside the camera's viewport.
+##       Bounds are evaluated from the animated skeleton pose and the mesh skin weights, so a
+##       body thrown 76 m into the air (the actual "invisible opponent" cause) cannot pass on
+##       a nominal 1.55 m height alone.
+##   (b) L!kkle Moore (and both other fighters) stay on the sand through knockdown and get-up:
+##       the live skinned lowest point never drops below Y −0.05 m and the body never drifts
+##       more than 0.5 m from its own root X.
+##   (c) Attack presses are not swallowed: pressing J / K / L / I (and U for the grab) on the
+##       real InputMap transitions the fighter out of IDLE into its attack state, including a
+##       press thrown while hitstop has the tick frozen.
+##   Plus the facing the render shows: the posed body forward must be within 5° of +X for P1
+##   and −X for P2, measured from the live skeleton (Foot → ToeBase), not from the pivot.
+##
+## Exit code is non-zero when any assertion fails.
+
+const FIGHTERS := [&"feedback", &"lickshot", &"young_selecta"]
+const TOLERANCE_DEG := 5.0
+const FLOOR_TOLERANCE := -0.05        # metres below world y 0 the body may never go
+const DRIFT_LIMIT := 0.5              # metres of horizontal drift allowed while downed
+const PX_PER_M := 140.0
+const FLOOR_PX := 600.0
+const CENTER_PX := 640.0
+
+## Press action -> the state the press must reach.
+const PRESSES := [
+	["p1_light", "J jab", [BaseFighter.State.ATTACK_STARTUP, BaseFighter.State.ATTACK_ACTIVE, BaseFighter.State.ATTACK_RECOVERY]],
+	["p1_heavy", "K box", [BaseFighter.State.ATTACK_STARTUP, BaseFighter.State.ATTACK_ACTIVE, BaseFighter.State.ATTACK_RECOVERY]],
+	["p1_tump", "L tump", [BaseFighter.State.ATTACK_STARTUP, BaseFighter.State.ATTACK_ACTIVE, BaseFighter.State.ATTACK_RECOVERY]],
+	["p1_upper_box", "I upper box", [BaseFighter.State.ATTACK_STARTUP, BaseFighter.State.ATTACK_ACTIVE, BaseFighter.State.ATTACK_RECOVERY]],
+	["p1_grab", "U grab", [BaseFighter.State.GRAB]],
+]
+
+var _checks := 0
+var _fails := 0
+
+
+func _initialize() -> void:
+	_run()
+
+
+func _run() -> void:
+	print("\n=== LIVE MATCH CHECK (real TestArena.tscn) ===")
+	for a in FIGHTERS:
+		for b in FIGHTERS:
+			await _check_pair(a, b)
+	await _check_knockdowns()
+	for a in FIGHTERS:
+		await _check_presses(a)
+	print("\n%d checks, %d FAIL%s" % [_checks, _fails, "" if _fails == 0 else "S"])
+	print("ALL LIVE MATCH CHECKS PASSED" if _fails == 0 else "LIVE MATCH CHECKS FAILED")
+	quit(1 if _fails > 0 else 0)
+
+
+func _check(ok: bool, label: String) -> void:
+	_checks += 1
+	if not ok:
+		_fails += 1
+		print("FAIL  %s" % label)
+	else:
+		print("PASS  %s" % label)
+
+
+func _spawn(p1_key: StringName, p2_key: StringName, rounds_enabled: bool = false):
+	var setup = root.get_node_or_null("MatchSetup")
+	setup.commit_match(p1_key, p2_key)
+	setup.ai_mode = 0
+	var packed := load("res://scenes/TestArena.tscn") as PackedScene
+	var arena := packed.instantiate()
+	var rounds := arena.get_node_or_null("RoundController")
+	if rounds != null and not rounds_enabled:
+		rounds.enabled = false
+	root.add_child(arena)
+	await process_frame
+	await physics_frame
+	# Settle: the 3D layer builds in _ready and the animation player needs a frame to pose.
+	for i in 6:
+		await physics_frame
+	return arena
+
+
+func _free(arena) -> void:
+	arena.queue_free()
+	await process_frame
+	await process_frame
+
+
+func _check_pair(a: StringName, b: StringName) -> void:
+	var arena = await _spawn(a, b)
+	var arena3d = arena.get("arena3d")
+	var tag := "%s vs %s" % [a, b]
+	print("\n-- %s" % tag)
+	if arena3d == null:
+		_check(false, "%s: no Arena3D layer" % tag)
+		await _free(arena)
+		return
+	var cam: Camera3D = arena3d.camera
+	var rect := root.get_visible_rect()
+	for side in ["p1", "p2"]:
+		var fighter: BaseFighter = arena.p1 if side == "p1" else arena.p2
+		var model: Node3D = arena3d.models.get(side)
+		if model == null:
+			_check(false, "%s: %s has no 3D model" % [tag, side.to_upper()])
+			continue
+		var meshes := 0
+		var surfaces := 0
+		for node in model.find_children("*", "MeshInstance3D", true, false):
+			var mi := node as MeshInstance3D
+			if mi == null or mi.mesh == null:
+				continue
+			meshes += 1
+			surfaces += mi.mesh.get_surface_count()
+		_check(model.visible, "%s: %s model is visible" % [tag, side.to_upper()])
+		_check(meshes > 0 and surfaces > 0,
+			"%s: %s has real geometry (%d mesh, %d surface)" % [tag, side.to_upper(), meshes, surfaces])
+		var bounds := _skinned_bounds(model)
+		var low: Vector3 = bounds[0]
+		var high: Vector3 = bounds[1]
+		var low_screen := cam.unproject_position(low)
+		var high_screen := cam.unproject_position(high)
+		var in_frustum := cam.is_position_in_frustum(low) and cam.is_position_in_frustum(high)
+		var on_screen := _rect_overlap(low_screen, high_screen, rect)
+		_check(in_frustum and on_screen,
+			"%s: %s renders inside the camera view (frustum=%s screen=%s)" %
+			[tag, side.to_upper(), str(in_frustum), str(on_screen)])
+		_check(low.y >= FLOOR_TOLERANCE,
+			"%s: %s stands on the sand (lowest drawn y %+.3f)" % [tag, side.to_upper(), low.y])
+		# The pivot must carry exactly the facing, and the playing take must not add a turn of
+		# its own — together that is the direction the body is drawn facing.
+		var offset := deg_to_rad(float(model.get("model_forward_yaw_offset_deg")))
+		var expected := offset + (0.0 if side == "p1" else PI)
+		var want_dir := Vector3(cos(offset), 0.0, sin(offset)).rotated(Vector3.UP, expected)
+		var pivot_err := absf(rad_to_deg(wrapf(
+			deg_to_rad(float(model.call("facing_yaw_deg"))) - expected, -PI, PI)))
+		var fwd := _rendered_forward(model)
+		var err := rad_to_deg(acos(clampf(absf(fwd.x), 0.0, 1.0)))
+		var wants := 1.0 if side == "p1" else -1.0
+		_check(pivot_err <= 0.5 and err <= TOLERANCE_DEG and signf(fwd.x) == wants,
+			"%s: %s faces %s (pivot off by %.2f deg, rendered forward (%+.2f, %+.2f), %4.1f deg off ±X)" %
+			[tag, side.to_upper(), "right" if wants > 0 else "left", pivot_err, fwd.x, fwd.z, err])
+	await _free(arena)
+
+
+## Press responsiveness, on the real InputMap and the real arena.
+func _check_presses(a: StringName) -> void:
+	var arena = await _spawn(a, &"lickshot", true)
+	var tag := "P1 %s" % a
+	var fighter: BaseFighter = arena.p1
+	for entry in PRESSES:
+		await _settle(fighter)
+		var done := await _press(entry[0], entry[2], fighter)
+		var state := String(BaseFighter.State.keys()[fighter.state])
+		_check(done, "%s: %s starts an attack on press (state %s)" % [tag, entry[1], state])
+		await _settle(fighter)
+	# Block / guard is a HELD action, not a latched press.
+	await _settle(fighter)
+	Input.action_press("p1_guard")
+	var guarded := false
+	for i in 8:
+		await physics_frame
+		if fighter.guarding:
+			guarded = true
+			break
+	Input.action_release("p1_guard")
+	_check(guarded, "%s: holding S raises the guard" % tag)
+	await _settle(fighter)
+	# A press thrown while hitstop has the tick frozen must still fire.
+	await _settle(fighter)
+	fighter._hitstop_frames = 6
+	var frozen := await _press("p1_light", PRESSES[0][2], fighter, 14)
+	_check(frozen, "%s: a jab pressed during hitstop still fires (%s)" %
+		[tag, String(BaseFighter.State.keys()[fighter.state])])
+	fighter._hitstop_frames = 0
+	await _free(arena)
+
+
+## Wait for a controllable, grounded, idle fighter without forcing state by hand.
+func _settle(fighter: BaseFighter, limit: int = 120) -> void:
+	fighter.input_locked = false
+	var guard := 0
+	while guard < limit:
+		guard += 1
+		if fighter.state == BaseFighter.State.IDLE and fighter.is_on_floor() \
+				and fighter._hitstop_frames == 0:
+			fighter.velocity = Vector2.ZERO
+			await physics_frame
+			if fighter.state == BaseFighter.State.IDLE and fighter.is_on_floor():
+				return
+		await physics_frame
+
+
+## Press one action and poll a few ticks for the expected state.
+func _press(action: String, wanted: Array, fighter: BaseFighter, limit: int = 8) -> bool:
+	if not InputMap.has_action(action):
+		return false
+	Input.action_press(action)
+	var hit := false
+	var guard := 0
+	while guard < limit:
+		guard += 1
+		Input.action_release(action)
+		await physics_frame
+		if fighter.state in wanted:
+			hit = true
+			break
+	Input.action_release(action)
+	return hit
+
+
+## Knockdown / get-up floor and drift audit for every fighter, as P2 the CPU cannot interrupt.
+func _check_knockdowns() -> void:
+	print("\n-- KNOCKDOWN / GET-UP FLOOR + DRIFT")
+	for key in FIGHTERS:
+		var arena = await _spawn(&"feedback", key)
+		var arena3d = arena.get("arena3d")
+		var fighter: BaseFighter = arena.p2
+		var model: Node3D = arena3d.models.get("p2") if arena3d != null else null
+		if model == null:
+			_check(false, "%s: no 3D model for the knockdown audit" % key)
+			await _free(arena)
+			continue
+		var root_x: float = fighter.global_position.x
+		var lowest := INF
+		var body_drift := 0.0
+		var anchor_gap := 0.0
+		fighter.input_locked = false
+		var knocked := fighter.change_state(BaseFighter.State.KNOCKDOWN)
+		# 36 fall ticks + the get-up, plus slack.
+		for tick in 200:
+			await physics_frame
+			lowest = minf(lowest, _skinned_bounds(model)[0].y)
+			# The body itself must not teleport, and the render must stay anchored to the body:
+			# the pelvis is expected to travel ~a body length away when the fighter topples,
+			# so only these two are drift measures.
+			body_drift = maxf(body_drift, absf(fighter.global_position.x - root_x))
+			anchor_gap = maxf(anchor_gap, absf(model.global_position.x - _world_x(fighter.global_position.x)))
+		_check(knocked, "%s: a knockdown was accepted" % key)
+		_check(lowest >= FLOOR_TOLERANCE,
+			"%s: stays on the sand through knockdown and get-up (lowest %+.3f m)" % [key, lowest])
+		_check(body_drift <= DRIFT_LIMIT and anchor_gap <= 0.02,
+			"%s: no horizontal teleport while downed (body %.3f m, render anchor off by %.3f m)"
+			% [key, body_drift, anchor_gap])
+		_check(_no_root_motion_tracks(model),
+			"%s: no installed take animates Hips/Root position — every clip plays in place" % key)
+		await _free(arena)
+
+
+func _world_x(px: float) -> float:
+	return (px - CENTER_PX) / PX_PER_M
+
+
+## Root motion removal, asserted directly on the clips that are installed: no take may
+## animate the position of the root node, the Hips or a Root bone.
+func _no_root_motion_tracks(model: Node3D) -> bool:
+	var player: AnimationPlayer = model.get("animation")
+	if player == null:
+		return true
+	for lib_name in player.get_animation_library_list():
+		var lib := player.get_animation_library(lib_name)
+		if lib == null:
+			continue
+		for anim_name in lib.get_animation_list():
+			var anim := lib.get_animation(anim_name)
+			if anim == null:
+				continue
+			for track in anim.get_track_count():
+				if anim.track_get_type(track) != Animation.TYPE_POSITION_3D:
+					continue
+				var path := String(anim.track_get_path(track))
+				var bone := path.split(":")[1] if path.contains(":") else ""
+				if bone == "" or bone.ends_with("Hips") or bone.ends_with("Root"):
+					return false
+	return true
+
+
+func _rect_overlap(low: Vector2, high: Vector2, rect: Rect2) -> bool:
+	var left := minf(low.x, high.x)
+	var right := maxf(low.x, high.x)
+	var top := minf(low.y, high.y)
+	var bottom := maxf(low.y, high.y)
+	return right > 0.0 and left < rect.size.x and bottom > 0.0 and top < rect.size.y
+
+
+## Live skinned-mesh bounds in world space, evaluated from the animated skeleton pose and the
+## mesh skin weights. This is what the renderer draws.
+func _skinned_bounds(model: Node3D) -> Array:
+	var mi := _first_mesh(model)
+	var skel: Skeleton3D = model.get("skeleton")
+	if mi == null or skel == null or mi.mesh.get_surface_count() == 0:
+		return [Vector3.ZERO, Vector3.UP]
+	var arrays := mi.mesh.surface_get_arrays(0)
+	if arrays.is_empty():
+		return [Vector3.ZERO, Vector3.UP]
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var vbones = arrays[Mesh.ARRAY_BONES]
+	var weights = arrays[Mesh.ARRAY_WEIGHTS]
+	var skin: Skin = mi.skin
+	var bone_xf: Array[Transform3D] = []
+	for i in skel.get_bone_count():
+		var xf: Transform3D = skel.global_transform * skel.get_bone_global_pose(i)
+		if skin != null and i < skin.get_bind_count():
+			xf = xf * skin.get_bind_pose(i)
+		bone_xf.append(xf)
+	var low := Vector3(INF, INF, INF)
+	var high := Vector3(-INF, -INF, -INF)
+	var step := maxi(1, int(float(verts.size()) / 4000.0))
+	var per := 0
+	if vbones != null and weights != null and verts.size() > 0:
+		per = int(vbones.size() / verts.size())
+	var i := 0
+	while i < verts.size():
+		var p := verts[i]
+		if per > 0:
+			var acc := Vector3.ZERO
+			var total := 0.0
+			for k in per:
+				var bi := int(vbones[i * per + k])
+				var w := float(weights[i * per + k])
+				if w <= 0.0 or bi < 0 or bi >= bone_xf.size():
+					continue
+				acc += (bone_xf[bi] * p) * w
+				total += w
+			p = acc / total if total > 0.0 else mi.global_transform * p
+		else:
+			p = mi.global_transform * p
+		low = Vector3(minf(low.x, p.x), minf(low.y, p.y), minf(low.z, p.z))
+		high = Vector3(maxf(high.x, p.x), maxf(high.y, p.y), maxf(high.z, p.z))
+		i += step
+	return [low, high]
+
+
+## Forward the body is drawn facing: the authored forward turned by the pivot that shipped,
+## then by however far the playing take has turned the pelvis away from its own REST pose.
+## The rest reference matters — the two Tripo rigs carry a 30°–40° pelvis bind yaw that their
+## skin compensates for, so comparing a raw bone axis to ±X reports a turn that is not there.
+func _rendered_forward(model: Node3D) -> Vector3:
+	var offset := deg_to_rad(float(model.get("model_forward_yaw_offset_deg")))
+	var pivot := deg_to_rad(float(model.call("facing_yaw_deg")))
+	var fwd := Vector3(cos(offset), 0.0, sin(offset)).rotated(Vector3.UP, pivot)
+	var skel: Skeleton3D = model.get("skeleton")
+	if skel != null:
+		var hips := _bone(skel, "Hips")
+		if hips >= 0:
+			var rest := _heading(skel.get_bone_global_rest(hips).basis)
+			var pose := _heading(skel.get_bone_global_pose(hips).basis)
+			if rest != Vector3.ZERO and pose != Vector3.ZERO:
+				var sin_t := rest.z * pose.x - rest.x * pose.z
+				var cos_t := rest.x * pose.x + rest.z * pose.z
+				fwd = fwd.rotated(Vector3.UP, atan2(sin_t, cos_t))
+	fwd.y = 0.0
+	return fwd.normalized() if fwd.length() > 0.0001 else Vector3.RIGHT
+
+
+## A basis' horizontal reference axis, whichever of its two axes still projects.
+func _heading(basis: Basis) -> Vector3:
+	for axis in [basis.x, basis.z]:
+		var flat := Vector3(axis.x, 0.0, axis.z)
+		if flat.length() > 0.2:
+			return flat.normalized()
+	return Vector3.ZERO
+
+
+func _bone(skel: Skeleton3D, suffix: String) -> int:
+	for i in skel.get_bone_count():
+		if skel.get_bone_name(i).ends_with(suffix):
+			return i
+	return -1
+
+
+func _first_mesh(model: Node3D) -> MeshInstance3D:
+	for node in model.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi != null and mi.mesh != null:
+			return mi
+	return null

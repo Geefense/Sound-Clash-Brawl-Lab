@@ -162,6 +162,7 @@ static func _read_clip(key: StringName, stem: String, skeleton_path: String) -> 
 				if bone != "":
 					anim.track_set_path(track, NodePath(skeleton_path + ":" + bone))
 			_strip_root_yaw(anim, node as Node3D)
+			_strip_root_translation(anim)
 	node.free()
 	return anim
 
@@ -180,6 +181,12 @@ static func _strip_root_yaw(anim: Animation, node: Node3D) -> void:
 		for child in node.find_children("*", "Skeleton3D", true, false):
 			skeleton = child as Skeleton3D
 			break
+	_strip_root_yaw_bones(anim, skeleton)
+
+
+## The bone-level half of `_strip_root_yaw`, so a caller that already holds the skeleton
+## (for example `strip_root_motion`) does not have to search for it again.
+static func _strip_root_yaw_bones(anim: Animation, skeleton: Skeleton3D) -> void:
 	for track in anim.get_track_count():
 		if anim.track_get_type(track) != Animation.TYPE_ROTATION_3D:
 			continue
@@ -204,6 +211,51 @@ static func _strip_root_yaw(anim: Animation, node: Node3D) -> void:
 			var e := Basis(q).get_euler(EULER_ORDER_YXZ)
 			var flat := Basis.from_euler(Vector3(e.x, rest_yaw, e.z), EULER_ORDER_YXZ)
 			anim.track_set_key_value(track, k, flat.get_rotation_quaternion())
+
+
+## Root translation disabled (playtest fix 2026-11-24, issue 2). The delivered takes animate
+## `mixamorig_Hips` **position** as well as rotation, and those keys are in the source rig's
+## own units. Played on a 1.55 m body they threw the fighter about **76 m into the air** —
+## completely outside the camera, which is what read as an "invisible opponent" — and on a
+## knockdown they pushed the pelvis roughly 0.4 m through the sand and slid it sideways,
+## which is the sinking / teleporting. Every take must therefore play strictly in place: the
+## `CharacterBody2D` owns where the body is, the clip owns only the pose. The whole track is
+## removed rather than flattened, so the bone simply keeps its rest translation and the clip
+## still supplies lean, twist, topple and get-up.
+##
+## Only POSITION tracks on the root/Hips are touched. Rotation is handled by
+## `_strip_root_yaw`, and every other bone's motion is untouched.
+static func _strip_root_translation(anim: Animation) -> void:
+	# Backwards: removing a track shifts every index after it.
+	for track in range(anim.get_track_count() - 1, -1, -1):
+		if anim.track_get_type(track) != Animation.TYPE_POSITION_3D:
+			continue
+		var path := String(anim.track_get_path(track))
+		var bone := path.split(":")[1] if path.contains(":") else ""
+		var is_root_node := bone == ""
+		if not is_root_node and not (bone.ends_with("Hips") or bone.ends_with("Root")):
+			continue
+		anim.remove_track(track)
+
+
+## Sanitise EVERY take on one fighter's player, including the body's own baked export that
+## ships in the FBX's default library (playtest fix 2026-11-24, issue 2). `_read_clip`
+## already does this for the shared library; this closes the same hole for any clip that
+## reaches the player by another route, so no animation can translate the body. Both passes
+## are idempotent, so a cached library costs nothing.
+static func strip_root_motion(player: AnimationPlayer, skeleton: Skeleton3D) -> void:
+	if player == null or skeleton == null:
+		return
+	for lib_name in player.get_animation_library_list():
+		var lib := player.get_animation_library(lib_name)
+		if lib == null:
+			continue
+		for anim_name in lib.get_animation_list():
+			var anim := lib.get_animation(anim_name)
+			if anim == null:
+				continue
+			_strip_root_yaw_bones(anim, skeleton)
+			_strip_root_translation(anim)
 
 
 ## Install the library on one fighter's AnimationPlayer. Returns `{role: anim_name}` with

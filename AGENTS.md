@@ -4238,3 +4238,121 @@ the select screen's look, the empty speaker/booth positions, the hand-mount tran
 arrives, and typing on the actual Chromebook keyboard have **not** been seen. Those are the owner's
 checks. `godot --headless --path godot --export-release "Web" ../docs/index.html` rebuilds the web
 export; it does not prove the art.
+
+## 2026-11-24 — Live-match regressions, PART 1 OF 2: invisible opponent, facing + floor, attack input
+
+Owner playtest of `4560bd2` on `feature/3d-cel-shaded` reported three match-breaking failures.
+Every one of them was first **measured** on the real `TestArena.tscn` (not a bare `BaseFighter`),
+and each fix is aimed at the measured cause. **`ANIM_OFFSET` / `ANIM_OFFSET_DEFAULT`, every
+attack's startup/active/recovery/damage/hitbox value, the 132 BPM beat clock, the round flow and
+all 31 Patois entries are untouched**, and no art was added, generated, resized or replaced — the
+five `PropLoader` `.glb` slots still draw nothing and still warn (`§` item 53 / PART 2 issue 3).
+
+### Issue 1 — the opponent rendered ~76 m above the sand (read as "invisible P2")
+
+**Measured cause.** `FighterModel3D._play_baked_idle()` picked `animation.get_animation_list()[0]`
+*after* `_install_clips()` had already mounted the Mixamo library. That list also contains library
+entries, so the call restarted an arbitrary clip — `mixamo/getup` for Feedback — or the body's own
+raw baked export (`Armature|Armature|mixamo_com|Layer0` for the two Tripo bodies), whichever sorted
+first. Those baked takes animate `mixamorig_Hips` **position** in the source rig's units, which put
+the rendered body at world **y ≈ 76 m** (P1 in the mirror match) and out of the camera; the same
+call also overwrote the state machine's idle, so nothing the FSM asked for was ever drawn.
+`ModelSource` binding, `visible`, mesh and surface counts were all correct — the geometry was simply
+above the frame.
+
+**Fix.** `_play_baked_idle()` now returns early whenever a Mixamo library is installed, so the
+library is the only thing that can drive a rigged fighter. `_play_role()` no longer short-circuits on
+the role name alone: it also compares `animation.current_animation` with the clip it wants and the
+playing state, then re-plays, so a clip left on the player by anything else can never freeze the
+body on the wrong take.
+
+### Issue 2 — facing the camera, and sinking / teleporting on knockdown
+
+**Measured causes.**
+1. `hips_yaw_delta()` took the **Y term of `pose * rest⁻¹` in YXZ order** as "the heading". That is
+   not a heading: on the two rigs whose pelvis carries a large bind yaw (L!ckshot −59.6°, L!kkle
+   Moore −51.2°) a few degrees of pitch/roll leak into that Euler term, and it reported a phantom
+   **29.6° / 39.2°** turn. `_compensate_clip_yaw()` then rotated `VisualPivot` by exactly that
+   amount, which is why those two fighters did not face their opponent.
+2. The clips' **root translation** was never stripped. Played on a 1.55 m body the Hips position
+   keys moved the pelvis metres, so a knockdown sank 0.36–0.47 m through the sand and warped the
+   body sideways.
+
+**Fixes.**
+- `MixamoClips._strip_root_translation()` removes every `TYPE_POSITION_3D` track on the root node,
+  `Hips` or `Root` (iterating backwards so indices stay valid). `MixamoClips.strip_root_motion()`
+  applies the same yaw + translation pass to **every** animation on a fighter's player, including
+  the body's own baked export in the default library; `FighterModel3D.bind()` calls it before
+  anything can play. Every take is now strictly in place: the `CharacterBody2D` owns position, the
+  clip owns pose only.
+- `pose_turn_yaw()` measures the heading change properly — the signed angle about world up between
+  the pelvis' horizontal reference axis at **rest** and at the posed frame. The rest reference is
+  essential: both Tripo rigs measure (−0.87, 0.50) / (−0.78, 0.63) at rest while their meshes face
+  +X, so an absolute bone axis reports a turn that is not there. `world_forward()` is now
+  authored-forward → shipped pivot → pose turn, and `hips_yaw_delta()` returns `pose_turn_yaw()`
+  so the pivot compensation cancels a real clip turn and nothing else.
+- `FighterModel3D._clamp_to_floor()` is the presentation guard: after posing, if the lowest posed
+  bone origin is under `FLOOR_BONE_CLEARANCE` (0.10 m) the pose pivot is lifted by exactly the
+  deficit. It only ever lifts, `_animate_pose()` rebuilds the pivot position every frame so the
+  correction cannot stack, and `CharacterBody2D`, the 2D sprite and every hitbox are not touched.
+
+### Issue 3 — attack buttons felt dead
+
+Three separate reasons, all fixed:
+1. The `_play_baked_idle()` override above meant the combat state changed while the **body kept
+   playing one baked clip** — a punch resolved damage but showed nothing.
+2. `_play_role()`'s role-only short-circuit (above) could leave the wrong clip running for the
+   whole match.
+3. **Presses were dropped during hitstop.** `_physics_process()` polled input *after* the
+   `_hitstop_frames` early return, so any attack pressed during the 4–9 frozen ticks of a contact
+   was lost — exactly "I pressed it and nothing happened". `BaseFighter` now latches attack presses
+   (`LATCHED_INPUTS`, `_press_ttl`) at the top of the tick for `INPUT_BUFFER_TICKS`, and
+   `_poll_local_input()` consumes them (`_take_press`). One press fires one action, `input_locked`
+   clears the latches, and `reset_for_round()` clears them so a round never opens on last round's
+   press. Held actions (guard, crouch, movement) and jump keep their instant read, and no frame
+   data, damage or hitbox value changed.
+
+### Verification — actually run in this environment
+
+Godot **4.7.2.stable.official (ed1daf0bf)** headless (the workspace binary; no GPU, display or audio
+device, and **no export templates are installed for this version**):
+
+```bash
+godot --headless --path godot --import
+godot --headless --path godot --script res://tools/live_match_check.gd
+godot --headless --path godot --script res://tools/headless_roster_check.gd
+godot --headless --path godot --script res://tools/facing_audit.gd
+```
+
+- **`tools/live_match_check.gd` (new, 123 assertions, `ALL LIVE MATCH CHECKS PASSED`, exit 0)** —
+  boots the real arena for all **9 pairings** and asserts, per side: the model is `visible`, has a
+  non-empty `MeshInstance3D` with a real surface, its **live skinned-mesh bounds** (skeleton pose ×
+  mesh skin weights, sampled) sit inside the camera frustum and on screen, the lowest drawn point is
+  on the sand, and the rendered forward is within 5° of +X (P1) / −X (P2) with the pivot yaw off its
+  expected value by ≤0.5°. Then, for all three fighters: a 200-tick knockdown → get-up run keeps the
+  lowest drawn point ≥ −0.05 m with **zero** body teleport and the render anchored to the body
+  within 0.02 m, and **no installed take animates Hips/Root position**. Finally it presses
+  `p1_light` / `p1_heavy` / `p1_tump` / `p1_upper_box` / `p1_grab` and holds `p1_guard` through the
+  real InputMap on each fighter and requires the matching state, plus one jab pressed **during
+  hitstop** that must still fire.
+- **`headless_roster_check.gd`: 411 PASS / 0 FAIL, `ALL CHECKS PASSED`** — unchanged.
+- **`facing_audit.gd`: 94 checks, 0 FAIL, `ALL FACING CHECKS PASSED`** — unchanged, and now backed
+  by a rest-referenced measurement rather than the self-cancelling one.
+- The 58 `.fbx.import` sidecars that Godot 4.7's importer rewrote during the import pass were
+  reverted, so the committed import settings stay as authored.
+
+### Not verified, and what is left
+
+- **No GPU, display or audio device here.** Nothing was watched. The fixes are verified as state,
+  geometry, animation name and on-screen projection — not as a look. The owner still needs to see
+  the cel look, the topple, the clip transitions and 60 FPS on the Chromebook / iPhone Safari.
+- **`/docs` was NOT rebuilt.** No 4.7.2 export templates exist in this workspace (the previous
+  exports were built with 4.5.stable), so re-exporting would silently change the engine version of
+  the shipped build. The playable `/docs` build therefore still predates these three fixes; rebuild
+  it with the pinned 4.5 toolchain before publishing.
+- The floor clearance (0.10 m) and the latch window (`INPUT_BUFFER_TICKS`, 12 ticks) are hand-set
+  defaults for the owner's playtest, not approved tuning.
+- P2 is still AI-driven by design (`use_local_input = false`); the press assertions cover P1.
+  Local 2P input remains backlog **B2**.
+- `_tick_crouch()` still accepts no attacks and air attacks are still `[TODO]` — unchanged by this
+  pass, and part of the documented moveset plan rather than a regression.

@@ -59,6 +59,25 @@ func _solid_crown_to_sole(img: Image) -> int:
 	return 0 if crown < 0 or sole < 0 else sole - crown + 1
 
 
+## Skeleton path of a fighter body relative to its own model root. The uploads disagree
+## (Feedback nests it at `Skeleton3D`, the other two at `Armature/Skeleton3D`), so the clip
+## library is always told the measured path instead of guessing.
+func _body_skeleton_path(path: String) -> String:
+	var packed := load(path) as PackedScene
+	if packed == null:
+		return ""
+	var node := packed.instantiate()
+	var out := ""
+	var skel: Skeleton3D = null
+	for child in node.find_children("*", "Skeleton3D", true, false):
+		skel = child as Skeleton3D
+		break
+	if skel != null:
+		out = String(node.get_path_to(skel))
+	node.free()
+	return out
+
+
 ## Drive a static 3D model through the whole-body procedural rig the arena uses for all
 ## three uploads: idle settle, strike lunge, knockdown tip. This is the same `_animate_pose`
 ## path `_process` calls, so a mesh that is not actually connected to the transforms fails
@@ -213,10 +232,10 @@ func _run() -> void:
 			"%s + %s" % [model_path.get_file(), albedo_path.get_file()])
 	_check(String(FighterModel3D.MODEL_SOURCES[&"young_selecta"]["label"]).contains("L!kkle Moore"),
 		"the young_selecta slot is labelled L!kkle Moore")
-	_check(String(FighterModel3D.MODEL_SOURCES[&"feedback"]["path"]).ends_with("feedback_v2.fbx")
-			and String(FighterModel3D.MODEL_SOURCES[&"lickshot"]["path"]).ends_with("lickshot.fbx")
-			and String(FighterModel3D.MODEL_SOURCES[&"young_selecta"]["path"]).ends_with("likkle_moore.fbx"),
-		"the three owner uploads are filed as feedback_v2, lickshot and likkle_moore")
+	_check(String(FighterModel3D.MODEL_SOURCES[&"feedback"]["path"]).ends_with("feedback_rigged.fbx")
+			and String(FighterModel3D.MODEL_SOURCES[&"lickshot"]["path"]).ends_with("lickshot_rigged.fbx")
+			and String(FighterModel3D.MODEL_SOURCES[&"young_selecta"]["path"]).ends_with("likkle_moore_rigged.fbx"),
+		"the three owner uploads are filed as feedback_rigged, lickshot_rigged and likkle_moore_rigged")
 
 	# ---- Three tournament movesets (2026-11-22) --------------------------
 	var fb_moves := _attacks_for(&"feedback")
@@ -359,13 +378,16 @@ func _run() -> void:
 	var mp2_model: FighterModel3D = mirror_stage.model_for(mp2) as FighterModel3D
 	_check(mp1.fighter_key == &"feedback" and mp2.fighter_key == &"feedback",
 		"the default arena is FEEDBACK vs FEEDBACK", "%s vs %s" % [mp1.fighter_key, mp2.fighter_key])
-	_check(mp1_model != null and not mp1_model.has_rig and mp1_model.triangle_count() == 29025,
-		"P1 Feedback loads feedback_v2 as a cel-shaded FighterModel3D",
-		"%d tris / rig %s" % [mp1_model.triangle_count() if mp1_model != null else -1,
-			mp1_model.has_rig if mp1_model != null else "?"])
-	_check(mp2_model != null and not mp2_model.has_rig and mp2_model.triangle_count() == 29025,
-		"P2 Feedback uses the same 3D upload in the mirror match",
-		"%d tris" % (mp2_model.triangle_count() if mp2_model != null else -1))
+	_check(mp1_model != null and mp1_model.has_rig and mp1_model.bone_count > 20
+			and mp1_model.triangle_count() == 29025,
+		"P1 Feedback loads feedback_rigged as a cel-shaded FighterModel3D",
+		"%d tris / %d bones" % [mp1_model.triangle_count() if mp1_model != null else -1,
+			mp1_model.bone_count if mp1_model != null else -1])
+	_check(mp2_model != null and mp2_model.has_rig and mp2_model.bone_count > 20
+			and mp2_model.triangle_count() == 29025,
+		"P2 Feedback uses the same rigged upload in the mirror match",
+		"%d tris / %d bones" % [mp2_model.triangle_count() if mp2_model != null else -1,
+			mp2_model.bone_count if mp2_model != null else -1])
 	_check(mp1_model != null and mp2_model != null and mp1_model.has_albedo_texture()
 			and mp2_model.has_albedo_texture()
 			and mp1_model.albedo_size == Vector2i(1024, 1024),
@@ -392,6 +414,72 @@ func _run() -> void:
 	_check(p2_rim.r > p2_rim.b, "P2's rim accent shifts gold in the mirror match", str(p2_rim))
 	_assert_procedural_stance(mp1_model, mp1, "P1 Feedback")
 	_assert_procedural_stance(mp2_model, mp2, "P2 Feedback")
+
+	# ---- 38 Mixamo takes bound to the three fighters (2026-11-24) ----------------
+	# Every uploaded take ships as an armature-plus-animation file; each fighter's body is
+	# one of the owner's own skinned exports, so the tracks already address its skeleton.
+	var clip_expect := {&"feedback": 10, &"lickshot": 11, &"young_selecta": 17}
+	for key in clip_expect:
+		var files: Array[String] = MixamoClips.clip_files(key)
+		_check(files.size() == int(clip_expect[key]),
+			"%s ships all %d uploaded Mixamo takes" % [key, clip_expect[key]],
+			"%d files" % files.size())
+		var skeleton_path := _body_skeleton_path(String(FighterModel3D.MODEL_SOURCES[key]["path"]))
+		var lib := MixamoClips.library_for(key, skeleton_path)
+		_check(lib.size() >= 10, "%s binds its takes to fight roles" % key,
+			"%d roles on %s" % [lib.size(), skeleton_path])
+		for role in [&"idle", &"walk", &"light", &"strong", &"upper_box", &"knockdown"]:
+			_check(lib.has(role), "%s has a real %s take" % [key, role])
+	_check(mp1_model != null and mp1_model.clip_count() >= 10,
+		"Feedback mounts its takes on the body's own AnimationPlayer",
+		"%d roles" % (mp1_model.clip_count() if mp1_model != null else 0))
+	if mp1_model != null:
+		var rest_arm := mp1_model.skeleton.get_bone_pose_rotation(
+			mp1_model.skeleton.find_bone("mixamorig_LeftArm"))
+		mp1_model._play_role(&"light")
+		var light_name := String(mp1_model.current_clip())
+		mp1_model.animation.advance(0.0)
+		mp1_model.animation.advance(0.30)
+		var posed_arm := mp1_model.skeleton.get_bone_pose_rotation(
+			mp1_model.skeleton.find_bone("mixamorig_LeftArm"))
+		_check(light_name == "light"
+				and mp1_model.animation.current_animation == "mixamo/light",
+			"the jab state crossfades to the uploaded jab take",
+			"%s / %s" % [light_name, mp1_model.animation.current_animation])
+		_check((posed_arm - rest_arm).length() > 0.0005,
+			"the uploaded take actually drives Feedback's skeleton",
+			"delta %.4f" % (posed_arm - rest_arm).length())
+		mp1_model._play_role(&"idle")
+
+	# ---- Hand-attached props on mixamorig_RightHand (2026-11-24) ----------------
+	_check(mp1_model != null and mp1_model.hand_prop_count() == 1
+			and mp1_model.hand_bone_name() == "mixamorig_RightHand",
+		"Feedback holds his microphone on mixamorig_RightHand",
+		"%d props on %s" % [mp1_model.hand_prop_count() if mp1_model != null else -1,
+			mp1_model.hand_bone_name() if mp1_model != null else "-"])
+	_check(mp1_model != null and mp1_model.hand_props.size() > 0
+			and mp1_model.hand_props[0].get_parent() is Skeleton3D
+			and FighterProps.prop_triangles(mp1_model.model_root) > 0,
+		"the mic is a BoneAttachment3D child of the skeleton with real cel geometry",
+		"%d prop tris" % (FighterProps.prop_triangles(mp1_model.model_root)
+			if mp1_model != null else 0))
+	# Every roster fighter, built straight from its body file: mic for the two adults, a mic
+	# stand plus the dictionary for the kid, all on the same right-hand bone.
+	var prop_expect := {&"feedback": 1, &"lickshot": 1, &"young_selecta": 2}
+	for key in prop_expect:
+		var body := (load(String(FighterModel3D.MODEL_SOURCES[key]["path"])) as PackedScene).instantiate() as Node3D
+		var body_skel: Skeleton3D = null
+		for child in body.find_children("*", "Skeleton3D", true, false):
+			body_skel = child as Skeleton3D
+			break
+		var props := FighterProps.attach_for(body, body_skel, key)
+		var all_on_hand := props.size() > 0
+		for attachment in props:
+			all_on_hand = all_on_hand and attachment.bone_name == "mixamorig_RightHand"
+		_check(props.size() == int(prop_expect[key]) and all_on_hand,
+			"%s carries its %d hand prop(s) on mixamorig_RightHand" % [key, prop_expect[key]],
+			"%d props, %d prop tris" % [props.size(), FighterProps.prop_triangles(body)])
+		body.free()
 
 	# ---- MusicBed must stay silent through the active round -----------------
 	_check(music_bed.state_name() == "off" and not music_bed.is_playing(),
@@ -1645,6 +1733,37 @@ func _run() -> void:
 		"the 3D booth and ringside characters stay under 40 000 triangles",
 		"%d total (crowd %d / booth %d)" % [atmosphere.atmosphere_triangles(),
 			crowd_tris, booth_tris])
+
+	# ---- Four female crowd models in the ringside banks (2026-11-24) -------------
+	var female_files: Array[String] = []
+	for path in CharacterModelSlots.model_paths(CharacterModelSlots.CROWD_DIR):
+		if path.get_file().to_lower().contains("female"):
+			female_files.append(path)
+	_check(female_files.size() == 4, "all four female crowd models ship in the crowd slot",
+		", ".join(female_files.map(func(p): return String(p).get_file())))
+	var probe_root := Node3D.new()
+	crowd3d.add_child(probe_root)
+	for path in female_files:
+		var female := CharacterModelSlots.spawn_one(probe_root, path, 1.70)
+		var label := String(path).get_file()
+		_check(female != null, "%s imports as a 3D character" % label)
+		if female == null:
+			continue
+		_check(CharacterModelSlots.character_bones(female) > 20,
+			"%s keeps a real mixamorig skeleton" % label,
+			"%d bones" % CharacterModelSlots.character_bones(female))
+		_check(CharacterModelSlots.character_triangles(female) <= 3500,
+			"%s is decimated to the 3 500-triangle crowd budget" % label,
+			"%d tris" % CharacterModelSlots.character_triangles(female))
+		female.queue_free()
+	probe_root.queue_free()
+	var female_front := 0
+	for slot in crowd3d.model_slots():
+		if String(slot.scene_file_path).to_lower().contains("female"):
+			female_front += 1
+	_check(female_front >= 2,
+		"female spectators stand in the front-row 3D banks with the male crowd",
+		"%d female / %d ringside" % [female_front, crowd3d.model_slots().size()])
 
 	# Palette: the phase rim reaches every silhouette through the one shared material.
 	atmosphere.apply_phase(2)

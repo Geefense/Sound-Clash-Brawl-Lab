@@ -3391,3 +3391,63 @@ or a fresh push), then run this same decimate + retarget pass on the fighter set
 characters, the crowd animation, the prop parenting, or the frame rate on Chromebook / iPhone
 Safari. The three delivered takes share one Mixamo skin, so the ringside row is one character with
 hue break-up, not seven distinct people.
+
+### Mixamo animation pack: all 38 fighter clips bound, hand props, female crowd — headless verification, November 24, 2026
+
+54. **All 38 uploaded Mixamo takes are bound to Feedback, L!ckshot and L!kkle Moore, with
+    hand-attached mics on the right hand and four female models in the ringside crowd
+    (2026-11-24).** Implemented and headlessly verified; **nothing seen, heard or timed** — this
+    environment still has no GPU, display or audio device.
+
+    - **Delivery.** The owner published all 45 binaries to the GitHub Release `mixamo-pack`. The
+      42 that never reached the workspace in `a46be08` were downloaded from
+      `assets[].browser_download_url` into `/tmp/mixamo_pack/` (622 MB, all valid FBX 7.4/7.7).
+      The 42 root-level placeholder entries were then **removed** from the branch (`36a1ac5`) so
+      `git fsck` no longer reports missing blobs; `MODELS.md` records which file became which.
+    - **1. Fighter clips.** Every uploaded fighter take is not a bare animation — it is **our own
+      fighter mesh skinned to a 65-bone `mixamorig` rig** (Feedback 29 025 tris, L!ckshot 270 060,
+      L!kkle Moore 246 641). So no auto-retarget is needed for the body: one take per fighter
+      becomes the game body (decimated back to **28 000** tris for the two Tripo uploads with
+      `decimate_mixamo_blender.py`), and the other 37 are stripped to armature-plus-take files in
+      `godot/assets/models/mixamo/clips/<roster key>/` (10 / 11 / 17, ~0.45 MB each).
+      `MixamoClips` maps each clip file to a fight role and re-points every track at the fighter's
+      own skeleton path — which is **not** the same in all three uploads (Feedback nests it at
+      `Skeleton3D`, the other two at `Armature/Skeleton3D`). `FighterModel3D` mounts the library on
+      the body's own `AnimationPlayer` and crossfades **0.10 s** between idles, walks, jab, hook,
+      uppercut, tump, block, hit, stun, knockdown, taunt and victory.
+    - **2. Hand props.** `FighterProps` builds cel-shaded geometry at run time — a wireless stage
+      mic for Feedback and L!ckshot, and a mic stand **plus** the dictionary for L!kkle Moore — and
+      parents each to a `BoneAttachment3D` on the right hand, so they follow every take instead of
+      being animated per state. The hand bone is found by suffix, because some exports keep an
+      exporter tag (`mixamorig8_RightHand`).
+    - **3. Female crowd.** The four `Crowd female …` uploads are decimated to **≤3 500 tris**
+      (3 393 / 3 484 / 3 399 / 3 484) with their weight-aware COLLAPSE pass, their atlases
+      downscaled 4 096² → 512² (≈50 MB → ≈3 MB per model), and dropped into
+      `godot/assets/models/crowd/` beside the three male spectators. The ringside row now alternates
+      male and female characters across both banks, wearing the same `toon_cel.gdshader`, inverted
+      hull ink and hue break-up.
+    - **4. Bugs found and fixed on the way.** (a) Blender's bone-heat automatic weights report 68
+      groups but write **zero** weights here, so the retargeter uses a distance-falloff solver
+      (`23 612 / 23 612` vertices weighted); (b) a skinned mesh must hang off the Hips bone or
+      Godot imports it with `skin=false`; (c) `_normalize()` ignored the 0.01 unit scale on the
+      Skeleton3D node, which normalised two fighters **100×** too small (1.58 m → 1.6 cm) — the
+      check caught it; (d) Godot caches imports, so changed FBX bytes need `.godot/imported` cleared
+      before the numbers move.
+
+    **Measured.** `godot --headless --path godot --script res://tools/headless_roster_check.gd` —
+    **387 PASS / 0 FAIL, `ALL CHECKS PASSED`** (341 before). New checks: 10/11/17 take files per
+    fighter, ≥10 bound roles each, a live crossfade to `mixamo/light` that moves
+    `mixamorig_LeftArm`, the mic/stand/dictionary on `mixamorig_RightHand`, 4 female models with
+    >20 bones and ≤3 500 tris, female slots in the front-row banks, and the crowd's 6 hand props
+    restored.
+
+    **`/docs` rebuilt:** `index.pck` **69 880 088 B** (54 007 664 before — the 38 takes, three
+    rigged bodies and four female crowd models add ~16 MB), `index.wasm` 38 057 390 B,
+    `index.js` 305 185 B, `index.html` 5 449 B.
+
+    **Not verified.** No GPU/display/audio: the cel look on the animated bodies, the skin quality
+    of the distance-falloff weights, whether Mixamo's Hips-space root motion makes the fighters
+    drift on the 2.5D plane, the mic/stand grip angles, the downsized female atlases, and the frame
+    rate on Chromebook / iPhone Safari have **not** been seen. Crossfade feel (0.10 s) and clip
+    length trimming are untuned. The four female takes are still the only female acting clips; the
+    shared cheer/disbelief/hype tracks are male-skeleton takes.

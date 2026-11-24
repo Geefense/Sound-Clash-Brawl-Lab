@@ -1,0 +1,246 @@
+class_name MixamoClips
+extends RefCounted
+## Real Mixamo takes for the three roster fighters (owner request, 2026-11-24).
+##
+## The owner exported every fighter's clip from Mixamo, so each of the 38 uploaded
+## animations already carries **our own fighter mesh** skinned to the same 65-bone
+## `mixamorig` skeleton (`Armature/Skeleton3D:mixamorig_*`). The game body for each
+## fighter is one of those exports, decimated back to the 28 000-triangle budget, and
+## every other clip ships as an armature-plus-take file in `assets/models/mixamo/clips/`.
+##
+## Because all 38 takes share one skeleton, a clip only has to be re-pointed at the
+## fighter's own skeleton path; no retarget maths and no bone-name guessing. The role
+## table below is the only place a filename becomes a fight state, so a re-export that
+## renames a take is a one-line change here.
+##
+## Nothing in this file touches combat: it reads `BaseFighter.state`, `_attack_id` and
+## `_celebrate_ticks` and picks an animation. Damage, hitboxes and timing still resolve
+## in `BaseFighter`.
+
+const ROOT := "res://assets/models/mixamo/clips/"
+## Owner-specified crossfade band: 0.08 s – 0.12 s between every state.
+const CROSSFADE := 0.10
+const LOOPING: Array[StringName] = [&"idle", &"walk", &"crouch_walk", &"block", &"taunt"]
+
+## role -> clip stem. A take may serve two roles (Feedback's `warrior-idle` is both the
+## taunt and the victory strut); the loader caches one Animation per file either way.
+const ROLE_FILES := {
+	&"feedback": {
+		&"idle": "fighting-idle-3",
+		&"walk": "drunk-walk",
+		&"light": "jab-cross",
+		&"strong": "right-hook",
+		&"upper_box": "elbow-uppercut-combo",
+		&"tump": "body-jab-cross",
+		&"special": "bencao",
+		&"taunt": "warrior-idle",
+		&"victory": "warrior-idle",
+		&"knockdown": "knocked-out-1",
+		&"getup": "getting-up",
+	},
+	&"lickshot": {
+		&"idle": "fight-idle",
+		&"walk": "strut-walking",
+		&"light": "lead-jab",
+		&"strong": "hook-punch",
+		&"upper_box": "surprise-uppercut",
+		&"tump": "zombie-kicking",
+		&"special": "medium-step-forward",
+		&"block": "center-block",
+		&"taunt": "bouncing-fight-idle",
+		&"victory": "bouncing-fight-idle",
+		&"knockdown": "falling-back-death",
+		&"getup": "getting-up",
+	},
+	&"young_selecta": {
+		&"idle": "idle",
+		&"walk": "walking",
+		&"crouch_walk": "crouched-walking",
+		&"light": "jab-to-elbow-punch",
+		&"strong": "punch-combo",
+		&"upper_box": "back-flip-to-uppercut",
+		&"tump": "kicking",
+		&"kick": "standing-melee-kick",
+		&"special": "flying-knee-punch-combo",
+		&"block": "standing-block-react-large",
+		&"stun": "stunned",
+		&"stumble": "stumble-backwards",
+		&"knockdown": "stumble-backwards",
+		&"taunt": "2hand-idle",
+		&"victory": "quad-punch",
+		&"getup": "back-flip-to-uppercut-1",
+	},
+}
+
+## Role used when a fighter has no take for the state it is in. Ordered: the first
+## available entry wins, so a fighter with only an idle still animates.
+const FALLBACKS := {
+	&"hit": [&"stun", &"stumble", &"block", &"idle"],
+	&"stun": [&"hit", &"stumble", &"idle"],
+	&"knockdown": [&"stumble", &"getup", &"idle"],
+	&"getup": [&"idle"],
+	&"block": [&"idle"],
+	&"crouch_walk": [&"walk", &"idle"],
+	&"walk": [&"idle"],
+}
+
+static var _libraries: Dictionary = {}
+
+
+static func roles_for(key: StringName) -> Dictionary:
+	return ROLE_FILES.get(key, {})
+
+
+## Every clip shipped for one fighter, sorted, for the headless inventory.
+static func clip_files(key: StringName) -> Array[String]:
+	var found: Array[String] = []
+	var dir_path := ROOT + String(key) + "/"
+	if not DirAccess.dir_exists_absolute(dir_path):
+		return found
+	for raw in DirAccess.get_files_at(dir_path):
+		var file := String(raw)
+		if file.ends_with(".remap"):
+			file = file.trim_suffix(".remap")
+		if file.ends_with(".import"):
+			file = file.trim_suffix(".import")
+		if file.to_lower().ends_with(".fbx") and not found.has(file):
+			found.append(file)
+	found.sort()
+	return found
+
+
+## Build (and cache) the role -> Animation library for one fighter. Each source scene is
+## instantiated just long enough to borrow its take, then freed.
+##
+## `skeleton_path` is the fighter's own skeleton path relative to its model root. It is not
+## constant across the uploads (Feedback's body nests its skeleton at `Skeleton3D`, the two
+## Tripo-derived bodies at `Armature/Skeleton3D`), so the caller measures it and every clip
+## track is re-pointed there.
+static func library_for(key: StringName, skeleton_path: String = "Armature/Skeleton3D") -> Dictionary:
+	var cache_key := "%s|%s" % [key, skeleton_path]
+	if _libraries.has(cache_key):
+		return _libraries[cache_key]
+	var out: Dictionary = {}
+	var roles := roles_for(key)
+	var skeletons: Dictionary = {}
+	for role in roles:
+		var stem := String(roles[role])
+		if not skeletons.has(stem):
+			skeletons[stem] = _read_clip(key, stem, skeleton_path)
+		var clip: Animation = skeletons[stem]
+		if clip == null:
+			continue
+		var copy := clip.duplicate() as Animation
+		copy.loop_mode = Animation.LOOP_LINEAR if LOOPING.has(role) else Animation.LOOP_NONE
+		out[role] = copy
+	_libraries[cache_key] = out
+	return out
+
+
+static func _read_clip(key: StringName, stem: String, skeleton_path: String) -> Animation:
+	var path := ROOT + String(key) + "/" + stem + ".fbx"
+	if not ResourceLoader.exists(path):
+		push_warning("MixamoClips: missing clip %s" % path)
+		return null
+	var packed := load(path) as PackedScene
+	if packed == null:
+		return null
+	var node := packed.instantiate()
+	var player: AnimationPlayer = null
+	for child in node.find_children("*", "AnimationPlayer", true, false):
+		player = child as AnimationPlayer
+		if player != null and not player.get_animation_list().is_empty():
+			break
+	var anim: Animation = null
+	if player != null and not player.get_animation_list().is_empty():
+		anim = player.get_animation(player.get_animation_list()[0])
+		if anim != null:
+			anim = anim.duplicate() as Animation
+			for track in anim.get_track_count():
+				var track_path := String(anim.track_get_path(track))
+				var bone := track_path.split(":")[1] if track_path.contains(":") else ""
+				if bone != "":
+					anim.track_set_path(track, NodePath(skeleton_path + ":" + bone))
+	node.free()
+	return anim
+
+
+## Install the library on one fighter's AnimationPlayer. Returns `{role: anim_name}` with
+## the animation-library prefix already applied, or an empty dictionary when the fighter
+## has no takes (the static-mesh path then keeps its procedural stance).
+static func install_for(player: AnimationPlayer, key: StringName,
+		skeleton_path: String = "Armature/Skeleton3D") -> Dictionary:
+	var out: Dictionary = {}
+	if player == null:
+		return out
+	var clips := library_for(key, skeleton_path)
+	if clips.is_empty():
+		return out
+	var lib := player.get_animation_library(&"mixamo")
+	if lib == null:
+		lib = AnimationLibrary.new()
+		player.add_animation_library(&"mixamo", lib)
+	for role in clips:
+		var name := String(role)
+		if not lib.has_animation(name):
+			lib.add_animation(name, clips[role])
+		out[role] = "mixamo/" + name
+	return out
+
+
+## Role for the fighter's current state. Attack roles come from the move id the combat
+## layer already publishes (`jab`, `strong`, `tump`, `upper_box`).
+static func role_for(fighter) -> StringName:
+	if fighter == null:
+		return &"idle"
+	var state: int = fighter.state
+	if state == BaseFighter.State.IDLE or state == BaseFighter.State.JUMP:
+		if fighter._celebrate_ticks > 0:
+			return &"victory"
+		if fighter.guarding:
+			return &"block"
+		return &"idle"
+	match state:
+		BaseFighter.State.WALK:
+			return &"walk"
+		BaseFighter.State.CROUCH:
+			return &"crouch_walk"
+		BaseFighter.State.ATTACK_STARTUP, BaseFighter.State.ATTACK_ACTIVE, \
+				BaseFighter.State.ATTACK_RECOVERY:
+			return _attack_role(fighter._attack_id)
+		BaseFighter.State.TAUNT:
+			return &"taunt"
+		BaseFighter.State.HITSTUN:
+			return &"hit"
+		BaseFighter.State.KNOCKDOWN, BaseFighter.State.KO:
+			return &"knockdown"
+		BaseFighter.State.GRAB, BaseFighter.State.GRABBED, BaseFighter.State.THROWN:
+			return &"light"
+	if fighter._celebrate_ticks > 0:
+		return &"victory"
+	return &"idle"
+
+
+static func _attack_role(attack_id: StringName) -> StringName:
+	match attack_id:
+		&"jab":
+			return &"light"
+		&"strong":
+			return &"strong"
+		&"tump":
+			return &"tump"
+		&"upper_box":
+			return &"upper_box"
+	return &"light"
+
+
+## Resolve a role against what this fighter actually shipped, walking the fallback chain.
+static func resolve(installed: Dictionary, role: StringName) -> StringName:
+	if installed.is_empty():
+		return &""
+	if installed.has(role):
+		return role
+	for candidate in FALLBACKS.get(role, [&"idle"]):
+		if installed.has(candidate):
+			return candidate
+	return &"idle" if installed.has(&"idle") else &""

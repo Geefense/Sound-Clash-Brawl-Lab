@@ -123,12 +123,10 @@ The owner pushed 45 Mixamo `.fbx` files to the root of `feature/3d-cel-shaded` (
 characters. All are With Skin exports — a 68-bone `mixamorig` rig, one take and embedded
 textures — and the set contains **no DJ-specific character**.
 
-**Delivery gap.** This workspace received only 3 of the 45 binaries: `Crowd Male Angry
-Gesture`, `Crowd Male Cheering` and `Crowd Male Rallying`. The other 42 blobs are absent
-from the local object store (`git fsck` reports them missing), so no fighter clip, no female
-crowd model and no DJ art could be inspected. **Fighter retargeting, the fighter
-`AnimationPlayer` state machine and the fighter hand-attached mics are not implemented**
-[TODO]; see `AGENTS.md` §9 for the exact missing list.
+**Delivered 2026-11-24.** The owner published all 45 binaries to the GitHub Release
+`mixamo-pack`; the 42 that never reached the workspace were downloaded from the release's
+`browser_download_url`s and are now wired in. The root-level placeholders were removed. See
+"Mixamo pack — fighter rigs and takes" below.
 
 | Game file | Role | Tris | Bones | Take |
 | --- | --- | --- | --- | --- |
@@ -214,3 +212,76 @@ c590259b64edca1789e6166bcb6f04b2780ad9e0854a123c92fdcc43e273d2c6  feedback_fight
 8ea6acb8537dfaa66ba49d39c3cc7b559b044b805fd8f2061bb202e4ca606322  lickshot_placeholder_static.fbx
 c4cb0ff407806b37efacd49e485b8c33211fc08a3e9bb26068bbe4af30c1cb7c  feedback_fitted_jacket_albedo.jpg
 ```
+
+## Mixamo pack — fighter rigs and takes (2026-11-24)
+
+All 45 release binaries were fetched (622 MB). The key discovery: **every fighter take is not a
+bare animation — it is our own fighter mesh skinned to a 65-bone `mixamorig` rig**, so Mixamo's own
+skinning is reused instead of auto-binding the static Tripo meshes.
+
+| Game body | Built from | Tris | Bones | Atlas |
+| --- | --- | --- | --- | --- |
+| `feedback_rigged.fbx` | `Feedback.Fighting.Idle.3.fbx` (29 025 tris already at budget) | 29 025 | 65 | embedded 1024² |
+| `lickshot_rigged.fbx` | `Lickshot.Fight.Idle.fbx`, decimated 270 060 → 28 000 | 28 000 | 65 | embedded 1024² |
+| `likkle_moore_rigged.fbx` | `LikklleMoore.Idle.fbx`, decimated 246 641 → 28 000 | 28 000 | 65 | embedded 1024² |
+
+`feedback_v2.fbx`, `lickshot.fbx`, `likkle_moore.fbx` stay on disk as the owner's original static
+uploads (provenance only; `MODEL_SOURCES` no longer points at them).
+
+### Takes: `godot/assets/models/mixamo/clips/<roster key>/`
+
+Each file is armature + one take only (meshes and textures stripped), ~0.45 MB instead of ~4 MB:
+
+- `feedback/` (10): bencao, body-jab-cross, drunk-walk, elbow-uppercut-combo, fighting-idle-3,
+  getting-up, jab-cross, knocked-out-1, right-hook, warrior-idle.
+- `lickshot/` (11): bouncing-fight-idle, center-block, falling-back-death, fight-idle, getting-up,
+  hook-punch, lead-jab, medium-step-forward, strut-walking, surprise-uppercut, zombie-kicking.
+- `young_selecta/` (17): 2hand-idle, back-flip-to-uppercut(-1), crouched-walking,
+  flying-knee-punch-combo, idle, jab-to-elbow-punch, kicking, punch-combo, quad-punch, right-hook,
+  standing-block-react-large, standing-melee-kick, stumble-backwards(-1), stunned, walking.
+
+`MixamoClips.ROLE_FILES` is the single role → file table (idle, walk, crouch_walk, light, strong,
+tump, upper_box, kick, special, block, hit, stun, stumble, knockdown, getup, taunt, victory).
+Missing roles walk a fallback chain, so a partial set still animates. Crossfade is 0.10 s.
+Track paths are re-pointed at each fighter's measured skeleton path — Feedback's body nests its
+skeleton at `Skeleton3D`, the other two at `Armature/Skeleton3D`.
+
+### Hand props
+
+`FighterProps` builds the props at run time (cel shader + inverted-hull ink) and parents them to a
+`BoneAttachment3D` on the right-hand bone:
+
+| Fighter | Props |
+| --- | --- |
+| Feedback | wireless stage microphone |
+| L!ckshot | wireless stage microphone |
+| L!kkle Moore | microphone stand **and** the dictionary |
+
+The bone is resolved by suffix (`…RightHand`), because two of the decimated female rigs kept an
+exporter tag such as `mixamorig8_RightHand`.
+
+### Female crowd models
+
+| File | Source | Tris | Bones | Atlas |
+| --- | --- | --- | --- | --- |
+| `Crowd female Dancing Twerk.fbx` | 52 838 → decimated | 3 393 | 65 | 512² |
+| `Crowd female Hip Hop Dancing.fbx` | 54 961 → decimated | 3 484 | 65 | 512² |
+| `Crowd female Moonwalk.fbx` | 28 106 → decimated | 3 399 | 65 | 512² |
+| `Crowd female Snake Hip Hop Dance.fbx` | 54 961 → decimated | 3 484 | 65 | 512² |
+
+They sit beside the three male spectators, so `CrowdController3D`'s ringside row now cycles
+male / male / male / female / female / female / female and mixes both banks. Building them:
+`decimate_mixamo_blender.py <src> <dst> 3400 512` (the fourth argument downscales the 4 096²
+atlases to 512² — without it each model added ~50 MB to the web export).
+
+### Reproducing
+
+```bash
+blender --background --factory-startup --python godot/tools/strip_anim.py -- <clip.fbx> <dst.fbx>
+blender --background --factory-startup --python godot/tools/decimate_mixamo_blender.py -- \
+    <src.fbx> <dst.fbx> 28000 1024        # fighter body
+    <src.fbx> <dst.fbx> 3400 512          # female crowd
+```
+
+`retarget_mixamo_blender.py` is still shipped for a future upload that arrives as an unrigged
+mesh; the delivered pack did not need it.

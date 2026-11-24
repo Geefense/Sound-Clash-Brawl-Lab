@@ -237,7 +237,17 @@ func _attach_hand_props(m: Member) -> void:
 	for child in m.model.find_children("*", "Skeleton3D", true, false):
 		skeleton = child as Skeleton3D
 		break
-	if skeleton == null or skeleton.find_bone("mixamorig_RightHand") < 0:
+	if skeleton == null:
+		return
+	# Some uploads keep an exporter tag on the bone names (`mixamorig8_RightHand`), so the
+	# hand is found by suffix instead of by one exact spelling.
+	var hand_bone := ""
+	for i in skeleton.get_bone_count():
+		var bone_name := skeleton.get_bone_name(i)
+		if bone_name.ends_with("RightHand"):
+			hand_bone = bone_name
+			break
+	if hand_bone == "":
 		return
 	var props: Array[Node3D] = []
 	if m.flag != null:
@@ -249,7 +259,7 @@ func _attach_hand_props(m: Member) -> void:
 	for i in props.size():
 		var attachment := BoneAttachment3D.new()
 		attachment.name = "HandProp%d" % i
-		attachment.bone_name = "mixamorig_RightHand"
+		attachment.bone_name = hand_bone
 		skeleton.add_child(attachment)
 		props[i].reparent(attachment, false)
 		props[i].transform = Transform3D.IDENTITY

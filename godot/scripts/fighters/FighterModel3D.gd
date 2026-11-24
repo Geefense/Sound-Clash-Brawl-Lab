@@ -80,9 +80,9 @@ const MOVE_STYLES := {
 ## L!kkle Moore keeps the roster's 82 % kid height (1.55 × 0.82 ≈ 1.27 m).
 const MODEL_SOURCES := {
 	&"feedback": {
-		"path": "res://assets/models/fighters/feedback_v2.fbx",
+		"path": "res://assets/models/fighters/feedback_rigged.fbx",
 		"albedo": "res://assets/models/fighters/feedback_v2_albedo.png",
-		"label": "Feedback — 3D cel upload (feedback_v2)",
+		"label": "Feedback — Mixamo-rigged 3D upload (feedback_rigged)",
 		"height": 1.55,
 		"tint": Color(1.0, 1.0, 1.0, 1.0),
 		"hue_shift": 0.0,
@@ -91,9 +91,9 @@ const MODEL_SOURCES := {
 		"rim": Color(1.0, 0.88, 0.62, 1.0),
 	},
 	&"lickshot": {
-		"path": "res://assets/models/fighters/lickshot.fbx",
+		"path": "res://assets/models/fighters/lickshot_rigged.fbx",
 		"albedo": "res://assets/models/fighters/lickshot_albedo.png",
-		"label": "L!ckshot — 3D cel upload",
+		"label": "L!ckshot — Mixamo-rigged 3D upload (lickshot_rigged)",
 		"height": 1.58,
 		"tint": Color(1.0, 1.0, 1.0, 1.0),
 		"hue_shift": 0.0,
@@ -102,9 +102,9 @@ const MODEL_SOURCES := {
 		"rim": Color(1.0, 0.82, 0.38, 1.0),
 	},
 	&"young_selecta": {
-		"path": "res://assets/models/fighters/likkle_moore.fbx",
+		"path": "res://assets/models/fighters/likkle_moore_rigged.fbx",
 		"albedo": "res://assets/models/fighters/likkle_moore_albedo.png",
-		"label": "L!kkle Moore — 3D cel upload",
+		"label": "L!kkle Moore — Mixamo-rigged 3D upload (likkle_moore_rigged)",
 		"height": 1.27,
 		"tint": Color(1.0, 1.0, 1.0, 1.0),
 		"hue_shift": 0.0,
@@ -124,6 +124,12 @@ var skeleton: Skeleton3D = null
 var animation: AnimationPlayer = null
 var meshes: Array[MeshInstance3D] = []
 var materials: Array[ShaderMaterial] = []
+## role -> animation name for the owner's Mixamo takes (2026-11-24). Empty when the fighter
+## has no uploaded clips, in which case the whole-body procedural stance stays in charge.
+var clips: Dictionary = {}
+var clip_role: StringName = &""
+## BoneAttachment3D props riding the right hand (mic, or stand + dictionary).
+var hand_props: Array[BoneAttachment3D] = []
 
 var model_height: float = 1.55
 var mirror_variant: bool = false
@@ -197,6 +203,8 @@ func bind(target: BaseFighter, key: StringName) -> bool:
 	_collect(inst)
 	_normalize(inst)
 	_apply_materials(src)
+	_install_clips()
+	_attach_props()
 	_play_baked_idle()
 	facing_sign = target.facing if target != null else 1
 	_last_facing = facing_sign
@@ -232,10 +240,19 @@ func measured_height() -> float:
 	# Stop at the facing node: the PosePivot squash/lean is a live pose, not the model's
 	# authored size, and must not change the measurement.
 	var top: Node3D = _yaw if _yaw != null else self
-	for mi in meshes:
-		var box: AABB = _relative_transform(mi, top) * mi.mesh.get_aabb()
-		low = minf(low, box.position.y)
-		high = maxf(high, box.position.y + box.size.y)
+	if has_rig and skeleton != null:
+		# Skinned bounds come from the rest bones through the skeleton's own unit scale — the
+		# same quantity `_normalize()` scaled against, so the two can never disagree.
+		var to_top := _relative_transform(skeleton, top)
+		for i in skeleton.get_bone_count():
+			var origin: Vector3 = (to_top * skeleton.get_bone_global_rest(i)).origin
+			low = minf(low, origin.y)
+			high = maxf(high, origin.y)
+	else:
+		for mi in meshes:
+			var box: AABB = _relative_transform(mi, top) * mi.mesh.get_aabb()
+			low = minf(low, box.position.y)
+			high = maxf(high, box.position.y + box.size.y)
 	if low == INF or high == -INF:
 		return 0.0
 	return high - low
@@ -332,8 +349,12 @@ func _normalize(inst: Node3D) -> void:
 				var y := skeleton.get_bone_global_rest(i).origin.y
 				top = maxf(top, y)
 				bottom = minf(bottom, y)
-		height_units = maxf(top - bottom, 0.01)
-		lowest = bottom
+		# Bone rest positions are in skeleton space; the Skeleton3D node carries the export's
+		# unit scale (0.01 for the centimetre Mixamo exports, 1.0 for Feedback). Without this
+		# factor a 1.58 m fighter is normalised 100× too small.
+		var chain := _relative_transform(skeleton, inst).basis.get_scale().y
+		height_units = maxf((top - bottom) * chain, 0.01)
+		lowest = bottom * chain
 	else:
 		# Measure through the upload's own node transforms, not the mesh AABB alone: the
 		# GLB→FBX bakes carry a ×1000 root scale, so the raw AABB is 1 mm tall while the
@@ -423,8 +444,73 @@ func _process(delta: float) -> void:
 	_clock += delta
 	_apply_facing()
 	_animate_pose(delta)
+	_drive_clips()
 	_animate_rig()
 	_push_flash()
+
+
+# =========================================================================
+# Real Mixamo takes (2026-11-24)
+# =========================================================================
+## Mount every uploaded take on this fighter's AnimationPlayer. The body is one of the
+## owner's own Mixamo exports, so the clip tracks already target `Armature/Skeleton3D`.
+func _install_clips() -> void:
+	var skeleton_path := "Armature/Skeleton3D"
+	if model_root != null and skeleton != null:
+		skeleton_path = String(model_root.get_path_to(skeleton))
+	clips = MixamoClips.install_for(animation, fighter_key, skeleton_path)
+	if clips.is_empty():
+		return
+	clip_role = &""
+	_play_role(&"idle")
+
+
+func _play_role(role: StringName) -> void:
+	if clips.is_empty() or animation == null:
+		return
+	var resolved := MixamoClips.resolve(clips, role)
+	if resolved == &"" or resolved == clip_role:
+		return
+	clip_role = resolved
+	animation.play(String(clips[resolved]), MixamoClips.CROSSFADE)
+
+
+## Follow the fighter state with crossfades. Combat resolution is untouched: this reads
+## `state`, `_attack_id` and `_celebrate_ticks` after the tick has already decided them.
+func _drive_clips() -> void:
+	if clips.is_empty() or fighter == null:
+		return
+	_play_role(MixamoClips.role_for(fighter))
+
+
+func _attach_props() -> void:
+	hand_props.clear()
+	if skeleton == null:
+		return
+	hand_props = FighterProps.attach_for(model_root, skeleton, fighter_key)
+
+
+## Read-only clip/prop inventory for the headless check and the AGENTS ledger.
+func clip_roles() -> Array:
+	var out: Array = clips.keys()
+	out.sort()
+	return out
+
+
+func clip_count() -> int:
+	return clips.size()
+
+
+func current_clip() -> StringName:
+	return clip_role
+
+
+func hand_prop_count() -> int:
+	return hand_props.size()
+
+
+func hand_bone_name() -> String:
+	return FighterProps.hand_bone(skeleton)
 
 
 # =========================================================================
@@ -548,6 +634,10 @@ func _approach(value: float, target: float, speed: float, delta: float) -> float
 # =========================================================================
 func _animate_rig() -> void:
 	if skeleton == null or animation == null or not animation.is_playing():
+		return
+	# Once the owner's takes own the skeleton, the hand-authored additive stances would
+	# fight them; the real animation is the authority for the pose.
+	if not clips.is_empty():
 		return
 	var state: int = fighter.state
 	# Mixamo bones point along local +Y, so local X is the forward/back bend axis. Angles are

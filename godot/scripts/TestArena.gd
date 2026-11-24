@@ -25,8 +25,9 @@ extends Node2D
 ##
 ## Workshop keys: Esc back to Character & Match Setup · R reset · G dummy guard (manual
 ## guard override in every AI mode) · Y cycle P2's sparring AI mode · M mute (click track
-## + procedural SFX) · B bird hazard · N time of day · V subtitles · J/K/L/I attacks ·
-## T taunt · U grab/throw · C crouch · WASD/arrows move.
+## + procedural SFX) · B bird hazard · N time of day · V subtitles · F3 facing readout ·
+## F4 stepped arcade on/off · J/K/L/I attacks · T taunt · U grab/throw · C crouch ·
+## WASD/arrows move.
 ##
 ## Push separation (AGENTS.md §9 backlog item B7): bodies keep a shared minimum gap so the
 ## fighters cannot occupy the same pixel, which also keeps the 96 px grab range meaningful.
@@ -531,6 +532,21 @@ func print_facing_debug() -> void:
 	print("=== END FACING ===\n")
 
 
+## F4 live toggle for the stepped arcade pose quantization (Stefan Iverson system 1). Both
+## fighters share the one switch, so the yard can never end up with one body stepped and one
+## smooth. Presentation only: no hitbox, timing, damage or beat value is involved.
+func toggle_stepped_arcade() -> void:
+	var on := not AnimationFeel.stepped_arcade
+	AnimationFeel.stepped_arcade = on
+	for side in ["p1", "p2"]:
+		var model := _model_of(side)
+		if model != null:
+			model.set_stepped_arcade(on)
+	if hud != null:
+		hud.show_toast("STEPPED ARCADE · %s" % ("ON" if on else "OFF"))
+	print("[feel] stepped arcade %s" % ("ON" if on else "OFF"))
+
+
 func _fighter_of(side: String) -> BaseFighter:
 	return p1 if side == "p1" else p2
 
@@ -581,6 +597,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			hud.toggle_subtitles()
 		KEY_F3:
 			print_facing_debug()
+		KEY_F4:
+			# Stefan Iverson system 1: stepped arcade pose quantization, ON by default, live.
+			toggle_stepped_arcade()
 
 
 # =========================================================================

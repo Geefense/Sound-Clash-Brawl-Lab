@@ -161,14 +161,19 @@ func proverb_gloss() -> String:
 	return _proverb_gloss if subtitles_enabled else ""
 
 
-## Brief corner label for the M-key beat audition on the post-KO screen.
-func show_music_toast(text: String) -> void:
+## Brief corner label for the M-key beat audition on the post-KO screen. Also the shared
+## slot for a presentation toggle (F4 stepped arcade), so two corner labels can never stack.
+func show_toast(text: String) -> void:
 	if text == "":
 		return
 	_music_toast = text
 	_music_life = MUSIC_TOAST_SECONDS
 	_stamp_pop(&"music")
 	queue_redraw()
+
+
+func show_music_toast(text: String) -> void:
+	show_toast(text)
 
 
 func music_toast_text() -> String:
@@ -507,6 +512,6 @@ func _music_toast_label(width: float) -> void:
 
 
 func _legend(pos: Vector2) -> void:
-	var keys := "J jab · K box · L tump · I upper box · U grab/tech · T taunt · C crouch · Y AI mode · B bird · N time of day · V subtitles · R reset · G dummy guard · M mute/beats"
+	var keys := "J jab · K box · L tump · I upper box · U grab/tech · T taunt · C crouch · Y AI mode · B bird · N time of day · V subtitles · F4 stepped step · R reset · G dummy guard · M mute/beats"
 	_text(pos, keys, FONT_SUB, _fit_size(FONT_SUB, keys, 14, size.x - 2.0 * MARGIN),
 		Color(0.82, 0.85, 0.92))

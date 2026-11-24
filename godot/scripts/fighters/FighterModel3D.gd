@@ -36,6 +36,65 @@ const MIRROR_HUE := 0.030
 const MIRROR_RIM := Color(1.0, 0.70, 0.26, 1.0)
 const PARRY_RIM := Color(1.0, 0.86, 0.24, 1.0)
 
+# =========================================================================
+# Stefan Iverson combat-feel layer (2026-11-24)
+# =========================================================================
+## Six presentation systems, all fed from the fighter's OWN combat phase and none of them
+## read back into it: stepped arcade pose quantization, the non-linear attack curve with a
+## measured `t_impact`, whole-body engagement + negative space, alive hitstop micro-tension,
+## the `SquashPivot` impact pop and the additive hit-react overlay with per-frame ground
+## pinning. `AnimationFeel` owns the maths; `FightBodyModifier3D` owns the skeleton writes.
+##
+## No PNG, `ANIM_OFFSET`, hitbox, hurtbox, startup/active/recovery, damage, beat-window or
+## Patois value is touched by any of it.
+const FEEL_FOOT_BONES := ["LeftToeBase", "RightToeBase", "LeftToe_End", "RightToe_End",
+	"LeftFoot", "RightFoot"]
+const FEEL_IMPACT_PROBES := ["RightHand", "LeftHand", "RightToeBase", "LeftToeBase",
+	"RightFoot", "LeftFoot"]
+const FEEL_IMPACT_SAMPLES := 24
+## How far the leg may be lifted/dropped in one frame while pinning the planted foot, in
+## metres. A generous cap that still blocks a one-frame teleport if a take ever misbehaves.
+const FEEL_PIN_LIMIT := 0.30
+## A 5 mm lift bias inside the ground pin. A posed toe tip can sit a centimetre below the
+## lowest foot bone, so without the bias one lanky taunt pose would touch the sand exactly at
+## the limit; with it the pin always errs toward a foot that cannot sink into the beach.
+const FEEL_PIN_BIAS := 0.005
+
+## Master switch for the whole feel layer (headless fallbacks and the 2D path leave it on
+## but harmless: without a skeleton every system is a no-op).
+var feel_enabled := true
+## `F4` in the arena flips this on both fighters. Mirrors `AnimationFeel.stepped_arcade`.
+var stepped_arcade := true
+## `VisualPivot -> SquashPivot -> model`. The impact pop scales this node only, so the
+## facing pivot, the pose pivot and every contact point keep their authored transform.
+var squash_pivot: Node3D = null
+## The `SkeletonModifier3D` that carries the additive whole-body / recoil layer.
+var body_modifier: FightBodyModifier3D = null
+## clip name -> measured normalised peak reach time (`t_impact`).
+var impact_times: Dictionary = {}
+## World-space distance from the lowest planted foot/toe bone to the drawn sole, measured
+## once from the rest pose. The ground pin targets this offset so the SOLE lands on the sand.
+var sole_drop: float = 0.0
+## Which skinning convention this upload's `ARRAY_BONES` uses, decided once at bind (see
+## `_measure_sole_drop`). Exposed so the headless audit measures the drawn sole the same way
+## the game does instead of assuming one convention.
+var sole_bind_mapped := true
+## Live additive recoil state, driven from the existing `strike_resolved` signal.
+var recoil_strength: float = 0.0
+var recoil_age: float = 0.0
+## Last `t_impact` the attack curve used, exposed for the F3/F4 readout and the audit.
+var last_impact_time: float = AnimationFeel.COIL_END
+## Frames of the current stepped grid hold, exposed so the audit can measure quantization.
+var stepped_hold_ticks: int = 0
+
+var _foot_bones: Array[int] = []
+var _prop_base_scale: Array[Vector3] = []
+var _squash_scale := Vector3.ONE
+var _squash_velocity := Vector3.ZERO
+var _shake_ticks := 0
+var _hold_ticks := 0
+var _hold_index := -1
+
 ## Per-move whole-body profiles (2026-11-22). Every fighter shares the same FSM, so the 3D
 ## differentiation lives here: `w_` is the startup coil, `s_` the contact drive. Lean and
 ## lunge are the 2.5D plane; lift, depth pitch and yaw twist give each strike a distinct
@@ -216,8 +275,14 @@ func bind(target: BaseFighter, key: StringName) -> bool:
 	_visual_pivot = Node3D.new()
 	_visual_pivot.name = "VisualPivot"
 	_pivot.add_child(_visual_pivot)
+	# The impact pop gets its own node directly under the facing pivot, so squash/stretch
+	# can never leak into the pivot the facing audit measures or into a hand attachment.
+	# Props are volume-compensated against this scale every frame instead.
+	squash_pivot = Node3D.new()
+	squash_pivot.name = "SquashPivot"
+	_visual_pivot.add_child(squash_pivot)
 	model_root = inst
-	_visual_pivot.add_child(inst)
+	squash_pivot.add_child(inst)
 
 	_collect(inst)
 	# No take may translate the body (playtest fix 2026-11-24, issue 2): the body's own baked
@@ -227,6 +292,7 @@ func bind(target: BaseFighter, key: StringName) -> bool:
 	_apply_materials(src)
 	_install_clips()
 	_attach_props()
+	_install_feel_layer()
 	_play_baked_idle()
 	facing_sign = target.facing if target != null else 1
 	_last_facing = facing_sign
@@ -538,7 +604,11 @@ func pose_turn_yaw() -> float:
 ## reported a phantom 30°–40° turn, which the pivot then applied for real. Kept as the
 ## per-frame name the class already calls; the measurement now lives in `pose_turn_yaw()`.
 func hips_yaw_delta() -> float:
-	if skeleton == null or animation == null or not animation.is_playing() or clips.is_empty():
+	# Deliberately NOT gated on `is_playing()`: a finished or paused take still owns the
+	# pose, and `_compensate_clip_yaw()` is the last word on facing. Leaving the gate in let
+	# a clip that had reached its end keep its baked hips turn, which is what pushed the
+	# rendered forward off ±X after the feel layer drove the clip through its full length.
+	if skeleton == null or animation == null or clips.is_empty():
 		return 0.0
 	return pose_turn_yaw()
 
@@ -589,6 +659,10 @@ func _process(delta: float) -> void:
 	_lock_root_yaw()
 	_compensate_clip_yaw()
 	_animate_rig()
+	# Feel layer, in dependency order: the additive skeleton work reads the pose the clip
+	# just wrote, then the feet are pinned to the sand, then the downed-state floor guard.
+	_apply_feel_layer(delta)
+	_pin_feet_to_ground()
 	_clamp_to_floor()
 	_push_flash()
 
@@ -606,6 +680,10 @@ const FLOOR_BONE_CLEARANCE := 0.10
 
 func _clamp_to_floor() -> void:
 	if skeleton == null or _pivot == null:
+		return
+	if _is_pinned_state():
+		# A grounded body is already pinned exactly onto the sand by `_pin_feet_to_ground()`,
+		# and this guard's 0.10 m bone clearance would lift a planted foot back off it.
 		return
 	var lowest := INF
 	var skel_xf := skeleton.global_transform
@@ -694,6 +772,7 @@ func _drive_clips() -> void:
 	if clips.is_empty() or fighter == null:
 		return
 	_play_role(MixamoClips.role_for(fighter))
+	_drive_clip_time()
 
 
 func _attach_props() -> void:
@@ -936,3 +1015,462 @@ func _push_flash() -> void:
 	_flash = target
 	for mat in materials:
 		mat.set_shader_parameter("flash_amount", _flash)
+
+
+# =========================================================================
+# Stefan Iverson combat-feel layer
+# =========================================================================
+## Build everything the feel layer needs, once, at bind time: the foot/toe bone table, the
+## measured sole offset, the per-attack `t_impact` table, the prop scale baseline and the
+## `SkeletonModifier3D`. Nothing here runs per frame.
+func _install_feel_layer() -> void:
+	if not feel_enabled:
+		return
+	_cache_foot_bones()
+	_measure_sole_drop()
+	_measure_impact_times()
+	_cache_prop_scales()
+	_build_body_modifier()
+	stepped_arcade = AnimationFeel.stepped_arcade
+	if fighter != null:
+		if not fighter.strike_resolved.is_connected(_on_strike_resolved):
+			fighter.strike_resolved.connect(_on_strike_resolved)
+		if not fighter.state_changed.is_connected(_on_state_changed):
+			fighter.state_changed.connect(_on_state_changed)
+
+
+## `F4` in the arena. Both fighters share the one switch so a live toggle can never leave
+## one body stepped and the other smooth.
+func set_stepped_arcade(on: bool) -> void:
+	stepped_arcade = on
+	AnimationFeel.stepped_arcade = on
+	_hold_ticks = 0
+	_hold_index = -1
+
+
+func toggle_stepped_arcade() -> bool:
+	set_stepped_arcade(not stepped_arcade)
+	return stepped_arcade
+
+
+func _cache_foot_bones() -> void:
+	_foot_bones.clear()
+	if skeleton == null:
+		return
+	for suffix in FEEL_FOOT_BONES:
+		var index := _bone_suffix(suffix)
+		if index >= 0 and not _foot_bones.has(index):
+			_foot_bones.append(index)
+
+
+## Distance from the lowest planted foot/toe bone down to the DRAWN sole, measured once
+## from the rest pose in world space. Toe and foot bones sit above the sole, so pinning the
+## bone to y 0 would bury the shoe; pinning the bone to this offset lands the sole exactly
+## on the sand. Measured with the same skinned-vertex formula the headless checks use, so
+## the two can never disagree about where the boot is.
+func _measure_sole_drop() -> void:
+	sole_drop = 0.0
+	if skeleton == null or _foot_bones.is_empty():
+		return
+	var skel_xf := skeleton.global_transform
+	var low_bone := INF
+	for i in _foot_bones:
+		low_bone = minf(low_bone, (skel_xf * skeleton.get_bone_global_rest(i)).origin.y)
+	if low_bone == INF:
+		return
+	# The three uploads do not agree on how `ARRAY_BONES` indexes the skin: the Mixamo body
+	# needs the `Skin.get_bind_bone()` mapping, the two Tripo bodies already store skeleton
+	# bone indices. Both readings are measured once here and the one that puts the drawn sole
+	# within a plausible distance of the foot bones wins — a wrong mapping is off by 0.5 m or
+	# more on a 1.5 m body, so the choice is unambiguous and never left to a guess.
+	var best := INF
+	var best_mapped := true
+	for mapped in [true, false]:
+		var sole := _skinned_floor(true, mapped)
+		if sole == INF:
+			continue
+		var drop := low_bone - sole
+		if absf(drop) < absf(best):
+			best = drop
+			best_mapped = mapped
+	if best == INF:
+		return
+	sole_bind_mapped = best_mapped
+	sole_drop = maxf(0.0, best)
+
+
+## Lowest drawn vertex in world space, from the real skin weights. `use_rest` measures the
+## bind pose (the calibration), false measures the live pose (what is on screen). Sampled
+## every ~3000th vertex: it runs once per fighter at bind, never per frame.
+func _skinned_floor(use_rest: bool, bind_mapped: bool = true) -> float:
+	var mi: MeshInstance3D = null
+	for m in meshes:
+		if m.mesh != null and m.mesh.get_surface_count() > 0:
+			mi = m
+			break
+	if mi == null or skeleton == null:
+		return INF
+	var arrays := mi.mesh.surface_get_arrays(0)
+	if arrays.is_empty():
+		return INF
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	if verts.is_empty():
+		return INF
+	var vbones = arrays[Mesh.ARRAY_BONES]
+	var weights = arrays[Mesh.ARRAY_WEIGHTS]
+	var skin: Skin = mi.skin
+	var skel_xf := skeleton.global_transform
+	var mesh_xf := mi.global_transform
+	# A skinned mesh's ARRAY_BONES holds SKIN BIND indices, not skeleton bone indices, so the
+	# bind list must be indexed through `get_bind_bone()`. Assuming the two orders match (as
+	# the earlier bounds helper did) silently reports a mesh that never goes below its own
+	# foot bones — which is exactly why Feedback measured as floating 72 cm.
+	var bone_xf: Array[Transform3D] = []
+	if skin != null and bind_mapped:
+		for b in skin.get_bind_count():
+			var bone := skin.get_bind_bone(b)
+			if bone < 0 or bone >= skeleton.get_bone_count():
+				bone_xf.append(Transform3D.IDENTITY)
+				continue
+			var xf: Transform3D = skel_xf * (skeleton.get_bone_global_rest(bone) if use_rest \
+				else skeleton.get_bone_global_pose(bone))
+			bone_xf.append(xf * skin.get_bind_pose(b))
+	else:
+		for i in skeleton.get_bone_count():
+			var xf2: Transform3D = skel_xf * (skeleton.get_bone_global_rest(i) if use_rest \
+				else skeleton.get_bone_global_pose(i))
+			if skin != null and i < skin.get_bind_count():
+				xf2 = xf2 * skin.get_bind_pose(i)
+			bone_xf.append(xf2)
+	var per := 0
+	if vbones != null and weights != null and skin != null:
+		per = int(vbones.size() / verts.size())
+	var low := INF
+	var step := maxi(1, int(float(verts.size()) / 3000.0))
+	var i := 0
+	while i < verts.size():
+		var p := verts[i]
+		if per > 0:
+			var acc := Vector3.ZERO
+			var total := 0.0
+			for k in per:
+				var bi := int(vbones[i * per + k])
+				var w := float(weights[i * per + k])
+				if w <= 0.0 or bi < 0 or bi >= bone_xf.size():
+					continue
+				acc += (bone_xf[bi] * p) * w
+				total += w
+			p = acc / total if total > 0.0 else mesh_xf * p
+		else:
+			p = mesh_xf * p
+		low = minf(low, p.y)
+		i += step
+	return low
+
+
+func _cache_prop_scales() -> void:
+	_prop_base_scale.clear()
+	for prop in hand_props:
+		_prop_base_scale.append(prop.scale if prop != null else Vector3.ONE)
+
+
+## Measure each attack clip's true peak hand/foot reach. The combat phase, not the clip's
+## own timing, decides when the body is at contact; this is the time the whip has to reach.
+func _measure_impact_times() -> void:
+	impact_times.clear()
+	if animation == null or skeleton == null or clips.is_empty():
+		return
+	var saved := String(animation.current_animation)
+	for role in [&"light", &"strong", &"tump", &"upper_box", &"special", &"kick"]:
+		if not clips.has(role):
+			continue
+		var clip_name := String(clips[role])
+		if impact_times.has(clip_name):
+			continue
+		var anim := animation.get_animation(clip_name)
+		if anim == null or anim.length <= 0.0:
+			continue
+		impact_times[clip_name] = _measure_clip_peak(anim, clip_name)
+	if saved != "":
+		animation.play(saved, 0.0)
+
+
+## Walk the clip and take the sampled time with the largest horizontal hand/foot
+## extension from the hips — the frame a strike actually reaches at.
+func _measure_clip_peak(anim: Animation, clip_name: String) -> float:
+	var hips := _bone_suffix("Hips")
+	if hips < 0:
+		return AnimationFeel.COIL_END
+	var probes: Array[int] = []
+	for suffix in FEEL_IMPACT_PROBES:
+		var index := _bone_suffix(suffix)
+		if index >= 0 and not probes.has(index):
+			probes.append(index)
+	if probes.is_empty():
+		return AnimationFeel.COIL_END
+	animation.play(clip_name, 0.0)
+	animation.seek(0.0, true)
+	var best := -1.0
+	var best_t := AnimationFeel.COIL_END
+	for s in range(1, FEEL_IMPACT_SAMPLES):
+		var t := float(s) / float(FEEL_IMPACT_SAMPLES)
+		animation.seek(anim.length * t, true)
+		animation.advance(0.0)
+		var hip := skeleton.get_bone_global_pose(hips).origin
+		for index in probes:
+			var d := skeleton.get_bone_global_pose(index).origin - hip
+			var reach := Vector2(d.x, d.z).length()
+			if reach > best:
+				best = reach
+				best_t = t
+	return clampf(best_t, AnimationFeel.IMPACT_MIN, AnimationFeel.IMPACT_MAX)
+
+
+func _build_body_modifier() -> void:
+	if skeleton == null:
+		return
+	body_modifier = FightBodyModifier3D.new()
+	body_modifier.name = "FightBodyModifier"
+	# Registered on the fighter's own skeleton, but never invoked by it: the proxy drives it
+	# at priority 100 so the additive layer lands after the clip pose, every frame, always.
+	body_modifier.active = false
+	skeleton.add_child(body_modifier)
+	body_modifier.cache_bones(skeleton)
+
+
+## `strike_resolved` is emitted on the ATTACKER with the target and the result. Reading it
+## here means the recoil strength comes from the real contact (light / heavy / counter /
+## blocked) instead of a guess, and nothing has to be added to `BaseFighter`.
+func _on_strike_resolved(_attacker: BaseFighter, target: BaseFighter, result: Dictionary) -> void:
+	if target != fighter:
+		return
+	recoil_strength = AnimationFeel.recoil_strength(int(result.get("damage", 0)),
+		bool(result.get("blocked", false)), bool(result.get("counter", false)))
+	recoil_age = 0.0
+
+
+func _on_state_changed(_old_state: int, new_state: int) -> void:
+	if new_state != BaseFighter.State.HITSTUN:
+		recoil_strength = 0.0
+		recoil_age = 0.0
+	if body_modifier != null and new_state == BaseFighter.State.IDLE:
+		body_modifier.reset()
+
+
+## Grounded states: the planted foot owns the vertical, so the floor guard must not lift it.
+func _is_pinned_state() -> bool:
+	if fighter == null:
+		return false
+	var s: int = fighter.state
+	return s == BaseFighter.State.IDLE or s == BaseFighter.State.WALK \
+		or s == BaseFighter.State.CROUCH or s == BaseFighter.State.ATTACK_STARTUP \
+		or s == BaseFighter.State.ATTACK_ACTIVE or s == BaseFighter.State.ATTACK_RECOVERY \
+		or s == BaseFighter.State.HITSTUN or s == BaseFighter.State.TAUNT \
+		or s == BaseFighter.State.GRAB or s == BaseFighter.State.GRABBED
+
+
+## States where the combat phase — not the clip's own clock — decides where the body is in
+## its animation. Attacks, hitstun/blockstun and the taunt. Idle, walk and jump keep running
+## on the AnimationPlayer so they stay perfectly smooth.
+func _owns_clip_time(state: int) -> bool:
+	return state == BaseFighter.State.ATTACK_STARTUP or state == BaseFighter.State.ATTACK_ACTIVE \
+		or state == BaseFighter.State.ATTACK_RECOVERY or state == BaseFighter.State.HITSTUN \
+		or state == BaseFighter.State.TAUNT
+
+
+## Drive the sampled clip time from the fighter's exact combat phase, then quantize it to
+## the stepped grid. Because `seek()` overwrites the pose every frame, the clip can never
+## play uniformly or too fast, and the mid-swing breakdown poses are actually sampled
+## instead of being skipped by a linear playhead.
+func _drive_clip_time() -> void:
+	if animation == null or not animation.is_playing() or fighter == null:
+		return
+	var state: int = fighter.state
+	if not _owns_clip_time(state):
+		_hold_ticks = 0
+		_hold_index = -1
+		return
+	var clip_name := String(animation.current_animation)
+	if clip_name == "":
+		return
+	var anim := animation.get_animation(clip_name)
+	if anim == null or anim.length <= 0.0:
+		return
+	var t := 0.0
+	match state:
+		BaseFighter.State.ATTACK_STARTUP, BaseFighter.State.ATTACK_ACTIVE, BaseFighter.State.ATTACK_RECOVERY:
+			t = _attack_clip_progress(state, clip_name)
+		BaseFighter.State.HITSTUN:
+			t = AnimationFeel.hit_clip_progress(
+				float(fighter.state_frame) / float(maxi(1, fighter._stun_frames)))
+		BaseFighter.State.TAUNT:
+			t = clampf(float(fighter.state_frame) / float(BaseFighter.TAUNT_TICKS), 0.0, 1.0)
+	# 1. Stepped arcade quantization. `steps` is how many discrete poses the whole clip
+	# offers at 18 fps; holding a pose for ~3.3 frames at 60 fps is what makes the strike
+	# read as anticipation -> breakdown -> hit. The root, the camera and the collision body
+	# are untouched, so movement and framing stay silky.
+	var steps := AnimationFeel.step_count(anim.length)
+	if stepped_arcade and steps > 1:
+		t = AnimationFeel.quantize(t, steps)
+		var index := int(round(t * float(steps)))
+		if index != _hold_index:
+			_hold_index = index
+			_hold_ticks = 0
+		else:
+			_hold_ticks += 1
+	animation.seek(t * anim.length, true)
+
+
+func _attack_clip_progress(state: int, clip_name: String) -> float:
+	var t_impact := float(impact_times.get(clip_name, AnimationFeel.COIL_END))
+	last_impact_time = t_impact
+	var a: Dictionary = fighter._attack
+	if a.is_empty():
+		return 0.0
+	match state:
+		BaseFighter.State.ATTACK_STARTUP:
+			return AnimationFeel.startup_progress(
+				float(fighter.state_frame) / float(maxi(1, int(a.get("startup", 1)))))
+		BaseFighter.State.ATTACK_ACTIVE:
+			return AnimationFeel.active_progress(fighter.state_frame, t_impact)
+		_:
+			return AnimationFeel.recovery_progress(
+				float(fighter.state_frame) / float(maxi(1, int(a.get("recovery", 1)))), t_impact)
+
+
+## The per-frame feel pass. Reads the fighter, writes only the 3D presentation.
+func _apply_feel_layer(delta: float) -> void:
+	if fighter == null or not feel_enabled:
+		return
+	if recoil_strength > 0.0:
+		recoil_age += delta
+		if recoil_age >= AnimationFeel.RECOIL_SECONDS:
+			recoil_strength = 0.0
+			recoil_age = 0.0
+	var state: int = fighter.state
+	_apply_squash_pop(delta, state)
+	if body_modifier != null:
+		_configure_body_modifier(state)
+		body_modifier.apply_now()
+	_apply_hitstop_shake(state)
+
+
+func _configure_body_modifier(state: int) -> void:
+	var attacking := state == BaseFighter.State.ATTACK_STARTUP \
+		or state == BaseFighter.State.ATTACK_ACTIVE or state == BaseFighter.State.ATTACK_RECOVERY
+	body_modifier.facing = facing_sign
+	body_modifier.engage_weight = 1.0 if attacking else 0.62
+	# Shoulder / upper-spine counter-twist through the swing: coil away, drive through,
+	# unwind. The lower spine and the hips stay quiet, so the fighting axis never moves.
+	var twist := 0.0
+	match state:
+		BaseFighter.State.ATTACK_STARTUP:
+			twist = -AnimationFeel.ENGAGE_TWIST * 0.55
+		BaseFighter.State.ATTACK_ACTIVE:
+			twist = AnimationFeel.ENGAGE_TWIST
+		BaseFighter.State.ATTACK_RECOVERY:
+			twist = AnimationFeel.ENGAGE_TWIST * 0.35
+	body_modifier.engage_twist = twist
+	# Negative space lives on the stances (and quietly through an attack), so the off-arm
+	# never merges into the ribcage and the silhouette keeps a readable gap.
+	body_modifier.negative_space = AnimationFeel.NEGATIVE_SPACE
+	body_modifier.eye_line_yaw = AnimationFeel.EYE_LINE * (1.0 if facing_sign >= 0 else -1.0)
+	# 2. The +4° overshoot impulse on the first ACTIVE frames, settling to zero by frame 4.
+	body_modifier.overshoot = AnimationFeel.overshoot_lean(fighter.state_frame) \
+		if state == BaseFighter.State.ATTACK_ACTIVE else 0.0
+	# 4. Alive hitstop: the attacker's secondary bones keep a charge while the game is frozen.
+	body_modifier.tension = AnimationFeel.tension_amount(_clock, fighter._hitstop_frames > 0)
+	# 6. Additive hit-react overlay, scaled by the real contact strength.
+	var whip := 0.0
+	if state == BaseFighter.State.HITSTUN and recoil_strength > 0.0:
+		whip = recoil_strength * AnimationFeel.recoil_curve(recoil_age)
+	body_modifier.recoil_strength = recoil_strength
+	body_modifier.recoil_curve = AnimationFeel.recoil_curve(recoil_age) if whip > 0.0 else 0.0
+
+
+## 5. Volume-preserving impact pop on `SquashPivot`, with the hand props compensated so a
+## mic or a mic stand can never be stretched by the body's squash.
+func _apply_squash_pop(delta: float, state: int) -> void:
+	if squash_pivot == null:
+		return
+	var heavy: bool = fighter._attack_id in BaseFighter.HEAVY_ATTACK_IDS
+	var startup := int(fighter._attack.get("startup", 1)) if not fighter._attack.is_empty() else 1
+	var target := AnimationFeel.squash_target(state, fighter.state_frame, startup,
+		fighter._attack_id != &"", heavy, fighter._hitstop_frames > 0)
+	# Clamp the step: an explicit spring integrated with a long first frame (a cold start or a
+	# stalled tab) would blow up, and a huge `SquashPivot` scale would throw the mesh bounds
+	# into the millions. 1/30 s is the widest stable step for this stiffness.
+	var step := AnimationFeel.spring_step(_squash_scale, _squash_velocity, target,
+		clampf(delta, 0.0001, 1.0 / 30.0))
+	_squash_scale = step[0]
+	_squash_velocity = step[1]
+	squash_pivot.scale = _squash_scale
+	_isolate_props()
+
+
+## Inverse-scale every hand prop against the current pop, so the attachment keeps its own
+## proportions while the body squashes. Exact per-axis cancellation, no allocation.
+func _isolate_props() -> void:
+	if hand_props.is_empty():
+		return
+	var s := _squash_scale
+	var inv := Vector3(1.0 / maxf(s.x, 0.001), 1.0 / maxf(s.y, 0.001), 1.0 / maxf(s.z, 0.001))
+	for i in hand_props.size():
+		var prop := hand_props[i]
+		if prop == null:
+			continue
+		var base: Vector3 = _prop_base_scale[i] if i < _prop_base_scale.size() else Vector3.ONE
+		prop.scale = Vector3(base.x * inv.x, base.y * inv.y, base.z * inv.z)
+
+
+## 4. Classic arcade defender X-shake while the contact is frozen. Presentation only: the
+## `CharacterBody2D` position, the hurtbox and every hitbox stay exactly where combat put
+## them, so this can never move a fighter out of a strike.
+func _apply_hitstop_shake(state: int) -> void:
+	if _pivot == null:
+		return
+	if fighter._hitstop_frames <= 0 or state != BaseFighter.State.HITSTUN:
+		_shake_ticks = 0
+		return
+	_shake_ticks += 1
+	_pivot.position.x += sin(float(_shake_ticks) * 2.1) * AnimationFeel.HITSTOP_SHAKE
+
+
+## 6. Ground pinning: the lowest planted foot/toe bone is placed so the drawn sole sits on
+## the sand, within 1 cm. This is also what removes the vertical float/moonwalk: a take that
+## lifts the body 8 cm off the sand is corrected on the frame it happens.
+func _pin_feet_to_ground() -> void:
+	if _pivot == null or skeleton == null or _foot_bones.is_empty():
+		return
+	if not _is_pinned_state():
+		return
+	var lowest := _lowest_foot_y()
+	if lowest == INF:
+		return
+	var want := sole_drop + FEEL_PIN_BIAS - lowest
+	# Half the acceptance band is the deadband, so a pose that drifts keeps a real margin
+	# inside the 1 cm requirement instead of sitting on the limit.
+	if absf(want) <= AnimationFeel.GROUND_PIN_TOLERANCE * 0.5:
+		return
+	_pivot.position.y += clampf(want, -FEEL_PIN_LIMIT, FEEL_PIN_LIMIT)
+
+
+func _lowest_foot_y() -> float:
+	var skel_xf := skeleton.global_transform
+	var low := INF
+	for i in _foot_bones:
+		low = minf(low, (skel_xf * skeleton.get_bone_global_pose(i)).origin.y)
+	return low
+
+
+## Read-only summary for the headless audit and the AGENTS inventory.
+func feel_snapshot() -> Dictionary:
+	return {
+		"stepped": stepped_arcade,
+		"impact_times": impact_times.duplicate(),
+		"sole_drop": sole_drop,
+		"squash": squash_pivot.scale if squash_pivot != null else Vector3.ONE,
+		"feet": _foot_bones.size(),
+		"modifier": body_modifier != null and body_modifier.is_cached(),
+		"recoil": recoil_strength,
+	}

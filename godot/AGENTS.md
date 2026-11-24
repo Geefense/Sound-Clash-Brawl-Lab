@@ -4483,3 +4483,139 @@ contrast in motion, the dodge/ripple feel, the new HUD and select-screen geometr
 triangle count, the sharing structure, the phase values, the HUD constants and the Web export
 are arithmetic and state, not eyes. `/docs` is rebuilt from this commit, but the build has not
 been opened in a browser here.
+
+## 2026-11-24 — Stefan Iverson Virtual Mentor combat-feel overhaul (all 6 systems)
+
+Owner brief: implement the complete 2D-to-3D fighting-animation overhaul on
+`feature/3d-cel-shaded` (Godot 4.5-stable) — six presentation systems on the 3D layer,
+headless verification, `/docs` rebuilt, pushed. **Implemented and headlessly verified;
+nothing has been seen, heard or timed** (this environment has no GPU, display or audio
+device).
+
+**Core combat determinism is untouched.** `BaseFighter.gd` sha256
+`d69c8d859855c6ab9d6565135e2c884d7ba2faeb78d765f2e7a2cb39df70f675` and `FighterRoster.gd`
+sha256 `25b9d82111e6ebacb4cfa02561ce85fc0b2953f5f16e76e43e954dc0c2ac6adb` are byte-identical
+to the previous commit — no `ANIM_OFFSET`, FSM tick count, hitbox, hurtbox, 132 BPM beat
+window, Crowd Hype rule or Patois entry changed. `tools/animation_feel_audit.gd` asserts
+both hashes on every run. Zero programmer art was added: the five `PropLoader` `.glb` slots
+are untouched and still draw nothing (they still warn).
+
+### New files
+
+- `godot/scripts/fighters/AnimationFeel.gd` — `class_name AnimationFeel`, the shared maths:
+  stepped quantization, the attack curve, the overshoot ramp, the engagement/negative-space
+  angles, tension, the two squash presets and their damped spring, the recoil ladder, the
+  ground-pin tolerance. Used by both the runtime and the audit, so they cannot drift apart.
+- `godot/scripts/fighters/FightBodyModifier3D.gd` — `class_name FightBodyModifier3D extends
+  SkeletonModifier3D`. Caches Spine1/Spine2/Neck/Head/shoulder/arm bone indices once and
+  writes the whole-body engagement, negative space, eye-line, overshoot, micro-tension and
+  the additive recoil whip. Registered on the fighter's `Skeleton3D` with `active = false`
+  and driven explicitly by the proxy at process priority 100, so the layer always lands
+  after the AnimationPlayer wrote the clip pose.
+- `godot/tools/animation_feel_audit.gd` — 142 checks (below).
+
+### The six systems
+
+1. **Stepped arcade pose quantization — `F4`, default ON.** `FighterModel3D._drive_clip_time()`
+   seeks the sampled clip time every frame from the fighter's combat phase and quantizes it to
+   an **18 fps** grid (inside the 16–20 owner band) during `ATTACK_STARTUP/ACTIVE/RECOVERY`,
+   `HITSTUN` (hitstun *and* blockstun) and `TAUNT`. The clip therefore holds ~3.3 frames at
+   60 fps and the mid-swing breakdown poses are actually sampled instead of being skipped by a
+   linear playhead. `CharacterBody2D` movement, the camera and every contact point stay at a
+   smooth 60 fps. `F4` (`TestArena.toggle_stepped_arcade()`) flips it live on both fighters and
+   flashes `STEPPED ARCADE · ON/OFF` in the HUD corner; the legend lists `F4 stepped step`.
+2. **Venom/Makoto non-linear attack curve.** At bind, each attack clip's true peak hand/foot
+   reach is measured (24 samples, horizontal hand/foot extension from the hips) and stored as
+   `t_impact`, clamped to 0.36–0.62. Measured: Feedback light 0.36, strong 0.36, tump 0.62,
+   upper_box 0.50, special 0.50; L!ckshot light 0.375, tump 0.542, special 0.583; L!kkle Moore
+   light/strong/upper_box/special 0.36, tump 0.542, kick 0.50. `STARTUP` compresses into the coil
+   (`0.35 · p^1.6` → 0.35); `ACTIVE` whips across the breakdown poses to `t_impact` in 1–2 frames
+   (frame 1 already ≥75 % of the way) and holds it through a 3-frame settle; `RECOVERY` eases
+   `t_impact → 1.0`. Hitstop freezes `state_frame`, so the extended silhouette is held across
+   active + freeze. A **+4°** upper-spine/shoulder overshoot rides ACTIVE frames 1–2 and is gone
+   by frame 4.
+3. **"Move everything in the body" + Wolverine negative space.** `FightBodyModifier3D` adds a
+   shoulder/upper-spine counter-twist (coil away on startup, drive through on active, unwind on
+   recovery), carries the off-arm/elbow 7° clear of the ribcage in every stance, and a 6°
+   head/eye-line awareness toward camera. The **hips are never touched** (asserted), so the ±X
+   facing audit is unaffected.
+4. **Alive hitstop.** The defender gets a classic X-shake on `PosePivot.position.x` (1.2 cm, 2.1
+   rad phase) while frozen — presentation only, the `CharacterBody2D`, hurtbox and hitboxes do not
+   move. The attacker's Spine2/Head keep a 0.7° micro-tension at 7.5 Hz.
+5. **`SquashPivot` impact pop.** New `Node3D` inserted between `VisualPivot` and the model, so the
+   pop can never leak into the facing pivot or a hand attachment. Anticipation/landing/knockdown
+   `(1.06, 0.92, 1.06)`, heavy/special contact `(1.07, 1.04, 0.95)` (a light strike gets half),
+   driven by a damped spring (stiffness 210, damping 26) that returns **exactly** to
+   `Vector3.ONE`. Every `BoneAttachment3D` hand prop is inverse-scaled per axis against the pop,
+   so a mic or mic stand keeps its own proportions.
+6. **Additive hit-react overlay + ground pinning.** Recoil strength is read from the **existing**
+   `strike_resolved` result — blocked 0.40, light 0.55, heavy 1.00, counter 1.35 — and whips
+   Spine1 → Spine2 → Neck → Head on hitstun/blockstun with a 0.42 s decay. Horizontal drift is
+   locked by construction (the takes carry no Hips/Root position tracks and the Hips yaw stays
+   pinned), and `_pin_feet_to_ground()` places the lowest planted foot/toe so the **drawn sole**
+   sits on world y 0 within 1 cm, in every grounded state and both facings.
+
+### Defects found and fixed while doing it
+
+- **Ground calibration needed the real skin mapping.** `ARRAY_BONES` indexes the skin's bind list
+  on the Mixamo body and skeleton bones directly on the two Tripo bodies; assuming one convention
+  made Feedback's drawn sole measure **0.72 m above its own foot bones** (the old bounds helper
+  only asserts a lower bound, so nothing caught it). `_measure_sole_drop()` now measures both
+  readings once at bind and keeps the physically plausible one (`sole_bind_mapped`), which is
+  exposed and asserted.
+- **`hips_yaw_delta()` no longer gated on `is_playing()`.** A clip that reached its end kept its
+  baked hips turn, which the facing pivot therefore did not cancel — up to 14° off ±X after a
+  clip was driven to its last frame. Facing is now corrected whether the take is playing, paused
+  or finished.
+- **The squash spring clamps its dt to 1/30 s.** An explicit spring integrated with one long first
+  frame (cold start / stalled tab) diverged and threw the mesh bounds into the 10^15 range; a
+  live-match knockdown check caught it.
+
+### Verification actually run — Godot **4.5.stable.official (876b29033)**, headless
+
+```bash
+godot --headless --path godot --import
+godot --headless --path godot --script res://tools/animation_feel_audit.gd
+godot --headless --path godot --script res://tools/facing_audit.gd
+godot --headless --path godot --script res://tools/live_match_check.gd
+godot --headless --path godot --script res://tools/headless_roster_check.gd
+godot --headless --path godot --export-release "Web" ../docs/index.html
+```
+
+- **`animation_feel_audit.gd` — 142 checks, 0 FAIL, `ALL ANIMATION FEEL CHECKS PASSED`.** Covers
+  both combat-file hashes; the 18 fps band; `quantize()` grid-exactness and the distinct-pose
+  ceiling; the coil → whip → settle → recovery numbers; the +4° overshoot ramp; the recoil
+  ladder and decay; both squash presets and the spring's exact return; per fighter — foot-bone
+  discovery, a cached modifier, `SquashPivot` parentage, a plausible sole offset, a `t_impact`
+  inside the band for every attack clip, **stepped seeks only on the grid** with ≥6 held frames
+  of 14 and F4-OFF smooth again (13–14 of 14 frames off grid), shoulder/spine/neck/head deltas
+  with the **hips untouched (<0.01 rad)**, hitstop tension present and silent outside hitstop,
+  light < heavy < counter recoil, `strike_resolved` arming only on a hit that lands on *this*
+  fighter, the stretch/squash peaks, prop counter-scaling, the squash returning to exactly one,
+  and **the drawn sole within 1 cm of the sand in IDLE/WALK/ATTACK_ACTIVE/HITSTUN/TAUNT on both
+  facings** (measured −0.0004 … −0.0091 m), plus facing still within 5° after all of it.
+- **`facing_audit.gd` — 94 checks, 0 FAIL, `ALL FACING CHECKS PASSED`.**
+- **`live_match_check.gd` — 123 checks, 0 FAIL, `ALL LIVE MATCH CHECKS PASSED`.**
+- **`headless_roster_check.gd` — 425 PASS, 0 FAIL, `ALL CHECKS PASSED`.**
+- Real `TestArena.tscn` booted 300 frames headless with no script error (only the known exit-time
+  "1 resources still in use" notice and the environment's fontconfig warning).
+
+**`/docs` rebuilt** with the pinned 4.5 toolchain (the import cache was rebuilt from scratch with
+4.5 first — a 4.7-built cache loads the FBX scenes with zero animation tracks):
+`index.pck` **68,659,380 B** (68,621,868 before), `index.wasm` 38,057,390 B,
+`index.js` 305,185 B, `index.html` 5,449 B. The engine download in `/tmp` was deleted after the
+export.
+
+### Not verified
+
+- **No GPU, display or audio device here, so nothing was watched.** The 18 fps stepped read, the
+  whip/overshoot/settle as it *feels*, the shoulder counter-twist silhouette, the negative-space
+  gap, the hitstop shake and micro-tension, the impact pop, the prop isolation and the ground pin
+  are verified as numbers and bone/test transforms, not as a look.
+- **60 FPS on a Chromebook / iPhone Safari is unmeasured.** The layer adds no per-frame allocation,
+  no node lookup, no texture and no extra pass: every bone id, foot bone, prop baseline and
+  `t_impact` is cached at bind, and the only per-frame work is a handful of quaternion writes, one
+  `seek()` and one scale write.
+- The 5 mm pin bias, the 0.05 m pin deadband, the 18 fps rate, the 3-frame settle, the 4° overshoot,
+  the engagement/negative-space angles and the recoil ladder are hand-set defaults awaiting the
+  owner's eye and a device playtest.

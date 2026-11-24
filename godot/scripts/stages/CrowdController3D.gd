@@ -1,62 +1,57 @@
 class_name CrowdController3D
 extends Node3D
-## Staggered, reactive 3D crowd at the barrier (owner playtest, 2026-11-23).
+## Reactive 3D crowd at the barrier (owner playtest, 2026-11-23; silhouettes removed 2026-11-24).
 ##
 ## Presentation only: this node reads no fighter state and never touches the combat
 ## simulation, hitboxes, frame data, audio or the round clock. `Arena3D.notify_combat_event()`
 ## forwards the arena's own cues (hit landed, heavy hit, knockdown, K.O., victory, DJ tag,
-## Hype surge) here, and every spectator answers on its own delayed clock — ringside first,
-## back rows last — so excitement ripples outward instead of the whole bank jumping in unison.
+## Hype surge) here, and every spectator answers on its own delayed clock — one side first,
+## the other after — so excitement ripples outward instead of the banks jumping in unison.
 ##
-## Two loyalty zones: the left bank is P1's corner, the right bank is P2's corner. When a
-## side scores, its bank erupts (jump, arms overhead, flags whipping) while the rival bank
-## throws both hands on its head in disbelief. Neutral cues (DJ tag, Hype surge, a tie) lift
-## both banks.
+## Every spectator is a delivered Mixamo character from `assets/models/crowd/` wearing the
+## same cel/ink treatment as the fighters. **There is no painted or procedural stand-in of
+## any kind**: the 2.5D rim-lit quads and `SilhouetteArt` masks are gone, deleted from the
+## project along with the `CrowdLine` sprite layer. If a model slot cannot be filled the
+## position stays empty and a warning is logged — an empty slot, never a substitute body.
 ##
-## Bodies are rim-lit 2.5D silhouettes (`StageSilhouette` + the masks painted by
-## `SilhouetteArt`), not lathed capsule mannequins: one camera-facing quad per spectator,
-## two triangles, a shared mask per variant and pose. Hats, headwraps and locks, the raised
-## arms, the disbelief hands-on-head and the neutral skank are all baked into those masks.
-## Three waving Jamaican flags, six raised lighters whose flames spark up on heavy hits and
-## Hype moments, and two airhorn operators stand at the inner edge of each bank beside the
-## speaker stacks.
+## The yard holds four people a side instead of ten because every body is now a real
+## ~3 500-triangle rig rather than two triangles; that is what keeps the whole cast inside
+## the Chromebook triangle budget with all of them fully textured.
 ##
-## Real character art drops straight in: `CharacterModelSlots` instances any `.fbx`/`.glb`
-## in `assets/models/crowd/` and hides the silhouette for those spectators, so replacing the
-## placeholders later needs no change here. Delivered characters are decimated Mixamo rigs
-## (68 bones, ≤3 500 tris) and wear the same cel/ink treatment as the fighters (2026-11-23).
-##
-## Only the ringside row gets full 3D characters: 8 animated bodies across both banks branch
-## their acting from the same `mixamorig` clip library (cheer / disbelief / hype), while the
-## back rows keep the painted silhouettes so the bank stays cheap on a Chromebook.
+## Excitement is expressed through acting and timing only — which Mixamo act is crossfaded
+## in, the per-person phase offset, and a small beat bobbing on the anchor. Nothing here
+## tints, dims or desaturates a character: every one of them renders its full albedo.
 
-## 20 spectators across two banks and three rows, matching the 16–24 owner range.
-const COUNT := 20
-## Row 0 is the ringside row on each bank. The other rows stay silhouettes.
-const MODEL_ROWS := 1
+## Four a side across one ringside row, matching the delivered model count.
+const COUNT := 8
 const MODEL_TINTS := [Color(1.0, 0.99, 0.94), Color(0.92, 0.97, 1.06)]
 const MODEL_RIMS := [Color(1.0, 0.82, 0.42), Color(0.70, 0.86, 1.0)]
-## The delivered crowd takes share one Mixamo character skin, so each ringside body gets
-## its own small tint/hue break-up through the toon shader. Presentation only.
+## The delivered crowd takes share one Mixamo character skin, so each body gets its own small
+## tint/hue break-up through the toon shader. Presentation only.
 const MODEL_LOOKS := [
 	Color(1.0, 1.0, 1.0),
 	Color(1.03, 0.97, 0.93),
 	Color(0.94, 0.99, 1.05),
 	Color(1.04, 0.95, 0.99),
 ]
-const MODEL_HUES := [0.0, 0.035, -0.03, 0.06]
+## Hue break-up is *not* used any more: it recolours a character's albedo, and the brief is
+## that every crowd body shows the texture it was delivered with. The four looks above are
+## sub-percent brightness nudges that read as lighting, not as a repaint.
+const MODEL_HUES := [0.0, 0.0, 0.0, 0.0]
 const ZONE_LEFT := 0
 const ZONE_RIGHT := 1
-const ROW_Z := [-4.30, -5.60, -6.90]
-const ROW_COUNTS := [4, 3, 3]              # per zone, per row: 10 people a side
+const ROW_Z := [-5.20]
+const ROW_COUNTS := [4]                    # per zone, per row: four a side
 const BANK_X := [Vector2(-6.15, -2.35), Vector2(2.35, 6.15)]
 
-## Staggering. A body's reaction delay is its row's base plus how far out along the bank it
-## stands, plus a small seeded jitter, so no two people ever land on the same tick.
-const ROW_DELAY := 0.12
+## Staggering. A body's reaction delay is how far out along the bank it stands plus a small
+## seeded jitter, so no two people ever land on the same tick.
 const LATERAL_DELAY := 0.028
 const JITTER := 0.04
 const REACT_HOLD := 2.4
+## Beat bob: an anchor rise of at most 2.5 cm. Small on purpose — the character's own clip
+## carries the dancing; this only stops four rigs from ticking in perfect lockstep.
+const BOB := 0.025
 
 const STATE_IDLE := &"idle"
 const STATE_CHEER := &"cheer"
@@ -72,8 +67,7 @@ const FLAG_COLOURS := [
 
 class Member:
 	var node: Node3D                       # anchor on the row; props ride with it
-	var body: StageSilhouette              # the 2.5D silhouette (hidden once a model lands)
-	var model: Node3D = null               # imported .fbx character, when one exists
+	var model: Node3D = null               # imported .fbx character (always present)
 	var player: AnimationPlayer = null     # the character's own Mixamo AnimationPlayer
 	var clips: Dictionary = {}             # {base, cheer, disbelief, hype, player}
 	var act: StringName = &""              # act currently crossfaded in
@@ -100,8 +94,9 @@ class Member:
 
 var _members: Array[Member] = []
 var _models: Array[Node3D] = []
+var _cel_materials: Array[ShaderMaterial] = []
 var _mesh_cache: Dictionary = {}
-var _body_material: ShaderMaterial
+var _prop_material: StandardMaterial3D
 var _cloth_materials: Array[StandardMaterial3D] = []
 var _flame_material: StandardMaterial3D
 var _time: float = 0.0
@@ -129,8 +124,8 @@ func build() -> void:
 		for row in ROW_COUNTS.size():
 			var count: int = ROW_COUNTS[row]
 			for i in count:
-				# Even spread across the bank with a little seeded jitter, so the rows read as
-				# a packed yard rather than a grid.
+				# Even spread across the bank with a little seeded jitter, so the row reads
+				# as a packed yard rather than a grid.
 				var t := (float(i) + 0.5) / float(count)
 				var bank: Vector2 = BANK_X[zone]
 				var x := lerpf(bank.x, bank.y, t) + _rng.randf_range(-0.16, 0.16)
@@ -147,30 +142,22 @@ func _make_member(index: int, zone: int, row: int, x: float) -> Member:
 	m.x = x
 	m.phase = _rng.randf_range(0.0, TAU)
 	m.rate = _rng.randf_range(0.85, 1.35)
-	m.delay = float(row) * ROW_DELAY + absf(x) * LATERAL_DELAY + _rng.randf_range(0.0, JITTER)
+	m.delay = absf(x) * LATERAL_DELAY + _rng.randf_range(0.0, JITTER)
 	m.height = _rng.randf_range(1.55, 1.90)
 
 	var anchor := Node3D.new()
 	anchor.name = "Spectator%02d" % index
 	anchor.position = Vector3(x, 0.0, ROW_Z[row])
-	# Everyone turns slightly towards the centre of the yard, where the fight is. A 2.5D
-	# quad needs only a few degrees of yaw to stop the bank reading as one flat cardboard row.
+	# Everyone turns slightly towards the centre of the yard, where the fight is.
 	anchor.rotation.y = _rng.randf_range(-0.16, 0.16)
 	add_child(anchor)
 
-	var body := StageSilhouette.new()
-	body.name = "Body"
-	body.configure("crowd", index % 3, m.height)
-	anchor.add_child(body)
-
 	m.node = anchor
-	m.body = body
 	m.base_y = 0.0
-	_pose_member(m, 0.0)
 	return m
 
 
-## Three flags, six lighters, two airhorn operators — chosen by position so the props sit in
+## Three flags, four lighters, two airhorn operators — chosen by position so the props sit in
 ## the banks instead of stacking on one person.
 func _assign_props() -> void:
 	var inner: Dictionary = {}          # zone -> member with the smallest |x| in the front row
@@ -185,8 +172,8 @@ func _assign_props() -> void:
 		operator.horn = _add_horn(operator)
 		operator.horn_up = false
 
-	var flag_indices := [1, 9, 16]
-	var lighter_indices := [3, 6, 11, 13, 17, 19]
+	var flag_indices := [1, 5]
+	var lighter_indices := [2, 3, 6, 7]
 	for i in flag_indices:
 		if i >= _members.size():
 			continue
@@ -200,30 +187,46 @@ func _assign_props() -> void:
 		m.flame = _add_flame(m)
 
 
-## Any `.fbx`/`.glb` character delivered into `assets/models/crowd/` replaces the silhouette
-## for that spectator, in sorted filename order. No file means the fallback stays on screen.
+## Any `.fbx`/`.glb` character delivered into `assets/models/crowd/` fills a spectator, in
+## sorted filename order. A slot with no file stays empty and warns; there is no substitute
+## body of any kind behind it.
 func _load_models() -> void:
 	var paths := CharacterModelSlots.model_paths(CharacterModelSlots.CROWD_DIR)
 	if paths.is_empty():
+		push_warning("CrowdController3D: no character in %s — leaving %d empty slots"
+			% [CharacterModelSlots.CROWD_DIR, _members.size()])
 		return
 	var slot := 0
 	for m in _members:
-		if m.row >= MODEL_ROWS:
-			continue
 		var model := CharacterModelSlots.spawn_one(m.node, paths[slot % paths.size()], m.height)
 		slot += 1
 		if model == null:
+			push_warning("CrowdController3D: %s failed to instance — empty slot" % m.node.name)
 			continue
 		var look := (slot - 1) % MODEL_LOOKS.size()
-		CharacterModelSlots.apply_cel(model, MODEL_TINTS[m.zone] * MODEL_LOOKS[look],
+		var applied := CharacterModelSlots.apply_cel(model, MODEL_TINTS[m.zone] * MODEL_LOOKS[look],
 			MODEL_RIMS[m.zone], m.zone * MODEL_LOOKS.size() + look, MODEL_HUES[look])
+		if applied == 0:
+			push_warning("CrowdController3D: %s has no textured surface — empty slot"
+				% m.node.name)
+			m.node.remove_child(model)
+			model.queue_free()
+			continue
+		# Every spectator logs its model, material count and bound albedo; a null binding
+		# is a broken slot, so the body is dropped instead of shown untextured.
+		if CharacterModelSlots.report_albedo("crowd", model) > 0:
+			push_warning("CrowdController3D: %s has an unbound albedo — empty slot"
+				% m.node.name)
+			m.node.remove_child(model)
+			model.queue_free()
+			continue
+		CharacterModelSlots.collect_cel_materials(model, _cel_materials)
 		m.clips = CharacterModelSlots.install_act_clips(model)
 		m.player = m.clips.get("player") as AnimationPlayer
 		if m.player != null:
 			m.player.speed_scale = m.rate
 		m.act = &""
 		m.model = model
-		m.body.visible = false
 		_models.append(model)
 		_attach_hand_props(m)
 		_play_model_act(m, m.state)
@@ -290,7 +293,7 @@ func _add_flag(m: Member, colour: int) -> Node3D:
 	pole.position = Vector3(0.30, 0.0, 0.10)
 	m.node.add_child(pole)
 	_add_mesh(pole, "Pole", _cylinder(0.012, 0.012, 0.95, 4),
-		Vector3(0.0, 0.52, 0.0), _body_material)
+		Vector3(0.0, 0.52, 0.0), _prop_material)
 	var cloth := Node3D.new()
 	cloth.name = "FlagCloth"
 	cloth.position = Vector3(0.0, 1.02, 0.0)
@@ -307,7 +310,7 @@ func _add_flame(m: Member) -> Node3D:
 	hand.position = Vector3(-0.30, 1.34, 0.12)
 	m.node.add_child(hand)
 	_add_mesh(hand, "Lighter", _box(Vector3(0.045, 0.075, 0.032)),
-		Vector3.ZERO, _body_material)
+		Vector3.ZERO, _prop_material)
 	var flame := Node3D.new()
 	flame.name = "LighterFlame"
 	flame.position = Vector3(0.0, 0.09, 0.02)
@@ -324,11 +327,11 @@ func _add_horn(m: Member) -> Node3D:
 	horn.position = Vector3(0.30, 1.20, 0.12)
 	m.node.add_child(horn)
 	_add_mesh(horn, "HornBody", _cylinder(0.055, 0.038, 0.20, 6),
-		Vector3(0.0, 0.06, 0.0), _body_material)
+		Vector3(0.0, 0.06, 0.0), _prop_material)
 	_add_mesh(horn, "HornBell", _cylinder(0.105, 0.048, 0.12, 6),
-		Vector3(0.0, 0.21, 0.0), _body_material)
+		Vector3(0.0, 0.21, 0.0), _prop_material)
 	_add_mesh(horn, "HornCan", _cylinder(0.045, 0.045, 0.10, 6),
-		Vector3(0.075, -0.02, 0.0), _body_material)
+		Vector3(0.075, -0.02, 0.0), _prop_material)
 	return horn
 
 
@@ -419,7 +422,7 @@ func tick(delta: float) -> void:
 					m.lit = false
 				_play_model_act(m, m.state)
 		m.phase = fposmod(m.phase + m.rate * delta, TAU)
-		_pose_member(m, delta)
+		_pose_member(m)
 
 
 ## Back to neutral: a fresh round must never open on a stale celebration.
@@ -434,7 +437,8 @@ func settle() -> void:
 		m.act = &""
 		if m.flame != null:
 			m.flame.visible = false
-		_pose_member(m, 0.0)
+		if m.node != null:
+			m.node.position.y = m.base_y
 		_play_model_act(m, STATE_IDLE)
 
 
@@ -453,43 +457,24 @@ func _hold_for(state: StringName) -> float:
 # =========================================================================
 # Pose
 # =========================================================================
-## One spectator's acting frame. The *state* picks which painted silhouette mask is on
-## screen; the person's own phase drives the hop, lean and squash, so the bank never
-## marches in step.
-func _pose_member(m: Member, _delta: float) -> void:
-	if m.body == null:
+## One spectator's presentation frame. The *state* picks which clip act is crossfaded in;
+## the person's own phase drives a small beat bob and the props, so the bank never marches
+## in step. The body itself carries no tint, hop or lean of its own.
+func _pose_member(m: Member) -> void:
+	if m.node == null:
 		return
 	var t := m.phase
-	var pose: StringName = &"idle"
 	var hop := 0.0
-	var lean := 0.0
-	var squash := 0.0
 	match m.state:
 		STATE_CHEER:
-			pose = &"cheer"
-			hop = absf(sin(t * 1.9)) * 0.13
-			lean = sin(t * 1.9) * 0.09 - 0.02
-			squash = -0.03
+			hop = absf(sin(t * 1.9)) * BOB
 		STATE_DISBELIEF:
-			# Both hands on the head, leaning back, shaking: the rival corner.
-			pose = &"disbelief"
-			hop = absf(sin(t * 2.4)) * 0.012
-			lean = sin(t * 0.8) * 0.05
+			hop = absf(sin(t * 2.4)) * BOB * 0.5
 		STATE_HYPE:
-			# Lighter or flag held high, bouncing on the spot.
-			pose = &"hype"
-			hop = absf(sin(t * 1.55)) * 0.17
-			lean = sin(t * 0.9) * 0.08
-			squash = -0.05
+			hop = absf(sin(t * 1.55)) * BOB * 1.4
 		_:
-			# Neutral: the slow skank nod, arms loose, weight shifting side to side.
-			pose = &"idle"
-			hop = absf(sin(t)) * 0.026
-			lean = sin(t * 0.7) * 0.055
-	m.body.set_pose(pose)
-	m.body.hop(hop)
-	m.body.lean(lean)
-	m.body.squash(squash)
+			hop = absf(sin(t)) * BOB
+	m.node.position.y = m.base_y + hop
 	if m.flag_cloth != null:
 		# Cloth whips harder the more excited its owner is.
 		var amp := 0.16 if m.state == STATE_IDLE else 0.36
@@ -511,13 +496,14 @@ func _pose_member(m: Member, _delta: float) -> void:
 # =========================================================================
 # Palette and reporting
 # =========================================================================
-## The arena's phase palette: every silhouette shares the rim parameters, so the whole
-## crowd repaints together from warm afternoon gold to sunset amber to the night's cyan.
+## The arena's phase palette: the rim highlight every character shares follows the light rig
+## from warm afternoon gold to sunset amber to the night's cyan. Rim only — no albedo, tint
+## or dimming is touched, so the delivered texture stays at full brightness all night.
 func set_palette(rim_a: Color, rim_b: Color, strength: float) -> void:
-	SilhouetteArt.set_palette(rim_a.lerp(rim_b, 0.5), strength * 0.72)
-	if _body_material != null:
-		_body_material.set_shader_parameter("rim_colour", rim_a.lerp(rim_b, 0.5))
-		_body_material.set_shader_parameter("rim_strength", clampf(strength * 0.72, 0.15, 2.4))
+	var rim := rim_a.lerp(rim_b, 0.5)
+	for material in _cel_materials:
+		material.set_shader_parameter("rim_colour", rim)
+		material.set_shader_parameter("rim_strength", clampf(strength * 0.72, 0.15, 2.4))
 
 
 func count() -> int:
@@ -625,34 +611,27 @@ func reactions() -> int:
 
 
 # =========================================================================
-# 2.5D bodies and .fbx slots
+# Characters
 # =========================================================================
-## Bodies currently drawn as rim-lit 2.5D silhouettes.
-func silhouette_count() -> int:
-	var n := 0
-	for m in _members:
-		if m.body != null and m.body.visible:
-			n += 1
-	return n
-
-
-## Imported `.fbx`/`.glb` characters standing in the yard (empty until art is delivered).
+## Imported `.fbx`/`.glb` characters standing in the yard — one per spectator.
 func model_slots() -> Array[Node3D]:
 	return _models
 
 
-## True while the silhouettes are the visible stand-ins.
-func using_fallback() -> bool:
-	return _models.is_empty()
-
-
-## Spectators currently played by a real Mixamo character.
+## Spectators currently played by a real Mixamo character. Must equal `count()`: the crowd has
+## no other kind of body.
 func animated_model_count() -> int:
 	var n := 0
 	for m in _members:
-		if m.player != null:
+		if m.player != null and m.model != null:
 			n += 1
 	return n
+
+
+## Spectators left with nothing to show. Expected to be zero with the delivered models in
+## place; a non-zero value means a slot is empty, never that a stand-in was drawn.
+func empty_slot_count() -> int:
+	return _members.size() - _models.size()
 
 
 ## Props currently riding a real character's `mixamorig_RightHand`.
@@ -677,7 +656,8 @@ func model_clip_of(index: int) -> String:
 	return player.current_animation if player != null else ""
 
 
-## Leftover capsule-mannequin geometry. Must stay at zero: the silhouettes replaced it.
+## Leftover capsule-mannequin geometry. Must stay at zero: the silhouettes and the lathed
+## capsule bodies they replaced are both gone, so only delivered characters may be present.
 func legacy_mannequin_count() -> int:
 	var n := 0
 	for legacy in ["LegL", "LegR", "Chest", "Skull", "Hips"]:
@@ -685,7 +665,8 @@ func legacy_mannequin_count() -> int:
 	return n
 
 
-## Real triangle cost of the built crowd, measured from the actual meshes.
+## Real triangle cost of the built crowd, measured from the actual meshes. Props count; the
+## characters are the overwhelming majority of it now that they are real rigs.
 func triangle_count() -> int:
 	var total := 0
 	for node in find_children("*", "MeshInstance3D", true, false):
@@ -698,8 +679,12 @@ func triangle_count() -> int:
 # =========================================================================
 # Shared geometry and materials
 # =========================================================================
+## Props only: the flag poles, lighter cases and airhorns are real objects, so they get a
+## plain matte plastic material rather than borrowing a character's cel material.
 func _build_materials() -> void:
-	_body_material = SilhouetteArt.material_for("crowd", 0, STATE_IDLE)
+	_prop_material = StandardMaterial3D.new()
+	_prop_material.albedo_color = Color(0.16, 0.15, 0.17, 1.0)
+	_prop_material.roughness = 0.72
 	for colour in FLAG_COLOURS:
 		var cloth := StandardMaterial3D.new()
 		cloth.albedo_color = colour

@@ -2,19 +2,18 @@ class_name DJBooth3D
 extends Node3D
 ## Active Sound-System DJ booth behind the decks (owner playtest, 2026-11-23).
 ##
-## Two rim-lit 2.5D DJ silhouettes work a turntable-and-mixer rig between the mid-ground
-## speaker stacks. Presentation only: this node never touches the combat simulation,
-## hitboxes, frame data, the beat clock or the audio engine — it only poses the layers to
-## the cues `Arena3D.notify_combat_event()` already receives.
+## Two DJs work a turntable-and-mixer rig between the mid-ground speaker stacks.
+## Presentation only: this node never touches the combat simulation, hitboxes, frame data,
+## the beat clock or the audio engine — it only poses the layers to the cues
+## `Arena3D.notify_combat_event()` already receives.
 ##
-## The DJs are no longer lathed capsule mannequins. Each one is a camera-facing
-## `StageSilhouette` wearing a mask painted by `SilhouetteArt`: neutral skank, hand on the
-## faders, arm out at the fighters, horn up, or both arms up. The turntables, platters,
-## records, mixer, faders, knobs, monitors and sign are still real geometry — those are
-## props, not stand-in people.
+## The DJs are delivered Mixamo characters from `assets/models/dj/` wearing the same cel/ink
+## treatment as the fighters. The 2.5D `StageSilhouette` bodies and `SilhouetteArt` masks are
+## gone: nothing in the booth is a stand-in. The turntables, platters, records, mixer, faders,
+## knobs, monitors and sign are real geometry — those are props, not people.
 ##
-## Real character art drops straight in: `CharacterModelSlots` instances any `.fbx`/`.glb` in
-## `assets/models/dj/` behind the deck and hides the silhouette for that slot.
+## A DJ slot with no model stays empty and warns; the deck keeps working without them.
+## Nothing here tints or dims a character, so every DJ renders its full albedo.
 ##
 ## Everything is low-poly with shared meshes, included in `Arena3D.atmosphere_triangles()`
 ## under the 15 000-triangle budget.
@@ -43,7 +42,6 @@ const RASTA := [
 
 class DJ:
 	var node: Node3D
-	var body: StageSilhouette
 	var model: Node3D = null
 	var player: AnimationPlayer = null
 	var clips: Dictionary = {}
@@ -61,7 +59,9 @@ class DJ:
 
 var _djs: Array[DJ] = []
 var _mesh_cache: Dictionary = {}
-var _body_material: ShaderMaterial
+## Every cel material on the two DJs, so the phase palette can move their rim highlight
+## without touching albedo. Populated once at build time.
+var _cel_materials: Array[ShaderMaterial] = []
 var _deck_material: StandardMaterial3D
 var _metal_material: StandardMaterial3D
 var _vinyl_material: StandardMaterial3D
@@ -246,18 +246,19 @@ func record_spin() -> float:
 
 
 # =========================================================================
-# 2.5D DJs and .fbx slots
+# DJ characters and .fbx slots
 # =========================================================================
-## DJs currently drawn as rim-lit 2.5D silhouettes.
-func silhouette_count() -> int:
+## DJ slots with no delivered character. Expected to be zero; a non-zero value means the
+## booth is short a person, never that a stand-in was drawn.
+func empty_slot_count() -> int:
 	var n := 0
 	for dj in _djs:
-		if dj.body != null and dj.body.visible:
+		if dj.model == null:
 			n += 1
 	return n
 
 
-## Imported `.fbx`/`.glb` DJ characters (empty until art is delivered).
+## Imported `.fbx`/`.glb` DJ characters, one per slot.
 func model_slots() -> Array[Node3D]:
 	var found: Array[Node3D] = []
 	for dj in _djs:
@@ -266,15 +267,7 @@ func model_slots() -> Array[Node3D]:
 	return found
 
 
-## True while the silhouettes are the visible stand-ins.
-func using_fallback() -> bool:
-	for dj in _djs:
-		if dj.model != null:
-			return false
-	return true
-
-
-## Leftover capsule-mannequin geometry. Must stay at zero: the silhouettes replaced it.
+## Leftover capsule-mannequin geometry. Must stay at zero.
 func legacy_mannequin_count() -> int:
 	var n := 0
 	for legacy in ["LegL", "LegR", "Chest", "Skull", "Torso", "ArmL", "ArmR"]:
@@ -282,24 +275,36 @@ func legacy_mannequin_count() -> int:
 	return n
 
 
-## Any `.fbx`/`.glb` in `assets/models/dj/` replaces a DJ silhouette, in filename order.
+## Any `.fbx`/`.glb` in `assets/models/dj/` fills a DJ slot, in filename order.
 func _load_models() -> void:
 	var paths := CharacterModelSlots.model_paths(CharacterModelSlots.DJ_DIR)
 	if paths.is_empty():
+		push_warning("DJBooth3D: no character in %s — leaving %d empty slots"
+			% [CharacterModelSlots.DJ_DIR, _djs.size()])
 		return
 	for i in _djs.size():
 		var dj := _djs[i]
 		var model := CharacterModelSlots.spawn_one(dj.node, paths[i % paths.size()], DJ_HEIGHT)
 		if model == null:
+			push_warning("DJBooth3D: %s failed to instance — empty slot" % dj.node.name)
 			continue
-		CharacterModelSlots.apply_cel(model, DJ_TINT, DJ_RIM, 10 + i)
+		if CharacterModelSlots.apply_cel(model, DJ_TINT, DJ_RIM, 10 + i) == 0:
+			push_warning("DJBooth3D: %s has no textured surface — empty slot" % dj.node.name)
+			dj.node.remove_child(model)
+			model.queue_free()
+			continue
+		if CharacterModelSlots.report_albedo("dj", model) > 0:
+			push_warning("DJBooth3D: %s has an unbound albedo — empty slot" % dj.node.name)
+			dj.node.remove_child(model)
+			model.queue_free()
+			continue
+		CharacterModelSlots.collect_cel_materials(model, _cel_materials)
 		dj.clips = CharacterModelSlots.install_act_clips(model)
 		dj.player = dj.clips.get("player") as AnimationPlayer
 		if dj.player != null:
 			dj.player.speed_scale = dj.rate
 		dj.act = &""
 		dj.model = model
-		dj.body.visible = false
 		# The airhorn rides the selector's right hand, so it lifts with the real clip
 		# instead of floating beside a standing body.
 		if dj.horn != null:
@@ -354,13 +359,14 @@ func triangle_count() -> int:
 	return total
 
 
+## Rim highlight only — never albedo, tint or dimming, so a DJ's delivered texture stays at
+## full brightness through every phase of the night.
 func set_palette(rim_a: Color, rim_b: Color, strength: float) -> void:
 	var rim := rim_a.lerp(rim_b, 0.45)
 	var boost := clampf(strength * 0.95, 0.2, 2.6)
-	SilhouetteArt.set_palette(rim, boost)
-	if _body_material != null:
-		_body_material.set_shader_parameter("rim_colour", rim)
-		_body_material.set_shader_parameter("rim_strength", boost)
+	for material in _cel_materials:
+		material.set_shader_parameter("rim_colour", rim)
+		material.set_shader_parameter("rim_strength", boost)
 
 
 # =========================================================================
@@ -392,42 +398,17 @@ func _energy() -> float:
 	return 0.0
 
 
-## The acting frame: the state picks the painted mask (neutral, fader, point, horn,
-## celebrate) and the DJ's own phase adds the nod, lean and little skank bounce.
+## The acting frame: the state picks which clip act is crossfaded in and the DJ's own phase
+## adds the nod. The body itself carries no tint, hop or lean of its own.
 func _pose_dj(dj: DJ, _delta: float) -> void:
-	if dj.body == null:
+	if dj.node == null:
 		return
 	var t := dj.phase
-	var pose: StringName = STATE_IDLE
-	match dj.state:
-		STATE_FADER:
-			pose = &"fader"
-		STATE_POINT:
-			pose = &"point"
-		STATE_AIRHORN:
-			pose = &"airhorn"
-		STATE_CELEBRATE:
-			pose = &"celebrate"
-		STATE_DISBELIEF:
-			pose = &"idle"
-	dj.body.set_pose(pose)
 	var bob := absf(sin(t * 1.6)) * 0.024 + dj.nod * 0.03
 	if dj.model != null:
 		# The Mixamo clip owns the body motion; a second procedural bob would double it.
 		bob = 0.0
 	dj.node.position.y = dj.base_y + bob
-	var lean := sin(t * 0.8) * 0.05
-	match dj.state:
-		STATE_POINT:
-			lean += 0.08 * dj.point_dir
-		STATE_AIRHORN:
-			lean -= 0.07
-		STATE_CELEBRATE:
-			lean += sin(t * 2.0) * 0.08
-		STATE_FADER:
-			lean += 0.05
-	dj.body.lean(lean)
-	dj.body.squash(-0.03 if dj.state == STATE_CELEBRATE else 0.0)
 	if dj.horn != null:
 		dj.horn.visible = dj.state == STATE_AIRHORN
 		if dj.horn.visible:
@@ -498,8 +479,8 @@ func _build_deck() -> void:
 		Vector3(0.0, BOOTH_H + 1.0, -0.30), _deck_material)
 
 
-## One DJ: a 2.5D silhouette behind the decks (between the speaker stacks and the front
-## crowd row) plus the airhorn prop that only the selector carries.
+## One DJ behind the decks (between the speaker stacks and the front crowd row) plus the
+## airhorn prop that only the selector carries.
 func _make_dj(index: int, x: float, with_horn: bool) -> void:
 	var dj := DJ.new()
 	dj.phase = _rng.randf_range(0.0, TAU)
@@ -510,13 +491,7 @@ func _make_dj(index: int, x: float, with_horn: bool) -> void:
 	node.position = Vector3(x, 0.0, -0.62)
 	add_child(node)
 
-	var body := StageSilhouette.new()
-	body.name = "Body"
-	body.configure("dj", index, DJ_HEIGHT)
-	node.add_child(body)
-
 	dj.node = node
-	dj.body = body
 	dj.base_y = 0.0
 	if with_horn:
 		dj.horn = _make_horn(node)
@@ -543,7 +518,6 @@ func _make_horn(parent: Node3D) -> Node3D:
 # Shared materials and primitives
 # =========================================================================
 func _build_materials() -> void:
-	_body_material = SilhouetteArt.material_for("dj", 0, STATE_IDLE)
 	_deck_material = _mat(Color(0.07, 0.07, 0.085), 0.85, 0.10)
 	_metal_material = _mat(Color(0.62, 0.62, 0.58), 0.38, 0.75)
 	_vinyl_material = _mat(Color(0.03, 0.03, 0.04), 0.30, 0.35)

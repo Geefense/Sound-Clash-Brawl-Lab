@@ -3451,3 +3451,666 @@ hue break-up, not seven distinct people.
     rate on Chromebook / iPhone Safari have **not** been seen. Crossfade feel (0.10 s) and clip
     length trimming are untuned. The four female takes are still the only female acting clips; the
     shared cheer/disbelief/hype tracks are male-skeleton takes.
+
+---
+
+## 2026-11-24 — Playtest regressions, PART 1 (fighter facing + 2D crowd removal)
+
+Owner playtest on `feature/3d-cel-shaded`. Two failures only: the fighters faced the wrong way,
+and the crowd was a bank of dark 2D stick-figure silhouettes with one coloured body. Nothing else
+in this pass: combat frame data, the FSM, `ANIM_OFFSET`, 132 BPM beat sync, hitstop and the Crowd
+Hype rules are untouched, and `ANIM_OFFSET` in `BaseFighter.gd` is byte-for-byte identical.
+
+### Issue 1 — fighter facing along X (`fix(1)`, commit `d87c5e0`)
+
+**1. Audit (step 1).** Per fighter: root node type, visual child, rest rotation, armature rotation
+and the axis the imported mesh actually faces. Measured, not assumed, with
+`godot --headless --path godot --script res://tools/diag_playtest.gd`, which projects every mesh
+vertex to the ground plane and compares the toe centroid to the foot centroid. The method is
+validated against the one case the project already documents (Feedback at rest faces +Z): it reads
+`(−0.025, 1.000)` → −1.4° off +Z.
+
+| Fighter | Root | Visual child | Mesh authored forward (XZ) | Off by | `model_forward_yaw_offset_deg` |
+| --- | --- | --- | --- | --- | --- |
+| Feedback | `CharacterBody3D` (unrotated) | `FighterModel3D` | `(−0.025, +1.000)` ≈ +Z | 90° | **90** |
+| L!ckshot | `CharacterBody3D` (unrotated) | `FighterModel3D` | `(+0.999, −0.036)` ≈ +X | 0° | **0** |
+| L!kkle Moore | `CharacterBody3D` (unrotated) | `FighterModel3D` | `(+0.997, −0.076)` ≈ +X | 0° | **0** |
+
+L!kkle Moore is *not* stuck facing +Z as suspected: his mesh is authored along +X like L!ckshot.
+What made him look stuck was the baked Hips yaw in his takes (see step 6). The `Hips` rest axis is
+**not** evidence of rendered facing — the two Tripo-derived rigs read −60°/−51° there purely as a
+bind-pose convention — so the mesh-vertex measurement is the authority.
+
+**2–5. Logic/visual split.** The fighter root stays unrotated and moves only on X. The model hangs
+off `PosePivot` → **`VisualPivot`** (`FighterModel3D._visual_pivot`), and facing is the *only* thing
+that ever writes `VisualPivot.rotation.y`. One function:
+
+```gdscript
+func set_facing(dir: int) -> void      # +1 = +X, −1 = −X
+```
+
+It sets `deg_to_rad(model_forward_yaw_offset_deg)`, plus `PI` for −1. No negative scale, no
+`flip_h`, no mirroring: the mic stays in the same hand in both facings. `BaseFighter` seeds P1 at
+`set_facing(+1)` and P2 at `set_facing(-1)` on spawn, and re-faces every tick through
+`TURNABLE_STATES = {IDLE, WALK, JUMP, CROUCH, ATTACK_STARTUP}`. Facing is locked in
+`ATTACK_ACTIVE`, `ATTACK_RECOVERY`, `HITSTUN`, `KNOCKDOWN` and `KO`.
+
+**6. Baked root/hips yaw — the real cause of the "stuck" fighters.** The delivered takes carry
+their own heading inside `mixamorig_Hips`: `fighting-idle-3` is −72.5°, `knocked-out-1` up to
+−155°, and the melee takes 45–108°. `drunk-walk`, `bencao` and `getting-up` turn too. Fixed in three
+layers, each cheaper than the last:
+
+- `MixamoClips._strip_root_yaw()` flattens the yaw of every `Hips`/`Root` rotation track (and any
+  root-node rotation track) to that bone's **rest** yaw at import — the rest yaw, not zero, because
+  L!ckshot's Hips rest is −59.6° and L!kkle Moore's −51.2°; zeroing them would turn those bodies.
+- `FighterModel3D._lock_root_yaw()` re-pins the Hips pose yaw to its rest yaw every frame, so a clip
+  reaching the body through a cached library is caught too. Only Y is touched: pitch, roll, the
+  punch twist, the topple and the get-up stay exactly as authored.
+- `FighterModel3D._compensate_clip_yaw()` cancels whatever heading is left on `VisualPivot`. Facing
+  is authoritative; a take keeps every degree of its topple without turning the character.
+
+**Clips audited, all 3 fighters** (both facings, 8 samples each): `idle` (`fighting-idle-3` /
+`fight-idle`), `walk` (`drunk-walk` / `strut-walking`), `light` (`jab-cross` / `lead-jab`), `strong`
+(`right-hook` / `hook-punch`), `upper_box`, `tump`, `special` (`bencao`), `block`, `taunt`,
+`victory`, `hitstun`/`stun`, `stumble`, `knockdown` (`knocked-out-1`), `getup` (`getting-up`).
+**Fixed:** every clip that carried a baked heading — `fighting-idle-3`, `drunk-walk`, `bencao`,
+`knocked-out-1`, `getting-up`, the melee takes and the stun/stumble takes.
+
+**8. Verification.** **F3** in the arena prints, per fighter, the pivot yaw, the model's world
+forward vector, the off-±X angle and the current animation name
+(`TestArena.print_facing_debug()`). `godot --headless --path godot --script
+res://tools/facing_audit.gd` drives all three fighters through every take at both facings and all
+nine pairings: **94 checks, 0 FAIL — `ALL FACING CHECKS PASSED`**, every forward within 5° of ±X
+(worst case 0.0–4.3°), and every pairing, mirror matches included, faces its opponent
+(`P1=(+1.00,·) P2=(−1.00,·)`).
+
+### Issue 2 — stick figures deleted, full crowd/DJ albedo restored (`fix(2)`)
+
+**1. Everything 2D in the crowd is gone.** Deleted, not disabled:
+
+- scripts: `CrowdLine.gd`, `ForegroundCrowd.gd`, `SilhouetteArt.gd`, `StageSilhouette.gd`, `CrowdHaze.gd`
+- shader: `assets/shaders/silhouette_mask.gdshader`
+- textures: all 15 `assets/sprites/crowd/*.png` and their `.import` files
+- nodes: `CrowdLine` + its 15 `Sprite2D` children, `ForegroundCrowd`, `CrowdHaze` — removed from
+  `scenes/TestArena.tscn` together with their `ext_resource` entries. No `CanvasLayer` or `Control`
+  ever hosted them, so none was removed.
+- references: `project.godot` never listed them (no autoload); the stale prose in `TestArena.gd`,
+  `godot/README.md` and this file is corrected; no `_draw`, `draw_line`, `draw_circle`, `Polygon2D`
+  or `Line2D` crowd code survives (`TestArena.gd` keeps only its stage/graphics primitives).
+
+**2. One crowd system.** `CrowdController3D` has no 2D branch and no fallback flag. Every spectator
+is a delivered Mixamo character; a slot that cannot be filled stays **empty** and logs a warning.
+The yard is now **4 a side in one ringside row (8)** instead of 20, because each body is a real
+~3 500-triangle rig rather than two triangles — that is what keeps the whole cast inside the
+Chromebook budget with all of it textured. Props (2 flags, 4 lighters, 2 airhorns) are unchanged and
+still ride `mixamorig_RightHand` through a `BoneAttachment3D`. `DJBooth3D` lost its silhouette
+bodies the same way and keeps its deck, platters, mixer, faders and horn.
+
+**3. Why only one crowd model was coloured — two real causes.**
+
+1. **The female atlases were missing from disk.** Godot's FBX import embeds Diffuse/Normal/
+   Specular/Glossiness PNGs; four female spectators (`Dancing Twerk`, `Hip Hop Dancing`, `Moonwalk`,
+   `Snake Hip Hop Dance`) had `_1…_5` but no `_0`, so their albedo was `null` and `apply_cel` fell
+   back to a 2×2 white texture — flat, untextured bodies. The `_0` atlas is payload index 0 of the
+   same FBX (proved: the male `_0.png` is byte-identical to its payload 0, and the existing female
+   `_1…_5` match payloads 1–5), so the four atlases were **extracted from the delivered FBX files**
+   and their import caches cleared. This is the shipped art, not new art.
+2. **Shared material instances plus a global shadow tint.** `apply_cel`'s cache key was
+   `source material id + variant`, so several spectators could resolve to one `ShaderMaterial`, and
+   every material carried the shader's `shadow_tint_amount = 0.20` — a cool 20 % shadow bias applied
+   to the albedo. Both fixed: one material per character keyed by the character's own instance id
+   (never shared between characters), `shadow_tint_amount = 0.0`, `hue_shift = 0.0`. Tints are
+   sub-percent brightness nudges only. The `albedo_texture` is bound **explicitly per instance** and
+   a surface with no albedo is no longer given a white stand-in — it keeps the imported material and
+   the instance is reported.
+
+**4. Energy without tint.** Crowd "energy" is animation only: which act is crossfaded in
+(`CharacterModelSlots.play_act`), each person's own rate/phase, a ≤2.5 cm beat bob on the anchor,
+and the props. `set_palette()` moves the rim highlight only. `CrowdLine.set_night()` — the silhouette
+dimmer — is gone with its class; night is a palette change, not a darkening.
+
+**5. DJs** follow the same rules: one cel material each, explicit albedo, `shadow_tint_amount 0.0`,
+rim only from the palette.
+
+**6. Verification — albedo.** Every build logs, per crowd/DJ instance, the model name, its material
+count and the albedo path bound to every character surface
+(`CharacterModelSlots.report_albedo()`, e.g. `[albedo] crowd Crowd female Dancing Twerk
+materials=7 Ch07_Body#0=res://assets/models/crowd/Crowd female Dancing Twerk_0.png …`). **No path is
+`<none>`**: 8 crowd + 2 DJ characters, 86 character surfaces, 0 unbound. Hand props are excluded by
+construction (they are painted geometry, not character albedo).
+
+**6. Verification — no 2D crowd node in the running tree.** `godot --headless --path godot --script
+res://tools/tree_dump.gd` prints `print_tree_pretty` of the live arena. Zero matches for
+`CrowdLine`, `ForegroundCrowd`, `CrowdHaze`, `Silhouette` or `stick`. The dump:
+
+```
+ ┖╴TestArena
+    ┠╴Stage
+    ┠╴Atmosphere
+    ┠╴SunsetWash
+    ┠╴NightWash
+    ┠╴SunGlow
+    ┠╴SunShaft
+    ┠╴SpeakerRings
+    ┠╴LightBeams
+    ┠╴TimeOfDay
+    ┠╴Floodlight
+    ┠╴WindMotes
+    ┠╴Floor
+    ┃  ┖╴Shape
+    ┠╴WallLeft
+    ┃  ┖╴Shape
+    ┠╴WallRight
+    ┃  ┖╴Shape
+    ┠╴RecordCrates
+    ┃  ┠╴LeftCrate
+    ┃  ┃  ┖╴Shadow
+    ┃  ┖╴RightCrate
+    ┃     ┖╴Shadow
+    ┠╴HeatHaze
+    ┃  ┖╴DustMotes
+    ┠╴YardBarrier
+    ┠╴P1
+    ┃  ┠╴Shadow
+    ┃  ┠╴Dust
+    ┃  ┠╴Sprite
+    ┃  ┠╴Body
+    ┃  ┠╴Hurtbox
+    ┃  ┃  ┖╴Shape
+    ┃  ┖╴Hitbox
+    ┃     ┖╴Shape
+    ┠╴P2
+    ┃  ┠╴Shadow
+    ┃  ┠╴Dust
+    ┃  ┠╴Sprite
+    ┃  ┠╴Body
+    ┃  ┠╴Hurtbox
+    ┃  ┃  ┖╴Shape
+    ┃  ┖╴Hitbox
+    ┃     ┖╴Shape
+    ┠╴BirdHazard
+    ┠╴BeatService
+    ┠╴SparringAI
+    ┠╴RoundController
+    ┠╴Music
+    ┠╴Camera2D
+    ┠╴HUD
+    ┃  ┖╴Ui
+    ┃     ┖╴Hud
+    ┠╴Arena3D
+    ┃  ┠╴WorldEnvironment
+    ┃  ┠╴StageCamera
+    ┃  ┠╴SandFloor
+    ┃  ┠╴@MeshInstance3D@6
+    ┃  ┠╴@MeshInstance3D@7
+    ┃  ┠╴@MeshInstance3D@8
+    ┃  ┠╴@MeshInstance3D@9
+    ┃  ┠╴@MeshInstance3D@10
+    ┃  ┠╴@MeshInstance3D@11
+    ┃  ┠╴@MeshInstance3D@12
+    ┃  ┠╴@MeshInstance3D@13
+    ┃  ┠╴@MeshInstance3D@14
+    ┃  ┠╴@MeshInstance3D@15
+    ┃  ┠╴@MeshInstance3D@16
+    ┃  ┠╴@MeshInstance3D@17
+    ┃  ┠╴@MeshInstance3D@18
+    ┃  ┠╴@MeshInstance3D@19
+    ┃  ┠╴SkyBackdrop
+    ┃  ┠╴SunDisc
+    ┃  ┠╴HorizonBand
+    ┃  ┠╴BarrierRail
+    ┃  ┠╴BarrierLower
+    ┃  ┠╴BarrierPost
+    ┃  ┠╴@MeshInstance3D@20
+    ┃  ┠╴@MeshInstance3D@21
+    ┃  ┠╴@MeshInstance3D@22
+    ┃  ┠╴@MeshInstance3D@23
+    ┃  ┠╴@MeshInstance3D@24
+    ┃  ┠╴@MeshInstance3D@25
+    ┃  ┠╴@MeshInstance3D@26
+    ┃  ┠╴@MeshInstance3D@27
+    ┃  ┠╴StageLightPool
+    ┃  ┠╴SpeakerStackLeft
+    ┃  ┃  ┠╴Plinth
+    ┃  ┃  ┠╴SubBin0
+    ┃  ┃  ┠╴Baffle0
+    ┃  ┃  ┠╴Surround0_0
+    ┃  ┃  ┠╴Sub18_0_0
+    ┃  ┃  ┠╴Surround0_1
+    ┃  ┃  ┠╴Sub18_0_1
+    ┃  ┃  ┠╴Bracket0
+    ┃  ┃  ┠╴Bracket1
+    ┃  ┃  ┠╴Bracket2
+    ┃  ┃  ┠╴Bracket3
+    ┃  ┃  ┠╴Bracket4
+    ┃  ┃  ┠╴Bracket5
+    ┃  ┃  ┠╴Bracket6
+    ┃  ┃  ┠╴Bracket7
+    ┃  ┃  ┠╴SubBin1
+    ┃  ┃  ┠╴Baffle1
+    ┃  ┃  ┠╴Surround1_0
+    ┃  ┃  ┠╴Sub18_1_0
+    ┃  ┃  ┠╴Surround1_1
+    ┃  ┃  ┠╴Sub18_1_1
+    ┃  ┃  ┠╴Bracket8
+    ┃  ┃  ┠╴Bracket9
+    ┃  ┃  ┠╴Bracket10
+    ┃  ┃  ┠╴Bracket11
+    ┃  ┃  ┠╴Bracket12
+    ┃  ┃  ┠╴Bracket13
+    ┃  ┃  ┠╴Bracket14
+    ┃  ┃  ┠╴Bracket15
+    ┃  ┃  ┠╴BassCabinet
+    ┃  ┃  ┠╴BassBaffle
+    ┃  ┃  ┠╴BassSurround0
+    ┃  ┃  ┠╴Mid15_0
+    ┃  ┃  ┠╴BassSurround1
+    ┃  ┃  ┠╴Mid15_1
+    ┃  ┃  ┠╴BassPort
+    ┃  ┃  ┠╴BracketBass-1-1
+    ┃  ┃  ┠╴BracketBass-11
+    ┃  ┃  ┠╴BracketBass1-1
+    ┃  ┃  ┠╴BracketBass11
+    ┃  ┃  ┠╴RadialHornBox
+    ┃  ┃  ┠╴HornFlare0
+    ┃  ┃  ┠╴RadialHorn0
+    ┃  ┃  ┠╴HornFlare1
+    ┃  ┃  ┠╴RadialHorn1
+    ┃  ┃  ┠╴HornThroat
+    ┃  ┃  ┠╴StackCap
+    ┃  ┃  ┠╴RastaBand0
+    ┃  ┃  ┠╴RastaBand1
+    ┃  ┃  ┠╴RastaBand2
+    ┃  ┃  ┠╴RastaFlag
+    ┃  ┃  ┠╴RastaFlagGold
+    ┃  ┃  ┖╴AmpRack
+    ┃  ┃     ┠╴RackCase
+    ┃  ┃     ┠╴RackRailL
+    ┃  ┃     ┠╴RackRailR
+    ┃  ┃     ┠╴EqFace
+    ┃  ┃     ┠╴EqKnob0
+    ┃  ┃     ┠╴EqKnob1
+    ┃  ┃     ┠╴EqKnob2
+    ┃  ┃     ┠╴EqKnob3
+    ┃  ┃     ┠╴EqKnob4
+    ┃  ┃     ┠╴VuLed0_0
+    ┃  ┃     ┠╴VuLed0_1
+    ┃  ┃     ┠╴VuLed0_2
+    ┃  ┃     ┠╴VuLed0_3
+    ┃  ┃     ┠╴VuLed0_4
+    ┃  ┃     ┠╴VuLed0_5
+    ┃  ┃     ┠╴VuLed0_6
+    ┃  ┃     ┠╴VuLed0_7
+    ┃  ┃     ┠╴VuLed0_8
+    ┃  ┃     ┠╴VuLed0_9
+    ┃  ┃     ┠╴VuLed1_0
+    ┃  ┃     ┠╴VuLed1_1
+    ┃  ┃     ┠╴VuLed1_2
+    ┃  ┃     ┠╴VuLed1_3
+    ┃  ┃     ┠╴VuLed1_4
+    ┃  ┃     ┠╴VuLed1_5
+    ┃  ┃     ┠╴VuLed1_6
+    ┃  ┃     ┠╴VuLed1_7
+    ┃  ┃     ┠╴VuLed1_8
+    ┃  ┃     ┖╴VuLed1_9
+    ┃  ┠╴SpeakerStackRight
+    ┃  ┃  ┠╴Plinth
+    ┃  ┃  ┠╴SubBin0
+    ┃  ┃  ┠╴Baffle0
+    ┃  ┃  ┠╴Surround0_0
+    ┃  ┃  ┠╴Sub18_0_0
+    ┃  ┃  ┠╴Surround0_1
+    ┃  ┃  ┠╴Sub18_0_1
+    ┃  ┃  ┠╴Bracket0
+    ┃  ┃  ┠╴Bracket1
+    ┃  ┃  ┠╴Bracket2
+    ┃  ┃  ┠╴Bracket3
+    ┃  ┃  ┠╴Bracket4
+    ┃  ┃  ┠╴Bracket5
+    ┃  ┃  ┠╴Bracket6
+    ┃  ┃  ┠╴Bracket7
+    ┃  ┃  ┠╴SubBin1
+    ┃  ┃  ┠╴Baffle1
+    ┃  ┃  ┠╴Surround1_0
+    ┃  ┃  ┠╴Sub18_1_0
+    ┃  ┃  ┠╴Surround1_1
+    ┃  ┃  ┠╴Sub18_1_1
+    ┃  ┃  ┠╴Bracket8
+    ┃  ┃  ┠╴Bracket9
+    ┃  ┃  ┠╴Bracket10
+    ┃  ┃  ┠╴Bracket11
+    ┃  ┃  ┠╴Bracket12
+    ┃  ┃  ┠╴Bracket13
+    ┃  ┃  ┠╴Bracket14
+    ┃  ┃  ┠╴Bracket15
+    ┃  ┃  ┠╴BassCabinet
+    ┃  ┃  ┠╴BassBaffle
+    ┃  ┃  ┠╴BassSurround0
+    ┃  ┃  ┠╴Mid15_0
+    ┃  ┃  ┠╴BassSurround1
+    ┃  ┃  ┠╴Mid15_1
+    ┃  ┃  ┠╴BassPort
+    ┃  ┃  ┠╴BracketBass-1-1
+    ┃  ┃  ┠╴BracketBass-11
+    ┃  ┃  ┠╴BracketBass1-1
+    ┃  ┃  ┠╴BracketBass11
+    ┃  ┃  ┠╴RadialHornBox
+    ┃  ┃  ┠╴HornFlare0
+    ┃  ┃  ┠╴RadialHorn0
+    ┃  ┃  ┠╴HornFlare1
+    ┃  ┃  ┠╴RadialHorn1
+    ┃  ┃  ┠╴HornThroat
+    ┃  ┃  ┠╴StackCap
+    ┃  ┃  ┠╴RastaBand0
+    ┃  ┃  ┠╴RastaBand1
+    ┃  ┃  ┠╴RastaBand2
+    ┃  ┃  ┠╴RastaFlag
+    ┃  ┃  ┠╴RastaFlagGold
+    ┃  ┃  ┖╴AmpRack
+    ┃  ┃     ┠╴RackCase
+    ┃  ┃     ┠╴RackRailL
+    ┃  ┃     ┠╴RackRailR
+    ┃  ┃     ┠╴EqFace
+    ┃  ┃     ┠╴EqKnob0
+    ┃  ┃     ┠╴EqKnob1
+    ┃  ┃     ┠╴EqKnob2
+    ┃  ┃     ┠╴EqKnob3
+    ┃  ┃     ┠╴EqKnob4
+    ┃  ┃     ┠╴VuLed0_0
+    ┃  ┃     ┠╴VuLed0_1
+    ┃  ┃     ┠╴VuLed0_2
+    ┃  ┃     ┠╴VuLed0_3
+    ┃  ┃     ┠╴VuLed0_4
+    ┃  ┃     ┠╴VuLed0_5
+    ┃  ┃     ┠╴VuLed0_6
+    ┃  ┃     ┠╴VuLed0_7
+    ┃  ┃     ┠╴VuLed0_8
+    ┃  ┃     ┠╴VuLed0_9
+    ┃  ┃     ┠╴VuLed1_0
+    ┃  ┃     ┠╴VuLed1_1
+    ┃  ┃     ┠╴VuLed1_2
+    ┃  ┃     ┠╴VuLed1_3
+    ┃  ┃     ┠╴VuLed1_4
+    ┃  ┃     ┠╴VuLed1_5
+    ┃  ┃     ┠╴VuLed1_6
+    ┃  ┃     ┠╴VuLed1_7
+    ┃  ┃     ┠╴VuLed1_8
+    ┃  ┃     ┖╴VuLed1_9
+    ┃  ┠╴TrussTower
+    ┃  ┠╴@MeshInstance3D@68
+    ┃  ┠╴TrussBeam
+    ┃  ┠╴Fixture
+    ┃  ┠╴@MeshInstance3D@69
+    ┃  ┠╴@MeshInstance3D@70
+    ┃  ┠╴@MeshInstance3D@71
+    ┃  ┠╴SpotLeft
+    ┃  ┠╴SpotRight
+    ┃  ┠╴Sun
+    ┃  ┠╴CameraFill
+    ┃  ┠╴WarmRim
+    ┃  ┠╴DJBooth3D
+    ┃  ┃  ┠╴Booth
+    ┃  ┃  ┃  ┠╴Plinth
+    ┃  ┃  ┃  ┠╴Cabinet
+    ┃  ┃  ┃  ┠╴Top
+    ┃  ┃  ┃  ┠╴Stripe0
+    ┃  ┃  ┃  ┠╴Stripe1
+    ┃  ┃  ┃  ┠╴Stripe2
+    ┃  ┃  ┃  ┠╴Monitor
+    ┃  ┃  ┃  ┠╴@MeshInstance3D@72
+    ┃  ┃  ┃  ┠╴DeckBase
+    ┃  ┃  ┃  ┠╴Platter
+    ┃  ┃  ┃  ┠╴Record
+    ┃  ┃  ┃  ┃  ┠╴Vinyl
+    ┃  ┃  ┃  ┃  ┖╴Label
+    ┃  ┃  ┃  ┠╴Tonearm
+    ┃  ┃  ┃  ┠╴@MeshInstance3D@73
+    ┃  ┃  ┃  ┠╴@MeshInstance3D@74
+    ┃  ┃  ┃  ┠╴@Node3D@75
+    ┃  ┃  ┃  ┃  ┠╴Vinyl
+    ┃  ┃  ┃  ┃  ┖╴Label
+    ┃  ┃  ┃  ┠╴@MeshInstance3D@76
+    ┃  ┃  ┃  ┠╴Mixer
+    ┃  ┃  ┃  ┠╴ChannelFader0
+    ┃  ┃  ┃  ┠╴ChannelFader1
+    ┃  ┃  ┃  ┠╴ChannelFader2
+    ┃  ┃  ┃  ┠╴Crossfader
+    ┃  ┃  ┃  ┠╴Knob0
+    ┃  ┃  ┃  ┠╴Knob1
+    ┃  ┃  ┃  ┠╴Knob2
+    ┃  ┃  ┃  ┠╴Knob3
+    ┃  ┃  ┃  ┠╴SignPostL
+    ┃  ┃  ┃  ┠╴SignPostR
+    ┃  ┃  ┃  ┖╴SignBoard
+    ┃  ┃  ┠╴DJ1
+    ┃  ┃  ┃  ┖╴Crowd Male Cheering
+    ┃  ┃  ┃     ┠╴Armature
+    ┃  ┃  ┃     ┃  ┖╴Skeleton3D
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Pants_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_L_Eye_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Hat_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Head_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Shoes_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Jacket_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Arms_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Teeth_Down_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_R_Eye_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Teeth_Up_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Cigar_Geo
+    ┃  ┃  ┃     ┃     ┠╴AirhornHand
+    ┃  ┃  ┃     ┃     ┃  ┖╴Airhorn
+    ┃  ┃  ┃     ┃     ┃     ┠╴HornBody
+    ┃  ┃  ┃     ┃     ┃     ┠╴HornBell
+    ┃  ┃  ┃     ┃     ┃     ┖╴HornCan
+    ┃  ┃  ┃     ┃     ┖╴@PhysicalBoneSimulator3D@77
+    ┃  ┃  ┃     ┖╴AnimationPlayer
+    ┃  ┃  ┖╴DJ2
+    ┃  ┃     ┖╴Crowd Male Rallying
+    ┃  ┃        ┠╴Armature
+    ┃  ┃        ┃  ┖╴Skeleton3D
+    ┃  ┃        ┃     ┠╴mixamorig_Arms_Geo
+    ┃  ┃        ┃     ┠╴mixamorig_Teeth_Down_Geo
+    ┃  ┃        ┃     ┠╴mixamorig_R_Eye_Geo
+    ┃  ┃        ┃     ┠╴mixamorig_Teeth_Up_Geo
+    ┃  ┃        ┃     ┠╴mixamorig_Cigar_Geo
+    ┃  ┃        ┃     ┠╴mixamorig_L_Eye_Geo
+    ┃  ┃        ┃     ┠╴mixamorig_Pants_Geo
+    ┃  ┃        ┃     ┠╴mixamorig_Hat_Geo
+    ┃  ┃        ┃     ┠╴mixamorig_Head_Geo
+    ┃  ┃        ┃     ┠╴mixamorig_Shoes_Geo
+    ┃  ┃        ┃     ┠╴mixamorig_Jacket_Geo
+    ┃  ┃        ┃     ┖╴@PhysicalBoneSimulator3D@78
+    ┃  ┃        ┖╴AnimationPlayer
+    ┃  ┠╴CrowdController3D
+    ┃  ┃  ┠╴Spectator00
+    ┃  ┃  ┃  ┖╴Crowd Male Angry Gesture
+    ┃  ┃  ┃     ┠╴Armature
+    ┃  ┃  ┃     ┃  ┖╴Skeleton3D
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Teeth_Down_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Arms_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_R_Eye_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Teeth_Up_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Cigar_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_L_Eye_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Pants_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Hat_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Head_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Shoes_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Jacket_Geo
+    ┃  ┃  ┃     ┃     ┖╴@PhysicalBoneSimulator3D@79
+    ┃  ┃  ┃     ┖╴AnimationPlayer
+    ┃  ┃  ┠╴Spectator01
+    ┃  ┃  ┃  ┖╴Crowd Male Cheering
+    ┃  ┃  ┃     ┠╴Armature
+    ┃  ┃  ┃     ┃  ┖╴Skeleton3D
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Pants_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_L_Eye_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Hat_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Head_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Shoes_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Jacket_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Arms_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Teeth_Down_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_R_Eye_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Teeth_Up_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Cigar_Geo
+    ┃  ┃  ┃     ┃     ┠╴HandProp0
+    ┃  ┃  ┃     ┃     ┃  ┖╴FlagPole
+    ┃  ┃  ┃     ┃     ┃     ┠╴Pole
+    ┃  ┃  ┃     ┃     ┃     ┖╴FlagCloth
+    ┃  ┃  ┃     ┃     ┃        ┖╴Cloth
+    ┃  ┃  ┃     ┃     ┖╴@PhysicalBoneSimulator3D@80
+    ┃  ┃  ┃     ┖╴AnimationPlayer
+    ┃  ┃  ┠╴Spectator02
+    ┃  ┃  ┃  ┖╴Crowd Male Rallying
+    ┃  ┃  ┃     ┠╴Armature
+    ┃  ┃  ┃     ┃  ┖╴Skeleton3D
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Arms_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Teeth_Down_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_R_Eye_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Teeth_Up_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Cigar_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_L_Eye_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Pants_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Hat_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Head_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Shoes_Geo
+    ┃  ┃  ┃     ┃     ┠╴mixamorig_Jacket_Geo
+    ┃  ┃  ┃     ┃     ┠╴HandProp0
+    ┃  ┃  ┃     ┃     ┃  ┖╴LighterHand
+    ┃  ┃  ┃     ┃     ┃     ┠╴Lighter
+    ┃  ┃  ┃     ┃     ┃     ┖╴LighterFlame
+    ┃  ┃  ┃     ┃     ┃        ┖╴Flame
+    ┃  ┃  ┃     ┃     ┖╴@PhysicalBoneSimulator3D@81
+    ┃  ┃  ┃     ┖╴AnimationPlayer
+    ┃  ┃  ┠╴Spectator03
+    ┃  ┃  ┃  ┖╴Crowd female Dancing Twerk
+    ┃  ┃  ┃     ┠╴Armature
+    ┃  ┃  ┃     ┃  ┖╴Skeleton3D
+    ┃  ┃  ┃     ┃     ┠╴Ch07_Body
+    ┃  ┃  ┃     ┃     ┠╴Ch07_Eyelashes
+    ┃  ┃  ┃     ┃     ┠╴Ch07_Hair
+    ┃  ┃  ┃     ┃     ┠╴Ch07_Heels
+    ┃  ┃  ┃     ┃     ┠╴Ch07_Pants
+    ┃  ┃  ┃     ┃     ┠╴Ch07_Shirt
+    ┃  ┃  ┃     ┃     ┠╴Ch07_Suit
+    ┃  ┃  ┃     ┃     ┠╴HandProp0
+    ┃  ┃  ┃     ┃     ┃  ┖╴Airhorn
+    ┃  ┃  ┃     ┃     ┃     ┠╴HornBody
+    ┃  ┃  ┃     ┃     ┃     ┠╴HornBell
+    ┃  ┃  ┃     ┃     ┃     ┖╴HornCan
+    ┃  ┃  ┃     ┃     ┠╴HandProp1
+    ┃  ┃  ┃     ┃     ┃  ┖╴LighterHand
+    ┃  ┃  ┃     ┃     ┃     ┠╴Lighter
+    ┃  ┃  ┃     ┃     ┃     ┖╴LighterFlame
+    ┃  ┃  ┃     ┃     ┃        ┖╴Flame
+    ┃  ┃  ┃     ┃     ┖╴@PhysicalBoneSimulator3D@82
+    ┃  ┃  ┃     ┖╴AnimationPlayer
+    ┃  ┃  ┠╴Spectator04
+    ┃  ┃  ┃  ┖╴Crowd female Hip Hop Dancing
+    ┃  ┃  ┃     ┠╴Armature
+    ┃  ┃  ┃     ┃  ┖╴Skeleton3D
+    ┃  ┃  ┃     ┃     ┠╴Ch22_Body
+    ┃  ┃  ┃     ┃     ┠╴Ch22_Eyelashes
+    ┃  ┃  ┃     ┃     ┠╴Ch22_Hair
+    ┃  ┃  ┃     ┃     ┠╴Ch22_Pants
+    ┃  ┃  ┃     ┃     ┠╴Ch22_Shirt
+    ┃  ┃  ┃     ┃     ┠╴Ch22_Sneakers
+    ┃  ┃  ┃     ┃     ┠╴HandProp0
+    ┃  ┃  ┃     ┃     ┃  ┖╴Airhorn
+    ┃  ┃  ┃     ┃     ┃     ┠╴HornBody
+    ┃  ┃  ┃     ┃     ┃     ┠╴HornBell
+    ┃  ┃  ┃     ┃     ┃     ┖╴HornCan
+    ┃  ┃  ┃     ┃     ┖╴@PhysicalBoneSimulator3D@83
+    ┃  ┃  ┃     ┖╴AnimationPlayer
+    ┃  ┃  ┠╴Spectator05
+    ┃  ┃  ┃  ┖╴Crowd female Moonwalk
+    ┃  ┃  ┃     ┠╴Armature
+    ┃  ┃  ┃     ┃  ┖╴Skeleton3D
+    ┃  ┃  ┃     ┃     ┠╴Ch03
+    ┃  ┃  ┃     ┃     ┠╴HandProp0
+    ┃  ┃  ┃     ┃     ┃  ┖╴FlagPole
+    ┃  ┃  ┃     ┃     ┃     ┠╴Pole
+    ┃  ┃  ┃     ┃     ┃     ┖╴FlagCloth
+    ┃  ┃  ┃     ┃     ┃        ┖╴Cloth
+    ┃  ┃  ┃     ┃     ┖╴@PhysicalBoneSimulator3D@84
+    ┃  ┃  ┃     ┖╴AnimationPlayer
+    ┃  ┃  ┠╴Spectator06
+    ┃  ┃  ┃  ┖╴Crowd female Snake Hip Hop Dance
+    ┃  ┃  ┃     ┠╴Armature
+    ┃  ┃  ┃     ┃  ┖╴Skeleton3D
+    ┃  ┃  ┃     ┃     ┠╴Ch22_Body
+    ┃  ┃  ┃     ┃     ┠╴Ch22_Eyelashes
+    ┃  ┃  ┃     ┃     ┠╴Ch22_Hair
+    ┃  ┃  ┃     ┃     ┠╴Ch22_Pants
+    ┃  ┃  ┃     ┃     ┠╴Ch22_Shirt
+    ┃  ┃  ┃     ┃     ┠╴Ch22_Sneakers
+    ┃  ┃  ┃     ┃     ┠╴HandProp0
+    ┃  ┃  ┃     ┃     ┃  ┖╴LighterHand
+    ┃  ┃  ┃     ┃     ┃     ┠╴Lighter
+    ┃  ┃  ┃     ┃     ┃     ┖╴LighterFlame
+    ┃  ┃  ┃     ┃     ┃        ┖╴Flame
+    ┃  ┃  ┃     ┃     ┖╴@PhysicalBoneSimulator3D@85
+    ┃  ┃  ┃     ┖╴AnimationPlayer
+    ┃  ┃  ┖╴Spectator07
+    ┃  ┃     ┖╴Crowd Male Angry Gesture
+    ┃  ┃        ┠╴Armature
+    ┃  ┃        ┃  ┖╴Skeleton3D
+    ┃  ┃        ┃     ┠╴mixamorig_Teeth_Down_Geo
+    ┃  ┃        ┃     ┠╴mixamorig_Arms_Geo
+    ┃  ┃        ┃     ┠╴mixamorig_R_Eye_Geo
+    ┃  ┃        ┃     ┠╴mixamorig_Teeth_Up_Geo
+    ┃  ┃        ┃     ┠╴mixamorig_Cigar_Geo
+    ┃  ┃        ┃     ┠╴mixamorig_L_Eye_Geo
+    ┃  ┃        ┃     ┠╴mixamorig_Pants_Geo
+    ┃  ┃        ┃     ┠╴mixamorig_Hat_Geo
+    ┃  ┃        ┃     ┠╴mixamorig_Head_Geo
+    ┃  ┃        ┃     ┠╴mixamorig_Shoes_Geo
+    ┃  ┃        ┃     ┠╴mixamorig_Jacket_Geo
+    ┃  ┃        ┃     ┠╴HandProp0
+    ┃  ┃        ┃     ┃  ┖╴LighterHand
+    ┃  ┃        ┃     ┃     ┠╴Lighter
+    ┃  ┃        ┃     ┃     ┖╴LighterFlame
+    ┃  ┃        ┃     ┃        ┖╴Flame
+    ┃  ┃        ┃     ┖╴@PhysicalBoneSimulator3D@86
+    ┃  ┃        ┖╴AnimationPlayer
+    ┃  ┠╴@Node3D@87
+    ┃  ┃  ┖╴PosePivot
+    ┃  ┃     ┖╴VisualPivot
+    ┃  ┃        ┖╴feedback_rigged
+    ┃  ┃           ┠╴Skeleton3D
+    ┃  ┃           ┃  ┠╴obj1
+    ┃  ┃           ┃  ┠╴MicInHand
+    ┃  ┃           ┃  ┃  ┖╴MicInHandProp
+    ┃  ┃           ┃  ┃     ┠╴Body
+    ┃  ┃           ┃  ┃     ┠╴Band
+    ┃  ┃           ┃  ┃     ┖╴Grille
+    ┃  ┃           ┃  ┖╴@PhysicalBoneSimulator3D@88
+    ┃  ┃           ┖╴AnimationPlayer
+    ┃  ┠╴ContactShadow
+    ┃  ┠╴@Node3D@89
+    ┃  ┃  ┖╴PosePivot
+    ┃  ┃     ┖╴VisualPivot
+    ┃  ┃        ┖╴feedback_rigged
+    ┃  ┃           ┠╴Skeleton3D
+    ┃  ┃           ┃  ┠╴obj1
+    ┃  ┃           ┃  ┠╴MicInHand
+    ┃  ┃           ┃  ┃  ┖╴MicInHandProp
+    ┃  ┃           ┃  ┃     ┠╴Body
+    ┃  ┃           ┃  ┃     ┠╴Band
+    ┃  ┃           ┃  ┃     ┖╴Grille
+    ┃  ┃           ┃  ┖╴@PhysicalBoneSimulator3D@90
+    ┃  ┃           ┖╴AnimationPlayer
+    ┃  ┖╴@MeshInstance3D@91
+    ┖╴@Node2D@92
+```
+
+**Measured.** `godot --headless --path godot --script res://tools/headless_roster_check.gd` —
+**385 PASS / 0 FAIL, `ALL CHECKS PASSED`** — and `godot --headless --path godot --script
+res://tools/facing_audit.gd` — **94 checks, 0 FAIL, `ALL FACING CHECKS PASSED`**. The three new
+crowd/DJ checks are the albedo-integrity one (86 surfaces, 0 unbound), material isolation (0
+materials shared between characters) and `shadow_tint_amount == 0.0` on every cel material.
+
+**Not verified.** No GPU, display or audio here: the restored female atlases, the brightened crowd,
+the removed silhouettes, the facing fix as it *looks* on screen, and the frame rate of eight rigged
+spectators on a Chromebook have **not** been seen. The toolbar/visual check is the owner's.

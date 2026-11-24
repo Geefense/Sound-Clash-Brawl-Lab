@@ -36,11 +36,11 @@ extends Node2D
 ## Sound (backlog item B8): every impact cue comes from `Sfx`, which synthesises its
 ## samples at run time — the build ships no audio files.
 ##
-## Crowd staging (AGENTS.md §9 item 21): `YardBarrier` closes the base of the crowd line so
-## the 15 sprites stand behind something instead of being pinned onto the sand, the
-## `Foreground` CanvasLayer carries one cropped near-camera silhouette for the fifth depth
-## plane, and `CrowdLine` runs an unsynchronised per-person sway plus the proximity ebb.
-## All three are presentation only.
+## Crowd staging (AGENTS.md §9 item 21): `YardBarrier` closes the base of the yard so the
+## crowd stands behind something instead of being pinned onto the sand. The crowd itself is
+## 3D only — `Arena3D.crowd3d`, eight delivered Mixamo characters, reached here through the
+## `crowd` property. The 2D `CrowdLine` sprite layer, the `ForegroundCrowd` silhouette stack
+## and the `CrowdHaze` wash were deleted with the silhouettes (2026-11-24). Presentation only.
 
 const CLICK_LOOP_SECONDS := 10.0      # 22 beats at 132 BPM
 const CAMERA_MIN_DISTANCE := 620.0
@@ -90,7 +90,6 @@ const TIME_PHASES := [
 		"sun_scale": 2.4,
 		"shaft": 0.1,
 		"flood": 0.0,
-		"crowd": 0.0,
 		"shadow_stretch": 0.95,
 		"shadow_dir": -1.0,
 		# 2.5D lighting pass (AGENTS.md §9 item 41): a high, slightly warm daylight rim.
@@ -102,7 +101,6 @@ const TIME_PHASES := [
 		"shadow_density": 1.0,
 		"beam": 0.0,
 		"haze": 0.35,
-		"fg": 0.0,
 	},
 	{
 		"name": "Golden Hour / Sunset Clash",
@@ -114,7 +112,6 @@ const TIME_PHASES := [
 		"sun_scale": 3.1,
 		"shaft": 0.36,
 		"flood": 0.12,
-		"crowd": 0.18,
 		"shadow_stretch": 1.95,     # low sun: long shadows cast to the right
 		"shadow_dir": 1.0,
 		# Golden-amber wrap from the low sun on the right, plus heavy sand bounce.
@@ -126,7 +123,6 @@ const TIME_PHASES := [
 		"shadow_density": 0.85,
 		"beam": 0.85,
 		"haze": 1.0,
-		"fg": 1.0,
 	},
 	{
 		"name": "Late-Night Sound Clash",
@@ -138,7 +134,6 @@ const TIME_PHASES := [
 		"sun_scale": 1.7,
 		"shaft": 0.0,
 		"flood": 0.46,              # the stage lights, not the sun, carry this round
-		"crowd": 0.85,              # crowd drops to silhouette
 		"shadow_stretch": 1.1,
 		"shadow_dir": -1.0,
 		# Cyan/magenta neon wrap from the truss rig, low bounce, softer crowd shadows.
@@ -150,7 +145,6 @@ const TIME_PHASES := [
 		"shadow_density": 0.72,
 		"beam": 0.72,
 		"haze": 0.45,
-		"fg": 1.0,
 	},
 ]
 const TIME_TRANSITION_SEC := 3.0
@@ -171,7 +165,6 @@ const MAX_IMPACT_FRAMES := 1          # one comic frame at a time, never a stack
 ## any thrown / landing body, pulls the nearest spectators back for a beat. Walking is 220,
 ## so this only fires on a dash, a jump-in, a throw or a knockdown.
 const CROWD_FLINCH_SPEED := 320.0
-const CROWD_FLINCH_COOLDOWN := 0.85
 ## Where the pre-warm instances live: far outside the camera's clamped stage rectangle,
 ## so they are never on screen even for one frame.
 const PREWARM_OFFSCREEN := Vector2(-4000.0, -4000.0)
@@ -351,7 +344,13 @@ var arena3d: Arena3D = null
 @onready var camera: Camera2D = $Camera2D
 @onready var hud: Control = $HUD/Ui/Hud
 @onready var sparring: SparringController = $SparringAI
-@onready var crowd: CrowdLine = $CrowdLine
+## The only crowd in the game is the 3D one, built by `Arena3D`. The 2D `CrowdLine` sprite
+## layer, its `StageSilhouette` bodies and the `SilhouetteArt` masks are deleted (2026-11-24).
+var crowd: CrowdController3D:
+	get:
+		if arena3d != null:
+			return arena3d.crowd3d
+		return null
 @onready var rounds: RoundController = $RoundController
 @onready var bird: BirdHazard = $BirdHazard
 @onready var speaker_rings: SpeakerPulse = $SpeakerRings
@@ -365,7 +364,6 @@ var arena3d: Arena3D = null
 # stripped scene omits them; every call site below already null-checks.
 @onready var beams: LightBeams = get_node_or_null("LightBeams") as LightBeams
 @onready var heat_haze: HeatHaze = get_node_or_null("HeatHaze") as HeatHaze
-@onready var foreground: ForegroundCrowd = get_node_or_null("ForegroundCrowd") as ForegroundCrowd
 
 var _dummy_guard: bool = false
 var _shake_time: float = 0.0
@@ -379,8 +377,6 @@ var _muted: bool = false
 var _match_over: bool = false
 var _victory_music_started: bool = false
 var _separation_queued: bool = false
-var _flinch_cd := [0.0, 0.0]          # per-fighter rate limit for the crowd flinch
-var _crowd_night: float = 0.0
 var _shadow_stretch: float = 1.0
 var _shadow_dir: float = -1.0
 # Camera (AGENTS.md §9 item 41).
@@ -449,7 +445,6 @@ func _ready() -> void:
 	if SoundClash != null and not SoundClash.tag_played.is_connected(_on_tag_played):
 		SoundClash.tag_played.connect(_on_tag_played)
 	beat.beat.connect(_on_beat)
-	crowd.setup(beat)
 	p1.hype_surge_started.connect(_on_hype_surge)
 	p2.hype_surge_started.connect(_on_hype_surge)
 	p1.hype_milestone_reached.connect(_on_hype_milestone)
@@ -503,7 +498,6 @@ func _process(delta: float) -> void:
 	_thump = maxf(0.0, _thump - delta * THUMP_DECAY)
 	_follow_action(delta)
 	_update_shake(delta)
-	_update_crowd_flinch(delta)
 	hud.queue_redraw()
 
 
@@ -790,7 +784,8 @@ func _on_match_ended(_winner: int) -> void:
 ## 100% Crowd Hype Surge: the crowd jumps and the HUD banner flashes for the same
 ## window the fighter's momentum boost lasts.
 func _on_hype_surge(seconds: float) -> void:
-	crowd.surge(seconds)
+	if crowd != null:
+		crowd.react(&"hype")
 	# The Sound Clash engine owns the horn now, so the old procedural airhorn is not layered
 	# under it (anti-mud rule, AGENTS.md §9 item 44).
 	if SoundClash != null:
@@ -821,7 +816,8 @@ func _announce_callout(kind: StringName) -> bool:
 
 ## 50 % Crowd Hype: the line reshuffles itself even before the surge lands.
 func _on_hype_milestone(_percent: int) -> void:
-	crowd.celebrate()
+	if crowd != null:
+		crowd.react(&"victory")
 
 
 ## Record Static Parry: an electric vinyl-static spark between the two fighters.
@@ -864,7 +860,8 @@ func _on_throw_broken(attacker: BaseFighter, defender: BaseFighter) -> void:
 func _on_throw_connected(attacker: BaseFighter, defender: BaseFighter, kind: StringName) -> void:
 	Sfx.play(&"whoosh")
 	if kind == &"back":
-		crowd.celebrate()
+		if crowd != null:
+			crowd.react(&"victory")
 	if SoundClash != null:
 		SoundClash.set_crowd_intensity(0.85)
 		SoundClash.on_throw(attacker)
@@ -977,29 +974,6 @@ func _add_spark(at: Vector2, style: StringName = &"parry") -> void:
 # =========================================================================
 # Crowd staging: yard barrier, foreground silhouette and the proximity ebb (§9 item 21)
 # =========================================================================
-## A body that crosses the crowd line fast, or any thrown / landing body, makes the
-## spectators it passes lean away and then close back in — the live-action yard-brawl
-## behaviour, not a sync'd animation. Rate-limited per fighter so it never strobes.
-func _update_crowd_flinch(delta: float) -> void:
-	if crowd == null:
-		return
-	for i in _flinch_cd.size():
-		_flinch_cd[i] = maxf(0.0, _flinch_cd[i] - delta)
-	_flinch_for(p1, 0)
-	_flinch_for(p2, 1)
-
-
-func _flinch_for(fighter: BaseFighter, index: int) -> void:
-	if fighter == null or _flinch_cd[index] > 0.0:
-		return
-	var thrown := fighter.state == BaseFighter.State.THROWN \
-		or fighter.state == BaseFighter.State.KNOCKDOWN
-	var fast := absf(fighter.velocity.x) >= CROWD_FLINCH_SPEED
-	if not thrown and not fast:
-		return
-	var strength := 1.25 if thrown else 0.55
-	if crowd.flinch(fighter.global_position.x, strength) > 0:
-		_flinch_cd[index] = CROWD_FLINCH_COOLDOWN
 
 
 # =========================================================================
@@ -1085,7 +1059,6 @@ func set_time_of_day(phase: int, duration: float = TIME_TRANSITION_SEC) -> void:
 	var sunset: float = target["sunset"]
 	var night: float = target["night"]
 	var shaft: float = target["shaft"]
-	var crowd_night: float = target["crowd"]
 	var sun_pos: Vector2 = target["sun_pos"]
 	var sun_scale: float = target["sun_scale"]
 	var stretch: float = target["shadow_stretch"]
@@ -1112,7 +1085,6 @@ func set_time_of_day(phase: int, duration: float = TIME_TRANSITION_SEC) -> void:
 		sunset_wash.modulate.a = sunset
 		night_wash.modulate.a = night
 		sun_shaft.modulate.a = shaft
-		_set_crowd_night(crowd_night)
 		_set_shadow_light(stretch)
 		return
 
@@ -1128,17 +1100,10 @@ func set_time_of_day(phase: int, duration: float = TIME_TRANSITION_SEC) -> void:
 	_time_tween.tween_property(sunset_wash, "modulate:a", sunset, duration)
 	_time_tween.tween_property(night_wash, "modulate:a", night, duration)
 	_time_tween.tween_property(sun_shaft, "modulate:a", shaft, duration)
-	_time_tween.tween_method(_set_crowd_night, _crowd_night, crowd_night, duration)
 	_time_tween.tween_method(_set_shadow_light, _shadow_stretch, stretch, duration)
 	_vis_tween = create_tween()
 	_vis_tween.tween_method(_apply_vis_blend, 0.0, 1.0, duration)
 
-
-## Crowd silhouette level for the current phase (0 daylight, ~0.85 night).
-func _set_crowd_night(amount: float) -> void:
-	_crowd_night = clampf(amount, 0.0, 1.0)
-	if crowd != null:
-		crowd.set_night(_crowd_night)
 
 
 ## Contact-shadow shape for the current phase: fighters and the crowd move together.
@@ -1147,8 +1112,6 @@ func _set_shadow_light(stretch: float) -> void:
 	for fighter in [p1, p2]:
 		if fighter != null:
 			fighter.set_light(_shadow_dir, _shadow_stretch)
-	if crowd != null:
-		crowd.apply_light(_shadow_dir, _shadow_stretch)
 
 
 # =========================================================================
@@ -1239,8 +1202,7 @@ func _setup_3d_presentation() -> void:
 	var hidden := [
 		"Stage", "Atmosphere", "SunsetWash", "NightWash", "SunGlow", "SunShaft",
 		"SpeakerRings", "LightBeams", "TimeOfDay", "Floodlight", "WindMotes",
-		"RecordCrates", "HeatHaze", "CrowdHaze", "YardBarrier", "CrowdLine",
-		"ForegroundCrowd", "BirdHazard",
+		"RecordCrates", "HeatHaze", "YardBarrier", "BirdHazard",
 	]
 	for node_name in hidden:
 		var node := get_node_or_null(node_name)
@@ -1421,7 +1383,6 @@ func _phase_visuals(phase: Dictionary) -> Dictionary:
 		"density": float(phase["shadow_density"]),
 		"beam": float(phase["beam"]),
 		"haze": float(phase["haze"]),
-		"fg": float(phase["fg"]),
 		"sunset": float(phase["sunset"]),
 		"night": float(phase["night"]),
 	}
@@ -1469,14 +1430,9 @@ func _push_visuals() -> void:
 		fighter.set_rim_light(rim_a, rim_b, rim_strength, light_uv, bounce)
 		if fighter.shadow != null:
 			fighter.shadow.density = density
-	if crowd != null:
-		crowd.set_shadow_density(density)
 	if beams != null:
 		beams.set_palette(rim_a, rim_b)
 		beams.set_intensity(float(_vis_now.get("beam", 0.0)))
 	if heat_haze != null:
 		heat_haze.set_phase(sunset, night)
 		heat_haze.set_intensity(float(_vis_now.get("haze", 0.0)))
-	if foreground != null:
-		foreground.set_phase(sunset, night)
-		foreground.set_intensity(float(_vis_now.get("fg", 0.0)))

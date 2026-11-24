@@ -61,9 +61,7 @@ with sand in front and behind them. Nothing was cropped, repainted or offset.
 | 132 BPM speaker rings | `SpeakerRings` (`SpeakerPulse.gd`) | −8 |
 | Sand splats (dodged bird drops) | runtime `StageSplat` children | −6 |
 | Coastal wind motes (CPUParticles2D) | `WindMotes` | −5 |
-| Dancehall crowd, back row | `CrowdLine` children | −6 |
-| Dancehall crowd, front row | `CrowdLine` children | −5 |
-| Cool crowd haze (`CrowdHaze.gd`) | `CrowdHaze` | −4 |
+| Dancehall crowd (3D only) | `Arena3D.crowd3d` (`CrowdController3D`) | 3D layer |
 | Low yard barrier (`YardBarrier.gd`) | `YardBarrier` | −4 |
 | Record crates | `RecordCrates` | −3 |
 | Fighter contact shadows | `Shadow` in `BaseFighter.tscn` | −2 |
@@ -99,7 +97,7 @@ no GPU in the authoring environment**, so colour, occlusion and feel are unverif
 stacks are inside the frame (visible world x 25–1255). Both vinyl crates are 55 % of their old size and
 tucked against the inner speaker bases at (215, 568) and (1065, 568) with matching shadows; the arms-crossed
 spectator is pinned to an edge slot at x 1032 leaning on a new corner post and never joins a rotation; the
-key legend moved to y 698. For depth, `CrowdHaze.gd` washes y 404–566 cool at z −4 while fighter contact
+key legend moved to y 698. For depth, a cool wash covered y 404–566 at z −4 while fighter contact
 shadows widened (radius 46, strength 1.35), and the old primitive foreground silhouette was replaced by a
 darkened real crowd sprite on a soft corner wash. Animation gained a 132 BPM eighth-note idle groove
 (2 px pop, 1.8 % squash) plus attack wind-up, micro-lunge and squash/stretch, all composing on the
@@ -123,7 +121,7 @@ sand puffs (`BaseFighter._slide_puff()`). The crowd now performs acts on individ
 rag-wave, raise-and-blow horn, skank, dance, cheer — instead of one beat-locked bounce for all fifteen.
 Time of day gained its own sky (`SunsetWash`, `NightWash`), a directional `SunShaft`, a moving/scaling
 sun bloom, phase-driven contact-shadow length (`GroundShadow.light_dir` / `stretch`) and a night crowd
-silhouette (`CrowdLine.set_night()`). Headless 4.5 check: **49/49 assertions passed** (see below).
+silhouette (`CrowdLine.set_night()`, both since deleted). Headless 4.5 check: **49/49 assertions passed** (see below).
 
 **Follow-up from the same pass (2026-11-17).** The default matchup is now **Feedback vs Feedback**
 (`MatchSetup.p2_fighter`); L!CKSHOT and Likkle Moore stay selectable and the roster order is

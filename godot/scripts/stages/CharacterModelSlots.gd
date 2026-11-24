@@ -44,7 +44,6 @@ const ACT_FADE := 0.12
 static var _act_clips: Dictionary = {}
 static var _act_scan_done := false
 static var _cel_materials: Dictionary = {}
-static var _plain_texture: Texture2D = null
 
 
 ## Every loadable character source in a slot folder, sorted for a stable assignment.
@@ -281,18 +280,30 @@ static func apply_cel(node: Node3D, tint: Color, rim: Color, variant: int = 0,
 			var texture: Texture2D = null
 			if source is BaseMaterial3D:
 				texture = (source as BaseMaterial3D).albedo_texture
-			var key := "%s_%d" % [str(source.get_instance_id()) if source != null else "none",
-				variant]
+			if texture == null:
+				# A surface with no albedo is not given a white stand-in: that is what turned
+				# a whole bank of spectators into untextured mannequins. The surface keeps the
+				# material the exporter shipped and the caller is told the instance is short.
+				push_warning("CharacterModelSlots: %s surface %d has no albedo texture — left as imported"
+					% [node.name, surface])
+				continue
+			# One material per character: the key carries the character's own id, so no two
+			# characters can ever share (and therefore tint, dim or recolour) a material.
+			# Every surface of one upload draws from the same atlas, which also keeps the draw
+			# state cheap on a Chromebook.
+			var key := "%s_%d" % [node.get_instance_id(), variant]
 			var material: ShaderMaterial = _cel_materials.get(key)
 			if material == null:
 				material = ShaderMaterial.new()
 				material.shader = TOON_SHADER
-				material.set_shader_parameter("albedo_texture", texture if texture != null
-					else _white_texture())
+				material.set_shader_parameter("albedo_texture", texture)
 				material.set_shader_parameter("tint", tint)
 				material.set_shader_parameter("hue_shift", hue_shift)
 				material.set_shader_parameter("rim_colour", rim)
 				material.set_shader_parameter("rim_strength", 0.52)
+				# No global darkening: the shadow band is the albedo's own colour at full
+				# brightness, so a crowd body shows exactly the texture it was delivered with.
+				material.set_shader_parameter("shadow_tint_amount", 0.0)
 				var ink := ShaderMaterial.new()
 				ink.shader = OUTLINE_SHADER
 				ink.set_shader_parameter("ink_width", 0.0026)
@@ -303,12 +314,65 @@ static func apply_cel(node: Node3D, tint: Color, rim: Color, variant: int = 0,
 	return applied
 
 
-static func _white_texture() -> Texture2D:
-	if _plain_texture == null:
-		var image := Image.create(2, 2, false, Image.FORMAT_RGBA8)
-		image.fill(Color.WHITE)
-		_plain_texture = ImageTexture.create_from_image(image)
-	return _plain_texture
+## Per-instance albedo diagnostic (playtest fix 2026-11-24, issue 2). Prints the model name,
+## its material count and the albedo texture every character surface is bound to, and returns
+## how many surfaces ended up with nothing bound. A non-zero return is a broken loader slot:
+## the model must then be left out rather than drawn untextured.
+##
+## Hand props parented under a `BoneAttachment3D` are skipped: a flag, a lighter or an airhorn
+## is painted geometry with its own plain material, not part of the character's albedo.
+static func report_albedo(tag: String, node: Node3D) -> int:
+	var missing := 0
+	var parts := PackedStringArray()
+	for child in node.find_children("*", "MeshInstance3D", true, false):
+		var mi := child as MeshInstance3D
+		if mi == null or mi.mesh == null or _under_hand_prop(mi):
+			continue
+		for surface in mi.mesh.get_surface_count():
+			var texture := surface_albedo(mi, surface)
+			var path := texture.resource_path if texture != null else "<none>"
+			if texture == null:
+				missing += 1
+			parts.append("%s#%d=%s" % [mi.name, surface, path])
+	print("[albedo] %s %s materials=%d %s" % [tag, node.name, parts.size(), ", ".join(parts)])
+	return missing
+
+
+## The albedo actually in force for one surface, whether it comes from the cel override or
+## from the material the exporter shipped.
+static func surface_albedo(mi: MeshInstance3D, surface: int) -> Texture2D:
+	var material := mi.get_surface_override_material(surface)
+	if material is ShaderMaterial:
+		return (material as ShaderMaterial).get_shader_parameter("albedo_texture") as Texture2D
+	if mi.material_override is BaseMaterial3D:
+		return (mi.material_override as BaseMaterial3D).albedo_texture
+	var source := mi.mesh.surface_get_material(surface) if mi.mesh != null else null
+	if source is BaseMaterial3D:
+		return (source as BaseMaterial3D).albedo_texture
+	return null
+
+
+## True for prop geometry riding a character's hand rather than the character itself.
+static func _under_hand_prop(node: Node) -> bool:
+	var walk := node.get_parent()
+	while walk != null:
+		if walk is BoneAttachment3D:
+			return true
+		walk = walk.get_parent()
+	return false
+
+
+## The cel materials actually bound to one character, so a caller can move its rim highlight
+## with the arena palette without ever touching albedo. Rim is additive light, not tint.
+static func collect_cel_materials(node: Node3D, into: Array[ShaderMaterial]) -> void:
+	for child in node.find_children("*", "MeshInstance3D", true, false):
+		var mi := child as MeshInstance3D
+		if mi == null or mi.mesh == null:
+			continue
+		for surface in mi.mesh.get_surface_count():
+			var material := mi.get_surface_override_material(surface)
+			if material is ShaderMaterial and not into.has(material as ShaderMaterial):
+				into.append(material as ShaderMaterial)
 
 
 ## True when a surface of this character already carries the cel shader and ink pass.

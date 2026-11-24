@@ -19,6 +19,16 @@ func _initialize() -> void:
 	_run()
 
 
+
+## Cel surfaces on one character (hand props excluded), used by the albedo-integrity check.
+func _count_cel_surfaces(node: Node3D) -> int:
+	var n := 0
+	for child in node.find_children("*", "MeshInstance3D", true, false):
+		var mi := child as MeshInstance3D
+		if mi != null and mi.mesh != null and not CharacterModelSlots._under_hand_prop(mi):
+			n += mi.mesh.get_surface_count()
+	return n
+
 func _check(condition: bool, label: String, detail: String = "") -> void:
 	if condition:
 		print("%s  %s%s" % [PASS, label, (" — " + detail) if detail != "" else ""])
@@ -83,9 +93,9 @@ func _body_skeleton_path(path: String) -> String:
 ## path `_process` calls, so a mesh that is not actually connected to the transforms fails
 ## here instead of only on a device.
 func _assert_procedural_stance(model: FighterModel3D, f: BaseFighter, label: String) -> void:
-	_check(model != null and model._pivot != null and model._yaw != null,
+	_check(model != null and model._visual_pivot != null and model.skeleton != null,
 		label + " is bound to the procedural stance pivot")
-	if model == null or model._pivot == null or f == null:
+	if model == null or model._visual_pivot == null or f == null:
 		return
 	# The model syncs its yaw in `_process`; the check may run between a facing change and
 	# the next frame, so apply the same sync before measuring the forward lunge.
@@ -140,7 +150,8 @@ func _move_signature(a: Dictionary) -> String:
 
 ## The static uploads have no skeleton, so differentiation is entirely the per-move
 ## whole-body profile. Drive two signature moves through `_animate_pose` and require their
-## assembled pivots (yaw twist, lift, lean) to separate.
+## assembled pose (shoulder twist, lift, lean) to separate. The twist is measured from
+## `_twist`, not from the pivot yaw: `VisualPivot` owns facing alone and may never turn.
 func _assert_move_pose_difference(model: FighterModel3D, f: BaseFighter, label: String) -> void:
 	if model == null or f == null or model._pivot == null:
 		_check(false, label + " has a per-move 3D pose")
@@ -162,8 +173,7 @@ func _assert_move_pose_difference(model: FighterModel3D, f: BaseFighter, label: 
 		f._attack_id = id
 		for i in 14:
 			model._animate_pose(0.08)
-		poses.append(Vector3(model._pivot.rotation.y, model._pivot.position.y,
-			model._pivot.rotation.z))
+		poses.append(Vector3(model._twist, model._pivot.position.y, model._pivot.rotation.z))
 	f.state = saved_state
 	f._attack_id = saved_attack
 	for i in 4:
@@ -1295,32 +1305,14 @@ func _run() -> void:
 	_check(crate.scale.x <= 0.15 and crate.position.y >= 600.0,
 		"record crates shrunk and set on the sand line",
 		"scale %.3f at y %.0f" % [crate.scale.x, crate.position.y])
-	var crowd: CrowdLine = arena2.get_node("CrowdLine")
-	var leaner: Sprite2D = crowd.get_node("ArmsCrossed")
-	_check(not leaner.visible, "leaning spectator retired from the line")
-	_check(crowd.front_row_count() == 5 and crowd.back_row_count() == 6,
-		"crowd rows still 5 front / 6 back after the retirement",
-		"%d / %d" % [crowd.front_row_count(), crowd.back_row_count()])
-	var flag_act: StringName = &""
-	var rag_act: StringName = &""
-	var horn_act: StringName = &""
-	var phases := {}
-	for m in crowd._members:
-		if m.row < 0:
-			continue
-		phases[snappedf(m.phase, 0.01)] = true
-		if String(m.sprite.name) == "FlagWaver":
-			flag_act = m.act
-		elif String(m.sprite.name) == "TowelWaver":
-			rag_act = m.act
-		elif String(m.sprite.name) == "AirhornHypeman":
-			horn_act = m.act
-	_check(flag_act == CrowdLine.ACT_FLAG and rag_act == CrowdLine.ACT_RAG
-			and horn_act == CrowdLine.ACT_HORN,
-		"flag, rag and horn holders are cast into their own acts",
-		"%s / %s / %s" % [flag_act, rag_act, horn_act])
-	_check(phases.size() >= 8, "crowd acts run on individual clocks",
-		"%d distinct phases" % phases.size())
+	_check(arena2.get_node_or_null("CrowdLine") == null
+			and arena2.get_node_or_null("ForegroundCrowd") == null
+			and arena2.get_node_or_null("CrowdHaze") == null,
+		"the 2D crowd line, foreground stack and haze cards are deleted from the scene")
+	var yard: CrowdController3D = arena2.crowd
+	_check(yard != null and yard.count() >= 4,
+		"the yard is built by the 3D crowd controller",
+		"%d spectators" % (yard.count() if yard != null else -1))
 
 	# Facing: the CPU must look at Feedback and both must turn on a side swap.
 	_check(p1b.facing == 1 and not p1b.sprite.flip_h, "P1 on the left faces the CPU")
@@ -1355,7 +1347,10 @@ func _run() -> void:
 	_check(arena2.get_node("NightWash").modulate.a > 0.5, "night washes sky and beach down")
 	_check(arena2.get_node("SunGlow").modulate.a == 0.0, "no sun left at night")
 	_check(arena2.get_node("Floodlight").modulate.a > 0.3, "arena lights carry the night")
-	_check(crowd._night > 0.8, "night drops the crowd to silhouette")
+	# Night is a palette change, not a dimmer: the crowd keeps its full albedo all night
+	# (the 2D `set_night()` silhouette dimming is deleted with the silhouettes).
+	_check(arena2._time_phase == 2 and arena2.get_node("NightWash").modulate.a > 0.5,
+		"night drives the arena palette without dimming the crowd")
 	var fight_shadow: GroundShadow = p1b.get_node("Shadow")
 	arena2.set_time_of_day(1, 0.0)
 	await process_frame
@@ -1436,8 +1431,8 @@ func _run() -> void:
 		"intensity %.2f" % arena2.beams.strength)
 	_check(arena2.heat_haze != null and arena2.heat_haze.intensity > 0.5,
 		"sunset heat haze is up")
-	_check(arena2.foreground != null and arena2.foreground.intensity > 0.5,
-		"the foreground crowd is up at sunset")
+	_check(arena2.get_node_or_null("ForegroundCrowd") == null,
+		"sunset has no foreground crowd layer to raise")
 
 	# Night: cyan/magenta neon wrap, short soft shadow, truss beams.
 	arena2.set_time_of_day(2, 0.0)
@@ -1543,22 +1538,17 @@ func _run() -> void:
 	_check(motes != null and motes.amount <= 16 and motes.texture != null,
 		"drifting dust motes are a capped, textured CPU emitter",
 		"%d particles" % (motes.amount if motes != null else -1))
-	_check(arena2.foreground != null and arena2.foreground.z_index > p1b.z_index,
-		"the near-crowd silhouette draws in front of the fighters",
-		"foreground %d / fighter %d" % [arena2.foreground.z_index, p1b.z_index])
-	_check(arena2.foreground.figure_count >= 8 and arena2.foreground.lighter_slots() >= 1,
-		"the foreground stack has heads, hands, rags and lighters",
-		"%d figures / %d lighter slots" % [arena2.foreground.figure_count,
-			arena2.foreground.lighter_slots()])
-	_check(arena2.foreground.lighter_count() >= 1, "at least one foreground lighter is up")
-	# Pinned to the bottom screen edge at whatever zoom the camera is holding.
-	var fg: ForegroundCrowd = arena2.foreground
-	var fg_bottom: float = fg.global_position.y + fg.screen_size().y
-	var cam: Camera2D = arena2.camera
-	var cam_bottom: float = cam.get_screen_center_position().y + (720.0 / cam.zoom.y) * 0.5
-	_check(absf(fg_bottom - cam_bottom) < 1.0,
-		"the foreground band stays glued to the bottom screen edge",
-		"band %.1f / camera %.1f" % [fg_bottom, cam_bottom])
+	# The near-crowd band was a 2D silhouette stack pinned to the bottom edge. It is deleted,
+	# along with its node and its painter: no 2D crowd draws over the fight any more.
+	_check(arena2.get_node_or_null("Foreground") == null
+			and arena2.get_node_or_null("ForegroundCrowd") == null,
+		"no 2D near-crowd band draws in front of the fighters")
+	for child in arena2.get_children():
+		var cue := child as CanvasItem
+		if cue != null:
+			_check(not String(cue.name).contains("Crowd"),
+				"no CanvasItem named for the crowd survives", String(cue.name))
+			break
 
 	# Whole-scene particle budget for the Chromebook WebGL2 target.
 	var particle_total := 0
@@ -1592,6 +1582,7 @@ func _run() -> void:
 		"the impact frame sits above the world and below the HUD")
 
 	# Fighting-game camera: smooth framing plus an additive micro-zoom punch.
+	var cam: Camera2D = arena2.camera
 	var smooth_before: float = arena2._zoom_smooth
 	arena2._zoom_punch_burst(0.05)
 	# delta 0 applies the punch without letting the wall-clock decay eat it first, so the check
@@ -1604,11 +1595,13 @@ func _run() -> void:
 		"the framing zoom eases instead of snapping",
 		"%.4f -> %.4f" % [smooth_before, arena2._zoom_smooth])
 
-	# ---- Active 3D atmosphere: DJ booth + staggered silhouette crowd (2026-11-22) ------
-	# Owner request: 1–2 rim-lit DJs behind a turntable/mixer rig between the mid-ground
-	# speaker stacks, and 16–24 varied dark-silhouette spectators (flags, lighters, airhorn
-	# operators) that react on staggered, zone-loyal clocks. Everything is presentation
-	# only; the checks below also prove the cues cannot touch health or fighter state.
+	# ---- Active 3D atmosphere: DJ booth + staggered Mixamo crowd (2026-11-22) ----------
+	# Owner request: two DJs behind a turntable/mixer rig between the mid-ground speaker
+	# stacks, and a ringside crowd (flags, lighters, airhorn operators) that reacts on
+	# staggered, zone-loyal clocks. Every body is a delivered Mixamo character: the 2.5D
+	# silhouettes are deleted (2026-11-24), so nothing here can fall back to a painted stand-in.
+	# Everything is presentation only; the checks below also prove the cues cannot touch
+	# health or fighter state.
 	var atmosphere: Arena3D = arena2.arena3d
 	var crowd3d: CrowdController3D = atmosphere.crowd3d
 	var booth: DJBooth3D = atmosphere.dj_booth
@@ -1623,27 +1616,17 @@ func _run() -> void:
 			and booth.find_children("Mixer", "MeshInstance3D", true, false).size() == 1
 			and booth._faders.size() == 3,
 		"the rig has two turntables with vinyl, a mixer and three channel faders")
-	_check(booth != null and booth._body_material != null
-			and booth._body_material.shader.get_shader_uniform_list().size() >= 6,
-		"the silhouette rim shader compiles for the booth",
-		"%d uniforms" % (booth._body_material.shader.get_shader_uniform_list().size()
-			if booth != null and booth._body_material != null else -1))
-	var crowd_source := FileAccess.get_file_as_string("res://assets/shaders/silhouette_mask.gdshader")
-	var crowd_lint: Array[String] = []
-	for token in ["hint_screen_texture", "SCREEN_TEXTURE", "DEPTH_TEXTURE", "#include", "while ("]:
-		if crowd_source.contains(token):
-			crowd_lint.append(token)
-	_check(not crowd_source.is_empty() and crowd_lint.is_empty(),
-		"the silhouette shader is WebGL2-safe (no screen/depth reads, includes or loops)",
-		", ".join(crowd_lint))
-	_check(crowd3d != null and crowd3d.count() >= 16 and crowd3d.count() <= 24
+	_check(booth != null and booth.empty_slot_count() == 0,
+		"both DJ slots are filled by delivered characters",
+		"%d empty" % (booth.empty_slot_count() if booth != null else -1))
+	_check(crowd3d != null and crowd3d.count() >= 4
 			and atmosphere.crowd_count() == crowd3d.count(),
-		"the capsule placeholder bank is replaced by 16–24 varied silhouettes",
+		"the yard is a ringside crowd of delivered characters",
 		"%d spectators" % atmosphere.crowd_count())
-	_check(crowd3d.zone_count(0) == 10 and crowd3d.zone_count(1) == 10,
+	_check(crowd3d.zone_count(0) == 4 and crowd3d.zone_count(1) == 4,
 		"the crowd splits into two equal loyalty banks",
 		"%d / %d" % [crowd3d.zone_count(0), crowd3d.zone_count(1)])
-	_check(crowd3d.flag_count() == 3 and crowd3d.lighter_slots() >= 4
+	_check(crowd3d.flag_count() == 2 and crowd3d.lighter_slots() >= 4
 			and crowd3d.airhorn_count() == 2,
 		"the crowd carries flags, raised lighters and two airhorn operators",
 		"%d flags / %d lighters / %d horns" % [crowd3d.flag_count(),
@@ -1662,19 +1645,20 @@ func _run() -> void:
 		"%d queued" % crowd3d.pending_count())
 	crowd3d.tick(0.14)
 	var ringside := crowd3d.row_reacting(0)
-	var back_rows := crowd3d.row_reacting(2)
 	_check(ringside > 0, "ringside starts cheering inside 0.14 s", "%d person(s)" % ringside)
-	_check(ringside > back_rows and back_rows == 0,
-		"the back rows wait their turn instead of jumping in unison",
-		"front %d / back %d" % [ringside, back_rows])
+	_check(ringside < crowd3d.count() and crowd3d.pending_count() > 0,
+		"the bank ripples outward instead of jumping in unison",
+		"%d up / %d still queued" % [ringside, crowd3d.pending_count()])
 	crowd3d.tick(0.8)
 	_check(crowd3d.reacting_count() == crowd3d.count(),
 		"the whole yard answers inside a beat",
 		"%d / %d" % [crowd3d.reacting_count(), crowd3d.count()])
 	_check(crowd3d.zone_state_count(0, CrowdController3D.STATE_CHEER)
-			+ crowd3d.zone_state_count(0, CrowdController3D.STATE_HYPE) == 10,
-		"P1's bank erupts in cheers")
-	_check(crowd3d.zone_state_count(1, CrowdController3D.STATE_DISBELIEF) == 10,
+			+ crowd3d.zone_state_count(0, CrowdController3D.STATE_HYPE) == 4,
+		"P1's bank erupts in cheers",
+		"%d cheering" % (crowd3d.zone_state_count(0, CrowdController3D.STATE_CHEER)
+			+ crowd3d.zone_state_count(0, CrowdController3D.STATE_HYPE)))
+	_check(crowd3d.zone_state_count(1, CrowdController3D.STATE_DISBELIEF) == 4,
 		"the rival bank throws its hands on its head",
 		"%d in disbelief" % crowd3d.zone_state_count(1, CrowdController3D.STATE_DISBELIEF))
 	_check(crowd3d.lighter_count() >= 1 and crowd3d.lit_flame_count() >= 1,
@@ -1704,7 +1688,7 @@ func _run() -> void:
 	atmosphere.notify_combat_event(&"ko", 1)
 	crowd3d.tick(0.6)
 	booth.tick(0.1)
-	_check(booth.celebrating() and crowd3d.zone_state_count(1, CrowdController3D.STATE_HYPE) == 10,
+	_check(booth.celebrating() and crowd3d.zone_state_count(1, CrowdController3D.STATE_HYPE) == 4,
 		"a K.O. sends the winning bank into a jump and the booth into a celebration")
 	crowd3d.settle()
 	booth.settle()
@@ -1765,11 +1749,16 @@ func _run() -> void:
 		"female spectators stand in the front-row 3D banks with the male crowd",
 		"%d female / %d ringside" % [female_front, crowd3d.model_slots().size()])
 
-	# Palette: the phase rim reaches every silhouette through the one shared material.
+	# Palette: the phase rim reaches every character through its own cel material, and
+	# nothing else about the material moves — albedo and brightness stay untouched.
 	atmosphere.apply_phase(2)
-	var night_rim: Color = crowd3d._body_material.get_shader_parameter("rim_colour")
+	var night_rim: Color = crowd3d._cel_materials[0].get_shader_parameter("rim_colour")
 	_check(night_rim.b > night_rim.r,
 		"the crowd's rim follows the night cyan palette", str(night_rim))
+	var night_albedo: Texture2D = crowd3d._cel_materials[0].get_shader_parameter("albedo_texture")
+	_check(night_albedo != null and night_albedo.resource_path != "",
+		"the night palette leaves every character's albedo bound",
+		str(night_albedo.resource_path if night_albedo != null else "<null>"))
 	atmosphere.apply_phase(0)
 	crowd3d.settle()
 	booth.settle()
@@ -1800,12 +1789,14 @@ func _run() -> void:
 	atmosphere._update_speakers(0.0)
 
 	# ---- Clean human-rig slots instead of capsule mannequins (2026-11-23) --------------
-	_check(crowd3d.silhouette_count() + crowd3d.model_slots().size() == crowd3d.count(),
-		"every spectator is a rim-lit 2.5D silhouette (or a dropped-in model)",
-		"%d silhouettes / %d models" % [crowd3d.silhouette_count(), crowd3d.model_slots().size()])
-	_check(booth.silhouette_count() + booth.model_slots().size() == booth.dj_count(),
-		"both DJs are rim-lit 2.5D silhouettes (or dropped-in models)",
-		"%d silhouettes / %d models" % [booth.silhouette_count(), booth.model_slots().size()])
+	_check(crowd3d.empty_slot_count() == 0
+			and crowd3d.model_slots().size() == crowd3d.count(),
+		"every spectator is a delivered Mixamo character — no silhouettes exist",
+		"%d empty slots / %d models" % [crowd3d.empty_slot_count(),
+			crowd3d.model_slots().size()])
+	_check(crowd3d.animated_model_count() == crowd3d.count(),
+		"every spectator's own clip is playing",
+		"%d animated" % crowd3d.animated_model_count())
 	_check(crowd3d.legacy_mannequin_count() == 0 and booth.legacy_mannequin_count() == 0,
 		"no capsule or cylinder mannequin bodies are left on screen",
 		"%d / %d legacy body meshes" % [crowd3d.legacy_mannequin_count(),
@@ -1813,10 +1804,9 @@ func _run() -> void:
 	_check(DirAccess.dir_exists_absolute(CharacterModelSlots.DJ_DIR)
 			and DirAccess.dir_exists_absolute(CharacterModelSlots.CROWD_DIR),
 		"the .fbx drop-in folders exist for DJs and the crowd")
-	_check(not crowd3d.using_fallback() and not booth.using_fallback(),
-		"the delivered .fbx characters replace the silhouettes on the ringside row and decks",
-		"crowd %d models / booth %d models" % [crowd3d.model_slots().size(),
-			booth.model_slots().size()])
+	_check(booth.model_slots().size() == booth.dj_count(),
+		"the delivered .fbx characters fill every DJ slot",
+		"%d models" % booth.model_slots().size())
 
 	# ---- Delivered Mixamo crowd/DJ characters (2026-11-23) ----------------------------
 	# Every delivered character must be a real 68-bone `mixamorig` rig with its animation
@@ -1871,9 +1861,9 @@ func _run() -> void:
 	crowd3d.tick(0.9)
 	booth.tick(0.1)
 	_check(crowd3d.model_act_of(0) == CharacterModelSlots.ACT_CHEER
-			and crowd3d.model_act_of(10) == CharacterModelSlots.ACT_DISBELIEF,
+			and crowd3d.model_act_of(4) == CharacterModelSlots.ACT_DISBELIEF,
 		"the delivered banks crossfade to cheer and disbelief on a heavy hit",
-		"left %s / right %s" % [crowd3d.model_act_of(0), crowd3d.model_act_of(10)])
+		"left %s / right %s" % [crowd3d.model_act_of(0), crowd3d.model_act_of(4)])
 	_check(crowd3d.model_clip_of(0) == "mixamo_cheer"
 			and crowd3d.model_clip_of(0) != neutral_clip,
 		"the cheer clip is actually playing, not just recorded as a state",
@@ -1887,9 +1877,53 @@ func _run() -> void:
 			and crowd3d.model_clip_of(0) == neutral_clip,
 		"a settled yard crossfades back to each character's own loop",
 		crowd3d.model_clip_of(0))
-	_check(SilhouetteArt.material_count() >= 8 and SilhouetteArt.texture_count() >= 8,
-		"the silhouette masks are painted and cached per variant and pose",
-		"%d materials / %d masks" % [SilhouetteArt.material_count(), SilhouetteArt.texture_count()])
+	# ---- Every crowd and DJ surface carries a real albedo (playtest 2026-11-24) --------
+	var unbound := 0
+	var surfaces := 0
+	for model in crowd3d.model_slots():
+		surfaces += _count_cel_surfaces(model)
+		unbound += CharacterModelSlots.report_albedo("crowd", model)
+	for model in booth.model_slots():
+		surfaces += _count_cel_surfaces(model)
+		unbound += CharacterModelSlots.report_albedo("dj", model)
+	_check(unbound == 0 and surfaces >= crowd3d.model_slots().size() + booth.model_slots().size(),
+		"every crowd and DJ surface binds a delivered albedo — none is null",
+		"%d surfaces / %d unbound" % [surfaces, unbound])
+	# One cel material per character, never shared between characters: that is what stops one
+	# spectator's tint or dimming from repainting the rest of the bank.
+	var owners := {}
+	var doubled := 0
+	var bindings := 0
+	for model in crowd3d.model_slots():
+		for child in model.find_children("*", "MeshInstance3D", true, false):
+			var mi := child as MeshInstance3D
+			if mi == null or mi.mesh == null or CharacterModelSlots._under_hand_prop(mi):
+				continue
+			for surface in mi.mesh.get_surface_count():
+				var material := mi.get_surface_override_material(surface)
+				if material == null:
+					continue
+				var id := material.get_instance_id()
+				if owners.has(id) and owners[id] != model.get_instance_id():
+					doubled += 1
+				owners[id] = model.get_instance_id()
+				bindings += 1
+	_check(doubled == 0 and bindings > 0,
+		"cel materials are per character, so no two characters can tint each other",
+		"%d shared material binds across %d character bindings" % [doubled, bindings])
+	var tint_amount := 1.0
+	for model in crowd3d.model_slots():
+		for child in model.find_children("*", "MeshInstance3D", true, false):
+			var mi := child as MeshInstance3D
+			if mi == null or mi.mesh == null or mi.mesh.get_surface_count() == 0:
+				continue
+			var material := mi.get_surface_override_material(0) as ShaderMaterial
+			if material != null:
+				tint_amount = minf(tint_amount,
+					float(material.get_shader_parameter("shadow_tint_amount")))
+	_check(tint_amount <= 0.001,
+		"no global darkening on the cel shader — crowd and DJ albedo renders at full brightness",
+		"shadow_tint_amount %.3f" % tint_amount)
 
 	# ---- Music bed cannot bleed into Match 2+ (owner playtest, 2026-11-23) --------------
 	music_bed.play_victory()

@@ -2083,7 +2083,7 @@ func _run() -> void:
 	_check(hud_source.contains("draw_string_outline") and hud_source.contains("for step in [3, 2, 1]"),
 		"every HUD label draws a thick ink outline and a 3D extruded shadow")
 	_check(hud_source.contains("_pop_size(&\"round\"") and hud_source.contains("_pop_size(&\"sub\""),
-		"round banners and Patwa callouts both pop their type on entrance")
+		"round banners and Patois callouts both pop their type on entrance")
 	_check(hud_source.contains("outline := maxi(3") or hud_source.contains("outline := maxi(3,"),
 		"the ink outline is thick at every size")
 

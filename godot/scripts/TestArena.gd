@@ -174,7 +174,7 @@ const PREWARM_OFFSCREEN := Vector2(-4000.0, -4000.0)
 ## owner's, verbatim; the English gloss lives only in CALLOUT_GLOSSES, which is the only
 ## place it belongs.
 ##
-## 2026-11-22: the owner's 31-entry Jamaican Patwa proverbs & expressions collection is
+## 2026-11-22: the owner's 31-entry Jamaican Patois proverbs & expressions collection is
 ## wired here. PATWA_COLLECTION is the canonical list (22 in-match lines + the 9 match-intro
 ## proverbs below); the headless checks assert every entry resolves to a gloss and to a live
 ## trigger. PROVERB_BANNER rotates the traditional proverbs on the match-intro banner, so a
@@ -1243,7 +1243,7 @@ func _on_round_started(round_index: int) -> void:
 		SoundClash.play_round_start()
 	if arena3d != null:
 		arena3d.pulse_speakers(1.6)
-	# Match intro (round 1 only): the rotating Patwa wisdom banner, with the V-key gloss.
+	# Match intro (round 1 only): the rotating Patois wisdom banner, with the V-key gloss.
 	if round_index == 0:
 		_show_match_proverb()
 

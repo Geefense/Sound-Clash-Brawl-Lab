@@ -47,74 +47,88 @@ const SUN_SHADER := preload("res://assets/shaders/sun_disc.gdshader")
 ## sun, two overhead SpotLight3Ds, a warm rim/fill, the sky gradient, depth fog and the
 ## visible pool on the sand. Nothing here is a full-screen tint.
 const PHASES := [
+	# AFTERNOON — vibrant Jamaican golden daylight. A high, hard key sun so the fighters keep
+	# a crisp directional shadow, a saturated blue zenith over warm sand haze, and a warm sand
+	# bounce behind them so the yard reads as bright midday rather than a flat wash.
 	{
 		"name": "Afternoon Sun",
-		"sky_top": Color(0.35, 0.60, 0.90, 1.0),
-		"sky_bottom": Color(1.0, 0.90, 0.72, 1.0),
-		"sky_haze": Color(1.0, 0.94, 0.80, 1.0),
-		"sun_colour": Color(1.0, 0.96, 0.86, 1.0),
-		"sun_energy": 1.35,
-		"sun_rotation": Vector3(-52.0, -26.0, 0.0),
-		"ambient": Color(0.52, 0.62, 0.76, 1.0),
-		"ambient_energy": 0.55,
-		"fog": Color(0.78, 0.86, 0.95, 1.0),
-		"fog_density": 0.004,
-		"spot_energy": 0.35,
-		"spot_colour": Color(1.0, 0.94, 0.82, 1.0),
-		"pool": Color(1.0, 0.90, 0.70, 1.0),
+		"sky_top": Color(0.20, 0.49, 0.92, 1.0),
+		"sky_bottom": Color(1.0, 0.87, 0.60, 1.0),
+		"sky_haze": Color(1.0, 0.94, 0.74, 1.0),
+		"sun_colour": Color(1.0, 0.93, 0.76, 1.0),
+		"sun_energy": 1.90,
+		"sun_rotation": Vector3(-56.0, -30.0, 0.0),
+		"ambient": Color(0.42, 0.58, 0.88, 1.0),
+		"ambient_energy": 0.56,
+		"fill_colour": Color(0.60, 0.76, 1.0, 1.0),
+		"fill_energy": 0.26,
+		"fog": Color(0.90, 0.93, 0.98, 1.0),
+		"fog_density": 0.0032,
+		"spot_energy": 0.26,
+		"spot_colour": Color(1.0, 0.94, 0.80, 1.0),
+		"pool": Color(1.0, 0.88, 0.62, 1.0),
 		"pool_alpha": 0.10,
-		"rim": Color(1.0, 0.88, 0.60, 1.0),
-		"rim_energy": 0.55,
-		"disc": 0.30,
-		"disc_colour": Color(1.0, 0.96, 0.82, 1.0),
-		"disc_pos": Vector3(-3.2, 2.9, -13.6),
-		"disc_size": 4.2,
+		"rim": Color(1.0, 0.85, 0.52, 1.0),
+		"rim_energy": 0.80,
+		"disc": 0.40,
+		"disc_colour": Color(1.0, 0.95, 0.78, 1.0),
+		"disc_pos": Vector3(-3.4, 3.1, -13.6),
+		"disc_size": 4.0,
 	},
+	# SUNSET — rich amber/magenta Kingston dusk: low hard sun from the right, a violet zenith,
+	# magenta fill and rim, and warm amber fog so the fighters keep a long crisp shadow.
 	{
 		"name": "Golden Hour / Sunset Clash",
-		"sky_top": Color(0.30, 0.34, 0.62, 1.0),
-		"sky_bottom": Color(1.0, 0.55, 0.24, 1.0),
-		"sky_haze": Color(1.0, 0.72, 0.36, 1.0),
-		"sun_colour": Color(1.0, 0.62, 0.28, 1.0),
-		"sun_energy": 1.15,
-		"sun_rotation": Vector3(-11.0, -62.0, 0.0),
-		"ambient": Color(0.55, 0.44, 0.48, 1.0),
-		"ambient_energy": 0.42,
-		"fog": Color(0.92, 0.60, 0.40, 1.0),
-		"fog_density": 0.010,
-		"spot_energy": 0.70,
-		"spot_colour": Color(1.0, 0.72, 0.42, 1.0),
-		"pool": Color(1.0, 0.68, 0.34, 1.0),
-		"pool_alpha": 0.22,
-		"rim": Color(1.0, 0.62, 0.26, 1.0),
-		"rim_energy": 1.10,
-		"disc": 0.95,
-		"disc_colour": Color(1.0, 0.66, 0.30, 1.0),
-		"disc_pos": Vector3(3.0, 1.55, -13.6),
-		"disc_size": 6.4,
+		"sky_top": Color(0.24, 0.15, 0.44, 1.0),
+		"sky_bottom": Color(1.0, 0.44, 0.28, 1.0),
+		"sky_haze": Color(1.0, 0.58, 0.42, 1.0),
+		"sun_colour": Color(1.0, 0.50, 0.22, 1.0),
+		"sun_energy": 1.55,
+		"sun_rotation": Vector3(-9.0, -66.0, 0.0),
+		"ambient": Color(0.68, 0.36, 0.52, 1.0),
+		"ambient_energy": 0.48,
+		"fill_colour": Color(0.76, 0.50, 1.0, 1.0),
+		"fill_energy": 0.38,
+		"fog": Color(0.98, 0.46, 0.36, 1.0),
+		"fog_density": 0.0115,
+		"spot_energy": 0.85,
+		"spot_colour": Color(1.0, 0.64, 0.44, 1.0),
+		"pool": Color(1.0, 0.56, 0.30, 1.0),
+		"pool_alpha": 0.26,
+		"rim": Color(1.0, 0.42, 0.56, 1.0),
+		"rim_energy": 1.35,
+		"disc": 1.0,
+		"disc_colour": Color(1.0, 0.60, 0.24, 1.0),
+		"disc_pos": Vector3(3.2, 1.45, -13.6),
+		"disc_size": 6.8,
 	},
+	# NIGHT — deep indigo dancehall night. The key sun is effectively off, the yard is carried
+	# by a crisp cool stage rig, and the cyan rim is strong enough to cut the fighters out of
+	# the dark while their contact shadows keep reading on the sand.
 	{
 		"name": "Late-Night Sound Clash",
-		"sky_top": Color(0.030, 0.045, 0.12, 1.0),
-		"sky_bottom": Color(0.10, 0.14, 0.30, 1.0),
-		"sky_haze": Color(0.16, 0.20, 0.42, 1.0),
-		"sun_colour": Color(0.35, 0.45, 0.85, 1.0),
-		"sun_energy": 0.12,
-		"sun_rotation": Vector3(-66.0, 148.0, 0.0),
-		"ambient": Color(0.16, 0.20, 0.36, 1.0),
-		"ambient_energy": 0.30,
-		"fog": Color(0.08, 0.10, 0.22, 1.0),
-		"fog_density": 0.020,
-		"spot_energy": 2.60,
-		"spot_colour": Color(0.86, 0.94, 1.0, 1.0),
-		"pool": Color(0.56, 0.86, 1.0, 1.0),
-		"pool_alpha": 0.38,
-		"rim": Color(0.35, 0.95, 1.0, 1.0),
-		"rim_energy": 1.35,
+		"sky_top": Color(0.016, 0.024, 0.072, 1.0),
+		"sky_bottom": Color(0.05, 0.065, 0.20, 1.0),
+		"sky_haze": Color(0.12, 0.09, 0.30, 1.0),
+		"sun_colour": Color(0.28, 0.36, 0.78, 1.0),
+		"sun_energy": 0.10,
+		"sun_rotation": Vector3(-64.0, 150.0, 0.0),
+		"ambient": Color(0.11, 0.13, 0.30, 1.0),
+		"ambient_energy": 0.32,
+		"fill_colour": Color(0.28, 0.48, 1.0, 1.0),
+		"fill_energy": 0.46,
+		"fog": Color(0.04, 0.06, 0.17, 1.0),
+		"fog_density": 0.019,
+		"spot_energy": 3.00,
+		"spot_colour": Color(0.78, 0.92, 1.0, 1.0),
+		"pool": Color(0.42, 0.78, 1.0, 1.0),
+		"pool_alpha": 0.42,
+		"rim": Color(0.26, 0.92, 1.0, 1.0),
+		"rim_energy": 1.60,
 		"disc": 0.0,
 		"disc_colour": Color(0.6, 0.8, 1.0, 1.0),
-		"disc_pos": Vector3(-3.2, 2.9, -13.6),
-		"disc_size": 4.2,
+		"disc_pos": Vector3(-3.4, 3.1, -13.6),
+		"disc_size": 4.0,
 	},
 ]
 
@@ -447,6 +461,11 @@ func _push_palette(p: Dictionary) -> void:
 	if rim != null:
 		rim.light_color = p["rim"]
 		rim.light_energy = float(p["rim_energy"])
+	# The cool camera fill is part of the phase, not a fixed value: a violet fill at dusk and a
+	# deep blue fill at night are what stop the yard reading as one flat amber card.
+	if fill != null:
+		fill.light_color = p.get("fill_colour", fill.light_color)
+		fill.light_energy = float(p.get("fill_energy", fill.light_energy))
 	# The crowd and the DJ booth share one silhouette-rim material each, so the phase palette
 	# repaints every silhouette in the yard with a single shader parameter write.
 	if crowd3d != null:
@@ -671,11 +690,17 @@ func _build_truss_and_lights() -> void:
 
 	sun = DirectionalLight3D.new()
 	sun.name = "Sun"
-	sun.rotation_degrees = Vector3(-52.0, -26.0, 0.0)
+	sun.rotation_degrees = Vector3(-56.0, -30.0, 0.0)
 	sun.light_energy = 1.2
+	# The fighters' crisp directional shadow is a hard requirement of the three phases, so the
+	# key light always casts, with a sharp angular size and a tight bias/blur for clean edges.
 	sun.shadow_enabled = true
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	sun.directional_shadow_max_distance = 22.0
+	sun.directional_shadow_max_distance = 26.0
+	sun.directional_shadow_split_1 = 0.28
+	sun.light_angular_distance = 0.0
+	sun.shadow_blur = 0.7
+	sun.shadow_bias = 0.03
 	add_child(sun)
 
 	fill = DirectionalLight3D.new()

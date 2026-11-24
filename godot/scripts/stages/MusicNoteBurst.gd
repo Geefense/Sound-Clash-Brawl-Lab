@@ -17,16 +17,22 @@ const RASTA := [
 	Color(1.0, 0.86, 0.20, 1.0),    # yellow
 	Color(1.0, 0.22, 0.18, 1.0),    # red
 ]
-const DURATION := 0.72
+## Tighter than the first pass (owner playtest, 2026-11-24 PART 2): the burst snaps in and is
+## gone before the next contact, so two quick hits never smear into one cloud.
+const DURATION := 0.62
+const FLASH_SECONDS := 0.16
 
 var heavy: bool = false
 var notes: Array[MeshInstance3D] = []
 var ring: MeshInstance3D = null
+## Crisp hard-edged contact ring, separate from the slower bass shockwave torus.
+var flash: MeshInstance3D = null
 var _velocities: Array[Vector3] = []
 var _spins: Array[float] = []
 var _sizes: Array[float] = []
 var _mats: Array[ShaderMaterial] = []
 var _ring_mat: ShaderMaterial = null
+var _flash_mat: ShaderMaterial = null
 var _age: float = 0.0
 
 static var _meshes: Array = []
@@ -36,6 +42,7 @@ static var _meshes: Array = []
 func burst(at: Vector3, power: float, base_angle: float = 0.0) -> void:
 	position = at
 	heavy = power >= 0.75
+	_create_flash(power)
 	_create_ring(power)
 	var count := 6 if heavy else 4
 	for i in count:
@@ -67,11 +74,13 @@ func _create_note(index: int, count: int, power: float, base_angle: float) -> vo
 	_spins.append(randf_range(-4.0, 4.0))
 
 
+## The bass shockwave: a thin, hard torus that opens fast and dies hard, so it reads as a
+## crisp ring rather than a soft glow.
 func _create_ring(power: float) -> void:
 	var torus := TorusMesh.new()
-	torus.inner_radius = 0.34
-	torus.outer_radius = 0.40
-	torus.rings = 28
+	torus.inner_radius = 0.40
+	torus.outer_radius = 0.445
+	torus.rings = 40
 	torus.ring_segments = 6
 	ring = MeshInstance3D.new()
 	ring.mesh = torus
@@ -79,30 +88,62 @@ func _create_ring(power: float) -> void:
 	_ring_mat = ShaderMaterial.new()
 	_ring_mat.shader = NOTE_SHADER
 	_ring_mat.set_shader_parameter("glyph_colour", RASTA[1] if not heavy else RASTA[0])
-	_ring_mat.set_shader_parameter("opacity", 0.85)
+	_ring_mat.set_shader_parameter("opacity", 0.9)
 	ring.material_override = _ring_mat
 	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	ring.scale = Vector3.ONE * 0.4
+	ring.scale = Vector3.ONE * 0.30
 	add_child(ring)
+
+
+## The impact flash: a hot white-gold contact ring that is gone in a sixth of a second. This
+## is the readable "hit" frame — the notes are the follow-through.
+func _create_flash(power: float) -> void:
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.26
+	torus.outer_radius = 0.30
+	torus.rings = 48
+	torus.ring_segments = 6
+	flash = MeshInstance3D.new()
+	flash.mesh = torus
+	flash.rotation.x = PI * 0.5
+	_flash_mat = ShaderMaterial.new()
+	_flash_mat.shader = NOTE_SHADER
+	_flash_mat.set_shader_parameter("glyph_colour",
+		Color(1.0, 0.98, 0.86) if heavy else Color(1.0, 0.94, 0.70))
+	_flash_mat.set_shader_parameter("opacity", 1.0)
+	flash.material_override = _flash_mat
+	flash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	flash.scale = Vector3.ONE * (0.55 + power * 0.20)
+	add_child(flash)
 
 
 func _process(delta: float) -> void:
 	_age += delta
 	var t := clampf(_age / DURATION, 0.0, 1.0)
+	# Tighter motion: each glyph snaps to full size in an eighth of the burst, drifts, then
+	# shrinks out sharply instead of hanging at full size while it fades.
+	var shrink := 1.0 - smoothstep(0.55, 1.0, t) * 0.92
 	for i in notes.size():
 		var mi := notes[i]
 		if mi == null:
 			continue
 		mi.position += _velocities[i] * delta
-		_velocities[i] *= 0.94
-		_velocities[i].y += 0.35 * delta
+		_velocities[i] *= 0.86
+		_velocities[i].y += 0.22 * delta
 		mi.rotation.z += _spins[i] * delta
-		var grow := minf(1.0, t * 5.0)
-		mi.scale = Vector3.ONE * _sizes[i] * grow
-		_mats[i].set_shader_parameter("opacity", clampf(1.0 - t * 1.15, 0.0, 1.0))
+		var grow := minf(1.0, t * 8.0)
+		mi.scale = Vector3.ONE * _sizes[i] * grow * shrink
+		_mats[i].set_shader_parameter("opacity", clampf(1.0 - pow(t, 1.7) * 1.1, 0.0, 1.0))
+	if flash != null:
+		var ft := clampf(_age / FLASH_SECONDS, 0.0, 1.0)
+		flash.scale = Vector3.ONE * (0.55 + ft * 2.4)
+		_flash_mat.set_shader_parameter("opacity", clampf(1.0 - ft, 0.0, 1.0))
+		if ft >= 1.0:
+			flash.queue_free()
+			flash = null
 	if ring != null:
-		ring.scale = Vector3.ONE * (0.5 + t * 2.8)
-		_ring_mat.set_shader_parameter("opacity", clampf(0.9 - t, 0.0, 1.0))
+		ring.scale = Vector3.ONE * (0.45 + t * 3.1)
+		_ring_mat.set_shader_parameter("opacity", clampf(pow(1.0 - t, 1.6), 0.0, 1.0))
 	if _age >= DURATION:
 		queue_free()
 
@@ -139,7 +180,7 @@ static func _note_head(tris: PackedVector3Array) -> void:
 	var centre := Vector2(-0.075, -0.02)
 	var rx := 0.105
 	var ry := 0.070
-	var segments := 14
+	var segments := 22
 	var tilt := -0.35
 	for i in segments:
 		var a0 := TAU * float(i) / float(segments)
@@ -155,16 +196,21 @@ static func _stem(tris: PackedVector3Array, x: float, top: float) -> void:
 	_quad(tris, Vector2(x, bottom), Vector2(x + w, bottom), Vector2(x + w, top), Vector2(x, top))
 
 
+## A crisp flag: a straight taper down to a sharp point, with a doubled leading edge so the
+## glyph still reads as a note at 60 px on a Chromebook screen.
 static func _flag(tris: PackedVector3Array, top: float, which: int) -> void:
 	var x := 0.025
 	var drop := 0.12 * float(which)
-	var tip := Vector2(0.19, top - drop - 0.04)
-	_tri(tris, Vector3(x, top + 0.02, 0.0),
+	var tip := Vector2(0.215, top - drop - 0.03)
+	_tri(tris, Vector3(x, top + 0.03, 0.0),
 		Vector3(tip.x, tip.y, 0.0),
-		Vector3(x, top - 0.10, 0.0))
+		Vector3(x, top - 0.11, 0.0))
 	_tri(tris, Vector3(tip.x, tip.y, 0.0),
-		Vector3(x + 0.005, top - 0.10, 0.0),
-		Vector3(x, top - 0.10, 0.0))
+		Vector3(x + 0.010, top - 0.11, 0.0),
+		Vector3(x, top - 0.11, 0.0))
+	# Hard shadow edge under the flag: one darker sliver is enough to read as cel ink.
+	_quad(tris, Vector2(x, top - 0.10), Vector2(tip.x * 0.94, tip.y - 0.012),
+		Vector2(tip.x, tip.y), Vector2(x + 0.008, top - 0.085))
 
 
 ## A treble-clef silhouette from a tapering ribbon along a spiral centreline.

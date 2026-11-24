@@ -44,6 +44,11 @@ const ACT_FADE := 0.12
 static var _act_clips: Dictionary = {}
 static var _act_scan_done := false
 static var _cel_materials: Dictionary = {}
+## Shared geometry (owner playtest, 2026-11-24 PART 2). Twenty-two spectators cycle seven
+## characters; instancing a PackedScene normally shares its sub-resources, but that is an
+## importer detail, not a guarantee. This cache binds the FIRST instance's Mesh to every
+## later instance by node path, so the crowd's GPU memory is seven meshes, not twenty-two.
+static var _mesh_cache: Dictionary = {}
 
 
 ## Every loadable character source in a slot folder, sorted for a stable assignment.
@@ -107,9 +112,38 @@ static func spawn_one(parent: Node3D, path: String, height: float,
 	var node := instance as Node3D
 	node.rotation_degrees.y = facing_degrees
 	parent.add_child(node)
+	share_meshes(node, path)
 	fit_height(node, height)
 	autoplay(node)
 	return node
+
+
+## Bind the cached Mesh for every node path under `path` onto this instance, caching the
+## first instance's meshes on the way through. Returns how many surfaces reused cached
+## geometry (0 on the first instance of a file, which is what seeds the cache).
+static func share_meshes(node: Node3D, path: String) -> int:
+	if node == null:
+		return 0
+	var cache: Dictionary = _mesh_cache.get(path, {})
+	var reused := 0
+	for child in node.find_children("*", "MeshInstance3D", true, false):
+		var mi := child as MeshInstance3D
+		if mi == null or mi.mesh == null:
+			continue
+		var key := String(node.get_path_to(mi))
+		if cache.has(key):
+			mi.mesh = cache[key]
+			reused += 1
+		else:
+			cache[key] = mi.mesh
+	_mesh_cache[path] = cache
+	return reused
+
+
+## How many modes of distinct geometry the cache holds for one model file.
+static func cached_mesh_count(path: String) -> int:
+	var cache: Dictionary = _mesh_cache.get(path, {})
+	return cache.size()
 
 
 ## Scale so the model's own mesh bounds stand `height` metres tall, feet on y 0.

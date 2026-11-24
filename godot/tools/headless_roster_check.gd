@@ -1104,6 +1104,38 @@ func _run() -> void:
 		await process_frame
 		_check(stage3d.sun.light_energy > 1.0 and stage3d.spot_left.light_energy < 0.6,
 			"afternoon is a bright directional sun with the spots resting")
+		# PART 2: the three rigs are designed light setups, not flat tints. The fighters'
+		# directional shadow must always be on, and each phase owns its own fill, sky and rim.
+		_check(stage3d.sun.shadow_enabled and stage3d.sun.light_angular_distance <= 0.001,
+			"a crisp directional key-light shadow always reads on the fighters",
+			"blur %.1f / bias %.2f" % [stage3d.sun.shadow_blur, stage3d.sun.shadow_bias])
+		_check(stage3d.fill.light_energy > 0.2
+				and stage3d.fill.light_color.b > stage3d.fill.light_color.r,
+			"a cool camera fill shapes the afternoon",
+			"fill %.2f" % stage3d.fill.light_energy)
+		stage3d.apply_phase(1, 0.0)
+		await process_frame
+		var dusk_bottom: Color = stage3d.sky_material.get_shader_parameter("bottom_colour")
+		var dusk_top: Color = stage3d.sky_material.get_shader_parameter("top_colour")
+		_check(stage3d.fill.light_color.b > stage3d.fill.light_color.g
+				and stage3d.fill.light_color.r > 0.6,
+			"sunset fills the yard with violet/magenta instead of grey",
+			"%s" % stage3d.fill.light_color)
+		_check(dusk_bottom.r > 0.9 and dusk_top.b > 0.35 and dusk_top.r < dusk_bottom.r,
+			"sunset is an amber horizon under a violet zenith",
+			"top %s / bottom %s" % [dusk_top, dusk_bottom])
+		stage3d.apply_phase(2, 0.0)
+		await process_frame
+		_check(stage3d.rim.light_energy > 1.4 and stage3d.rim.light_color.g > 0.85,
+			"night cuts the fighters out with a crisp cyan stage rim",
+			"rim %.2f %s" % [stage3d.rim.light_energy, stage3d.rim.light_color])
+		_check(stage3d.world_env.environment.ambient_light_color.b > 0.24
+				and stage3d.world_env.environment.ambient_light_color.b
+					> stage3d.world_env.environment.ambient_light_color.r + 0.1,
+			"the night ambient stays deep indigo rather than washed grey",
+			"%s" % stage3d.world_env.environment.ambient_light_color)
+		stage3d.apply_phase(0, 0.0)
+		await process_frame
 	# The arena's own phase API must drive the 3D rig too.
 	arena.set_time_of_day(2, 0.0)
 	await process_frame
@@ -1126,6 +1158,8 @@ func _run() -> void:
 			"%d notes" % burst.notes.size())
 		_check(burst.notes[0].mesh != null and burst.notes[0].mesh.get_faces().size() > 0,
 			"the music-note glyphs are real generated 3D geometry")
+		_check(burst.flash != null and burst.flash.mesh != null and burst.ring != null,
+			"a burst adds a crisp impact flash ring on top of the bass shockwave")
 
 	# ---- Event-driven Sound Clash audio engine (AGENTS.md §9 item 46) ----
 	var sc: SoundClashAudio = root.get_node_or_null("SoundClash") as SoundClashAudio
@@ -1760,13 +1794,34 @@ func _run() -> void:
 	_check(booth != null and booth.empty_slot_count() == 0,
 		"both DJ slots are filled by delivered characters",
 		"%d empty" % (booth.empty_slot_count() if booth != null else -1))
-	_check(crowd3d != null and crowd3d.count() >= 4
+	# Owner playtest PART 2: a PACKED yard — 18–24 spectators across three staggered depth
+	# rows a side, cycling all seven delivered Mixamo characters.
+	_check(crowd3d != null and crowd3d.count() >= 18 and crowd3d.count() <= 24
 			and atmosphere.crowd_count() == crowd3d.count(),
-		"the yard is a ringside crowd of delivered characters",
+		"the yard is packed with 18–24 delivered spectators",
 		"%d spectators" % atmosphere.crowd_count())
-	_check(crowd3d.zone_count(0) == 4 and crowd3d.zone_count(1) == 4,
+	_check(crowd3d.zone_count(0) == crowd3d.count() / 2
+			and crowd3d.zone_count(1) == crowd3d.count() / 2,
 		"the crowd splits into two equal loyalty banks",
 		"%d / %d" % [crowd3d.zone_count(0), crowd3d.zone_count(1)])
+	var rows_ok: bool = CrowdController3D.ROW_COUNTS.size() == 3
+	for row in CrowdController3D.ROW_COUNTS.size():
+		rows_ok = rows_ok and crowd3d.row_count(row) == int(CrowdController3D.ROW_COUNTS[row]) * 2
+	_check(rows_ok,
+		"three staggered depth rows hold the bank (4 + 4 + 3 a side)",
+		"%d / %d / %d" % [crowd3d.row_count(0), crowd3d.row_count(1), crowd3d.row_count(2)])
+	_check(crowd3d.depth_span() > 1.4
+			and crowd3d.row_z(0) > crowd3d.row_z(2),
+		"the rows stand behind each other in real depth, behind the barrier",
+		"z %.2f to %.2f (barrier -2.55)" % [crowd3d.row_z(0), crowd3d.row_z(2)])
+	_check(crowd3d.model_names().size() == 7,
+		"all seven delivered Mixamo characters stand in the yard",
+		", ".join(crowd3d.model_names()))
+	_check(crowd3d.unique_mesh_count() > 0
+			and crowd3d.unique_mesh_count() < crowd3d.mesh_instance_count(),
+		"the 20+ bodies share their base meshes instead of duplicating geometry",
+		"%d unique mesh(es) across %d mesh node(s)" % [crowd3d.unique_mesh_count(),
+			crowd3d.mesh_instance_count()])
 	var dropped_props := crowd3d.find_children("FlagPole", "Node3D", true, false).size() \
 		+ crowd3d.find_children("LighterHand", "Node3D", true, false).size() \
 		+ crowd3d.find_children("Airhorn", "Node3D", true, false).size()
@@ -1796,11 +1851,11 @@ func _run() -> void:
 		"the whole yard answers inside a beat",
 		"%d / %d" % [crowd3d.reacting_count(), crowd3d.count()])
 	_check(crowd3d.zone_state_count(0, CrowdController3D.STATE_CHEER)
-			+ crowd3d.zone_state_count(0, CrowdController3D.STATE_HYPE) == 4,
-		"P1's bank erupts in cheers",
+			+ crowd3d.zone_state_count(0, CrowdController3D.STATE_HYPE) == crowd3d.zone_count(0),
+		"P1's whole bank erupts in cheers",
 		"%d cheering" % (crowd3d.zone_state_count(0, CrowdController3D.STATE_CHEER)
 			+ crowd3d.zone_state_count(0, CrowdController3D.STATE_HYPE)))
-	_check(crowd3d.zone_state_count(1, CrowdController3D.STATE_DISBELIEF) == 4,
+	_check(crowd3d.zone_state_count(1, CrowdController3D.STATE_DISBELIEF) == crowd3d.zone_count(1),
 		"the rival bank throws its hands on its head",
 		"%d in disbelief" % crowd3d.zone_state_count(1, CrowdController3D.STATE_DISBELIEF))
 	_check(booth.pointing(), "a DJ points at the fighters on a heavy hit")
@@ -1815,7 +1870,8 @@ func _run() -> void:
 	atmosphere.notify_combat_event(&"knockdown", 1)
 	crowd3d.tick(0.6)
 	booth.tick(0.1)
-	_check(booth.airhorn_up() and crowd3d.zone_state_count(1, CrowdController3D.STATE_HYPE) == 4,
+	_check(booth.airhorn_up()
+			and crowd3d.zone_state_count(1, CrowdController3D.STATE_HYPE) == crowd3d.zone_count(1),
 		"a knockdown lifts the selector's arm and sends his bank into hype",
 		"booth raised %s / %d hyped" % [str(booth.airhorn_up()),
 			crowd3d.zone_state_count(1, CrowdController3D.STATE_HYPE)])
@@ -1824,7 +1880,8 @@ func _run() -> void:
 	atmosphere.notify_combat_event(&"ko", 1)
 	crowd3d.tick(0.6)
 	booth.tick(0.1)
-	_check(booth.celebrating() and crowd3d.zone_state_count(1, CrowdController3D.STATE_HYPE) == 4,
+	_check(booth.celebrating()
+			and crowd3d.zone_state_count(1, CrowdController3D.STATE_HYPE) == crowd3d.zone_count(1),
 		"a K.O. sends the winning bank into a jump and the booth into a celebration")
 	crowd3d.settle()
 	booth.settle()
@@ -1847,11 +1904,11 @@ func _run() -> void:
 	# Budget: measured from the meshes that were actually built.
 	var crowd_tris := crowd3d.triangle_count()
 	var booth_tris := booth.triangle_count()
-	# The delivered ringside characters (8 × ≤3 500) and both decks (2 × ≤3 500) replace
-	# the 2-triangle silhouette quads on those slots, so the atmosphere cap moves from
-	# 15 000 to 40 000. Every individual character is still held to 3 500 below.
-	_check(crowd_tris > 0 and booth_tris > 0 and atmosphere.atmosphere_triangles() < 40000,
-		"the 3D booth and ringside characters stay under 40 000 triangles",
+	# PART 2 packs 22 ringside characters (each ≤3 500 tris) plus both decks, so the atmosphere
+	# ceiling moves from 40 000 to 90 000. The geometry is shared, so this is draw work, not
+	# 22 copies of an atlas; every individual character is still held to 3 500 below.
+	_check(crowd_tris > 0 and booth_tris > 0 and atmosphere.atmosphere_triangles() < 90000,
+		"the packed 3D crowd and booth stay inside the 90 000-triangle Chromebook ceiling",
 		"%d total (crowd %d / booth %d)" % [atmosphere.atmosphere_triangles(),
 			crowd_tris, booth_tris])
 
@@ -1966,8 +2023,9 @@ func _run() -> void:
 			clip_failures.append("%s:%d clips/%d tracks" % [model_name, clips.size(), tracks])
 		if CharacterModelSlots.cel_surfaces(model) == 0:
 			cel_failures.append(model_name)
-	_check(delivered.size() == 10 and rig_failures.is_empty(),
-		"all 10 delivered characters carry a real Mixamo skeleton (> 20 bones)",
+	# PART 2 packs the yard, so this is every BODY on stage (22 crowd + 2 DJ), not 10 slots.
+	_check(delivered.size() == crowd3d.count() + booth.dj_count() and rig_failures.is_empty(),
+		"every crowd and DJ body on stage carries a real Mixamo skeleton (> 20 bones)",
 		"%d characters, failures %s" % [delivered.size(), rig_failures])
 	_check(not delivered.is_empty() and budget_failures.is_empty(),
 		"every delivered crowd/DJ mesh is decimated to ≤ 3 500 triangles",
@@ -1992,9 +2050,10 @@ func _run() -> void:
 	crowd3d.tick(0.9)
 	booth.tick(0.1)
 	_check(crowd3d.model_act_of(0) == CharacterModelSlots.ACT_CHEER
-			and crowd3d.model_act_of(4) == CharacterModelSlots.ACT_DISBELIEF,
+			and crowd3d.model_act_of(crowd3d.zone_count(0)) == CharacterModelSlots.ACT_DISBELIEF,
 		"the delivered banks crossfade to cheer and disbelief on a heavy hit",
-		"left %s / right %s" % [crowd3d.model_act_of(0), crowd3d.model_act_of(4)])
+		"left %s / right %s" % [crowd3d.model_act_of(0),
+			crowd3d.model_act_of(crowd3d.zone_count(0))])
 	_check(crowd3d.model_clip_of(0) == "mixamo_cheer"
 			and crowd3d.model_clip_of(0) != neutral_clip,
 		"the cheer clip is actually playing, not just recorded as a state",
@@ -2086,6 +2145,18 @@ func _run() -> void:
 		"round banners and Patois callouts both pop their type on entrance")
 	_check(hud_source.contains("outline := maxi(3") or hud_source.contains("outline := maxi(3,"),
 		"the ink outline is thick at every size")
+	# PART 2 scale-up: the HUD has to be readable on a Chromebook screen and an iPhone, so
+	# the bars, the clock and the callout pill are all measurably bigger than the old pass.
+	var hud_bar_w := float(hud_consts.get("BAR_W", 0.0))
+	var hud_bar_h := float(hud_consts.get("BAR_H", 0.0))
+	_check(hud_bar_w >= 420.0 and hud_bar_h >= 28.0,
+		"the health bars are sized for a small screen, not a desktop monitor",
+		"%.0f × %.0f" % [hud_bar_w, hud_bar_h])
+	_check(hud_consts.has("FRAME_DARK") and hud_consts.has("CYAN")
+			and hud_source.contains("_rasta_strip(box, 0.9)"),
+		"the HUD readouts carry a gold/Rasta arcade frame")
+	_check(hud_source.contains("160.0, 66.0") and hud_source.contains("FONT_BUNGEE, 40"),
+		"the round clock is a big bold 40 px display")
 
 	# y 592 floor alignment is untouched by any of this.
 	_check(is_equal_approx(BaseFighter.REACTION_FLOOR_Y, 592.0),

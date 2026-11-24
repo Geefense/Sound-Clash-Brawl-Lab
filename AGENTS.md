@@ -4356,3 +4356,130 @@ godot --headless --path godot --script res://tools/facing_audit.gd
   Local 2P input remains backlog **B2**.
 - `_tick_crouch()` still accepts no attacks and air attacks are still `[TODO]` — unchanged by this
   pass, and part of the documented moveset plan rather than a regression.
+
+## 2026-11-24 — Visual presentation, UI polish and the Godot 4.5 Web rebuild: PART 2 OF 2
+
+Second half of the same owner playtest. Same global rules: **zero programmer art**, and
+`ANIM_OFFSET`, every combat frame data value, the 132 BPM beat clock and all 31 Patois entries
+are untouched. The five `PropLoader` `.glb` slots still draw nothing and still warn. This
+**supersedes the 8-body single-row crowd** described in the PART 1 entry above.
+
+### 1. Packed multi-row 3D crowd on all seven delivered characters
+
+`CrowdController3D` went from 8 spectators in one ringside row to **22 across three staggered
+depth rows a side**: 4 front + 4 mid + 3 back per bank, rows at **z −4.15 / −5.05 / −5.95**
+(behind the z −2.55 barrier), each body with its own depth jitter, its own inward yaw and its
+own height (1.52–1.92 m). Every slot cycles the **seven delivered Mixamo characters** in sorted
+filename order — all three male and all four female rigs are on screen at once.
+
+- **Shared geometry.** `CharacterModelSlots.share_meshes()` binds the first instance's `Mesh`
+  per node path to every later instance of the same file, so 22 bodies reference **53 unique
+  meshes across 170 mesh nodes** (measured). Instancing a `PackedScene` happens to share
+  sub-resources in Godot, but that is an importer detail; this is the guarantee.
+- **Per-instance look without a repaint.** Each member draws one shader material of its own with
+  its bank's light colour multiplied by a seeded **±2.5 % brightness** nudge and a
+  **±0.012 hue** nudge, `shadow_tint_amount` still 0.0 — full albedo, no two neighbours sharing
+  a material.
+- **Ripple.** Reaction delay is now row base (0 / 0.11 / 0.22 s) + 0.028 s per metre along the
+  bank + seeded jitter, so ringside answers first and the back row last.
+- **Cost.** 76,178 crowd triangles + 6,982 booth = **83,160**, measured from the built meshes,
+  inside a raised **90,000** atmosphere ceiling (was 40,000). Each character is still held to
+  ≤3,500 triangles by its own assertion.
+
+### 2. Afternoon / Sunset / Night rebuilt as three designed light rigs
+
+`Arena3D.PHASES` now drives a real key + fill + rim + fog + sky setup per phase, instead of one
+warm tint with the spots turned up:
+
+| | Afternoon | Sunset | Night |
+| --- | --- | --- | --- |
+| Sun | 1.90, warm white, high | 1.55, amber, 9° above horizon | 0.10 (effectively off) |
+| Fill | cool blue 0.26 | **violet/magenta** 0.38 | deep blue 0.46 |
+| Spots | 0.26 (resting) | 0.85 amber | **3.00 cool white** |
+| Rim | warm sand 0.80 | magenta-amber 1.35 | **cyan 1.60** |
+| Ambient | blue sky 0.56 | warm violet 0.48 | deep indigo 0.32 |
+| Fog | 0.0032 pale | 0.0115 amber | 0.019 indigo |
+| Sky | saturated zenith → warm gold horizon | violet zenith → **amber horizon** | near-black indigo |
+
+The fighters' **crisp directional shadow is preserved in every phase**: the key light always
+casts, with `light_angular_distance = 0` (hard-edged), `shadow_blur 0.7`, `shadow_bias 0.03`,
+2 splits at 0.28 and a 26 m shadow distance. The cool camera fill is now a phase value, not a
+fixed colour, which is what stops dusk and night reading as one flat amber card.
+
+### 3. Bigger, bolder arcade UI and sharper note VFX
+
+- **Match HUD** (`TestHud`): health bars **442 × 32** (was 320 × 18) with a dark plate, gold
+  border, Rasta corner tab, two-tone lit fill and 23 px Bungee name plates; Hype meter
+  **264 × 22** with a 50 % milestone tick and a 17 px readout; round clock **160 × 66** with
+  **40 px** digits under a Rasta rail; round-win pips grown to r 8 with a gold ring; Patois pill
+  64 px tall with a 27 px shout and 16 px gloss; banners up to 36 / 88 / 46 px (round / K.O. /
+  rematch); `FORWARD!` surge banner 648 × 112 with 48 px type; bottom legend 14 px.
+- **Character Select** (`TitleScreen`): cards **544 × 348** with a Rasta top rail, a colour
+  frame, a dark inset and a gold inner rail; **58 px** fighter names, a **34 px** P1/P2 tag,
+  22 px taglines, a 30 px `LOCKED` badge; splash title 120 / 136 px; 21–27 px footers and
+  settings lines. Every input, lock and cursor rule from the PART 1 rebuild is unchanged.
+- **Music-note bursts** (`MusicNoteBurst`): burst life tightened 0.72 s → **0.62 s**, velocity
+  damping 0.86, glyphs snap to full size at 1/8 of the burst and shrink out after 55 %, note
+  heads up to 22 segments with a crisper doubled flag edge, a **thin 40-segment bass ring** and
+  a new **hot white-gold impact flash ring** that is gone in **0.16 s** — the readable "hit"
+  frame before the notes follow through.
+
+### 4. `/docs` rebuilt with pinned Godot 4.5-stable
+
+`df -h ~` first (187 MB free on `/`, 1.4 GB in `/tmp`). Then:
+
+- **Engine:** `Godot_v4.5-stable_linux.x86_64` (69,032,926 B zip → 135,868,560 B binary),
+  reporting **4.5.stable.official.876b29033**, downloaded to `/tmp` and removed after the export.
+- **Template:** only `templates/web_nothreads_release.zip` (9,440,969 B) was taken out of the
+  1,356,853,963 B `Godot_v4.5-stable_export_templates.tpz` — a Python script read the remote
+  ZIP's central directory through HTTP range requests and fetched just that member, so the
+  1.36 GB archive never touched the disk. It is installed at
+  `~/.local/share/godot/export_templates/4.5.stable/` with `version.txt`.
+- **A stale-import trap worth recording.** Pointing 4.5 at a project whose `.godot/imported`
+  cache had been built by 4.7.2 loads the FBX scenes but reports **zero animation tracks** —
+  all 38 clip roles failed to bind and the build would have shipped silent, T-posed fighters.
+  Deleting `godot/.godot/imported` and re-importing with 4.5 fixed it (the same probe then
+  reported `anims=1 tracks=53`); the committed `.import` sidecars were **not** rewritten, so
+  no import churn was committed. Always build the shipped Web export with the pinned 4.5
+  toolchain, and do not trust an import cache produced by another engine version.
+- **Export:** `--headless --path godot --export-release "Web" ../docs/index.html` (exit 0, 17 s).
+  `docs/index.pck` **68,621,868 B** (69,880,088 before), `index.wasm` 38,057,390 B,
+  `index.js` 305,185 B, `index.html` 5,449 B. The only HTML change is the pck size in
+  `GODOT_CONFIG`. Log output was the environment's known non-fatal fontconfig noise.
+
+### Verification actually run
+
+Authoring pass on **4.7.2.stable**, final pass on **4.5.stable.official.876b29033**, both
+headless, both identical:
+
+```bash
+godot --headless --path godot --import
+godot --headless --path godot --script res://tools/headless_roster_check.gd
+godot --headless --path godot --script res://tools/live_match_check.gd
+godot --headless --path godot --script res://tools/facing_audit.gd
+godot --headless --path godot --export-release "Web" ../docs/index.html
+```
+
+- **`headless_roster_check.gd`: 425 PASS / 0 FAIL, `ALL CHECKS PASSED`** (411 before). New
+  assertions: 18–24 spectators (**22**); two equal banks of 11; three rows holding 8 / 8 / 6
+  with a real depth span behind the barrier; **all seven** delivered models on stage; unique
+  meshes fewer than mesh nodes (sharing); the raised 90,000-triangle ceiling; the crisp shadow
+  settings; the violet sunset fill and amber-horizon/violet-zenith sky; the cyan night rim and
+  indigo ambient; the burst's impact flash ring; the HUD's 442 × 32 bars, arcade framing and
+  40 px clock.
+- **`live_match_check.gd`: 123 checks, 0 FAIL** — unchanged (all nine pairings, facing, floor,
+  input).
+- **`facing_audit.gd`: 94 checks, 0 FAIL** — unchanged.
+- Both earlier suites' crowd assertions were updated for 22 bodies (the "10 delivered
+  characters" count and the right-bank act index now derive from `zone_count()` instead of
+  hard-coded 4s).
+
+### Not verified — no GPU, display or audio device here
+
+Nothing was **seen**. The packed crowd's look and spacing, whether 22 rigged bodies plus 83k
+triangles actually hold 60 FPS on the Chromebook / iPhone Safari, the new light rigs' colour and
+contrast in motion, the dodge/ripple feel, the new HUD and select-screen geometry on a real
+1080p/720p screen, and the note flash's readability at speed are all **unmeasured**. The
+triangle count, the sharing structure, the phase values, the HUD constants and the Web export
+are arithmetic and state, not eyes. `/docs` is rebuilt from this commit, but the build has not
+been opened in a browser here.

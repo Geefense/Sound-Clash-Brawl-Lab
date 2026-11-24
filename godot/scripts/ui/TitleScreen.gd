@@ -32,7 +32,12 @@ const LOCK_FLASH_SECONDS := 0.45
 ## P1 owns gold, P2 owns cyan. Both the cursor and the panel carry the tag.
 const P1_COLOUR := Color(1.0, 0.86, 0.32)
 const P2_COLOUR := Color(0.42, 0.88, 1.0)
-const PANEL_DARK := Color(0.05, 0.04, 0.07, 0.82)
+const PANEL_DARK := Color(0.05, 0.04, 0.07, 0.86)
+## PART 2 scale-up (owner playtest, 2026-11-24): the select screen was set for a desktop
+## monitor; at Chromebook and iPhone size the cards, names and prompts were too small to read.
+## Every card is now taller with a Rasta top rail, an inner gold/cyan frame and much larger
+## type. Nothing here reads combat state.
+const RASTA := [Color(0.10, 0.52, 0.22), Color(0.96, 0.78, 0.20), Color(0.72, 0.13, 0.12)]
 
 var phase: Phase = Phase.SPLASH
 ## Independent cursors, as FighterRoster.ORDER indices. P1 → Feedback, P2 → L!ckshot.
@@ -254,11 +259,11 @@ func _start() -> void:
 # Layout
 # =========================================================================
 func _p1_rect() -> Rect2:
-	return Rect2(Vector2(96.0, 246.0), Vector2(536.0, 300.0))
+	return Rect2(Vector2(84.0, 196.0), Vector2(544.0, 348.0))
 
 
 func _p2_rect() -> Rect2:
-	return Rect2(Vector2(648.0, 246.0), Vector2(536.0, 300.0))
+	return Rect2(Vector2(652.0, 196.0), Vector2(544.0, 348.0))
 
 
 func _fit(font: Font, text: String, preferred: int, max_width: float) -> int:
@@ -326,40 +331,40 @@ func _backdrop(width: float, height: float) -> void:
 
 
 func _draw_splash(width: float, height: float) -> void:
-	var title_y := height * 0.30
+	var title_y := height * 0.28
 	var l1 := "SOUND CLASH"
-	_text(Vector2(0, title_y), l1, FONT_SHADE, _fit(FONT_SHADE, l1, 96, width - 120.0),
+	_text(Vector2(0, title_y), l1, FONT_SHADE, _fit(FONT_SHADE, l1, 120, width - 100.0),
 		Color(1.0, 0.96, 0.86), HORIZONTAL_ALIGNMENT_CENTER, width)
 	var l2 := "BRAWL"
-	_text(Vector2(0, title_y + 108.0), l2, FONT_INLINE, _fit(FONT_INLINE, l2, 112, width - 240.0),
+	_text(Vector2(0, title_y + 134.0), l2, FONT_INLINE, _fit(FONT_INLINE, l2, 136, width - 220.0),
 		Color(1.0, 0.83, 0.30), HORIZONTAL_ALIGNMENT_CENTER, width)
 	var sub := "132 BPM · KINGSTON YARD · 1P VS AI"
-	_text(Vector2(0, title_y + 158.0), sub, FONT_BODY, _fit(FONT_BODY, sub, 22, width - 200.0),
-		Color(0.94, 0.90, 0.82, 0.9), HORIZONTAL_ALIGNMENT_CENTER, width)
+	_text(Vector2(0, title_y + 186.0), sub, FONT_BODY, _fit(FONT_BODY, sub, 27, width - 180.0),
+		Color(0.96, 0.92, 0.84, 0.94), HORIZONTAL_ALIGNMENT_CENTER, width)
 
 	# Blinking prompt.
 	var t := Time.get_ticks_msec() / 1000.0
 	var pulse := 0.55 + 0.45 * absf(sin(t * 2.0))
 	var prompt := "PRESS START / CLICK TO CLASH"
-	_text(Vector2(0, height * 0.70), prompt, FONT_BUNGEE,
-		_fit(FONT_BUNGEE, prompt, 34, width - 260.0),
+	_text(Vector2(0, height * 0.71), prompt, FONT_BUNGEE,
+		_fit(FONT_BUNGEE, prompt, 44, width - 200.0),
 		Color(1.0, 0.99, 0.94, pulse), HORIZONTAL_ALIGNMENT_CENTER, width)
 	# Roster line comes from FighterRoster, so the owner's I→! styling rule applies here too
 	# and a rename never leaves a stale hard-coded name on the splash.
 	var names := PackedStringArray()
 	for key in FighterRoster.ORDER:
 		names.append(FighterRoster.display_name(key))
-	_text(Vector2(0, height * 0.76), " · ".join(names), FONT_BODY, 16,
-		Color(0.85, 0.80, 0.74, 0.75), HORIZONTAL_ALIGNMENT_CENTER, width)
+	_text(Vector2(0, height * 0.785), " · ".join(names), FONT_BODY, 21,
+		Color(0.90, 0.86, 0.80, 0.85), HORIZONTAL_ALIGNMENT_CENTER, width)
 
 
 func _draw_setup(width: float, height: float) -> void:
 	var header := "CHARACTER SELECT"
-	_text(Vector2(0, 150.0), header, FONT_INLINE, _fit(FONT_INLINE, header, 46, width - 160.0),
+	_text(Vector2(0, 142.0), header, FONT_INLINE, _fit(FONT_INLINE, header, 62, width - 140.0),
 		Color(1.0, 0.92, 0.72), HORIZONTAL_ALIGNMENT_CENTER, width)
 	var hint := "BOTH PANELS MUST BE LOCKED BEFORE THE CLASH STARTS"
-	_text(Vector2(0, 186.0), hint, FONT_BODY, _fit(FONT_BODY, hint, 17, width - 200.0),
-		Color(0.88, 0.86, 0.80, 0.85), HORIZONTAL_ALIGNMENT_CENTER, width)
+	_text(Vector2(0, 180.0), hint, FONT_BODY, _fit(FONT_BODY, hint, 20, width - 160.0),
+		Color(0.90, 0.88, 0.82, 0.9), HORIZONTAL_ALIGNMENT_CENTER, width)
 
 	_fighter_panel(_p1_rect(), "P1", P1_COLOUR, p1_cursor, p1_locked,
 		p1_focus and not p1_locked)
@@ -369,38 +374,50 @@ func _draw_setup(width: float, height: float) -> void:
 	# Mirror match notice: shown plainly instead of being hidden or blocked.
 	if p1_key() == p2_key():
 		var mirror := "MIRROR MATCH · BOTH PLAYERS PICKED %s" % FighterRoster.display_name(p1_key())
-		_text(Vector2(0, 578.0), mirror, FONT_BUNGEE,
-			_fit(FONT_BUNGEE, mirror, 22, width - 200.0),
+		_text(Vector2(0, 572.0), mirror, FONT_BUNGEE,
+			_fit(FONT_BUNGEE, mirror, 26, width - 160.0),
 			Color(1.0, 0.99, 0.90, 0.95), HORIZONTAL_ALIGNMENT_CENTER, width)
 
 	var ai := "AI STYLE · %s   (TAB)" % MatchSetup.ai_mode_name().to_upper()
-	_text(Vector2(0, 618.0), ai, FONT_BODY, 17,
-		Color(0.86, 0.88, 0.96, 0.9), HORIZONTAL_ALIGNMENT_CENTER, width)
+	_text(Vector2(0, 610.0), ai, FONT_BODY, _fit(FONT_BODY, ai, 21, width - 120.0),
+		Color(0.88, 0.90, 0.98, 0.94), HORIZONTAL_ALIGNMENT_CENTER, width)
 	var subs := "PATOIS SUBTITLES · %s   (V)" % ("ON" if MatchSetup.subtitles else "OFF")
-	_text(Vector2(0, 644.0), subs, FONT_BODY, 17,
-		Color(0.86, 0.88, 0.96, 0.9), HORIZONTAL_ALIGNMENT_CENTER, width)
+	_text(Vector2(0, 638.0), subs, FONT_BODY, _fit(FONT_BODY, subs, 21, width - 120.0),
+		Color(0.88, 0.90, 0.98, 0.94), HORIZONTAL_ALIGNMENT_CENTER, width)
 
 	var footer := "P1  A/D MOVE · J LOCK · K CANCEL      P2  ←/→ MOVE · L LOCK · O CANCEL      ENTER FIGHT"
-	_text(Vector2(0, height * 0.935), footer, FONT_BODY,
-		_fit(FONT_BODY, footer, 16, width - 60.0),
-		Color(0.92, 0.92, 0.96, 0.8), HORIZONTAL_ALIGNMENT_CENTER, width)
+	_text(Vector2(0, height * 0.945), footer, FONT_BODY,
+		_fit(FONT_BODY, footer, 19, width - 40.0),
+		Color(0.94, 0.94, 0.98, 0.86), HORIZONTAL_ALIGNMENT_CENTER, width)
 	var music_line := "%s · M TO CYCLE" % MusicBed.label()
-	_text(Vector2(0, height * 0.968), music_line, FONT_BODY,
-		_fit(FONT_BODY, music_line, 14, width - 80.0),
-		Color(1.0, 0.86, 0.32, 0.8), HORIZONTAL_ALIGNMENT_CENTER, width)
+	_text(Vector2(0, height * 0.978), music_line, FONT_BODY,
+		_fit(FONT_BODY, music_line, 17, width - 60.0),
+		Color(1.0, 0.86, 0.32, 0.85), HORIZONTAL_ALIGNMENT_CENTER, width)
 
 
 ## One player's card: tag, cursor arrows, fighter name and stats, and a LOCKED banner.
 func _fighter_panel(rect: Rect2, tag: String, colour: Color, cursor: int, locked: bool,
 		active: bool) -> void:
 	draw_rect(rect, PANEL_DARK, true)
+	# Outer colour frame, a dark inset and a thin gold rail inside it: an arcade card rather
+	# than a flat rectangle.
 	var border := colour if active else Color(colour.r, colour.g, colour.b, 0.55)
-	draw_rect(rect, border, false, 4.0 if active else 2.0)
+	draw_rect(rect, border, false, 5.0 if active else 3.0)
+	draw_rect(rect.grow(-7.0), Color(0.01, 0.008, 0.02, 0.75), false, 2.0)
+	draw_rect(rect.grow(-9.0), Color(1.0, 0.84, 0.24, 0.40 if not locked else 0.75), false, 1.0)
+	# Rasta top rail across the card, the same trim the HUD banners carry.
+	var rail := Rect2(rect.position + Vector2(9.0, 0.0), Vector2(rect.size.x - 18.0, 6.0))
+	for i in 3:
+		var rail_colour: Color = RASTA[i]
+		draw_rect(Rect2(rail.position + Vector2(float(i) * rail.size.x / 3.0, 0.0),
+			Vector2(rail.size.x / 3.0, rail.size.y)), rail_colour, true)
+
 	# The player tag, top-left, in that player's colour — the thing that tells the two
 	# cursors apart at a glance.
-	var tag_box := Rect2(rect.position + Vector2(14.0, 14.0), Vector2(74.0, 44.0))
+	var tag_box := Rect2(rect.position + Vector2(18.0, 18.0), Vector2(94.0, 58.0))
 	draw_rect(tag_box, colour, true)
-	_text(tag_box.position + Vector2(tag_box.size.x * 0.5, 32.0), tag, FONT_BUNGEE, 26,
+	draw_rect(tag_box, Color(0.02, 0.01, 0.03, 0.85), false, 2.0)
+	_text(tag_box.position + Vector2(tag_box.size.x * 0.5, 42.0), tag, FONT_BUNGEE, 34,
 		Color(0.07, 0.05, 0.08), HORIZONTAL_ALIGNMENT_CENTER, tag_box.size.x)
 
 	var key := FighterRoster.ORDER[posmod(cursor, FighterRoster.ORDER.size())]
@@ -408,41 +425,43 @@ func _fighter_panel(rect: Rect2, tag: String, colour: Color, cursor: int, locked
 	var name_text := FighterRoster.display_name(key)
 
 	# Cursor arrows beside the name, only on the panel the keyboard is driving.
-	var name_x := rect.position.x + 104.0
+	var name_x := rect.position.x + 124.0
 	if active and not locked:
-		_text(Vector2(rect.position.x + 18.0, rect.position.y + 122.0), "▶", FONT_BUNGEE, 30,
+		_text(Vector2(rect.position.x + 22.0, rect.position.y + 148.0), "▶", FONT_BUNGEE, 38,
 			colour)
-		_text(Vector2(rect.end.x - 46.0, rect.position.y + 122.0), "◀", FONT_BUNGEE, 30,
+		_text(Vector2(rect.end.x - 52.0, rect.position.y + 148.0), "◀", FONT_BUNGEE, 38,
 			colour)
-	_text(Vector2(name_x, rect.position.y + 126.0), name_text, FONT_INLINE,
-		_fit(FONT_INLINE, name_text, 44, rect.size.x - 150.0), Color(1.0, 0.97, 0.88))
+	_text(Vector2(name_x, rect.position.y + 150.0), name_text, FONT_INLINE,
+		_fit(FONT_INLINE, name_text, 58, rect.size.x - 176.0), Color(1.0, 0.97, 0.88))
 
 	# Portrait stand-in: the fighter's own roster colour block, never a drawn character.
-	var swatch := Rect2(Vector2(rect.position.x + 16.0, rect.position.y + 150.0),
-		Vector2(rect.size.x - 32.0, 8.0))
+	var swatch := Rect2(Vector2(rect.position.x + 18.0, rect.position.y + 166.0),
+		Vector2(rect.size.x - 36.0, 10.0))
 	draw_rect(swatch, colour, true)
+	draw_rect(Rect2(swatch.position, Vector2(swatch.size.x, 3.0)), colour.lightened(0.35), true)
 
 	var reach := float(data["reach_bonus"])
 	var line1 := "%s" % String(data["tagline"])
-	_text(Vector2(rect.position.x + 26.0, rect.position.y + 196.0), line1, FONT_BODY,
-		_fit(FONT_BODY, line1, 18, rect.size.x - 52.0), Color(0.90, 0.90, 0.94, 0.92))
+	_text(Vector2(rect.position.x + 28.0, rect.position.y + 216.0), line1, FONT_BODY,
+		_fit(FONT_BODY, line1, 22, rect.size.x - 56.0), Color(0.92, 0.92, 0.96, 0.95))
 	var line2 := "WALK %d · REACH %s" % [int(round(float(data["walk_speed"]))),
 		("+%d PX" % int(reach)) if reach > 0.0 else "STANDARD"]
-	_text(Vector2(rect.position.x + 26.0, rect.position.y + 224.0), line2, FONT_BODY, 16,
-		Color(0.80, 0.82, 0.90, 0.8))
+	_text(Vector2(rect.position.x + 28.0, rect.position.y + 250.0), line2, FONT_BODY, 19,
+		Color(0.82, 0.85, 0.93, 0.88))
 
 	# Lock state: a filled bar across the bottom of the card.
-	var badge := Rect2(Vector2(rect.position.x + 16.0, rect.end.y - 56.0),
-		Vector2(rect.size.x - 32.0, 40.0))
+	var badge := Rect2(Vector2(rect.position.x + 18.0, rect.end.y - 72.0),
+		Vector2(rect.size.x - 36.0, 54.0))
 	if locked:
 		draw_rect(badge, colour, true)
-		_text(badge.position + Vector2(badge.size.x * 0.5, 28.0), "LOCKED", FONT_BUNGEE, 22,
+		draw_rect(badge, Color(1.0, 0.99, 0.94, 0.55), false, 2.0)
+		_text(badge.position + Vector2(badge.size.x * 0.5, 38.0), "LOCKED", FONT_BUNGEE, 30,
 			Color(0.07, 0.05, 0.08), HORIZONTAL_ALIGNMENT_CENTER, badge.size.x)
 	else:
-		draw_rect(badge, Color(1.0, 1.0, 1.0, 0.06), true)
-		draw_rect(badge, Color(colour.r, colour.g, colour.b, 0.7), false, 1.0)
-		_text(badge.position + Vector2(8.0, 27.0), "PICKING…", FONT_BODY, 16,
-			Color(0.92, 0.92, 0.96, 0.85))
+		draw_rect(badge, Color(1.0, 1.0, 1.0, 0.07), true)
+		draw_rect(badge, Color(colour.r, colour.g, colour.b, 0.7), false, 2.0)
+		_text(badge.position + Vector2(14.0, 36.0), "PICKING…", FONT_BODY, 21,
+			Color(0.94, 0.94, 0.98, 0.9))
 
 
 ## Corner label for the M-key beat audition. Both the splash and the select screen use it.
@@ -450,11 +469,11 @@ func _draw_beat_toast(width: float) -> void:
 	if _beat_toast == "" or _beat_toast_life <= 0.0:
 		return
 	var fade := clampf(_beat_toast_life / 0.5, 0.0, 1.0)
-	var font_size := _fit(FONT_BODY, _beat_toast, 14, 400.0)
+	var font_size := _fit(FONT_BODY, _beat_toast, 18, 440.0)
 	var text_w := FONT_BODY.get_string_size(_beat_toast, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-	var box_w := clampf(text_w + 30.0, 240.0, 430.0)
-	var box := Rect2(Vector2(width - 24.0 - box_w, 24.0), Vector2(box_w, 34.0))
+	var box_w := clampf(text_w + 34.0, 280.0, 470.0)
+	var box := Rect2(Vector2(width - 24.0 - box_w, 24.0), Vector2(box_w, 40.0))
 	draw_rect(box, Color(0.05, 0.04, 0.07, 0.74 * fade), true)
 	draw_rect(box, Color(1.0, 0.86, 0.32, 0.8 * fade), false, 1.0)
-	_text(Vector2(box.position.x, box.position.y + 22.0), _beat_toast, FONT_BODY, font_size,
-		Color(1.0, 0.92, 0.70, fade), HORIZONTAL_ALIGNMENT_CENTER, box_w)
+	_text(Vector2(box.position.x, box.position.y + 27.0), _beat_toast, FONT_BODY, font_size,
+		Color(1.0, 0.93, 0.72, fade), HORIZONTAL_ALIGNMENT_CENTER, box_w)

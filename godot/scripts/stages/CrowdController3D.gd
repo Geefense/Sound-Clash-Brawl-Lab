@@ -16,35 +16,39 @@ extends Node3D
 ## be filled the position stays empty and a warning is logged — an empty slot, never a
 ## substitute body.
 ##
-## The yard holds four people a side instead of ten because every body is a real
-## ~3 500-triangle rig rather than two triangles; that is what keeps the whole cast inside
-## the Chromebook triangle budget with all of them fully textured.
+## **Packed yard (owner playtest, 2026-11-24 PART 2).** Three staggered depth rows a side —
+## 4 front, 4 mid, 3 back — so 22 spectators fill both banks instead of a sparse single line
+## of eight. Every slot cycles through **all seven delivered Mixamo characters** (3 male +
+## 4 female), in sorted filename order, so the whole cast is on screen at once and no two
+## neighbours share a model. Characters are fitted to their own height and stand on the
+## sand in their own row's depth.
+##
+## Cost: each body is a real ~3 500-triangle rig, so 22 of them is ~75 000 triangles — still a
+## trivial load for an Intel Chromebook GPU, and the geometry is shared (see
+## `CharacterModelSlots.share_meshes()`), so the crowd costs seven meshes' worth of GPU
+## memory, not twenty-two. Per-instance variety comes from one shader material each (bright,
+## full albedo) plus its own tiny tint/hue nudge, which costs nothing.
 ##
 ## Excitement is expressed through acting and timing only — which Mixamo act is crossfaded
 ## in, the per-person phase offset, and a small beat bobbing on the anchor. Nothing here
-## tints, dims or desaturates a character: every one of them renders its full albedo.
+## dims or desaturates a character: every one of them renders its full albedo.
 
-## Four a side across one ringside row, matching the delivered model count.
-const COUNT := 8
-const MODEL_TINTS := [Color(1.0, 0.99, 0.94), Color(0.92, 0.97, 1.06)]
+const COUNT := 22
+## Left bank warm, right bank cool, matching the stage light. Full brightness: these are
+## multiplicative tint colours, and the darkest one is a 3 % nudge, never a dimmer.
+const MODEL_TINTS := [Color(1.0, 0.99, 0.94), Color(0.97, 0.99, 1.03)]
 const MODEL_RIMS := [Color(1.0, 0.82, 0.42), Color(0.70, 0.86, 1.0)]
-## The delivered crowd takes share one Mixamo character skin, so each body gets its own small
-## tint/hue break-up through the toon shader. Presentation only.
-const MODEL_LOOKS := [
-	Color(1.0, 1.0, 1.0),
-	Color(1.03, 0.97, 0.93),
-	Color(0.94, 0.99, 1.05),
-	Color(1.04, 0.95, 0.99),
-]
-## Hue break-up is *not* used: it recolours a character's albedo, and the brief is that every
-## crowd body shows the texture it was delivered with. These are sub-percent brightness
-## nudges that read as lighting, not as a repaint.
-const MODEL_HUES := [0.0, 0.0, 0.0, 0.0]
 const ZONE_LEFT := 0
 const ZONE_RIGHT := 1
-const ROW_Z := [-5.20]
-const ROW_COUNTS := [4]                    # per zone, per row: four a side
-const BANK_X := [Vector2(-6.15, -2.35), Vector2(2.35, 6.15)]
+## Three depth rows behind the barrier (z −2.55): ringside, mid, back. The back rows are the
+## ones that answer last, which is what makes a reaction ripple instead of snapping.
+const ROW_Z := [-4.15, -5.05, -5.95]
+const ROW_COUNTS := [4, 4, 3]              # per zone, per row
+## Row base delay plus a per-metre stagger: ringside answers first, the back row last.
+const ROW_DELAY := [0.0, 0.11, 0.22]
+## Half-width bands (mirrored by the zone sign), wide enough to read as a packed crowd and
+## tight enough that the whole bank stays inside the 30° stage camera.
+const ROW_BANK_X := [Vector2(1.58, 3.62), Vector2(1.42, 4.05), Vector2(1.68, 4.38)]
 
 ## Staggering. A body's reaction delay is how far out along the bank it stands plus a small
 ## seeded jitter, so no two people ever land on the same tick.
@@ -79,6 +83,9 @@ class Member:
 	var pending: StringName = &""
 	var timer: float = 0.0
 	var hold: float = 0.0
+	var tint: Color = Color.WHITE   # per-instance albedo nudge (never a dimmer)
+	var hue: float = 0.0            # per-instance hue nudge, ±0.012
+	var model_path: String = ""     # which of the seven delivered characters this is
 
 
 var _members: Array[Member] = []
@@ -108,11 +115,12 @@ func build() -> void:
 		for row in ROW_COUNTS.size():
 			var count: int = ROW_COUNTS[row]
 			for i in count:
-				# Even spread across the bank with a little seeded jitter, so the row reads
-				# as a packed yard rather than a grid.
+				# Even spread across the row's band with a seeded stride, so the bank reads as
+				# a packed yard rather than a grid. Left and right mirror each other.
 				var t := (float(i) + 0.5) / float(count)
-				var bank: Vector2 = BANK_X[zone]
-				var x := lerpf(bank.x, bank.y, t) + _rng.randf_range(-0.16, 0.16)
+				var band: Vector2 = ROW_BANK_X[row]
+				var side := -1.0 if zone == ZONE_LEFT else 1.0
+				var x := lerpf(band.x, band.y, t) * side + _rng.randf_range(-0.14, 0.14)
 				_members.append(_make_member(index, zone, row, x))
 				index += 1
 	_load_models()
@@ -125,14 +133,24 @@ func _make_member(index: int, zone: int, row: int, x: float) -> Member:
 	m.x = x
 	m.phase = _rng.randf_range(0.0, TAU)
 	m.rate = _rng.randf_range(0.85, 1.35)
-	m.delay = absf(x) * LATERAL_DELAY + _rng.randf_range(0.0, JITTER)
-	m.height = _rng.randf_range(1.55, 1.90)
+	# Row base + distance along the bank + jitter: near people first, back rows last.
+	m.delay = ROW_DELAY[row] + absf(x) * LATERAL_DELAY + _rng.randf_range(0.0, JITTER)
+	m.height = _rng.randf_range(1.52, 1.92)
+	# Per-instance look: a sub-3 % brightness nudge and a ±0.012 hue nudge, so a bank of
+	# seven models reads as twenty-two different people without recolouring any albedo.
+	var warm := _rng.randf_range(0.975, 1.025)
+	var cool := _rng.randf_range(0.975, 1.025)
+	m.tint = Color(warm * _rng.randf_range(0.99, 1.01), _rng.randf_range(0.99, 1.01),
+		cool * _rng.randf_range(0.99, 1.01)) * MODEL_TINTS[zone]
+	m.hue = _rng.randf_range(-0.012, 0.012)
 
 	var anchor := Node3D.new()
 	anchor.name = "Spectator%02d" % index
-	anchor.position = Vector3(x, 0.0, ROW_Z[row])
+	# A little depth jitter inside the row keeps the line from looking like a shelf.
+	anchor.position = Vector3(x, 0.0, ROW_Z[row] + _rng.randf_range(-0.14, 0.14))
 	# Everyone turns slightly towards the centre of the yard, where the fight is.
-	anchor.rotation.y = _rng.randf_range(-0.16, 0.16)
+	var inward := 14.0 if zone == ZONE_LEFT else -14.0
+	anchor.rotation.y = deg_to_rad(inward) + _rng.randf_range(-0.14, 0.14)
 	add_child(anchor)
 
 	m.node = anchor
@@ -151,14 +169,16 @@ func _load_models() -> void:
 		return
 	var slot := 0
 	for m in _members:
-		var model := CharacterModelSlots.spawn_one(m.node, paths[slot % paths.size()], m.height)
+		var path: String = paths[slot % paths.size()]
+		var model := CharacterModelSlots.spawn_one(m.node, path, m.height)
 		slot += 1
 		if model == null:
 			push_warning("CrowdController3D: %s failed to instance — empty slot" % m.node.name)
 			continue
-		var look := (slot - 1) % MODEL_LOOKS.size()
-		var applied := CharacterModelSlots.apply_cel(model, MODEL_TINTS[m.zone] * MODEL_LOOKS[look],
-			MODEL_RIMS[m.zone], m.zone * MODEL_LOOKS.size() + look, MODEL_HUES[look])
+		m.model_path = path.get_file()
+		# `variant` is per member: one material each, so no two bodies can ever share a
+		# tint. The look itself is the member's own tiny nudge on its bank's light colour.
+		var applied := CharacterModelSlots.apply_cel(model, m.tint, MODEL_RIMS[m.zone], slot, m.hue)
 		if applied == 0:
 			push_warning("CrowdController3D: %s has no textured surface — empty slot"
 				% m.node.name)
@@ -447,3 +467,51 @@ func triangle_count() -> int:
 		if mi != null and mi.mesh != null:
 			total += int(mi.mesh.get_faces().size() / 3)
 	return total
+
+
+# =========================================================================
+# Cost and coverage reporting (headless checks)
+# =========================================================================
+## Distinct Mesh resources actually referenced by the crowd. Twenty-two spectators cycling
+## seven characters must reference about seven meshes' worth of geometry, not twenty-two:
+## `CharacterModelSlots.share_meshes()` binds the cached mesh per node path.
+func unique_mesh_count() -> int:
+	var ids := {}
+	for node in find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi != null and mi.mesh != null:
+			ids[mi.mesh.get_instance_id()] = true
+	return ids.size()
+
+
+## MeshInstance3D nodes in the built crowd. Paired with `unique_mesh_count()` this proves
+## the geometry is shared: many nodes, few meshes.
+func mesh_instance_count() -> int:
+	return find_children("*", "MeshInstance3D", true, false).size()
+
+
+## Model slots each spectator is actually playing — sorted, de-duplicated filenames.
+func model_names() -> Array[String]:
+	var names: Array[String] = []
+	for m in _members:
+		if m.model_path != "" and not names.has(m.model_path):
+			names.append(m.model_path)
+	names.sort()
+	return names
+
+
+func row_count(row: int) -> int:
+	var n := 0
+	for m in _members:
+		if m.row == row:
+			n += 1
+	return n
+
+
+func row_z(row: int) -> float:
+	return ROW_Z[clampi(row, 0, ROW_Z.size() - 1)]
+
+
+## Depth spread of the built crowd, used to prove the rows are genuinely staggered.
+func depth_span() -> float:
+	return ROW_Z[0] - ROW_Z[ROW_Z.size() - 1]

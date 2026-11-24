@@ -4119,3 +4119,122 @@ materials shared between characters) and `shadow_tint_amount == 0.0` on every ce
 **Not verified.** No GPU, display or audio here: the restored female atlases, the brightened crowd,
 the removed silhouettes, the facing fix as it *looks* on screen, and the frame rate of eight rigged
 spectators on a Chromebook have **not** been seen. The toolbar/visual check is the owner's.
+
+## 2026-11-24 — Playtest regressions, PART 2 (procedural props out, .glb slots in; select screen rebuilt)
+
+Second half of the owner's playtest report. Same rules as PART 1: no programmer art, `ANIM_OFFSET`
+and the combat frame data untouched, Chromebook-friendly (no per-frame allocations, no new per-frame
+node lookups, no heavy shaders).
+
+### Issue 3 — every procedural prop is deleted; five `.glb` slots replace them
+
+**Deleted (was built in code out of `BoxMesh` / `CylinderMesh` / `SphereMesh` / `QuadMesh`):**
+the two speaker stacks (double-18" sub bins, horns, VU LED ladders, rack amps, corner brackets, plinths),
+the DJ booth rig (deck shell, two turntables + vinyl, mixer, three channel faders, airhorn), the
+wireless microphone each adult fighter held, L!kkle Moore's mic stand, his dictionary, and every crowd
+flag, lighter/flame and raised airhorn. No `_draw`, `ArrayMesh` or `CSG*` prop builder survives.
+
+**Kept:** the textured sand stage floor, the stage collision bounds, the barrier, the truss/lights, the
+sky/sun/light pool, the contact-shadow quad, the projectiles and `MusicNoteBurst` — these are stage
+structure and VFX, not props. `DJBooth3D.airhorn_up()` stays as a clip-state query (`STATE_AIRHORN`)
+even though the horn prop is gone.
+
+**`scripts/PropLoader.gd`** (`class_name PropLoader`, `extends Node3D`) — `model_path: String`,
+`place_transform: Transform3D`, `required: bool`. On `_ready()` it checks `ResourceLoader.exists()`;
+when the file is there it instances the `PackedScene` and runs it through the same shared cel setup as
+the fighters and crowd (`CharacterModelSlots.apply_cel`, white tint, `shadow_tint` off → **full
+albedo**). When the file is **not** there it loads nothing, draws nothing and emits one
+`push_warning("PropLoader: missing <path>")` — never a box, cylinder, capsule, quad or sprite.
+`EXPECTED_MODELS` lists the five files so the tree dump and the checks cannot drift from the README.
+`is_empty()` and `load_model()` are the only API the rest of the project uses.
+
+**Slots** (each a `PropLoader`, `scale` and `rotation_degrees` live on the slot node for adjustment):
+
+| Slot | Path | Model |
+| --- | --- | --- |
+| `Arena3D/SpeakerStackLeft` | left of the yard (±2.55, −1.45) | `jamaican_speaker.glb` |
+| `Arena3D/SpeakerStackRight` | right of the yard | `rasta_speaker.glb` |
+| `Arena3D/DJBooth3D/PropLoader` | behind the stage, 3D DJs at it | `dj_booth.glb` |
+| `<fighter>/Skeleton3D/MicInHand/MicInHandSlot` | `BoneAttachment3D` on `mixamorig_RightHand` | Feedback & L!ckshot → `wireless_mic.glb` (no mirroring when turning) |
+| same, L!kkle Moore | `BoneAttachment3D` on `mixamorig_RightHand` | `mic_stand.glb` |
+
+`assets/models/props/README.md` documents the contract: **1 unit = 1 m, pivot at the base centre,
+facing +Z**. Drop a file in and it appears with no code change.
+
+**Verified empty-folder run** (`godot --headless --path godot --script res://tools/tree_dump.gd`,
+all five files absent):
+
+```
+PROP SLOTS (5)
+  /root/TestArena/Arena3D/SpeakerStackLeft  jamaican_speaker.glb  loaded=false empty=true meshes=0
+  /root/TestArena/Arena3D/SpeakerStackRight rasta_speaker.glb     loaded=false empty=true meshes=0
+  /root/TestArena/Arena3D/DJBooth3D/PropLoader dj_booth.glb       loaded=false empty=true meshes=0
+  .../feedback_rigged/Skeleton3D/MicInHand/MicInHandSlot wireless_mic.glb  loaded=false empty=true meshes=0
+  .../lickshot_rigged/.../Skeleton3D/MicInHand/MicInHandSlot wireless_mic.glb loaded=false empty=true meshes=0
+MISSING MODELS (5 of 5): jamaican_speaker.glb, rasta_speaker.glb, dj_booth.glb, wireless_mic.glb, mic_stand.glb
+```
+
+Zero mesh nodes inside any slot, and the scene tree shows `SpeakerStackLeft` / `SpeakerStackRight` /
+`DJBooth3D` with **no** children. The run logs exactly the expected warnings:
+
+```
+WARNING: PropLoader: missing res://assets/models/props/jamaican_speaker.glb
+WARNING: PropLoader: missing res://assets/models/props/rasta_speaker.glb
+WARNING: PropLoader: missing res://assets/models/props/dj_booth.glb
+WARNING: PropLoader: missing res://assets/models/props/wireless_mic.glb   (x2, one per fighter)
+```
+
+`mic_stand.glb` only warns when L!kkle Moore is in the match — it is the only fighter who asks for it,
+so the default Feedback vs L!ckshot match lists four of the five. Nothing crashes, nothing nulls.
+
+### Issue 4 — independent P1/P2 select cursors, lock-in, and "Patois" spelling
+
+`scripts/ui/TitleScreen.gd` was rebuilt around **two independent cursors and two independent locks** —
+there is no shared "selected" variable anywhere:
+
+- `p1_cursor` starts on **Feedback**, `p2_cursor` on **L!ckshot** (`MatchSetup.DEFAULT_P2` changed from
+  `feedback` to `lickshot`). The menu can no longer open on a Feedback mirror by accident.
+- Each card carries its own tag — **P1 in gold, P2 in cyan** — on the panel border, in the corner tag box
+  and around the name; the focused panel's cursor arrows (`▶` / `◀`) are drawn inside that player's card,
+  never the other one's.
+- Keys: **P1** `A`/`D` move, `J` lock, `K` cancel · **P2** `←`/`→` move, `L` lock, `O` cancel ·
+  `TAB` AI style · `V` subtitles · `M` beat audition · `ENTER` fight · `ESC` steps back one lock, then
+  leaves. Every action fires on **key press** (`event.pressed` and not `event.echo`), never on release,
+  and no animation or timer gates a move — a cursor moves on the same frame the key lands.
+- P2's keys are handled in the same `_unhandled_input` and are **never** consumed by P1's branch (the
+  handler never calls `set_input_as_handled`), so one keyboard drives both panels.
+- 1P vs CPU: after P1 locks, `p1_focus` drops to the P2 panel, so P1's own `A`/`D`/`J` pick and lock the
+  CPU fighter. `K` unlocks P1 and hands the keyboard back.
+- Locked panels fill their bar and read **LOCKED**; `K`/`O`/`ESC` unlock. A mirror match is allowed and
+  printed on screen ("MIRROR MATCH · BOTH PLAYERS PICKED …") — a pick is never silently replaced by a
+  default, and `ENTER` does nothing at all until **both** sides are locked.
+- Hand-off: `MatchSetup.commit_match(p1, p2)` writes `p1_fighter_id` / `p2_fighter_id` (and the older
+  `p1_fighter` / `p2_fighter` aliases) in the one autoload; `MatchSetup.start_match()` prints
+  `[match] P1 = … P2 = …` and so does `TestArena._ready()`, so the ids that actually loaded are in the log.
+
+**Spelling.** Repo-wide grep for `Patwa`, `Patwah`, `Patoi`, `Patois-ish` found the variant only in
+comments, check descriptions and `artifacts/sound-clash/SOUND_CLASH_CULTURE.md` — every player-facing
+string already read `PATOIS` / `Patois`. Those comments and the culture note now read **Patois** too.
+The **identifier `PATWA_COLLECTION` was deliberately left unchanged** (code depends on it; the brief says
+never rename keys/IDs), and so were all Patois entry strings.
+
+**Counts and checksums (before → after, identical):**
+
+| Measurement | Before | After |
+| --- | --- | --- |
+| Patois entries in `TestArena.PATWA_COLLECTION` | **31** | **31** |
+| `BaseFighter.gd` sha256 (frame data) | `8bbf7f540f12820cf4e1cb0065e6e981aa7ae062cfb27959c3a5dd84db1c3371` | same |
+| `FighterRoster.gd` sha256 (frame data) | `25b9d82111e6ebacb4cfa02561ce85fc0b2953f5f16e76e43e954dc0c2ac6adb` | same |
+| `ANIM_OFFSET` / `ANIM_OFFSET_DEFAULT` (`BaseFighter.gd:203` / `:262`) | untouched | untouched |
+
+**Measured.** `godot --headless --path godot --script res://tools/headless_roster_check.gd` —
+**411 PASS / 0 FAIL, `ALL CHECKS PASSED`** (385 in PART 1 + 26 new: five prop slots, empty slots draw no
+fallback mesh, IDs unwrapped from the hand, booth/crowd hand attachments gone, and the whole select flow
+driven with real `InputEventKey` presses — independent cursors, release-inert keys, lock/unlock, CPU pick,
+"cannot start until both locked", P1 = L!kkle Moore vs P2 = Feedback, then P1 = L!ckshot vs P2 = L!ckshot).
+
+**Not verified.** No GPU, display, audio or Chromebook here, and none of the five `.glb` props exist yet:
+the select screen's look, the empty speaker/booth positions, the hand-mount transform once a real mic
+arrives, and typing on the actual Chromebook keyboard have **not** been seen. Those are the owner's
+checks. `godot --headless --path godot --export-release "Web" ../docs/index.html` rebuilds the web
+export; it does not prove the art.

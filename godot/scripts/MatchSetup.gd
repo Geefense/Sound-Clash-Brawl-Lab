@@ -9,12 +9,17 @@ const TITLE_SCENE := "res://scenes/TitleScreen.tscn"
 const ARENA_SCENE := "res://scenes/TestArena.tscn"
 
 ## Fighter keys are FighterRoster keys.
-## Owner decision (2026-11-17, AGENTS.md §9 item 24; reaffirmed 2026-11-21 as the 3D showcase):
-## the default matchup is **FEEDBACK vs FEEDBACK** on the rigged 25-bone model, so the mirror
-## match demonstrates the cel shading, mirror accent and full animation on both sides.
-## L!CKSHOT and Likkle Moore stay selectable.
+## Playtest fix 2026-11-24: the cursor defaults are now **Feedback for P1 and L!ckshot for
+## P2**, so Character Select never opens on a Feedback-vs-Feedback mirror by accident (the
+## old shared "selected" flag defaulted both panels to the same fighter). A mirror is still
+## allowed, but only when a player actually picks it.
 const DEFAULT_P1: StringName = &"feedback"
-const DEFAULT_P2: StringName = &"feedback"
+const DEFAULT_P2: StringName = &"lickshot"
+## The committed match payload. `commit_match()` is the only writer, called once by Character
+## Select when both panels are locked; the arena reads `p1_fighter_id` / `p2_fighter_id`.
+var p1_fighter_id: StringName = DEFAULT_P1
+var p2_fighter_id: StringName = DEFAULT_P2
+## The same two picks, kept under the names the rest of the project already uses.
 var p1_fighter: StringName = DEFAULT_P1
 var p2_fighter: StringName = DEFAULT_P2
 ## SparringController.Mode index: 0 Dummy, 1 Counter-Puncher, 2 Riddim Rusher, 3 Baiter.
@@ -35,6 +40,14 @@ func fighter_at(index: int) -> StringName:
 
 func fighter_index(key: StringName) -> int:
 	return FighterRoster.ORDER.find(key)
+
+
+## Lock in both picks and hand them to the arena. Called only from Character Select.
+func commit_match(p1: StringName, p2: StringName) -> void:
+	p1_fighter_id = p1
+	p2_fighter_id = p2
+	p1_fighter = p1
+	p2_fighter = p2
 
 
 ## dir = +1 / -1. Wraps, so holding right cycles the whole roster.
@@ -64,6 +77,7 @@ func ai_mode_tag() -> String:
 
 func start_match() -> void:
 	return_to_setup = false
+	print("[match] P1 = %s   P2 = %s" % [p1_fighter_id, p2_fighter_id])
 	get_tree().change_scene_to_file(ARENA_SCENE)
 
 

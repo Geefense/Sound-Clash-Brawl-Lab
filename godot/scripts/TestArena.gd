@@ -404,6 +404,9 @@ func _ready() -> void:
 	# same move table, same beat clock: only the fighter data and the AI style change.
 	p1.apply_fighter_profile(MatchSetup.p1_fighter)
 	p2.apply_fighter_profile(MatchSetup.p2_fighter)
+	# Playtest fix 2026-11-24: the arena announces the two picks it actually loaded, so a
+	# wrong Character Select hand-off is visible in the log instead of guessed at.
+	print("[match] P1 = %s   P2 = %s" % [MatchSetup.p1_fighter_id, MatchSetup.p2_fighter_id])
 
 	# 3D presentation is installed before the round controller applies round 1 lighting, so
 	# the first announce already has an arena to light.

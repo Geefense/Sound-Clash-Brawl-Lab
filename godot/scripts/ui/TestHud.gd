@@ -131,7 +131,7 @@ func subtitle_cooldown_left() -> float:
 	return _sub_cooldown
 
 
-## Match-intro yard wisdom. The Patwa stays up for the announce; the gloss follows the V
+## Match-intro yard wisdom. The Patois line stays up for the announce; the gloss follows the V
 ## toggle, so turning subtitles off never hides the proverb itself.
 func show_proverb(patois: String, translation: String, seconds: float = 3.4) -> bool:
 	if patois == "":
@@ -424,7 +424,7 @@ func _subtitle_pill(width: float) -> void:
 
 
 ## Rotating match-intro proverb card. A short gold heading keeps it distinct from the
-## round banner; the Patwa line is verbatim, and the English gloss only appears with V on.
+## round banner; the Patois line is verbatim, and the English gloss only appears with V on.
 func _wisdom_banner(width: float) -> void:
 	if _proverb == "" or _proverb_life <= 0.0:
 		return

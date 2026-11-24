@@ -208,6 +208,23 @@ func _anim_floor_y(f: BaseFighter, key: StringName, index: int = 0) -> float:
 	return f.global_position.y + (offset_y + bottom - float(tex.get_height()) * 0.5) * scale_y
 
 
+## One physical key event for the select-screen checks. `pressed` is explicit so a release
+## can be fed in on purpose: a cursor must never wait for the key-up.
+func _key_event(code: Key, pressed: bool = true) -> InputEventKey:
+	var event := InputEventKey.new()
+	event.physical_keycode = code
+	event.keycode = code
+	event.pressed = pressed
+	event.echo = false
+	return event
+
+
+## Press and release one key on the real handler, exactly like the keyboard does.
+func _press_key(node: Node, code: Key) -> void:
+	node._unhandled_input(_key_event(code, true))
+	node._unhandled_input(_key_event(code, false))
+
+
 func _run() -> void:
 	var setup := root.get_node_or_null("MatchSetup")
 	var music_bed := root.get_node_or_null("MusicBed")
@@ -223,9 +240,16 @@ func _run() -> void:
 	var title := current_scene
 	_check(title != null and title.name == "TitleScreen", "main scene is TitleScreen.tscn",
 		str(title.name) if title != null else "null")
-	_check(setup.p1_fighter == &"feedback", "P1 defaults to Feedback", str(setup.p1_fighter))
-	_check(setup.p2_fighter == &"feedback", "P2 defaults to Feedback (mirror match)",
-		str(setup.p2_fighter))
+	# Playtest fix 2026-11-24: independent cursors, so the screen never opens on a mirror.
+	_check(setup.p1_fighter_id == &"feedback" and setup.p2_fighter_id == &"lickshot",
+		"the committed defaults are Feedback for P1 and L!ckshot for P2",
+		"%s vs %s" % [setup.p1_fighter_id, setup.p2_fighter_id])
+	_check(title != null and title.p1_key() == &"feedback" and title.p2_key() == &"lickshot",
+		"P1's cursor starts on Feedback and P2's on L!ckshot",
+		"%s / %s" % [title.p1_key() if title != null else "-",
+			title.p2_key() if title != null else "-"])
+	_check(title != null and not title.both_locked(),
+		"the select screen opens with neither side locked")
 	_check(setup.ai_mode == 1, "AI defaults to Counter-Puncher", str(setup.ai_mode))
 	_check(setup.subtitles == true, "Patois subtitles default on")
 
@@ -369,7 +393,103 @@ func _run() -> void:
 		setup.cycle_p1(1)
 		setup.cycle_p2(1)
 	_check(setup.p1_fighter == &"feedback", "three cycles wrap P1 back to Feedback")
-	_check(setup.p2_fighter == &"feedback", "three cycles wrap P2 back to Feedback")
+	_check(setup.p2_fighter == &"lickshot", "three cycles wrap P2 back to L!ckshot")
+
+	# ---- Independent P1/P2 cursors and lock-in (playtest 2026-11-24) ---------
+	# The owner asked for two cursors that cannot move each other, a lock per player, and a
+	# fight that only starts once both are locked. Driven through the real input handler, with
+	# physical key events, so a key that arrives on release or gets eaten by P1 would fail.
+	title._sync_cursors_from_setup()
+	title.phase = 1
+	title.p1_cursor = 0
+	title.p2_cursor = 1
+	_check(title.p1_key() == &"feedback" and title.p2_key() == &"lickshot",
+		"the cursors reset to Feedback / L!ckshot")
+	_press_key(title, KEY_RIGHT)
+	_check(title.p2_cursor == 2 and title.p1_cursor == 0,
+		"P2's own key moves only P2's cursor, never P1's")
+	_press_key(title, KEY_D)
+	_press_key(title, KEY_D)
+	_check(title.p1_cursor == 2 and title.p2_cursor == 2,
+		"P1's keys move only P1's cursor (L!kkle Moore), leaving P2 where it was")
+	title._unhandled_input(_key_event(KEY_D, false))
+	_check(title.p1_cursor == 2, "a key release never moves a cursor")
+	title._unhandled_input(_key_event(KEY_L, false))
+	_check(not title.p2_locked, "a key release never locks a pick")
+
+	# Lock P1, then hand the keyboard over so one player can pick the CPU.
+	_press_key(title, KEY_J)
+	_check(title.p1_locked and not title.p2_locked and title.p1_drives_p2(),
+		"J locks P1 and passes the keyboard to the CPU pick")
+	_press_key(title, KEY_D)
+	_check(title.p2_cursor == 0 and title.p1_cursor == 2,
+		"P1's keys now move the CPU pick without disturbing P1's lock")
+	_press_key(title, KEY_K)
+	_check(not title.p1_locked and title.p1_cursor == 2,
+		"K unlocks P1 and keeps his cursor where it was")
+	_press_key(title, KEY_J)
+	_check(title.p2_key() == &"feedback" and title.p1_key() == &"young_selecta",
+		"P1 = L!kkle Moore and P2 = Feedback are both still selectable")
+	title._start()
+	await process_frame
+	_check(current_scene == title,
+		"the fight refuses to start while only one side is locked",
+		str(current_scene.name) if current_scene != null else "null")
+	_press_key(title, KEY_L)
+	_check(title.both_locked(), "L locks P2")
+	title._start()
+	await process_frame
+	await process_frame
+	await process_frame
+	var picked := current_scene
+	_check(picked != null and picked.name != "TitleScreen",
+		"both locks start the match", str(picked.name) if picked != null else "null")
+	if picked != null and picked.name != "TitleScreen":
+		var pp1: BaseFighter = picked.get_node_or_null("P1") as BaseFighter
+		var pp2: BaseFighter = picked.get_node_or_null("P2") as BaseFighter
+		_check(pp1 != null and pp1.fighter_key == &"young_selecta"
+				and pp2 != null and pp2.fighter_key == &"feedback",
+			"P1 L!kkle Moore vs P2 Feedback loads the right two fighters",
+			"%s vs %s" % [pp1.fighter_key if pp1 != null else "-",
+				pp2.fighter_key if pp2 != null else "-"])
+		_check(setup.p1_fighter_id == &"young_selecta" and setup.p2_fighter_id == &"feedback",
+			"the autoload carries the committed ids into the arena",
+			"%s / %s" % [setup.p1_fighter_id, setup.p2_fighter_id])
+
+	# A mirror is allowed when both players pick it, and it is shown, not silently corrected.
+	setup.escape_to_setup()
+	await process_frame
+	await process_frame
+	var select2 := current_scene
+	_check(select2 != null and select2.name == "TitleScreen",
+		"Esc reopens the select screen")
+	if select2 != null and select2.name == "TitleScreen":
+		_check(select2.p1_key() == &"young_selecta" and select2.p2_key() == &"feedback",
+			"the cursors come back on the last committed picks",
+			"%s / %s" % [select2.p1_key(), select2.p2_key()])
+		_press_key(select2, KEY_A)
+		_press_key(select2, KEY_RIGHT)
+		_check(select2.p1_key() == &"lickshot" and select2.p2_key() == &"lickshot",
+			"both panels can land on L!ckshot")
+		_press_key(select2, KEY_J)
+		_press_key(select2, KEY_L)
+		_check(select2.both_locked(), "a mirror match can be locked on both sides")
+		select2._start()
+		await process_frame
+		await process_frame
+		await process_frame
+		var mirror2 := current_scene
+		if mirror2 != null and mirror2.name != "TitleScreen":
+			var mm1: BaseFighter = mirror2.get_node_or_null("P1") as BaseFighter
+			var mm2: BaseFighter = mirror2.get_node_or_null("P2") as BaseFighter
+			_check(mm1 != null and mm2 != null and mm1.fighter_key == &"lickshot"
+					and mm2.fighter_key == &"lickshot",
+				"P1 L!ckshot vs P2 L!ckshot loads L!ckshot on both sides",
+				"%s vs %s" % [mm1.fighter_key if mm1 != null else "-",
+					mm2.fighter_key if mm2 != null else "-"])
+			_check(setup.p1_fighter_id == &"lickshot" and setup.p2_fighter_id == &"lickshot",
+				"the mirror print carries two identical ids",
+				"%s / %s" % [setup.p1_fighter_id, setup.p2_fighter_id])
 
 	# ---- Default 3D showcase: FEEDBACK vs FEEDBACK --------------------------
 	# Owner request (2026-11-21): both sides use the rigged 25-bone upload and P2 gets a
@@ -461,21 +581,24 @@ func _run() -> void:
 			"delta %.4f" % (posed_arm - rest_arm).length())
 		mp1_model._play_role(&"idle")
 
-	# ---- Hand-attached props on mixamorig_RightHand (2026-11-24) ----------------
+	# ---- Hand prop slots on mixamorig_RightHand (2026-11-24) -------------------
 	_check(mp1_model != null and mp1_model.hand_prop_count() == 1
 			and mp1_model.hand_bone_name() == "mixamorig_RightHand",
-		"Feedback holds his microphone on mixamorig_RightHand",
-		"%d props on %s" % [mp1_model.hand_prop_count() if mp1_model != null else -1,
+		"Feedback carries a prop slot on mixamorig_RightHand",
+		"%d slots on %s" % [mp1_model.hand_prop_count() if mp1_model != null else -1,
 			mp1_model.hand_bone_name() if mp1_model != null else "-"])
-	_check(mp1_model != null and mp1_model.hand_props.size() > 0
-			and mp1_model.hand_props[0].get_parent() is Skeleton3D
-			and FighterProps.prop_triangles(mp1_model.model_root) > 0,
-		"the mic is a BoneAttachment3D child of the skeleton with real cel geometry",
+	_check(mp1_model != null and FighterProps.prop_triangles(mp1_model.model_root) == 0,
+		"no procedural microphone geometry is built into the hand",
 		"%d prop tris" % (FighterProps.prop_triangles(mp1_model.model_root)
 			if mp1_model != null else 0))
-	# Every roster fighter, built straight from its body file: mic for the two adults, a mic
-	# stand plus the dictionary for the kid, all on the same right-hand bone.
-	var prop_expect := {&"feedback": 1, &"lickshot": 1, &"young_selecta": 2}
+	# Every roster fighter, built straight from its body file: the two adults ask for a
+	# wireless mic, the kid for his stand, all on the same right-hand bone. The props are
+	# `.glb` slots now, so nothing is drawn while the files are missing.
+	var prop_expect := {
+		&"feedback": FighterProps.MIC_MODEL,
+		&"lickshot": FighterProps.MIC_MODEL,
+		&"young_selecta": FighterProps.STAND_MODEL,
+	}
 	for key in prop_expect:
 		var body := (load(String(FighterModel3D.MODEL_SOURCES[key]["path"])) as PackedScene).instantiate() as Node3D
 		var body_skel: Skeleton3D = null
@@ -483,12 +606,18 @@ func _run() -> void:
 			body_skel = child as Skeleton3D
 			break
 		var props := FighterProps.attach_for(body, body_skel, key)
-		var all_on_hand := props.size() > 0
-		for attachment in props:
-			all_on_hand = all_on_hand and attachment.bone_name == "mixamorig_RightHand"
-		_check(props.size() == int(prop_expect[key]) and all_on_hand,
-			"%s carries its %d hand prop(s) on mixamorig_RightHand" % [key, prop_expect[key]],
-			"%d props, %d prop tris" % [props.size(), FighterProps.prop_triangles(body)])
+		var slot_path := ""
+		var on_hand := props.size() == 1 and props[0].bone_name == "mixamorig_RightHand"
+		if on_hand:
+			for child in props[0].find_children("*", "PropLoader", true, false):
+				slot_path = String((child as PropLoader).model_path)
+				break
+		_check(on_hand and slot_path == String(prop_expect[key])
+				and FighterProps.prop_triangles(body) == 0,
+			"%s asks for %s on mixamorig_RightHand, with nothing drawn yet"
+				% [key, String(prop_expect[key]).get_file()],
+			"%d slot(s) on %s, path %s" % [props.size(),
+				props[0].bone_name if props.size() > 0 else "-", slot_path])
 		body.free()
 
 	# ---- MusicBed must stay silent through the active round -----------------
@@ -934,15 +1063,24 @@ func _run() -> void:
 	_check(banned_3d.is_empty(), "the 3D toon/ink shaders are WebGL2-safe (no screen/depth reads)",
 		"found %s" % [banned_3d] if not banned_3d.is_empty() else "single pass, no screen reads")
 
-	_check(stage3d != null and stage3d.speaker_cone_count() == 16,
-		"the two 3D speaker stacks expose 16 subwoofer/horn cones",
-		"%d cones" % (stage3d.speaker_cone_count() if stage3d != null else 0))
+	# The towers are `.glb` slots now: two of them, both empty until the art is delivered,
+	# and no procedural cabinet, cone, bracket or VU LED anywhere in the scene.
+	_check(stage3d != null and stage3d.speaker_stack_count() == 2
+			and stage3d.speaker_model_count() == 0,
+		"the two speaker towers are empty model slots, not procedural geometry",
+		"%d slot(s) / %d loaded" % [stage3d.speaker_stack_count() if stage3d != null else -1,
+			stage3d.speaker_model_count() if stage3d != null else -1])
 	if stage3d != null:
-		stage3d.pulse_speakers(1.0)
-		await process_frame
-		var cone_depth: float = stage3d._cones[0].scale.y if not stage3d._cones.is_empty() else 1.0
-		_check(cone_depth > 1.0, "a bass hit punches the subwoofer cones out of the cabinets",
-			"cone depth %.2f×" % cone_depth)
+		var paths := stage3d.speaker_slot_paths()
+		_check(paths.size() == 2
+				and paths[0].ends_with("jamaican_speaker.glb")
+				and paths[1].ends_with("rasta_speaker.glb"),
+			"the left slot asks for jamaican_speaker.glb and the right for rasta_speaker.glb",
+			"%s" % [paths])
+		_check(stage3d.get_node_or_null("SpeakerStackLeft/Plinth") == null
+				and stage3d.get_node_or_null("SpeakerStackLeft/AmpRack") == null
+				and stage3d.get_node_or_null("BarrierRail") != null,
+			"no procedural stack remains, while the stage barrier still stands")
 	_check(stage3d != null and stage3d.world_env != null
 			and stage3d.world_env.environment.fog_enabled,
 		"the 3D yard uses depth fog for crowd atmosphere")
@@ -1106,9 +1244,9 @@ func _run() -> void:
 			and String(arena.CALLOUT_GLOSSES["POPPYSHOW!"]).contains("Show-off"),
 		"each new callout keeps a separate English gloss")
 
-	# ---- 31-entry Jamaican Patwa proverbs & expressions (AGENTS.md §8) ------
+	# ---- 31-entry Jamaican Patois proverbs & expressions (AGENTS.md §8) ------
 	var collection: Array = arena.PATWA_COLLECTION
-	_check(collection.size() == 31, "the Patwa collection carries all 31 entries",
+	_check(collection.size() == 31, "the Patois collection carries all 31 entries",
 		"%d" % collection.size())
 	var patwa_seen := {}
 	var patwa_duplicates := []
@@ -1130,13 +1268,13 @@ func _run() -> void:
 			patwa_missing_gloss.append(text)
 		if not patwa_wired.has(text):
 			patwa_missing_trigger.append(text)
-	_check(patwa_duplicates.is_empty(), "no Patwa entry is duplicated",
+	_check(patwa_duplicates.is_empty(), "no Patois entry is duplicated",
 		"%s" % [patwa_duplicates])
 	_check(patwa_missing_gloss.is_empty(),
-		"every Patwa entry resolves to a clean English subtitle gloss",
+		"every Patois entry resolves to a clean English subtitle gloss",
 		"%s" % [patwa_missing_gloss])
 	_check(patwa_missing_trigger.is_empty(),
-		"every Patwa entry is wired to a callout pool or the intro banner",
+		"every Patois entry is wired to a callout pool or the intro banner",
 		"%s" % [patwa_missing_trigger])
 	# WASH-BELLY is L!kkle Moore's line; the shared heavy/counter pools cover the rest.
 	_check(arena.CALLOUTS[&"wash_belly"] == ["WASH-BELLY"]
@@ -1151,7 +1289,7 @@ func _run() -> void:
 		arena._proverb_cursor % arena.PROVERB_BANNER.size()])
 	_check(arena._show_match_proverb() and hud.proverb_text() == first_proverb
 			and hud.proverb_gloss().begins_with("(Translation:"),
-		"the match-intro banner shows a Patwa proverb with its V-key gloss",
+		"the match-intro banner shows a Patois proverb with its V-key gloss",
 		hud.proverb_text())
 	var second_proverb := String(arena.PROVERB_BANNER[
 		arena._proverb_cursor % arena.PROVERB_BANNER.size()])
@@ -1161,7 +1299,7 @@ func _run() -> void:
 	hud.subtitles_enabled = false
 	hud.show_proverb(first_proverb, String(arena.CALLOUT_GLOSSES[first_proverb]), 3.0)
 	_check(hud.proverb_text() == first_proverb and hud.proverb_gloss() == "",
-		"V-off keeps the Patwa banner readable and hides only the English subtitle")
+		"V-off keeps the Patois banner readable and hides only the English subtitle")
 	hud.subtitles_enabled = true
 	hud.toggle_subtitles()
 	hud.toggle_subtitles()
@@ -1597,8 +1735,9 @@ func _run() -> void:
 
 	# ---- Active 3D atmosphere: DJ booth + staggered Mixamo crowd (2026-11-22) ----------
 	# Owner request: two DJs behind a turntable/mixer rig between the mid-ground speaker
-	# stacks, and a ringside crowd (flags, lighters, airhorn operators) that reacts on
-	# staggered, zone-loyal clocks. Every body is a delivered Mixamo character: the 2.5D
+	# stacks, and a ringside crowd that reacts on staggered, zone-loyal clocks. The rig and
+	# the crowd's flags, lighters and airhorns are `.glb` slots / clip states now: the
+	# procedural prop meshes are deleted (playtest 2026-11-24, issue 3). Every body is a delivered Mixamo character: the 2.5D
 	# silhouettes are deleted (2026-11-24), so nothing here can fall back to a painted stand-in.
 	# Everything is presentation only; the checks below also prove the cues cannot touch
 	# health or fighter state.
@@ -1611,11 +1750,13 @@ func _run() -> void:
 	_check(booth != null and absf(booth.position.x) < 0.01 and booth.position.z < -2.55,
 		"the DJ booth is centred between the stacks and behind the crowd barrier",
 		"%s" % [booth.position if booth != null else Vector3.ZERO])
-	_check(booth != null and booth._records.size() == 2
-			and booth._records[0].find_children("Vinyl", "MeshInstance3D", false, false).size() == 1
-			and booth.find_children("Mixer", "MeshInstance3D", true, false).size() == 1
-			and booth._faders.size() == 3,
-		"the rig has two turntables with vinyl, a mixer and three channel faders")
+	_check(booth != null and booth.deck != null
+			and booth.deck.model_path.ends_with("dj_booth.glb")
+			and booth.find_children("Mixer", "MeshInstance3D", true, false).is_empty()
+			and booth.find_children("Vinyl", "MeshInstance3D", true, false).is_empty(),
+		"the rig is one dj_booth.glb slot — no turntable, vinyl, mixer or fader is built in code",
+		"%s loaded=%s" % [booth.deck_path() if booth != null else "-",
+			str(booth.deck_loaded()) if booth != null else "-"])
 	_check(booth != null and booth.empty_slot_count() == 0,
 		"both DJ slots are filled by delivered characters",
 		"%d empty" % (booth.empty_slot_count() if booth != null else -1))
@@ -1626,11 +1767,12 @@ func _run() -> void:
 	_check(crowd3d.zone_count(0) == 4 and crowd3d.zone_count(1) == 4,
 		"the crowd splits into two equal loyalty banks",
 		"%d / %d" % [crowd3d.zone_count(0), crowd3d.zone_count(1)])
-	_check(crowd3d.flag_count() == 2 and crowd3d.lighter_slots() >= 4
-			and crowd3d.airhorn_count() == 2,
-		"the crowd carries flags, raised lighters and two airhorn operators",
-		"%d flags / %d lighters / %d horns" % [crowd3d.flag_count(),
-			crowd3d.lighter_slots(), crowd3d.airhorn_count()])
+	var dropped_props := crowd3d.find_children("FlagPole", "Node3D", true, false).size() \
+		+ crowd3d.find_children("LighterHand", "Node3D", true, false).size() \
+		+ crowd3d.find_children("Airhorn", "Node3D", true, false).size()
+	_check(dropped_props == 0,
+		"the yard carries no procedural flags, lighters or airhorns",
+		"%d prop node(s)" % dropped_props)
 	_check(atmosphere.get_node_or_null("Crowd00") == null
 			and crowd3d.get_node_or_null("Spectator00") != null,
 		"the old capsule crowd nodes are gone")
@@ -1661,18 +1803,11 @@ func _run() -> void:
 	_check(crowd3d.zone_state_count(1, CrowdController3D.STATE_DISBELIEF) == 4,
 		"the rival bank throws its hands on its head",
 		"%d in disbelief" % crowd3d.zone_state_count(1, CrowdController3D.STATE_DISBELIEF))
-	_check(crowd3d.lighter_count() >= 1 and crowd3d.lit_flame_count() >= 1,
-		"lighters spark up on a heavy hit",
-		"%d lit / %d flames" % [crowd3d.lighter_count(), crowd3d.lit_flame_count()])
 	_check(booth.pointing(), "a DJ points at the fighters on a heavy hit")
-	var fader_before := booth.fader_position()
-	var spin_before := booth.record_spin()
-	booth.tick(0.4)
-	_check(not is_equal_approx(fader_before, booth.fader_position())
-			and not is_equal_approx(spin_before, booth.record_spin()),
-		"the DJs work the faders and keep both records spinning",
-		"fader %.3f -> %.3f / spin %.2f -> %.2f" % [fader_before, booth.fader_position(),
-			spin_before, booth.record_spin()])
+	_check(booth.deck != null and booth.deck.model_path.ends_with("dj_booth.glb")
+			and not booth.deck_loaded(),
+		"the deck is an empty PropLoader slot for dj_booth.glb",
+		"%s loaded=%s" % [booth.deck_path(), str(booth.deck_loaded())])
 
 	# Knockdown, K.O. and DJ tag: horns up and the booth celebrates.
 	crowd3d.settle()
@@ -1680,9 +1815,10 @@ func _run() -> void:
 	atmosphere.notify_combat_event(&"knockdown", 1)
 	crowd3d.tick(0.6)
 	booth.tick(0.1)
-	_check(booth.airhorn_up() and crowd3d.horn_raised() == 2,
-		"a knockdown lifts the airhorn, on the decks and in both corners",
-		"booth %s / %d raised" % [booth.airhorn_up(), crowd3d.horn_raised()])
+	_check(booth.airhorn_up() and crowd3d.zone_state_count(1, CrowdController3D.STATE_HYPE) == 4,
+		"a knockdown lifts the selector's arm and sends his bank into hype",
+		"booth raised %s / %d hyped" % [str(booth.airhorn_up()),
+			crowd3d.zone_state_count(1, CrowdController3D.STATE_HYPE)])
 	crowd3d.settle()
 	booth.settle()
 	atmosphere.notify_combat_event(&"ko", 1)
@@ -1693,11 +1829,12 @@ func _run() -> void:
 	crowd3d.settle()
 	booth.settle()
 	atmosphere.notify_combat_event(&"tag", -1)
-	_check(booth.airhorn_up(), "a DJ tag is answered by the booth's airhorn")
+	_check(booth.airhorn_up(), "a DJ tag is answered by the selector raising his arm")
 	atmosphere.notify_combat_event(&"hype", -1)
 	crowd3d.tick(0.6)
-	_check(crowd3d.lighter_count() == crowd3d.lighter_slots(),
-		"a Hype surge raises every lighter in the yard")
+	_check(crowd3d.reacting_count() == crowd3d.count(),
+		"a Hype surge puts the whole yard on its feet",
+		"%d / %d" % [crowd3d.reacting_count(), crowd3d.count()])
 
 	# Cues are presentation only: health, state and frame data never move.
 	var hp_before := [p1b.health, p2.health]
@@ -1763,28 +1900,21 @@ func _run() -> void:
 	crowd3d.settle()
 	booth.settle()
 
-	# ---- Authentic sound-system stacks (owner playtest, 2026-11-23) ---------------------
-	_check(atmosphere.speaker_stack_count() == 2,
-		"two Jamaican sound-system towers stand either side of the yard",
-		"%d stack(s)" % atmosphere.speaker_stack_count())
-	_check(atmosphere.sub_bin_count() == 4,
-		"each tower stacks a pair of double-18\" sub bins",
-		"%d sub bins" % atmosphere.sub_bin_count())
-	_check(atmosphere.rack_count() == 2,
-		"each tower carries a rack-mount amp/EQ unit",
-		"%d racks" % atmosphere.rack_count())
-	_check(atmosphere.corner_bracket_count() >= 16,
-		"the sub bins wear metallic protective corner brackets",
-		"%d brackets" % atmosphere.corner_bracket_count())
-	atmosphere._pulse = 0.0
-	atmosphere._update_speakers(0.0)
-	var quiet_leds := atmosphere.vu_lit_count()
+	# ---- Sound-system slots, not procedural towers (playtest 2026-11-24) ---------------
+	_check(atmosphere.speaker_stack_count() == 2
+			and atmosphere.speaker_model_count() == 0,
+		"two empty speaker slots stand either side of the yard",
+		"%d slot(s) / %d loaded" % [atmosphere.speaker_stack_count(),
+			atmosphere.speaker_model_count()])
+	var stack_nodes := atmosphere.find_children("SpeakerStack*", "Node3D", true, false)
+	var stack_meshes := 0
+	for node in stack_nodes:
+		stack_meshes += node.find_children("*", "MeshInstance3D", true, false).size()
+	_check(stack_nodes.size() == 2 and stack_meshes == 0,
+		"the speaker slots contain no meshes at all",
+		"%d node(s) / %d mesh(es)" % [stack_nodes.size(), stack_meshes])
 	atmosphere._pulse = 2.0
 	atmosphere._update_speakers(0.0)
-	var loud_leds := atmosphere.vu_lit_count()
-	_check(atmosphere.vu_led_count() >= 40 and loud_leds > quiet_leds,
-		"the green/yellow/red VU meters climb with the audio peak",
-		"%d lit of %d (quiet %d)" % [loud_leds, atmosphere.vu_led_count(), quiet_leds])
 	atmosphere._pulse = 0.0
 	atmosphere._update_speakers(0.0)
 
@@ -1848,10 +1978,11 @@ func _run() -> void:
 	_check(not delivered.is_empty() and cel_failures.is_empty(),
 		"every delivered character wears the toon shader plus inverted-hull ink",
 		", ".join(cel_failures))
-	_check(crowd3d.hand_attached_props() >= 4 and booth.hand_attached_props() == 1,
-		"flags, lighters and the booth airhorn ride a BoneAttachment3D on mixamorig_RightHand",
-		"%d crowd / %d booth hand props" % [crowd3d.hand_attached_props(),
-			booth.hand_attached_props()])
+	var hand_attachments := crowd3d.find_children("*", "BoneAttachment3D", true, false).size() \
+		+ booth.find_children("*", "BoneAttachment3D", true, false).size()
+	_check(hand_attachments == 0,
+		"no procedural prop is parented to a crowd or DJ hand any more",
+		"%d hand attachment(s)" % hand_attachments)
 
 	# Acting: the same combat cues crossfade the delivered characters, per bank.
 	crowd3d.settle()
@@ -2017,6 +2148,37 @@ func _run() -> void:
 	p2._attack_id = &""
 	p1b.command = BaseFighter.Command.new()
 	p2.input_locked = p2_locked_for_smear
+
+	# ---- Prop slots: five .glb files, nothing drawn until they exist (2026-11-24) ------
+	# The arena no longer builds a single prop out of primitives. Every speaker, the deck,
+	# the mic and the stand is a `PropLoader` that names its file and stays empty while the
+	# file is missing. This is the run-with-everything-missing case.
+	var prop_slots: Array[PropLoader] = []
+	for node in arena2.find_children("*", "PropLoader", true, false):
+		prop_slots.append(node as PropLoader)
+	_check(prop_slots.size() == 5,
+		"the scene carries exactly five .glb prop slots",
+		"%d slot(s)" % prop_slots.size())
+	var wanted := ["jamaican_speaker.glb", "rasta_speaker.glb", "dj_booth.glb",
+		"wireless_mic.glb", "mic_stand.glb"]
+	for name in wanted:
+		var matched := ""
+		var empty := false
+		for slot in prop_slots:
+			if String(slot.model_path).ends_with(name):
+				matched = slot.model_path
+				empty = slot.is_empty()
+		_check(matched != "" and empty,
+			"the %s slot exists and draws nothing while the file is missing" % name,
+			"%s empty=%s" % [matched, str(empty)])
+	var slot_meshes := 0
+	for slot in prop_slots:
+		slot_meshes += slot.find_children("*", "MeshInstance3D", true, false).size()
+	_check(slot_meshes == 0,
+		"no prop slot substitutes a fallback mesh for a missing model",
+		"%d mesh(es) inside the slots" % slot_meshes)
+	_check(FileAccess.file_exists("res://assets/models/props/README.md"),
+		"the props folder documents the five expected files")
 
 	# ---- Esc back to Character Select ------------------------------------
 	setup.escape_to_setup()

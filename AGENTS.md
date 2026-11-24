@@ -4105,6 +4105,11 @@ res://tools/tree_dump.gd` prints `print_tree_pretty` of the live arena. Zero mat
     ┖╴@Node2D@92
 ```
 
+> **Read the older entries with this in mind:** everything above that mentions `CrowdLine`,
+> `ForegroundCrowd`, `CrowdHaze`, `SilhouetteArt`, `StageSilhouette`, the 15 crowd sprites or
+> `CrowdLine.set_night()` describes a system that **no longer exists** — it was deleted on
+> 2026-11-24 below. The crowd is 3D only; do not reintroduce a 2D or silhouette layer.
+
 **Measured.** `godot --headless --path godot --script res://tools/headless_roster_check.gd` —
 **385 PASS / 0 FAIL, `ALL CHECKS PASSED`** — and `godot --headless --path godot --script
 res://tools/facing_audit.gd` — **94 checks, 0 FAIL, `ALL FACING CHECKS PASSED`**. The three new

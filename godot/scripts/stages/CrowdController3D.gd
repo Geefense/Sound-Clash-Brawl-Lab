@@ -1,6 +1,7 @@
 class_name CrowdController3D
 extends Node3D
-## Reactive 3D crowd at the barrier (owner playtest, 2026-11-23; silhouettes removed 2026-11-24).
+## Reactive 3D crowd at the barrier (owner playtest, 2026-11-23; silhouettes and procedural
+## props removed 2026-11-24).
 ##
 ## Presentation only: this node reads no fighter state and never touches the combat
 ## simulation, hitboxes, frame data, audio or the round clock. `Arena3D.notify_combat_event()`
@@ -9,12 +10,13 @@ extends Node3D
 ## the other after — so excitement ripples outward instead of the banks jumping in unison.
 ##
 ## Every spectator is a delivered Mixamo character from `assets/models/crowd/` wearing the
-## same cel/ink treatment as the fighters. **There is no painted or procedural stand-in of
-## any kind**: the 2.5D rim-lit quads and `SilhouetteArt` masks are gone, deleted from the
-## project along with the `CrowdLine` sprite layer. If a model slot cannot be filled the
-## position stays empty and a warning is logged — an empty slot, never a substitute body.
+## same cel/ink treatment as the fighters. **Nothing here is a stand-in of any kind:** the
+## 2.5D rim-lit quads, the `SilhouetteArt` masks and the procedural flags, lighters and
+## airhorns are all deleted (playtest fix 2026-11-24, issues 2 and 3). If a model slot cannot
+## be filled the position stays empty and a warning is logged — an empty slot, never a
+## substitute body.
 ##
-## The yard holds four people a side instead of ten because every body is now a real
+## The yard holds four people a side instead of ten because every body is a real
 ## ~3 500-triangle rig rather than two triangles; that is what keeps the whole cast inside
 ## the Chromebook triangle budget with all of them fully textured.
 ##
@@ -34,9 +36,9 @@ const MODEL_LOOKS := [
 	Color(0.94, 0.99, 1.05),
 	Color(1.04, 0.95, 0.99),
 ]
-## Hue break-up is *not* used any more: it recolours a character's albedo, and the brief is
-## that every crowd body shows the texture it was delivered with. The four looks above are
-## sub-percent brightness nudges that read as lighting, not as a repaint.
+## Hue break-up is *not* used: it recolours a character's albedo, and the brief is that every
+## crowd body shows the texture it was delivered with. These are sub-percent brightness
+## nudges that read as lighting, not as a repaint.
 const MODEL_HUES := [0.0, 0.0, 0.0, 0.0]
 const ZONE_LEFT := 0
 const ZONE_RIGHT := 1
@@ -58,15 +60,9 @@ const STATE_CHEER := &"cheer"
 const STATE_DISBELIEF := &"disbelief"
 const STATE_HYPE := &"hype"
 
-const FLAG_COLOURS := [
-	Color(0.10, 0.42, 0.16, 1.0),          # green
-	Color(0.86, 0.68, 0.12, 1.0),          # gold
-	Color(0.06, 0.06, 0.07, 1.0),          # black
-]
-
 
 class Member:
-	var node: Node3D                       # anchor on the row; props ride with it
+	var node: Node3D                       # anchor on the row
 	var model: Node3D = null               # imported .fbx character (always present)
 	var player: AnimationPlayer = null     # the character's own Mixamo AnimationPlayer
 	var clips: Dictionary = {}             # {base, cheer, disbelief, hype, player}
@@ -83,22 +79,11 @@ class Member:
 	var pending: StringName = &""
 	var timer: float = 0.0
 	var hold: float = 0.0
-	var flag: Node3D = null
-	var flag_cloth: Node3D = null
-	var flame: Node3D = null
-	var horn: Node3D = null
-	var lighter: bool = false
-	var lit: bool = false
-	var horn_up: bool = false
 
 
 var _members: Array[Member] = []
 var _models: Array[Node3D] = []
 var _cel_materials: Array[ShaderMaterial] = []
-var _mesh_cache: Dictionary = {}
-var _prop_material: StandardMaterial3D
-var _cloth_materials: Array[StandardMaterial3D] = []
-var _flame_material: StandardMaterial3D
 var _time: float = 0.0
 var _reactions: int = 0
 var _rng := RandomNumberGenerator.new()
@@ -118,7 +103,6 @@ func build() -> void:
 	if not _members.is_empty():
 		return
 	_rng.seed = 20261122
-	_build_materials()
 	var index := 0
 	for zone in [ZONE_LEFT, ZONE_RIGHT]:
 		for row in ROW_COUNTS.size():
@@ -131,7 +115,6 @@ func build() -> void:
 				var x := lerpf(bank.x, bank.y, t) + _rng.randf_range(-0.16, 0.16)
 				_members.append(_make_member(index, zone, row, x))
 				index += 1
-	_assign_props()
 	_load_models()
 
 
@@ -155,36 +138,6 @@ func _make_member(index: int, zone: int, row: int, x: float) -> Member:
 	m.node = anchor
 	m.base_y = 0.0
 	return m
-
-
-## Three flags, four lighters, two airhorn operators — chosen by position so the props sit in
-## the banks instead of stacking on one person.
-func _assign_props() -> void:
-	var inner: Dictionary = {}          # zone -> member with the smallest |x| in the front row
-	for m in _members:
-		if m.row != 0:
-			continue
-		var current = inner.get(m.zone)
-		if current == null or absf(m.x) < absf((current as Member).x):
-			inner[m.zone] = m
-	for zone in inner:
-		var operator: Member = inner[zone]
-		operator.horn = _add_horn(operator)
-		operator.horn_up = false
-
-	var flag_indices := [1, 5]
-	var lighter_indices := [2, 3, 6, 7]
-	for i in flag_indices:
-		if i >= _members.size():
-			continue
-		var m := _members[i]
-		m.flag = _add_flag(m, i % FLAG_COLOURS.size())
-	for i in lighter_indices:
-		if i >= _members.size():
-			continue
-		var m := _members[i]
-		m.lighter = true
-		m.flame = _add_flame(m)
 
 
 ## Any `.fbx`/`.glb` character delivered into `assets/models/crowd/` fills a spectator, in
@@ -228,44 +181,7 @@ func _load_models() -> void:
 		m.act = &""
 		m.model = model
 		_models.append(model)
-		_attach_hand_props(m)
 		_play_model_act(m, m.state)
-
-
-## Flags, lighters and airhorns ride the character's right hand through a
-## BoneAttachment3D (the same hand-parenting the fighters use for their mics), so a prop
-## lifts with the real clip instead of hovering beside a standing body.
-func _attach_hand_props(m: Member) -> void:
-	var skeleton: Skeleton3D = null
-	for child in m.model.find_children("*", "Skeleton3D", true, false):
-		skeleton = child as Skeleton3D
-		break
-	if skeleton == null:
-		return
-	# Some uploads keep an exporter tag on the bone names (`mixamorig8_RightHand`), so the
-	# hand is found by suffix instead of by one exact spelling.
-	var hand_bone := ""
-	for i in skeleton.get_bone_count():
-		var bone_name := skeleton.get_bone_name(i)
-		if bone_name.ends_with("RightHand"):
-			hand_bone = bone_name
-			break
-	if hand_bone == "":
-		return
-	var props: Array[Node3D] = []
-	if m.flag != null:
-		props.append(m.flag)
-	if m.horn != null:
-		props.append(m.horn)
-	if m.flame != null and m.flame.get_parent() is Node3D:
-		props.append(m.flame.get_parent() as Node3D)
-	for i in props.size():
-		var attachment := BoneAttachment3D.new()
-		attachment.name = "HandProp%d" % i
-		attachment.bone_name = hand_bone
-		skeleton.add_child(attachment)
-		props[i].reparent(attachment, false)
-		props[i].transform = Transform3D.IDENTITY
 
 
 ## Crossfade a delivered character to the act its state calls for. A clip that has not
@@ -287,54 +203,6 @@ func _play_model_act(m: Member, state: StringName) -> void:
 	CharacterModelSlots.play_act(m.model, m.clips, act, CharacterModelSlots.ACT_FADE)
 
 
-func _add_flag(m: Member, colour: int) -> Node3D:
-	var pole := Node3D.new()
-	pole.name = "FlagPole"
-	pole.position = Vector3(0.30, 0.0, 0.10)
-	m.node.add_child(pole)
-	_add_mesh(pole, "Pole", _cylinder(0.012, 0.012, 0.95, 4),
-		Vector3(0.0, 0.52, 0.0), _prop_material)
-	var cloth := Node3D.new()
-	cloth.name = "FlagCloth"
-	cloth.position = Vector3(0.0, 1.02, 0.0)
-	pole.add_child(cloth)
-	_add_mesh(cloth, "Cloth", _quad(Vector2(0.46, 0.30), 3, 2),
-		Vector3(0.23, 0.0, 0.0), _cloth_materials[colour])
-	m.flag_cloth = cloth
-	return pole
-
-
-func _add_flame(m: Member) -> Node3D:
-	var hand := Node3D.new()
-	hand.name = "LighterHand"
-	hand.position = Vector3(-0.30, 1.34, 0.12)
-	m.node.add_child(hand)
-	_add_mesh(hand, "Lighter", _box(Vector3(0.045, 0.075, 0.032)),
-		Vector3.ZERO, _prop_material)
-	var flame := Node3D.new()
-	flame.name = "LighterFlame"
-	flame.position = Vector3(0.0, 0.09, 0.02)
-	hand.add_child(flame)
-	_add_mesh(flame, "Flame", _quad(Vector2(0.055, 0.115), 1, 1),
-		Vector3(0.0, 0.055, 0.0), _flame_material)
-	flame.visible = false
-	return flame
-
-
-func _add_horn(m: Member) -> Node3D:
-	var horn := Node3D.new()
-	horn.name = "Airhorn"
-	horn.position = Vector3(0.30, 1.20, 0.12)
-	m.node.add_child(horn)
-	_add_mesh(horn, "HornBody", _cylinder(0.055, 0.038, 0.20, 6),
-		Vector3(0.0, 0.06, 0.0), _prop_material)
-	_add_mesh(horn, "HornBell", _cylinder(0.105, 0.048, 0.12, 6),
-		Vector3(0.0, 0.21, 0.0), _prop_material)
-	_add_mesh(horn, "HornCan", _cylinder(0.045, 0.045, 0.10, 6),
-		Vector3(0.075, -0.02, 0.0), _prop_material)
-	return horn
-
-
 # =========================================================================
 # Public API — reactions
 # =========================================================================
@@ -344,7 +212,6 @@ func react(kind: StringName, side: int = -1) -> void:
 	_reactions += 1
 	var winner_state := STATE_CHEER
 	var rival_state := STATE_DISBELIEF
-	var lights := false
 	var hold := REACT_HOLD
 	match kind:
 		&"hit":
@@ -354,22 +221,18 @@ func react(kind: StringName, side: int = -1) -> void:
 		&"heavy_hit":
 			winner_state = STATE_CHEER
 			rival_state = STATE_DISBELIEF
-			lights = true
 			hold = 2.2
 		&"knockdown":
 			winner_state = STATE_HYPE
 			rival_state = STATE_DISBELIEF
-			lights = true
 			hold = 2.8
 		&"ko":
 			winner_state = STATE_HYPE
 			rival_state = STATE_DISBELIEF
-			lights = true
 			hold = 4.0
 		&"victory":
 			winner_state = STATE_HYPE
 			rival_state = STATE_DISBELIEF
-			lights = true
 			hold = 4.5
 		&"tag":
 			winner_state = STATE_CHEER
@@ -378,7 +241,6 @@ func react(kind: StringName, side: int = -1) -> void:
 		&"hype":
 			winner_state = STATE_HYPE
 			rival_state = STATE_HYPE
-			lights = true
 			hold = 3.0
 		_:
 			winner_state = STATE_CHEER
@@ -389,16 +251,9 @@ func react(kind: StringName, side: int = -1) -> void:
 		var want := winner_state if cheers else rival_state
 		if want == STATE_IDLE:
 			continue
-		# An airhorn operator answers a knockdown, K.O. or DJ tag by lifting the horn rather
-		# than only cheering, so the speaker stacks get their moment.
-		if m.horn != null and (kind == &"knockdown" or kind == &"ko" or kind == &"tag"):
-			want = STATE_HYPE
-			m.horn_up = true
 		m.pending = want
 		m.timer = m.delay + _rng.randf_range(0.0, JITTER)
 		m.hold = 0.0
-		if lights and m.lighter:
-			m.lit = true
 
 
 ## Advance the staggered reaction queue and the ambient acting. `Arena3D` calls this from its
@@ -417,9 +272,6 @@ func tick(delta: float) -> void:
 			m.hold -= delta
 			if m.hold <= 0.0:
 				m.state = STATE_IDLE
-				m.horn_up = false
-				if m.lighter:
-					m.lit = false
 				_play_model_act(m, m.state)
 		m.phase = fposmod(m.phase + m.rate * delta, TAU)
 		_pose_member(m)
@@ -432,11 +284,7 @@ func settle() -> void:
 		m.pending = &""
 		m.timer = 0.0
 		m.hold = 0.0
-		m.lit = false
-		m.horn_up = false
 		m.act = &""
-		if m.flame != null:
-			m.flame.visible = false
 		if m.node != null:
 			m.node.position.y = m.base_y
 		_play_model_act(m, STATE_IDLE)
@@ -458,8 +306,8 @@ func _hold_for(state: StringName) -> float:
 # Pose
 # =========================================================================
 ## One spectator's presentation frame. The *state* picks which clip act is crossfaded in;
-## the person's own phase drives a small beat bob and the props, so the bank never marches
-## in step. The body itself carries no tint, hop or lean of its own.
+## the person's own phase drives a small beat bob, so the bank never marches in step. The
+## body itself carries no tint, hop or lean of its own.
 func _pose_member(m: Member) -> void:
 	if m.node == null:
 		return
@@ -475,22 +323,6 @@ func _pose_member(m: Member) -> void:
 		_:
 			hop = absf(sin(t)) * BOB
 	m.node.position.y = m.base_y + hop
-	if m.flag_cloth != null:
-		# Cloth whips harder the more excited its owner is.
-		var amp := 0.16 if m.state == STATE_IDLE else 0.36
-		m.flag_cloth.rotation.y = sin(t * 2.1) * amp
-		m.flag_cloth.rotation.z = sin(t * 1.7 + 0.5) * amp * 0.5
-	if m.horn != null:
-		if not (m.horn.get_parent() is BoneAttachment3D):
-			var lift := -0.62 if m.horn_up else 0.0
-			m.horn.rotation.z = lerpf(m.horn.rotation.z, lift, 0.25)
-			m.horn.position.y = 1.20 + (0.10 if m.horn_up else 0.0)
-	if m.flame != null:
-		var want := m.lit and m.state != STATE_IDLE
-		m.flame.visible = want
-		if want:
-			var flick := 0.82 + sin(t * 9.0) * 0.16 + sin(t * 23.0) * 0.07
-			m.flame.scale = Vector3(flick, flick * 1.22, flick)
 
 
 # =========================================================================
@@ -558,54 +390,6 @@ func state_of(index: int) -> StringName:
 	return _members[index].state
 
 
-func flag_count() -> int:
-	var n := 0
-	for m in _members:
-		if m.flag != null:
-			n += 1
-	return n
-
-
-func lighter_slots() -> int:
-	var n := 0
-	for m in _members:
-		if m.lighter:
-			n += 1
-	return n
-
-
-func lighter_count() -> int:
-	var n := 0
-	for m in _members:
-		if m.lighter and m.lit:
-			n += 1
-	return n
-
-
-func lit_flame_count() -> int:
-	var n := 0
-	for m in _members:
-		if m.flame != null and m.flame.visible:
-			n += 1
-	return n
-
-
-func airhorn_count() -> int:
-	var n := 0
-	for m in _members:
-		if m.horn != null:
-			n += 1
-	return n
-
-
-func horn_raised() -> int:
-	var n := 0
-	for m in _members:
-		if m.horn != null and m.horn_up:
-			n += 1
-	return n
-
-
 func reactions() -> int:
 	return _reactions
 
@@ -634,12 +418,11 @@ func empty_slot_count() -> int:
 	return _members.size() - _models.size()
 
 
-## Props currently riding a real character's `mixamorig_RightHand`.
-func hand_attached_props() -> int:
+## Leftover capsule-mannequin geometry. Must stay at zero.
+func legacy_mannequin_count() -> int:
 	var n := 0
-	for m in _members:
-		if m.model != null:
-			n += m.model.find_children("HandProp*", "BoneAttachment3D", true, false).size()
+	for legacy in ["LegL", "LegR", "Chest", "Skull", "Hips"]:
+		n += find_children(legacy, "MeshInstance3D", true, false).size()
 	return n
 
 
@@ -656,17 +439,7 @@ func model_clip_of(index: int) -> String:
 	return player.current_animation if player != null else ""
 
 
-## Leftover capsule-mannequin geometry. Must stay at zero: the silhouettes and the lathed
-## capsule bodies they replaced are both gone, so only delivered characters may be present.
-func legacy_mannequin_count() -> int:
-	var n := 0
-	for legacy in ["LegL", "LegR", "Chest", "Skull", "Hips"]:
-		n += find_children(legacy, "MeshInstance3D", true, false).size()
-	return n
-
-
-## Real triangle cost of the built crowd, measured from the actual meshes. Props count; the
-## characters are the overwhelming majority of it now that they are real rigs.
+## Real triangle cost of the built crowd, measured from the actual meshes.
 func triangle_count() -> int:
 	var total := 0
 	for node in find_children("*", "MeshInstance3D", true, false):
@@ -674,79 +447,3 @@ func triangle_count() -> int:
 		if mi != null and mi.mesh != null:
 			total += int(mi.mesh.get_faces().size() / 3)
 	return total
-
-
-# =========================================================================
-# Shared geometry and materials
-# =========================================================================
-## Props only: the flag poles, lighter cases and airhorns are real objects, so they get a
-## plain matte plastic material rather than borrowing a character's cel material.
-func _build_materials() -> void:
-	_prop_material = StandardMaterial3D.new()
-	_prop_material.albedo_color = Color(0.16, 0.15, 0.17, 1.0)
-	_prop_material.roughness = 0.72
-	for colour in FLAG_COLOURS:
-		var cloth := StandardMaterial3D.new()
-		cloth.albedo_color = colour
-		cloth.roughness = 0.95
-		cloth.cull_mode = BaseMaterial3D.CULL_DISABLED
-		cloth.emission_enabled = true
-		cloth.emission = colour * 0.35
-		cloth.emission_energy_multiplier = 0.6
-		_cloth_materials.append(cloth)
-	_flame_material = StandardMaterial3D.new()
-	_flame_material.albedo_color = Color(1.0, 0.68, 0.20, 1.0)
-	_flame_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_flame_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_flame_material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	_flame_material.emission_enabled = true
-	_flame_material.emission = Color(1.0, 0.55, 0.14)
-	_flame_material.emission_energy_multiplier = 2.4
-
-
-func _add_mesh(parent: Node3D, node_name: String, mesh: Mesh, at: Vector3,
-		material: Material) -> MeshInstance3D:
-	var mi := MeshInstance3D.new()
-	mi.name = node_name
-	mi.mesh = mesh
-	mi.position = at
-	mi.material_override = material
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	parent.add_child(mi)
-	return mi
-
-
-## Shared primitive cache: the props reuse a handful of meshes, so the crowd adds almost
-## nothing to the export and every draw is the same small vertex buffer.
-func _cylinder(top: float, bottom: float, height: float, segments: int = 6) -> CylinderMesh:
-	var key := "cyl_%.3f_%.3f_%.3f_%d" % [top, bottom, height, segments]
-	if not _mesh_cache.has(key):
-		var mesh := CylinderMesh.new()
-		mesh.top_radius = top
-		mesh.bottom_radius = bottom
-		mesh.height = height
-		mesh.radial_segments = segments
-		mesh.rings = 1
-		_mesh_cache[key] = mesh
-	return _mesh_cache[key]
-
-
-func _box(size: Vector3) -> BoxMesh:
-	var key := "box_%.3f_%.3f_%.3f" % [size.x, size.y, size.z]
-	if not _mesh_cache.has(key):
-		var mesh := BoxMesh.new()
-		mesh.size = size
-		_mesh_cache[key] = mesh
-	return _mesh_cache[key]
-
-
-func _quad(size: Vector2, subdivide_w: int, subdivide_h: int) -> PlaneMesh:
-	var key := "quad_%.3f_%.3f_%d_%d" % [size.x, size.y, subdivide_w, subdivide_h]
-	if not _mesh_cache.has(key):
-		var mesh := PlaneMesh.new()
-		mesh.size = size
-		mesh.subdivide_width = subdivide_w
-		mesh.subdivide_depth = subdivide_h
-		mesh.orientation = PlaneMesh.FACE_Z
-		_mesh_cache[key] = mesh
-	return _mesh_cache[key]

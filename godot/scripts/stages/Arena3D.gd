@@ -133,19 +133,10 @@ var fighters: Dictionary = {}          # "p1"/"p2" -> BaseFighter
 var models: Dictionary = {}            # "p1"/"p2" -> FighterModel3D or FighterBillboard3D
 var shadows: Dictionary = {}           # "p1"/"p2" -> MeshInstance3D
 
-var _cones: Array[MeshInstance3D] = []
-## Sound-system stacks (owner playtest, 2026-11-23): two authentic Jamaican towers — stacked
-## double-18" sub bins, a mid/bass cabinet, radial horn tweeter boxes, a rack-mount amp/EQ
-## with animated VU LEDs and Rasta trim. Presentation only, driven by the same `_pulse` the
-## speaker cones already punch on.
-var _sound_stacks: Array[Node3D] = []
-var _vu_leds: Array[Dictionary] = []      # {node: MeshInstance3D, step: int}
-var _sub_bins: int = 0
-var _racks: int = 0
-var _vu_level: float = 0.0
-var _vu_phase: float = 0.0
-var _vu_materials: Dictionary = {}
-var _rack_glow: StandardMaterial3D
+## Sound-system slots: two delivered `.glb` towers, one a side (playtest fix 2026-11-24,
+## issue 3). The procedural cabinets, baffles, 18" cones, corner brackets, Rasta trim,
+## amp/EQ rack and VU LEDs are all deleted — no part of a tower is built in code any more.
+var _sound_stacks: Array[PropLoader] = []
 ## 3D atmosphere (owner request, 2026-11-22): the DJ booth behind the decks and the
 ## staggered silhouette crowd. Both are presentation only and are ticked from `_process`.
 var crowd3d: CrowdController3D = null
@@ -259,14 +250,6 @@ func phase_name() -> String:
 func active_bursts() -> int:
 	_live_bursts = _live_bursts.filter(func(node): return is_instance_valid(node) and not node.is_queued_for_deletion())
 	return _live_bursts.size()
-
-
-func speaker_cone_count() -> int:
-	return _cones.size()
-
-
-func cone_pulse() -> float:
-	return _pulse
 
 
 # =========================================================================
@@ -391,26 +374,15 @@ func _update_fighters() -> void:
 				mat.set_shader_parameter("opacity", 0.58 * clampf(1.0 - lift * 0.22, 0.25, 1.0))
 
 
-func _update_speakers(delta: float = 0.0) -> void:
+func _update_speakers(_delta: float = 0.0) -> void:
+	# A delivered tower pops a couple of centimetres on the same beat the 2D speaker rings
+	# run. Nothing is animated inside the model: the tower is one imported object now.
 	var punch := _pulse * _pulse
-	for cone in _cones:
-		if cone == null:
+	for slot in _sound_stacks:
+		if slot == null or slot.model == null:
 			continue
-		# The cone cylinder's local +Y is its depth after the 90° mount rotation.
-		var depth := 1.0 + punch * 0.85 + sin(_pulse * 18.0) * 0.05
-		cone.scale = Vector3(1.0 + punch * 0.10, depth, 1.0 + punch * 0.10)
-	# Rack-mount VU meters: the lit LED count follows the audio peak the cone punch already
-	# tracks, so a hit, a DJ tag and a Hype surge all read on the rack. Nothing here reads
-	# audio buffers — `_pulse` is the arena's own presentation cue.
-	_vu_phase += delta
-	_vu_level = clampf(0.10 + _pulse * 0.80 + 0.05 * sin(_vu_phase * 9.0), 0.0, 1.0)
-	var lit := int(round(_vu_level * float(VU_STEPS)))
-	for entry in _vu_leds:
-		var led: MeshInstance3D = entry["node"]
-		if led != null:
-			led.visible = int(entry["step"]) < lit
-	if _rack_glow != null:
-		_rack_glow.emission_energy_multiplier = 0.55 + _pulse * 1.5
+		var pop := 1.0 + punch * 0.012
+		slot.model.scale = Vector3(pop, 1.0 + punch * 0.02, pop)
 
 
 func _update_crowd(delta: float) -> void:
@@ -620,179 +592,25 @@ func _build_yard() -> void:
 	add_child(pool)
 
 
-## VU meter resolution: green → yellow → red, per channel.
-const VU_STEPS := 10
-const VU_GREEN := 6
-const VU_YELLOW := 2
+## The two towers the yard expects. Drop these files into `assets/models/props/` and they
+## appear; until then the slots stay empty and each logs `PropLoader: missing …`.
+const SPEAKER_MODELS := [
+	"res://assets/models/props/jamaican_speaker.glb",
+	"res://assets/models/props/rasta_speaker.glb",
+]
 
 
-## Two authentic Jamaican sound-system towers (owner playtest, 2026-11-23). Each stack is a
-## real wall of boxes, bottom to top: plinth, two double-18" sub bins with recessed baffles
-## and metallic corner brackets, a mid/bass cabinet, and a radial horn tweeter box — plus a
-## rack-mount amp/EQ with a glowing face and green/yellow/red VU LEDs and Rasta trim.
+## Two empty speaker slots, one per side of the fighting lane.
 func _build_speakers() -> void:
-	for side in [-1.0, 1.0]:
-		var stack := Node3D.new()
-		stack.name = "SpeakerStackLeft" if side < 0.0 else "SpeakerStackRight"
-		stack.position = Vector3(side * 2.55, 0.0, -1.45)
-		add_child(stack)
-		_sound_stacks.append(stack)
-		_build_sound_stack(stack, side)
-
-
-func _build_sound_stack(stack: Node3D, side: float) -> void:
-	var cabinet := _mat(Color(0.055, 0.055, 0.065), 0.86, 0.10)
-	var baffle := _mat(Color(0.018, 0.018, 0.022), 0.96, 0.0)
-	var cone_mat := _mat(Color(0.032, 0.032, 0.038), 0.55, 0.15)
-	var surround := _mat(Color(0.44, 0.45, 0.48), 0.34, 0.85)
-	var bracket := _mat(Color(0.58, 0.59, 0.62), 0.30, 0.92)
-	var horn_mat := _mat(Color(0.68, 0.66, 0.60), 0.30, 0.85)
-	var rasta := [_mat(Color(0.16, 0.55, 0.20), 0.9),
-		_mat(Color(0.85, 0.68, 0.12), 0.9), _mat(Color(0.70, 0.13, 0.11), 0.9)]
-
-	# Plinth: the stack stands on a proper base instead of floating on the sand.
-	_add_box(stack, "Plinth", Vector3(1.32, 0.14, 1.00), Vector3(0.0, 0.07, 0.0), cabinet)
-
-	# ---- Two stacked double-18" sub bins ------------------------------------------------
-	# Bracket names carry an index because Godot's unique-name scavenger rewrites duplicate
-	# node names to `@MeshInstance3D@N`, which no pattern can find afterwards.
-	var bracket_id := 0
-	for bin_index in 2:
-		var y := 0.57 + float(bin_index) * 0.90
-		_add_box(stack, "SubBin%d" % bin_index, Vector3(1.24, 0.86, 0.94),
-			Vector3(0.0, y, 0.0), cabinet)
-		_sub_bins += 1
-		# Recessed baffle: sits 2 cm behind the cabinet face, so the drivers are inset.
-		_add_box(stack, "Baffle%d" % bin_index, Vector3(1.06, 0.70, 0.05),
-			Vector3(0.0, y, 0.432), baffle)
-		for driver in 2:
-			var dx := -0.29 + float(driver) * 0.58
-			# Metal driver surround, then the 18" cone itself, punched out of the baffle.
-			_add_cone(stack, "Surround%d_%d" % [bin_index, driver], 0.325, 0.028,
-				Vector3(dx, y, 0.452), surround)
-			var cone := _add_cone(stack, "Sub18_%d_%d" % [bin_index, driver], 0.30, 0.10,
-				Vector3(dx, y, 0.478), cone_mat)
-			_cones.append(cone)
-		# Metallic protective corner brackets on the visible cabinet corners.
-		for cx in [-1.0, 1.0]:
-			for cy in [-1.0, 1.0]:
-				_add_box(stack, "Bracket%d" % bracket_id, Vector3(0.11, 0.11, 0.07),
-					Vector3(cx * 0.565, y + cy * 0.375, 0.458), bracket)
-				bracket_id += 1
-				_add_box(stack, "Bracket%d" % bracket_id, Vector3(0.07, 0.11, 0.12),
-					Vector3(cx * 0.585, y + cy * 0.375, 0.40), bracket)
-				bracket_id += 1
-
-	# ---- Mid / bass cabinet -------------------------------------------------------------
-	var bass_y := 2.42
-	_add_box(stack, "BassCabinet", Vector3(1.24, 0.80, 0.94), Vector3(0.0, bass_y, 0.0), cabinet)
-	_add_box(stack, "BassBaffle", Vector3(1.06, 0.66, 0.05), Vector3(0.0, bass_y, 0.432), baffle)
-	for driver in 2:
-		var dx := -0.27 + float(driver) * 0.54
-		_add_cone(stack, "BassSurround%d" % driver, 0.255, 0.026,
-			Vector3(dx, bass_y + 0.05, 0.452), surround)
-		var mid := _add_cone(stack, "Mid15_%d" % driver, 0.235, 0.09,
-			Vector3(dx, bass_y + 0.05, 0.478), cone_mat)
-		_cones.append(mid)
-	# Reflex port slot under the drivers.
-	_add_box(stack, "BassPort", Vector3(0.86, 0.10, 0.05), Vector3(0.0, bass_y - 0.27, 0.462), baffle)
-	for cx in [-1.0, 1.0]:
-		for cy in [-1.0, 1.0]:
-			_add_box(stack, "BracketBass%d%d" % [int(cx), int(cy)], Vector3(0.10, 0.10, 0.07),
-				Vector3(cx * 0.565, bass_y + cy * 0.345, 0.458), bracket)
-
-	# ---- Radial horn tweeter box --------------------------------------------------------
-	var horn_y := 3.16
-	_add_box(stack, "RadialHornBox", Vector3(1.20, 0.62, 0.90), Vector3(0.0, horn_y, 0.0), cabinet)
-	for horn_index in 2:
-		var hx := -0.27 + float(horn_index) * 0.54
-		_add_cone(stack, "HornFlare%d" % horn_index, 0.245, 0.018,
-			Vector3(hx, horn_y, 0.452), surround)
-		var flare := _add_cone(stack, "RadialHorn%d" % horn_index, 0.225, 0.20,
-			Vector3(hx, horn_y, 0.500), horn_mat)
-		_cones.append(flare)
-	_add_box(stack, "HornThroat", Vector3(0.28, 0.16, 0.22), Vector3(0.0, horn_y, 0.57), bracket)
-	# A small chimney keeps the tower's silhouette tall from the cheap seats.
-	_add_box(stack, "StackCap", Vector3(0.30, 0.16, 0.30), Vector3(0.0, 3.56, 0.0), cabinet)
-
-	# ---- Rasta trim ---------------------------------------------------------------------
-	# A woven band across the seam between the sub bins and the bass cabinet, plus a small
-	# flag on the horn box: green, gold and black/red, the sound-system palette.
-	for i in 3:
-		_add_box(stack, "RastaBand%d" % i, Vector3(1.18, 0.045, 0.025),
-			Vector3(0.0, 2.00 + float(i) * 0.05, 0.472), rasta[i])
-	var flag := _add_box(stack, "RastaFlag", Vector3(0.34, 0.20, 0.02),
-		Vector3(side * 0.72, 3.30, 0.02), rasta[0])
-	flag.rotation.y = side * 0.22
-	_add_box(stack, "RastaFlagGold", Vector3(0.34, 0.07, 0.021),
-		Vector3(side * 0.72, 3.30, 0.028), rasta[1]).rotation.y = side * 0.22
-
-	# ---- Rack-mount amp / EQ with VU meters ---------------------------------------------
-	var rack := Node3D.new()
-	rack.name = "AmpRack"
-	rack.position = Vector3(side * 0.78, 0.0, 0.72)
-	rack.rotation.x = -0.12
-	stack.add_child(rack)
-	_racks += 1
-	_add_box(rack, "RackCase", Vector3(0.92, 0.70, 0.36), Vector3(0.0, 0.90, 0.0), cabinet)
-	_add_box(rack, "RackRailL", Vector3(0.05, 0.66, 0.05), Vector3(-0.43, 0.90, 0.17), bracket)
-	_add_box(rack, "RackRailR", Vector3(0.05, 0.66, 0.05), Vector3(0.43, 0.90, 0.17), bracket)
-	if _rack_glow == null:
-		_rack_glow = StandardMaterial3D.new()
-		_rack_glow.albedo_color = Color(0.06, 0.16, 0.18, 1.0)
-		_rack_glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		_rack_glow.emission_enabled = true
-		_rack_glow.emission = Color(0.35, 0.95, 1.0)
-		_rack_glow.emission_energy_multiplier = 0.55
-	_add_box(rack, "EqFace", Vector3(0.82, 0.62, 0.02), Vector3(0.0, 0.90, 0.185), _rack_glow)
-	# EQ knobs above the meters.
-	for i in 5:
-		var knob := _add_cone(rack, "EqKnob%d" % i, 0.028, 0.02,
-			Vector3(-0.30 + float(i) * 0.15, 1.06, 0.205), surround)
-		knob.scale = Vector3(1.0, 1.0, 1.0)
-	# Two channels of green → yellow → red LEDs, revealed by `_update_speakers()`.
-	for row in 2:
-		for step in VU_STEPS:
-			var led := _add_led(rack, Vector3(-0.30 + float(step) * 0.066,
-				0.80 - float(row) * 0.10, 0.20), step)
-			led.name = "VuLed%d_%d" % [row, step]
-
-
-## One VU segment: a tiny box lit by a shared emissive material per colour zone.
-func _add_led(parent: Node3D, at: Vector3, step: int) -> MeshInstance3D:
-	var zone := 0
-	if step >= VU_STEPS - 2:
-		zone = 2
-	elif step >= VU_GREEN:
-		zone = 1
-	var mesh := BoxMesh.new()
-	mesh.size = Vector3(0.042, 0.028, 0.014)
-	var mi := MeshInstance3D.new()
-	mi.mesh = mesh
-	mi.position = at
-	mi.material_override = _led_material(zone)
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	parent.add_child(mi)
-	_vu_leds.append({"node": mi, "step": step})
-	return mi
-
-
-## Green / yellow / red VU segments. One material each, shared by every LED in the zone.
-func _led_material(zone: int) -> StandardMaterial3D:
-	if not _vu_materials.has(zone):
-		var colour := Color(0.28, 1.0, 0.36)
-		if zone == 1:
-			colour = Color(1.0, 0.82, 0.20)
-		elif zone == 2:
-			colour = Color(1.0, 0.22, 0.16)
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = colour
-		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		mat.emission_enabled = true
-		mat.emission = colour
-		mat.emission_energy_multiplier = 2.6
-		_vu_materials[zone] = mat
-	return _vu_materials[zone]
+	for i in SPEAKER_MODELS.size():
+		var side := -1.0 if i == 0 else 1.0
+		var slot := PropLoader.new()
+		slot.name = "SpeakerStackLeft" if i == 0 else "SpeakerStackRight"
+		slot.model_path = SPEAKER_MODELS[i]
+		slot.required = true
+		slot.position = Vector3(side * 2.55, 0.0, -1.45)
+		add_child(slot)
+		_sound_stacks.append(slot)
 
 
 # =========================================================================
@@ -802,35 +620,22 @@ func speaker_stack_count() -> int:
 	return _sound_stacks.size()
 
 
-func sub_bin_count() -> int:
-	return _sub_bins
-
-
-func rack_count() -> int:
-	return _racks
-
-
-func vu_led_count() -> int:
-	return _vu_leds.size()
-
-
-## LEDs currently lit: the animated meter the player reads on a hit or a drop.
-func vu_lit_count() -> int:
+## Towers actually loaded. Zero while the `.glb` files are missing — that is the expected
+## state of the repo, not a failure.
+func speaker_model_count() -> int:
 	var n := 0
-	for entry in _vu_leds:
-		var led: MeshInstance3D = entry["node"]
-		if led != null and led.visible:
+	for slot in _sound_stacks:
+		if slot != null and not slot.is_empty():
 			n += 1
 	return n
 
 
-func vu_level() -> float:
-	return _vu_level
-
-
-## Metallic protective corner brackets across both towers.
-func corner_bracket_count() -> int:
-	return find_children("Bracket*", "MeshInstance3D", true, false).size()
+## The model paths the two slots ask for, in left/right order.
+func speaker_slot_paths() -> Array[String]:
+	var paths: Array[String] = []
+	for path in SPEAKER_MODELS:
+		paths.append(path)
+	return paths
 
 
 func _build_truss_and_lights() -> void:
@@ -1147,25 +952,6 @@ func _add_box(parent: Node3D, node_name: String, size: Vector3, at: Vector3,
 	mi.mesh = box
 	mi.position = at
 	mi.material_override = material
-	parent.add_child(mi)
-	return mi
-
-
-func _add_cone(parent: Node3D, node_name: String, radius: float, depth: float,
-		at: Vector3, material: Material) -> MeshInstance3D:
-	var cone := CylinderMesh.new()
-	cone.top_radius = radius
-	cone.bottom_radius = radius * 0.35
-	cone.height = depth
-	cone.radial_segments = 16
-	cone.rings = 1
-	var mi := MeshInstance3D.new()
-	mi.name = node_name
-	mi.mesh = cone
-	mi.material_override = material
-	# Mount the cone on the cabinet face: local +Y depth becomes +Z into the yard.
-	mi.rotation.x = PI * 0.5
-	mi.position = at
 	parent.add_child(mi)
 	return mi
 

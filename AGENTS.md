@@ -4818,3 +4818,117 @@ crowd at 22 bodies and the three light rigs are all numbers, bone transforms and
 60 FPS on a Chromebook / iPhone Safari is unmeasured (the additions are a handful of quaternion
 writes, two bone-scale writes on one frame and one `PackedFloat32Array.fill` per frame — no
 allocations, no lookups, no new geometry).
+
+## 2026-11-24 — PART 2 of 2: the Stefan Iverson overhaul, commits 5–8 (hitstop, hit-react, extras, audit)
+
+Branch `feature/3d-cel-shaded`, Godot **4.5.stable.official (876b29033)** headless. Five commits
+continue the numbered chain started by PART 1 (`93cfc02`, `65f514d`, `a2a8b1b`, `1b1ea3d`, `0b6a2f3`).
+Every change is **presentation only**: `BaseFighter.gd` and `FighterRoster.gd` are byte-identical to
+PART 1 — `ANIM_OFFSET`, every startup/active/recovery/damage/hitbox value, the 132 BPM beat clock,
+the Crowd Hype rules and all 31 Patois entries are untouched, and the feel audit re-hashes both files
+on every run. Zero programmer art.
+
+| # | Commit | What it adds | Roster / live / facing / feel |
+| --- | --- | --- | --- |
+| 5 | `fac96af` | Hitstop: volume-locked `SquashPivot`, spring camera punch | 425 / 167 / 94 / 195 |
+| 6 | `78ee12a` | Direction-aware hit react, foot pinning guard | 425 / 167 / 94 / 195 |
+| 7 | `77331f8` | Beat accent, moving-hold idle, variable stepping | 425 / 167 / 94 / 195 |
+| 8 | `d926341` | Audit extension + the four defects it caught | 425 / 167 / 94 / **335** |
+
+### Commit 5 — hitstop
+
+- **Volume-locked pop.** `AnimationFeel.squash_volume()` / `volume_preserve()` and the presets
+  `SQUASH_POP = (1.06, 0.89, 1.06)`, `SQUASH_STRETCH = (1.06, 1.02, 0.925)`,
+  `SQUASH_LANDING = (1.06, 0.89, 1.06)`. A linear lerp between two unit-product triples drifts, so
+  every frame the spring writes is passed through `volume_preserve()`; measured drift over the whole
+  pop is under `SQUASH_VOLUME_TOLERANCE` (2 %) on all three fighters.
+- **Props isolated.** See commit 8 below — the first version was a local counter-scale and it sheared
+  the mic, so the final form pins the attachment's world basis.
+- **One-frame hit flash.** A rising-edge latch in presentation only (`_flash_lit`), so
+  `BaseFighter.gd` stays untouched.
+- **Camera punch.** `AnimationFeel.spring_scalar_step()` + `Arena3D.hitstop_punch(stop_frames,
+  strength)`; `fov = CAMERA_FOV - _kick * CAMERA_PUNCH_FOV_DEG`, `v_offset = -_kick *
+  CAMERA_PUNCH_OFFSET_M`, driven from `TestArena._on_strike_resolved`. The combat hit-stop itself is
+  unchanged (4 frames light, 6 heavy).
+
+### Commit 6 — direction-aware hit react
+
+`AnimationFeel.hit_height_weight()` reads the attacking move's own `hitbox_pos.y` (tump 0.00, jab
+0.75, strong/upper 1.00) and `recoil_pitch()` / `recoil_head_yaw()` pitch the chain accordingly:
+high shots throw the neck and head, low shots fold the spine. `hit_clip_progress(p, extreme)` snaps to
+the measured rearward extreme. `_pin_feet_to_ground()` is skipped in every airborne state and in a
+rising HITSTUN, so a launch is never pulled back down.
+
+Measured recoil extremes: `_measure_recoil_extreme()` finds one only where a real reaction take exists
+(roles `hit`/`stun`/`stumble`). Feedback and L!ckshot ship none, so they fall back to
+`HIT_SNAP = 0.30`; L!kkle Moore measures **0.261**. Recorded as a limitation, not hidden.
+
+### Commit 7 — the mentor extras, each behind its own export var
+
+`beat_accent`, `moving_hold_idle`, `variable_stepping` and `step_fps_idle` are `@export` booleans on
+`FighterModel3D` (not the **F4** key, which keeps its established meaning as the shared stepped-arcade
+switch).
+
+- **Beat accent.** `overshoot_lean_accented(t, on_beat)` adds overshoot up to `BEAT_OVERSHOOT_MAX_DEG`
+  and `settle_frames_for(true)` holds one settle frame longer; the flag comes from the input's own
+  judgement (`fighter._input_beat.on_beat`), so the accent can never disagree with the HUD.
+- **Moving-hold idle.** Weight shift (`idle_sway`), hip roll (`idle_roll`), breathing and a beat dip
+  (`idle_breath`, `idle_beat_dip`), all on the pose pivot — the root, facing pivot and collision body
+  never move.
+- **Variable stepping.** Idle/walk/crouch run on their own slower lattice (`idle_step_count()` at
+  `step_fps_idle = 12`); `hold_every(holding, variable)` repeats each grid cell for `HOLD_EVERY = 2`
+  frames while the impact is held. **Changed in commit 8:** the hold now also covers the first
+  `RECOVERY_HOLD_FRAMES = 3` frames of recovery — in the 3–4-frame active window the settle had
+  already saturated, so the hold was invisible before this.
+
+### Commit 8 — the audit, and the four defects it caught
+
+`tools/animation_feel_audit.gd` grew from 190 to **335** checks: frame-data baseline per fighter
+(`FRAME_BASELINE`), root motion never quantised, hand reach at `t_impact`, hold + hitstop, volume and
+prop isolation, airborne pinning, the three extras, a primitive-mesh scan of the character scripts and
+the built scenes, and an allocation run. It found real bugs, all fixed in the layer:
+
+1. **`t_impact` was often the clamp floor.** The peak walk ran during `bind()`, before the
+   `AnimationPlayer` had bound its tracks, so every sample read the rest pose and the walk fell back
+   to `IMPACT_MIN`. It also took the clip-wide maximum over hands **and feet**, so a walk step could
+   win. It is now the striking hand's world-space distance from the pelvis, walked over the legal
+   contact window only, measured against a reset rest pose, and re-measured once two frames have been
+   processed. A wind-up can carry the hand further from the pelvis than the punch does, so taking the
+   clip-wide maximum and clamping it to the window edge placed contact on a *less* extended pose than
+   the one available inside the window.
+2. **The mic was sheared by the pop.** The pop is applied above the rotating hand, so a local
+   counter-scale still left up to 15 % shear on the long axis. `_isolate_props()` now rebuilds each
+   attachment's world basis from the hand's orthonormalised rotation times its rest basis.
+3. **The hold was invisible** (see commit 7 above).
+4. **The primitive scan matched prose** — the comments recording what was deleted. It now looks for
+   constructions (`BoxMesh.new(`, sub-resources in the scenes).
+
+Allocation: the feel layer is held to **zero** objects and zero nodes over 600 simulated frames
+(measured 1645 → 1645 objects, 41 → 41 nodes). The live arena is held to a flat scene graph and a flat
+resource table; its standing **object** count carries a known background drip of about one object per
+second from the stage/UI subsystems (measured at frames 98, 158, 218, 278 … with audio, beat,
+Arena3D and both fighters already disabled), which is recorded here rather than claimed as zero.
+
+**Checks actually run** (pinned 4.5 toolchain, headless):
+
+```bash
+godot --headless --path godot --import
+godot --headless --path godot --script res://tools/headless_roster_check.gd   # 425 PASS / 0 FAIL
+godot --headless --path godot --script res://tools/live_match_check.gd        # 167 PASS / 0 FAIL
+godot --headless --path godot --script res://tools/facing_audit.gd            # 94 PASS / 0 FAIL
+godot --headless --path godot --script res://tools/animation_feel_audit.gd    # 335 PASS / 0 FAIL
+godot --headless --path godot --export-release "Web" ../docs/index.html
+```
+
+`/docs` rebuilt from this revision: `index.pck` **68,703,204 B** (68,673,716 before), `index.wasm`
+38,057,390 B, `index.js` 305,185 B, `index.html` 5,449 B. Disk after cleanup **125 MB free (98 % used)**;
+the 4.5 engine binary, the Web template archive and the fetch script were deleted from `/tmp`.
+
+**Not verified — no GPU, display or audio device.** Nothing was **seen**: the volume-locked pop, the
+spring camera punch, the one-frame flash, the height-aimed recoil, the beat accent, the waiting sway
+and the longer hold are bone transforms, spring values and state assertions, not looks. The
+`t_impact` retune in particular changes where the whip lands in every attack clip and has only been
+checked as a number (hand extension at the contact frame), never as motion. Feedback's and Lickshot's
+recoil extremes are still the `0.30` fallback because their uploads contain no reaction take. The
+`HIT_SNAP`, `RECOVERY_HOLD_FRAMES`, camera-punch and beat-accent values are hand-set defaults for the
+owner's playtest.

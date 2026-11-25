@@ -4619,3 +4619,55 @@ export.
 - The 5 mm pin bias, the 0.05 m pin deadband, the 18 fps rate, the 3-frame settle, the 4° overshoot,
   the engagement/negative-space angles and the recoil ladder are hand-set defaults awaiting the
   owner's eye and a device playtest.
+
+## 2026-11-24 — PART 1 of 2: combat-feel audit, live-match integrity, stepped poses, attack curve, body layer
+
+Owner brief: PART 1 of the Stefan Iverson-technique overhaul on `feature/3d-cel-shaded`, in five
+numbered commits. Hard rules read at the top of every commit: `BaseFighter.gd` `ANIM_OFFSET`, all
+combat frame data/hitboxes, the 132 BPM beat sync, the Crowd Hype rules and the 31 Patois entries
+stay byte-identical; animation code reads combat state and never writes it; **zero programmer art**
+(no primitive prop or character meshes — 2D UI and material/post-process shaders are fine); 60 FPS
+on a Chromebook and iPhone Safari, so zero per-frame allocations and every bone/node cached; the
+techniques are implemented as techniques and the mentor is never cited in code.
+
+### COMMIT 0 — Audit (documentation only)
+
+`git pull --rebase origin feature/3d-cel-shaded`: already current (`behind=0`; HEAD `7d4adbb`), so
+no rebase ran. The pre-existing, unrelated `art-source/` working-tree deletions were left untouched
+and were not staged.
+
+**Baselines actually run in this session** (Godot **4.5.stable.official, 876b29033**, headless,
+`--import` first, no GPU/display/audio device):
+
+| Suite | Result |
+| --- | --- |
+| `tools/headless_roster_check.gd` | **425 checks, 0 FAIL**, `ALL CHECKS PASSED` |
+| `tools/live_match_check.gd` | **123 checks, 0 FAIL**, `ALL LIVE MATCH CHECKS PASSED` |
+| `tools/facing_audit.gd` | **94 checks, 0 FAIL**, `ALL FACING CHECKS PASSED` |
+| `tools/animation_feel_audit.gd` | **142 checks, 0 FAIL**, `ALL ANIMATION FEEL CHECKS PASSED` |
+
+#### What exists vs what is missing
+
+| Spec item | State at `7d4adbb` | Evidence | PART 1 action |
+| --- | --- | --- | --- |
+| C1 · both fighters inside the frustum, all 9 pairings | **EXISTS** | `live_match_check`: `_check_pair` × 9, skinned bounds projected into the viewport | keep; no change needed |
+| C1 · `VisualPivot` strictly ±X within 5° | **EXISTS** | `facing_audit` 94 checks; `animation_feel_audit` re-asserts after every system | keep |
+| C1 · no root/hips drift, sink or teleport on knockdown/get-up | **EXISTS** | `live_match_check` `_check_knockdowns`: lowest ≥ −0.05 m, body drift ≤ 0.5 m, render anchor ≤ 0.02 m, no Hips/Root position tracks | keep |
+| C1 · J/K/U/I/L/S answer on the **press frame** | **PARTIAL** | `_press()` polls up to 8 ticks, so a 1–2 tick lag would still pass | **REFINE** — assert the response on the very next tick |
+| C1 · packed multi-row 3D crowd, all 7 Mixamo models | **EXISTS** | roster check: 22 spectators, 3 rows, 10/10 banks, all seven delivered models | keep |
+| C1 · Afternoon/Sunset/Night vibrant, crisp fighter shadows | **EXISTS** | roster check: three light rigs, `light_angular_distance 0`, per-phase fill/rim/ambient | keep |
+| C1 · bold large arcade fonts, Select + HUD | **EXISTS** | roster check: Bungee faces, 442×32 bars, 58 px select names, 40 px clock | keep |
+| C1 · `PropLoader` slots stay **empty**, no procedural stand-ins | **EXISTS** | five slots, `is_empty()`, zero child meshes | **REFINE** — assert it from the live arena (not only the roster probe) |
+| C2 · stepped 16–20 fps poses, F4 live, HUD label | **EXISTS** | `AnimationFeel.STEPPED_FPS 18`, `_drive_clip_time`, `F4` toast + legend | **REFINE** — expose `step_fps` on the model as the spec asks |
+| C3 · `t_impact` measured per attack clip, cached | **EXISTS** | `_measure_impact_times` / `_measure_clip_peak`, 24 samples, band 0.36–0.62 | keep |
+| C3 · coil → 1-frame whip → overshoot → settle → hold | **EXISTS** | `startup_progress` / `active_progress` / `recovery_progress`, `+4°` ramp | keep |
+| C3 · coil depth scaled by **move weight** (visual only) | **MISSING** | coil always ends at 0.35, light and heavy alike | **BUILD** |
+| C3 · curve only remaps clip time, never moves ACTIVE | **EXISTS** | `_attack_clip_progress` reads `state_frame`; no state is written | keep |
+| C3 · **arc enforcement** (curved limb path, lateral overshoot bias) | **MISSING** | no lateral component anywhere in the swing | **BUILD** |
+| C3 · **1-frame skinned limb smear** on the whip (bone scale) | **MISSING** | no bone scaling | **BUILD** |
+| C4 · `SkeletonModifier3D`, cached bone IDs | **EXISTS** | `FightBodyModifier3D`, 8 bones cached at bind, `apply_now()` | keep |
+| C4 · runs after the curve, before foot pinning | **EXISTS** | `_process`: drive → lock → compensate → rig → feel → pin → clamp | keep |
+| C4 · KOF-Vanessa shoulder/spine counter-twist | **EXISTS** | `engage_twist` on Spine1/Spine2/shoulders | keep |
+| C4 · subtle limb clearance from the torso | **EXISTS** | `negative_space` on arms + shoulders | keep |
+| C4 · camera-facing **chest**/eye-line cheat at the strike pose | **PARTIAL** | neck + head only; the chest never turns | **BUILD** the chest part |
+| C4 · cap total influence, facing stays within 5° | **MISSING** | no explicit cap; only the outcome was asserted | **BUILD** the cap + assertion |

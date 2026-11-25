@@ -407,20 +407,33 @@ func _check_camera_framing() -> void:
 			arena.p2.global_position = Vector2(890.0, 600.0)
 			for i in 45:
 				await process_frame
+			# PART 1 commit 3: the cinematic accent (K.O. blow / special activation) pulls the
+			# lens in and leans it at its peak. Held centred first, then with its own ±2° yaw
+			# at each side, so the accent's ANGLE is exercised against the frustum and not just
+			# its dolly. Both fighters must stay fully framed in all three. Measured before the
+			# exchange-lean cases so each hold starts from the same settled neutral framing.
+			var accent_cases := [[0, "centred"], [1, "leaning toward P1"], [-1, "leaning toward P2"]]
+			var accent_yaws := {}
+			for accent_case in accent_cases:
+				arena3d.hold_cinematic_accent(1.0, 8, int(accent_case[0]))
+				await process_frame
+				await process_frame
+				accent_yaws[int(accent_case[0])] = rad_to_deg(arena3d.camera.rotation.y)
+				var accent := _framing_ok(arena3d, arena, view)
+				_check(bool(accent[0]), "%s vs %s: both fighters fully framed at the accent peak %s %s"
+					% [a, b, String(accent_case[1]), String(accent[1])])
+			# Proof the framing cases above are not vacuous: the side really reaches the lens,
+			# leaning opposite ways by roughly twice the accent's 2° yaw.
+			_check(signf(float(accent_yaws[1])) > 0.0 and signf(float(accent_yaws[-1])) < 0.0
+					and absf(float(accent_yaws[1]) - float(accent_yaws[-1])) > 3.0,
+				"%s vs %s: the accent leans the lens both ways (%+.2f° / %+.2f°)"
+					% [a, b, float(accent_yaws[1]), float(accent_yaws[-1])])
 			for yaw in [-4.0, 4.0]:
 				arena3d.hold_exchange_yaw(yaw, 5)
 				await process_frame
 				var lean := _framing_ok(arena3d, arena, view)
 				_check(bool(lean[0]), "%s vs %s: both fighters fully framed at %+.0f° lean %s"
 					% [a, b, yaw, String(lean[1])])
-			# PART 1 commit 3: the cinematic accent (K.O. blow / special activation) pulls the
-			# lens in and leans it at its peak. Both fighters still have to be fully framed —
-			# the accent's own dolly and yaw are part of the required framing distance.
-			arena3d.hold_cinematic_accent(1.0, 5)
-			await process_frame
-			var accent := _framing_ok(arena3d, arena, view)
-			_check(bool(accent[0]), "%s vs %s: both fighters fully framed at the accent peak %s"
-				% [a, b, String(accent[1])])
 			await _free(arena)
 
 

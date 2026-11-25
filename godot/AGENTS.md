@@ -5202,9 +5202,14 @@ the other (including a mirror match).
 - `headless_roster_check.gd` **442 → 446**: four new checks — every preset pushes its own cel rim
   onto the fighters, three distinct rims, warm daylight / cool night, night rim stronger than
   daylight.
-- `live_match_check.gd` **191 → 200**: the framing audit now also holds the **accent peak** for all
-  nine pairings (head, hips and both feet inside the frustum and on screen). The shared framing
-  helper replaced the duplicated inline loop without weakening any assertion.
+- `live_match_check.gd` **191 → 227**: the framing audit now holds the **accent peak** for all
+  nine pairings three ways — **centred, and with the accent's own ±2° yaw at side +1 and −1** —
+  requiring head, hips and both feet inside the frustum and on screen in every case. A tenth
+  assertion per pairing proves the side actually reaches the lens (measured +1.70° / −1.70°), so
+  the framing cases can never pass vacuously. `hold_cinematic_accent()` takes the side as an
+  argument instead of hard-coding 0; the centred default keeps every other caller unchanged. The
+  accent cases run before the ±4° lean cases, from the same settled neutral framing, and the
+  shared framing helper replaced the duplicated inline loop without weakening any assertion.
 - `animation_feel_audit.gd` **335 → 428**: a new `_audit_zweifuss` block per fighter — archetype
   resource present and authored, 2–3 step hold, 1–2 step hip lead, coil inside the clamp, the three
   archetypes genuinely different, fresh instance per body, the coil curve (zero at 0, peak at 1),
@@ -5243,6 +5248,14 @@ the other (including a mirror match).
 - **Nothing was viewed.** There is no GPU or browser in this environment: the coil, the whip,
   the impact hold, the recovery dip, the foreshortening, the three rim colours and the camera
   accent are verified as **numbers and contracts**, not as pixels.
+- **The pre-existing `live_match_check` facing assertion is intermittently flaky.** "facing pivot
+  stays inside 5° through the boosted strike" (it reads `world_forward()`, which adds the take's
+  own hips pitch/roll to the pivot, so the value depends on which frame the forced clip lands on)
+  failed twice across the PART 1 session at 22.88° and 11.88°, and passed on every other run,
+  including three consecutive full runs at 227/0. The assertion itself was **not** touched or
+  weakened. The toe-based check in `animation_feel_audit` is the deterministic version of the same
+  contract; replacing this one's measurement with the drawn toe line is the follow-up, and it needs
+  the owner's sign-off because it changes an assertion's subject.
 - **The three archetypes are authored from the brief's references**, not from watching Dudley,
   Makoto, Sean or Elena. The footage prompts in `INDUSTRY_REFERENCE_ANALYSIS.md` are the way to
   correct them.

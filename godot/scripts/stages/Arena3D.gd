@@ -364,11 +364,13 @@ func accent_camera(side: int = 0, strength: float = 1.0) -> void:
 	_accent_hold = AnimationFeel.CAMERA_ACCENT_HOLD_FRAMES
 
 
-## Hold the accent at its peak for `frames` presented frames, for the framing audit.
-func hold_cinematic_accent(strength: float = 1.0, frames: int = 3) -> void:
+## Hold the accent at its peak for `frames` presented frames, for the framing audit. `side`
+## is passed through so the audit can exercise the accent's own ±yaw and not just its dolly:
+## side +1 leans toward P1's side of the frame, −1 toward P2's, 0 stays centred.
+func hold_cinematic_accent(strength: float = 1.0, frames: int = 3, side: int = 0) -> void:
 	_accent = clampf(strength, 0.0, 1.0) * AnimationFeel.CAMERA_ACCENT_MAX
 	_accent_velocity = 0.0
-	_accent_side = 0
+	_accent_side = clampi(side, -1, 1)
 	_accent_hold = maxi(1, frames)
 
 

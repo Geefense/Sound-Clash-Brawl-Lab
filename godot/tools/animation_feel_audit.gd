@@ -137,6 +137,34 @@ func _audit_static_curves() -> void:
 		"+4° overshoot on ACTIVE frames 1–2, settled to 0 by frame 4",
 		"f1 %.2f deg" % rad_to_deg(AnimationFeel.overshoot_lean(1)))
 
+	# 3. Move-weight coil, arc enforcement and the one-frame smear.
+	var coil_light := AnimationFeel.coil_end(AnimationFeel.move_weight(8))
+	var coil_heavy := AnimationFeel.coil_end(AnimationFeel.move_weight(15))
+	_check(coil_heavy < coil_light and coil_light <= AnimationFeel.COIL_END_LIGHT
+		and coil_heavy >= AnimationFeel.COIL_END_HEAVY,
+		"a heavier move winds deeper than a jab",
+		"light %.3f vs heavy %.3f" % [coil_light, coil_heavy])
+	_check(absf(AnimationFeel.startup_progress(1.0, coil_heavy) - coil_heavy) < 0.0001,
+		"STARTUP lands on its own weight-scaled coil", "%.3f" % coil_heavy)
+	_check(AnimationFeel.arc_bias(0, 1.0) == 0.0
+		and AnimationFeel.arc_bias(AnimationFeel.WHIP_FRAME, 1.0) > 0.0
+		and AnimationFeel.arc_bias(4, 1.0) == 0.0,
+		"the swing arc peaks on the whip frame and unwinds by the hold",
+		"%.3f rad" % AnimationFeel.arc_bias(AnimationFeel.WHIP_FRAME, 1.0))
+	var arc_heavy := AnimationFeel.arc_bias(AnimationFeel.WHIP_FRAME, 1.0)
+	var arc_light := AnimationFeel.arc_bias(AnimationFeel.WHIP_FRAME, 0.35)
+	_check(arc_heavy > arc_light, "the arc carries the lateral overshoot and scales with weight",
+		"%.3f vs %.3f rad" % [arc_heavy, arc_light])
+	var smear_scale := AnimationFeel.smear_scale(1.0)
+	_check(AnimationFeel.smear_amount(0) == 0.0
+		and AnimationFeel.smear_amount(AnimationFeel.WHIP_FRAME) == 1.0
+		and AnimationFeel.smear_amount(AnimationFeel.WHIP_FRAME + 1) == 0.0,
+		"the limb smear exists on exactly one frame")
+	_check(absf(smear_scale.x * smear_scale.y * smear_scale.z - 1.0) < 0.001
+		and smear_scale.y > 1.0,
+		"the smear stretch preserves the limb's volume",
+		"(%.3f, %.3f, %.3f)" % [smear_scale.x, smear_scale.y, smear_scale.z])
+
 	# 6. Recoil strength ladder.
 	var light := AnimationFeel.recoil_strength(8, false, false)
 	var heavy := AnimationFeel.recoil_strength(15, false, false)
@@ -212,6 +240,9 @@ func _audit_fighter(key: StringName) -> void:
 
 	# --- 3/4/6. Skeleton layer --------------------------------------------------------
 	await _audit_body_layer(model, fighter, key)
+
+	# --- 2/3. Weight-scaled coil, arc and smear on the live body ----------------------
+	await _audit_attack_curve(model, fighter, key)
 
 	# --- 5. Squash pop ---------------------------------------------------------------
 	await _audit_squash(model, fighter, key)
@@ -419,6 +450,77 @@ func _audit_body_layer(model: FighterModel3D, fighter: BaseFighter, key: String)
 	_check(is_zero_approx(model.recoil_strength),
 		"%s ignores a strike that lands on the opponent" % key)
 	other.queue_free()
+	mod.reset()
+
+
+## Commit-3 refinements, measured on the real body: the coil depth follows the move's weight,
+## the swing arc actually rotates the striking shoulder/arm, and the smear is exactly one
+## frame of bone scale that is fully restored the next frame.
+func _audit_attack_curve(model: FighterModel3D, fighter: BaseFighter, key: String) -> void:
+	var clip := String(model.clips.get(&"light", ""))
+	if clip == "":
+		return
+	# --- coil depth by move weight --------------------------------------------------
+	fighter.state = BaseFighter.State.ATTACK_STARTUP
+	fighter._attack = fighter.attacks[&"jab"]
+	fighter._attack_id = &"jab"
+	fighter.state_frame = int(fighter._attack.get("startup", 1))
+	var light := model._attack_clip_progress(BaseFighter.State.ATTACK_STARTUP, clip)
+	fighter._attack = fighter.attacks[&"upper_box"]
+	fighter._attack_id = &"upper_box"
+	fighter.state_frame = int(fighter._attack.get("startup", 1))
+	var heavy := model._attack_clip_progress(BaseFighter.State.ATTACK_STARTUP, clip)
+	_check(heavy < light,
+		"%s winds deeper for a heavy than for a jab (visual only)" % key,
+		"%.3f vs %.3f" % [heavy, light])
+
+	# --- arc enforcement on the real bones ------------------------------------------
+	var mod := model.body_modifier
+	if mod == null:
+		return
+	var bones := mod.bone_indices()
+	mod.reset()
+	var base := _bone_rotations(model.skeleton, bones)
+	mod.arc_bias = AnimationFeel.arc_bias(AnimationFeel.WHIP_FRAME, 1.0)
+	mod.facing = 1
+	mod.apply_now(true)
+	var arced := _bone_rotations(model.skeleton, bones)
+	var arc_moved := 0
+	for name in arced:
+		if base.has(name) and (arced[name] as Quaternion).angle_to(base[name]) > 0.002:
+			arc_moved += 1
+	_check(arc_moved >= 2, "%s the swing arc rotates the striking shoulder and arm" % key,
+		"%d bones" % arc_moved)
+
+	# --- one-frame smear -------------------------------------------------------------
+	mod.reset()
+	# The hips may legitimately carry a non-unit scale from the upload's own bind pose (the
+	# Tripo bodies ship a 0.01 unit scale), so the contract is "the layer does not change it",
+	# not "it is one".
+	var hips := model._bone_suffix("Hips")
+	var hips_before: Vector3 = model.skeleton.get_bone_pose_scale(hips) \
+		if hips >= 0 else Vector3.ONE
+	mod.smear = 1.0
+	mod.facing = 1
+	mod.apply_now(true)
+	var arm_index := int(bones["arm_r"])
+	var scaled: Vector3 = model.skeleton.get_bone_pose_scale(arm_index) \
+		if arm_index >= 0 else Vector3.ONE
+	_check(mod.is_smeared() and scaled.y > 1.0,
+		"%s the whip stretches the striking arm for one frame" % key,
+		"scale (%.3f, %.3f, %.3f)" % [scaled.x, scaled.y, scaled.z])
+	mod.smear = 0.0
+	mod.apply_now(true)
+	var restored: Vector3 = model.skeleton.get_bone_pose_scale(arm_index) \
+		if arm_index >= 0 else Vector3.ONE
+	_check(not mod.is_smeared() and restored == Vector3.ONE,
+		"%s the smear is fully restored on the next frame" % key,
+		"scale (%.3f, %.3f, %.3f)" % [restored.x, restored.y, restored.z])
+	var hips_after: Vector3 = model.skeleton.get_bone_pose_scale(hips) \
+		if hips >= 0 else Vector3.ONE
+	_check(hips < 0 or hips_after.is_equal_approx(hips_before),
+		"%s the smear never scales the hips" % key,
+		"%.4f -> %.4f" % [hips_before.y, hips_after.y])
 	mod.reset()
 
 

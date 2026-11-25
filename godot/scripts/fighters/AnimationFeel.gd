@@ -63,26 +63,44 @@ const OVERSHOOT_RAMP := [0.60, 1.00, 0.85, 0.45]
 ## Sanity band for a measured `t_impact`; a clip that peaks outside it is clamped in.
 const IMPACT_MIN := 0.36
 const IMPACT_MAX := 0.62
+## Anticipation depth: a jab gathers only to 0.42 of the clip, a full-weight heavy winds all
+## the way to 0.30, so the two never read as the same swing. Visual only: the depth changes
+## which pose is held, never when `ACTIVE` starts, how long it lasts or what it hits.
+const COIL_END_LIGHT := 0.42
+const COIL_END_HEAVY := 0.30
+
+
+## Visual weight of a move, from the contact damage it already carries. Reading `damage`
+## here is a read-only presentation input — the value itself is owned by `FighterRoster` and
+## is never written back.
+static func move_weight(damage: int) -> float:
+	return clampf(float(damage) / 15.0, 0.35, 1.0)
+
+
+## Where the coil ends for a move of this weight. `COIL_END` stays the neutral value used
+## when the weight is unknown (and by the fixed-position curves).
+static func coil_end(weight: float) -> float:
+	return lerpf(COIL_END_LIGHT, COIL_END_HEAVY, clampf(weight, 0.0, 1.0))
 
 
 ## `STARTUP`: compress and hold into the coil. Slower than linear at the start (the body
-## gathers), landing exactly on `COIL_END` at the last startup tick.
-static func startup_progress(p: float) -> float:
-	return COIL_END * pow(clampf(p, 0.0, 1.0), 1.6)
+## gathers), landing exactly on `coil` at the last startup tick.
+static func startup_progress(p: float, coil: float = COIL_END) -> float:
+	return clampf(coil, 0.0, 1.0) * pow(clampf(p, 0.0, 1.0), 1.6)
 
 
 ## `ACTIVE`: a 1–2 frame whip from the coil across the breakdown poses to the measured
 ## `t_impact`, then a 2–4 frame settle that keeps the extended silhouette. `frame` is the
 ## fighter's own `state_frame`, so hitstop (which does not advance it) holds the pose.
-static func active_progress(frame: int, t_impact: float) -> float:
+static func active_progress(frame: int, t_impact: float, coil: float = COIL_END) -> float:
 	if frame <= 0:
-		return COIL_END
+		return clampf(coil, 0.0, 1.0)
 	var whip := clampf(float(mini(frame, WHIP_FRAMES)) / float(WHIP_FRAMES), 0.0, 1.0)
 	if frame <= WHIP_FRAMES:
 		# Ease-out, so frame 1 is already three quarters of the way onto contact and the
 		# clip has visibly snapped across the breakdown poses rather than crept to them.
 		var eased := 1.0 - (1.0 - whip) * (1.0 - whip)
-		return lerpf(COIL_END, t_impact, eased)
+		return lerpf(clampf(coil, 0.0, 1.0), t_impact, eased)
 	var settle := clampf(float(frame - WHIP_FRAMES) / float(maxi(1, SETTLE_FRAMES)), 0.0, 1.0)
 	return lerpf(t_impact, minf(t_impact + SETTLE_DRIFT, 1.0), settle)
 
@@ -100,6 +118,52 @@ static func overshoot_lean(frame: int) -> float:
 	if frame < 0 or frame >= OVERSHOOT_RAMP.size():
 		return 0.0
 	return deg_to_rad(OVERSHOOT_DEG) * float(OVERSHOOT_RAMP[frame])
+
+
+# --- Arc enforcement: the swing travels a curve, not a straight line -----------------
+## Lateral travel of the striking side through the whip, radians at full weight. The
+## shoulder leads and the elbow trails, so the limb traces an arc instead of sliding along a
+## straight line to the target — the reason a real punch reads as a body movement rather
+## than a limb being translated.
+const ARC_SWING := 0.16
+## Extra lateral push *past* the target on the whip, radians. The overshoot is not only a
+## pitch: the contact frame leans a hair beyond its own arc, which is what makes it snap.
+const ARC_LATERAL_OVERSHOOT := 0.05
+## `ACTIVE`-frame shape of the arc: full on the whip frame, unwinding through the settle.
+const ARC_RAMP := [0.0, 1.0, 0.55, 0.20, 0.0]
+## `ACTIVE` frame the whip is measured on (the first frame after the coil).
+const WHIP_FRAME := 1
+## Length of the cartoon limb smear, in frames. Exactly one: a smear that lasts is a bug.
+const SMEAR_FRAMES := 1
+## Peak stretch along the striking limb during that frame. Bone scale only, so the skin
+## follows the bone and nothing is re-exported, re-skinned or turned into extra geometry.
+const SMEAR_STRETCH := 0.14
+
+
+## Signed lateral bias of the swing for an `ACTIVE` frame, radians. Multiply by the facing
+## sign before applying: the arc leads out of the fighting side, never across the body.
+static func arc_bias(frame: int, weight: float) -> float:
+	if frame < 0 or frame >= ARC_RAMP.size():
+		return 0.0
+	var ramp := float(ARC_RAMP[frame])
+	if ramp <= 0.0:
+		return 0.0
+	var lateral := ARC_LATERAL_OVERSHOOT if frame <= WHIP_FRAMES else 0.0
+	return (ARC_SWING * ramp + lateral * ramp) * clampf(weight, 0.0, 1.0)
+
+
+## 0–1 smear amount for an `ACTIVE` frame: full on the whip frame, zero everywhere else. The
+## smear is deliberately one frame — it is the arcade tell for the fastest pose change in the
+## move, not an effect that lingers over the contact.
+static func smear_amount(frame: int) -> float:
+	return 1.0 if frame == WHIP_FRAME else 0.0
+
+
+## Volume-preserving stretch along the bone's own length for the smear.
+static func smear_scale(amount: float) -> Vector3:
+	var stretch := 1.0 + SMEAR_STRETCH * clampf(amount, 0.0, 1.0)
+	var thin := 1.0 / sqrt(stretch)
+	return Vector3(thin, stretch, thin)
 
 
 ## `HITSTUN` / blockstun clip progress: an instant snap into the recoil, then a slow settle.

@@ -84,6 +84,10 @@ var recoil_strength: float = 0.0
 var recoil_age: float = 0.0
 ## Last `t_impact` the attack curve used, exposed for the F3/F4 readout and the audit.
 var last_impact_time: float = AnimationFeel.COIL_END
+## Visual weight and coil depth of the move driving the body right now (read-only, for the
+## audit and the HUD). Derived from the move's own contact damage; never written back.
+var last_attack_weight: float = 1.0
+var last_coil_end: float = AnimationFeel.COIL_END
 ## Frames of the current stepped grid hold, exposed so the audit can measure quantization.
 var stepped_hold_ticks: int = 0
 
@@ -1334,12 +1338,19 @@ func _attack_clip_progress(state: int, clip_name: String) -> float:
 	var a: Dictionary = fighter._attack
 	if a.is_empty():
 		return 0.0
+	# Anticipation depth scales with the move's own visual weight: a jab gathers to 0.42, a
+	# full-weight heavy winds to 0.30. Only which pose is held changes — `ACTIVE` still starts
+	# and ends on the combat ticks, so no timing depends on this.
+	var weight := AnimationFeel.move_weight(int(a.get("damage", 0)))
+	var coil := AnimationFeel.coil_end(weight)
+	last_attack_weight = weight
+	last_coil_end = coil
 	match state:
 		BaseFighter.State.ATTACK_STARTUP:
 			return AnimationFeel.startup_progress(
-				float(fighter.state_frame) / float(maxi(1, int(a.get("startup", 1)))))
+				float(fighter.state_frame) / float(maxi(1, int(a.get("startup", 1)))), coil)
 		BaseFighter.State.ATTACK_ACTIVE:
-			return AnimationFeel.active_progress(fighter.state_frame, t_impact)
+			return AnimationFeel.active_progress(fighter.state_frame, t_impact, coil)
 		_:
 			return AnimationFeel.recovery_progress(
 				float(fighter.state_frame) / float(maxi(1, int(a.get("recovery", 1)))), t_impact)
@@ -1383,8 +1394,12 @@ func _configure_body_modifier(state: int) -> void:
 	body_modifier.negative_space = AnimationFeel.NEGATIVE_SPACE
 	body_modifier.eye_line_yaw = AnimationFeel.EYE_LINE * (1.0 if facing_sign >= 0 else -1.0)
 	# 2. The +4° overshoot impulse on the first ACTIVE frames, settling to zero by frame 4.
-	body_modifier.overshoot = AnimationFeel.overshoot_lean(fighter.state_frame) \
-		if state == BaseFighter.State.ATTACK_ACTIVE else 0.0
+	var active := state == BaseFighter.State.ATTACK_ACTIVE
+	body_modifier.overshoot = AnimationFeel.overshoot_lean(fighter.state_frame) if active else 0.0
+	# 2b. Arc enforcement and the one-frame limb smear, both keyed to the whip frame.
+	body_modifier.arc_bias = AnimationFeel.arc_bias(fighter.state_frame, last_attack_weight) \
+		if active else 0.0
+	body_modifier.smear = AnimationFeel.smear_amount(fighter.state_frame) if active else 0.0
 	# 4. Alive hitstop: the attacker's secondary bones keep a charge while the game is frozen.
 	body_modifier.tension = AnimationFeel.tension_amount(_clock, fighter._hitstop_frames > 0)
 	# 6. Additive hit-react overlay, scaled by the real contact strength.
@@ -1481,4 +1496,6 @@ func feel_snapshot() -> Dictionary:
 		"feet": _foot_bones.size(),
 		"modifier": body_modifier != null and body_modifier.is_cached(),
 		"recoil": recoil_strength,
+		"attack_weight": last_attack_weight,
+		"coil_end": last_coil_end,
 	}

@@ -29,6 +29,10 @@ var engage_twist := 0.0
 var negative_space := 0.0
 ## Head / eye-line awareness toward camera, radians.
 var eye_line_yaw := 0.0
+## Lateral arc bias of the swing, radians (signed toward the fighting side).
+var arc_bias := 0.0
+## 0–1 one-frame limb smear amount (see `AnimationFeel.smear_amount`).
+var smear := 0.0
 ## `ACTIVE` overshoot impulse on the upper spine, radians.
 var overshoot := 0.0
 ## 0–1.35 additive recoil whip strength (see `AnimationFeel.recoil_strength`).
@@ -48,6 +52,12 @@ var _shoulder_l := -1
 var _shoulder_r := -1
 var _arm_l := -1
 var _arm_r := -1
+var _forearm_l := -1
+var _forearm_r := -1
+## Bones currently carrying the smear stretch, so exactly one frame is ever scaled and the
+## pose is restored the moment the smear ends (no drifting bone scale, no per-frame arrays).
+var _smeared_a := -1
+var _smeared_b := -1
 var _applied_frame := -1
 var _cached := false
 ## `SkeletonModifier3D` exposes its skeleton through `get_skeleton()`, not a property.
@@ -76,6 +86,8 @@ func cache_bones(skel: Skeleton3D) -> void:
 	_shoulder_r = _find(skel, "RightShoulder")
 	_arm_l = _find(skel, "LeftArm")
 	_arm_r = _find(skel, "RightArm")
+	_forearm_l = _find(skel, "LeftForeArm")
+	_forearm_r = _find(skel, "RightForeArm")
 	_cached = true
 
 
@@ -146,6 +158,31 @@ func apply_now(force: bool = false) -> void:
 		_add(_spine2, Vector3.RIGHT, overshoot)
 		_add(_shoulder_r if face > 0.0 else _shoulder_l, Vector3.RIGHT, overshoot * 0.6)
 
+	# --- 3b. Arc enforcement: the swing travels a curve, not a straight line ---------
+	# The striking shoulder leads outward, the upper arm follows and the forearm lags, so the
+	# limb traces an arc through the swing. On the whip frames the arc pushes a hair PAST the
+	# target (the lateral half of the overshoot), which is what makes the contact snap.
+	if not is_zero_approx(arc_bias):
+		var lead_shoulder := _shoulder_r if face > 0.0 else _shoulder_l
+		var lead_arm := _arm_r if face > 0.0 else _arm_l
+		var lead_forearm := _forearm_r if face > 0.0 else _forearm_l
+		_add(lead_shoulder, Vector3.UP, arc_bias * face)
+		_add(lead_arm, Vector3.UP, arc_bias * 0.55 * face)
+		_add(lead_forearm, Vector3.BACK, arc_bias * 0.7)
+	# One-frame limb smear: bone scale along the limb's own length, restored on the very
+	# next applied frame. Bone scale only — no extra geometry, no re-skin, no mesh rebuild.
+	_clear_smear()
+	if smear > 0.0:
+		var stretch := AnimationFeel.smear_scale(smear)
+		var smear_arm := _arm_r if face > 0.0 else _arm_l
+		var smear_forearm := _forearm_r if face > 0.0 else _forearm_l
+		if smear_arm >= 0:
+			_skel.set_bone_pose_scale(smear_arm, stretch)
+			_smeared_a = smear_arm
+		if smear_forearm >= 0:
+			_skel.set_bone_pose_scale(smear_forearm, stretch)
+			_smeared_b = smear_forearm
+
 	# --- 4. Alive hitstop -----------------------------------------------------------------
 	if not is_zero_approx(tension):
 		_add(_spine2, Vector3.UP, tension)
@@ -165,6 +202,26 @@ func apply_now(force: bool = false) -> void:
 		_add(_head, Vector3.UP, 0.045 * whip * face)
 
 
+## Undo any stretch left by the previous frame's smear. Called at the top of every applied
+## frame, so the smear is one frame long by construction and a bone can never keep a scale.
+func _clear_smear() -> void:
+	if _smeared_a >= 0:
+		_skel.set_bone_pose_scale(_smeared_a, Vector3.ONE)
+	if _smeared_b >= 0:
+		_skel.set_bone_pose_scale(_smeared_b, Vector3.ONE)
+	_smeared_a = -1
+	_smeared_b = -1
+
+
+## True while a smear stretch is applied, for the audit.
+func is_smeared() -> bool:
+	return _smeared_a >= 0 or _smeared_b >= 0
+
+
+func smeared_bones() -> Array:
+	return [_smeared_a, _smeared_b]
+
+
 ## Additive rotation on one cached bone. `index < 0` is a no-op, so a future upload that
 ## renames a bone loses the layer's nuance instead of erroring.
 func _add(index: int, axis: Vector3, angle: float) -> void:
@@ -180,6 +237,10 @@ func reset() -> void:
 	engage_twist = 0.0
 	negative_space = 0.0
 	eye_line_yaw = 0.0
+	arc_bias = 0.0
+	smear = 0.0
+	if _skel != null:
+		_clear_smear()
 	overshoot = 0.0
 	recoil_strength = 0.0
 	recoil_curve = 0.0

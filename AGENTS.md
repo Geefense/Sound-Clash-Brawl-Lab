@@ -4728,3 +4728,35 @@ checks pass: lattice 36 / 21 / 52 steps for the three light clips, **7–10 of 1
 
 Suites on this commit: feel audit **151** (was 142), facing **94**, live match **167**, roster **425**
 — all 0 FAIL.
+
+### COMMIT 3 — Non-linear attack curve: weight-scaled coil, arc enforcement, 1-frame smear
+
+Three refinements to the existing curve. **The curve still only remaps clip time**: `ACTIVE` starts and
+ends on the combat ticks exactly as before, `_attack_clip_progress()` reads `state_frame` and writes
+nothing, and no damage/startup/active/recovery value moved.
+
+- **Coil depth scales with the move's visual weight.** `AnimationFeel.move_weight(damage)` (0.35–1.0,
+  clamped) and `coil_end(weight)` lerp the anticipation from **0.42 (a jab)** to **0.30 (a full-weight
+  heavy)**, and `startup_progress` / `active_progress` take that coil value. Measured on the real
+  bodies: jab **0.356**, upper box **0.300** (Feedback) / **0.364 → 0.300** (L!ckshot). Reading
+  `damage` is a read-only presentation input — the value belongs to `FighterRoster` and is never
+  written back. `last_attack_weight` / `last_coil_end` expose it for the audit and the HUD.
+- **Arc enforcement.** `AnimationFeel.arc_bias(frame, weight)` returns the signed lateral bias of the
+  swing — **0.210 rad on the whip frame at full weight** — from `ARC_SWING 0.16` plus a
+  `ARC_LATERAL_OVERSHOOT 0.05` push past the target on the whip frames, ramped `1.00 / 0.55 / 0.20 / 0`
+  across the settle and scaled by the facing sign. `FightBodyModifier3D` applies it as a yaw on the
+  striking shoulder, a smaller yaw on the upper arm and a backward rotation on the forearm, so the
+  limb **traces an arc** instead of translating along a straight line to the target — and the contact
+  frame leans a hair beyond its own arc. The audit asserts ≥2 bones actually rotate.
+- **One-frame skinned limb smear.** On `ACTIVE` frame 1 only, the striking upper arm and forearm get a
+  **volume-preserving bone stretch** (`smear_scale(1.0)` = `(0.937, 1.140, 0.937)`), and the very next
+  applied frame restores `Vector3.ONE`. Bone scale only: nothing is re-skinned, re-exported or turned
+  into extra geometry, and the smear never touches the hips. `_clear_smear()` runs at the top of every
+  applied frame with two cached indices, so the restore cannot be missed even if the state changes
+  mid-frame — no per-frame arrays, no allocation.
+
+**Finding while asserting it:** the hips carry a legitimate non-unit pose scale on the Tripo uploads
+(their 0.01 unit scale), so "the hips scale is 1" was the wrong contract and failed on two of three
+fighters. The check now measures that the layer **does not change** the hips scale.
+
+Suites: feel audit **172** (was 151), facing **94**, live match **167**, roster **425** — all 0 FAIL.

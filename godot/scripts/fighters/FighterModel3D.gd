@@ -49,6 +49,9 @@ const PARRY_RIM := Color(1.0, 0.86, 0.24, 1.0)
 ## Patois value is touched by any of it.
 const FEEL_FOOT_BONES := ["LeftToeBase", "RightToeBase", "LeftToe_End", "RightToe_End",
 	"LeftFoot", "RightFoot"]
+## The two hands: what a strike reaches with. Kept apart from `FEEL_IMPACT_PROBES` (which
+## includes the feet for the pinning/sole work) so a walk step can never win the peak.
+const FEEL_STRIKE_PROBES := ["RightHand", "LeftHand"]
 const FEEL_IMPACT_PROBES := ["RightHand", "LeftHand", "RightToeBase", "LeftToeBase",
 	"RightFoot", "LeftFoot"]
 const FEEL_IMPACT_SAMPLES := 24
@@ -97,7 +100,9 @@ var last_coil_end: float = AnimationFeel.COIL_END
 var stepped_hold_ticks: int = 0
 
 var _foot_bones: Array[int] = []
-var _prop_base_scale: Array[Vector3] = []
+var _prop_rest_rel: Array[Basis] = []
+var _measure_pending := false
+var _measure_frame := 0
 var _squash_scale := Vector3.ONE
 var _squash_velocity := Vector3.ZERO
 var _shake_ticks := 0
@@ -337,6 +342,12 @@ func bind(target: BaseFighter, key: StringName) -> bool:
 	facing_sign = target.facing if target != null else 1
 	_last_facing = facing_sign
 	set_facing(facing_sign)
+	# The AnimationPlayer only has its tracks bound after it has processed a frame, so a peak
+	# walk taken during `bind()` measures the REST pose (every sample identical, so the impact
+	# time falls back to the clamp floor). Measured: Feedback's upper box read 0.50 at bind and
+	# 0.42 once two frames had been processed. Re-measure then, once.
+	_measure_frame = 0
+	_measure_pending = true
 	return true
 
 
@@ -692,6 +703,12 @@ func _bone_suffix(suffix: String) -> int:
 func _process(delta: float) -> void:
 	if fighter == null or not is_instance_valid(fighter):
 		return
+	if _measure_pending:
+		_measure_frame += 1
+		if _measure_frame >= 2:
+			_measure_pending = false
+			_measure_impact_times()
+			_measure_recoil_extreme()
 	_clock += delta
 	_apply_facing()
 	_animate_pose(delta)
@@ -1230,9 +1247,19 @@ func _skinned_floor(use_rest: bool, bind_mapped: bool = true) -> float:
 
 
 func _cache_prop_scales() -> void:
-	_prop_base_scale.clear()
+	_prop_rest_rel.clear()
 	for prop in hand_props:
-		_prop_base_scale.append(prop.scale if prop != null else Vector3.ONE)
+		if prop == null or not is_instance_valid(prop):
+			_prop_rest_rel.append(Basis.IDENTITY)
+			continue
+		var parent := prop.get_parent() as Node3D
+		if parent == null:
+			_prop_rest_rel.append(prop.basis)
+			continue
+		# The prop's authored world basis, expressed in the hand's own rotation frame, so the
+		# isolation can put it back exactly while letting the hand keep turning the mic.
+		var hand_rot := parent.global_transform.basis.orthonormalized()
+		_prop_rest_rel.append(hand_rot.inverse() * prop.global_transform.basis)
 
 
 ## Measure each attack clip's true peak hand/foot reach. The combat phase, not the clip's
@@ -1241,6 +1268,12 @@ func _measure_impact_times() -> void:
 	impact_times.clear()
 	if animation == null or skeleton == null or clips.is_empty():
 		return
+	# Measure the CLIP, not whatever additive overlay happens to be engaged: the body modifier
+	# rotates the arms, and a stale recoil would move the measured peak between two runs.
+	var mod_was_active := false
+	if body_modifier != null:
+		mod_was_active = body_modifier.active
+		body_modifier.active = false
 	var saved := String(animation.current_animation)
 	for role in [&"light", &"strong", &"tump", &"upper_box", &"special", &"kick"]:
 		if not clips.has(role):
@@ -1252,6 +1285,8 @@ func _measure_impact_times() -> void:
 		if anim == null or anim.length <= 0.0:
 			continue
 		impact_times[clip_name] = _measure_clip_peak(anim, clip_name)
+	if body_modifier != null:
+		body_modifier.active = mod_was_active
 	if saved != "":
 		animation.play(saved, 0.0)
 
@@ -1308,34 +1343,82 @@ func _measure_recoil_extreme() -> void:
 	recoil_extreme = clampf(best_t, 0.05, 0.85)
 
 
-## Walk the clip and take the sampled time with the largest horizontal hand/foot
-## extension from the hips — the frame a strike actually reaches at.
-func _measure_clip_peak(anim: Animation, clip_name: String) -> float:
+## The striking hand's horizontal distance from the pelvis, in world metres. Measured in WORLD
+## space because the three uploads author their rigs at wildly different scales (Feedback's
+## skeleton is ~1 cm and normalised 155x at the root, the Tripo rigs are in centimetres at
+## 0.0016), so a bone-space number is not comparable between fighters — and the world number
+## is the reach the player actually sees. Hands only: a foot swinging past the hips is not a
+## strike, and including the feet is what made the old peak land on a walk step.
+func hand_reach() -> float:
+	if skeleton == null:
+		return -1.0
 	var hips := _bone_suffix("Hips")
 	if hips < 0:
-		return AnimationFeel.COIL_END
-	var probes: Array[int] = []
-	for suffix in FEEL_IMPACT_PROBES:
+		return -1.0
+	var hip: Vector3 = (skeleton.global_transform * skeleton.get_bone_global_pose(hips)).origin
+	var best := -1.0
+	for suffix in FEEL_STRIKE_PROBES:
 		var index := _bone_suffix(suffix)
-		if index >= 0 and not probes.has(index):
-			probes.append(index)
-	if probes.is_empty():
+		if index < 0:
+			continue
+		var p: Vector3 = (skeleton.global_transform * skeleton.get_bone_global_pose(index)).origin - hip
+		best = maxf(best, Vector2(p.x, p.z).length())
+	return best
+
+
+## Put every bone back on its rest transform. Measured against this, a clip's reach is the
+## clip's own reach: nothing left over from a stance, a recoil or a smear can move the peak
+## between two measurements of the same table.
+func reset_skeleton_to_rest() -> void:
+	if skeleton == null:
+		return
+	for i in skeleton.get_bone_count():
+		var rest := skeleton.get_bone_rest(i)
+		skeleton.set_bone_pose_position(i, rest.origin)
+		skeleton.set_bone_pose_rotation(i, rest.basis.get_rotation_quaternion())
+		skeleton.set_bone_pose_scale(i, rest.basis.get_scale())
+
+
+## Walk the clip and take the sampled time where the striking hand is furthest from the pelvis
+## — the frame the strike actually reaches at.
+func _measure_clip_peak(_anim: Animation, clip_name: String) -> float:
+	if skeleton == null or _bone_suffix("Hips") < 0:
 		return AnimationFeel.COIL_END
+	var measured := false
+	for suffix in FEEL_STRIKE_PROBES:
+		if _bone_suffix(suffix) >= 0:
+			measured = true
+			break
+	if not measured:
+		return AnimationFeel.COIL_END
+	reset_skeleton_to_rest()
 	animation.play(clip_name, 0.0)
 	animation.seek(0.0, true)
+	skeleton.force_update_all_bone_transforms()
+	var anim := animation.get_animation(clip_name)
+	if anim == null:
+		return AnimationFeel.COIL_END
 	var best := -1.0
 	var best_t := AnimationFeel.COIL_END
+	# Only the legal contact window counts. A well-drawn wind-up often carries the hand further
+	# from the pelvis than the punch does (the arm swings out and back), so taking the clip-wide
+	# maximum and clamping it to the window edge would place contact on a pose that is LESS
+	# extended than the one available inside the window.
 	for s in range(1, FEEL_IMPACT_SAMPLES):
 		var t := float(s) / float(FEEL_IMPACT_SAMPLES)
+		if t < AnimationFeel.IMPACT_MIN - 0.0001 or t > AnimationFeel.IMPACT_MAX + 0.0001:
+			continue
 		animation.seek(anim.length * t, true)
 		animation.advance(0.0)
-		var hip := skeleton.get_bone_global_pose(hips).origin
-		for index in probes:
-			var d := skeleton.get_bone_global_pose(index).origin - hip
-			var reach := Vector2(d.x, d.z).length()
-			if reach > best:
-				best = reach
-				best_t = t
+		# Pose computation is lazy: without this the read below would return the PREVIOUS
+		# sample's pose, which made the peak jump between runs.
+		skeleton.force_update_all_bone_transforms()
+		var reach := hand_reach()
+		if reach > best:
+			best = reach
+			best_t = t
+	if best < 0.0:
+		return AnimationFeel.COIL_END
 	return clampf(best_t, AnimationFeel.IMPACT_MIN, AnimationFeel.IMPACT_MAX)
 
 
@@ -1404,6 +1487,11 @@ func _is_holding_impact(state: int) -> bool:
 	if fighter == null:
 		return false
 	if state == BaseFighter.State.ATTACK_ACTIVE and fighter.state_frame >= AnimationFeel.WHIP_FRAMES:
+		return true
+	# The extended silhouette keeps the hold into the first frames of recovery: that is the pose
+	# the eye should linger on, and it is the only place variable stepping has room to read.
+	if state == BaseFighter.State.ATTACK_RECOVERY \
+			and fighter.state_frame <= AnimationFeel.RECOVERY_HOLD_FRAMES:
 		return true
 	return fighter._hitstop_frames > 0 and (state == BaseFighter.State.ATTACK_ACTIVE
 		or state == BaseFighter.State.HITSTUN)
@@ -1655,21 +1743,37 @@ func _apply_squash_pop(delta: float, state: int) -> void:
 ##     forearm — the hand is downstream of the forearm, so it would inherit the stretch.
 ## `BoneAttachment3D` carries both, and both are values this node already owns, so the
 ## cancellation is per-axis arithmetic with no scene-graph reads and no feedback loop.
+## A mic is a rigid object: the body may pop, stretch and smear, the prop must not change size
+## or shear. A local inverse scale is NOT enough for that, because the pop is applied ABOVE the
+## rotating hand, so even a perfect local inverse would still shear the prop (measured up to
+## 15 % on its long axis). Instead the prop's WORLD basis is rebuilt from the hand's own
+## ROTATION — the parent's basis orthonormalised, so no scale and no shear survives — times the
+## prop's rest orientation relative to that hand. The prop therefore follows the hand through
+## every take at exactly the size and shape it was authored, in every pop and smear.
 func _isolate_props() -> void:
 	if hand_props.is_empty():
 		return
-	var s := _squash_scale
-	var smear := body_modifier.last_smear_scale if body_modifier != null else Vector3.ONE
-	var inv := Vector3(
-		1.0 / maxf(s.x * smear.x, 0.001),
-		1.0 / maxf(s.y * smear.y, 0.001),
-		1.0 / maxf(s.z * smear.z, 0.001))
 	for i in hand_props.size():
 		var prop := hand_props[i]
-		if prop == null:
+		if prop == null or not is_instance_valid(prop):
 			continue
-		var base: Vector3 = _prop_base_scale[i] if i < _prop_base_scale.size() else Vector3.ONE
-		prop.scale = Vector3(base.x * inv.x, base.y * inv.y, base.z * inv.z)
+		var parent := prop.get_parent() as Node3D
+		if parent == null:
+			continue
+		var rel: Basis = _prop_rest_rel[i] if i < _prop_rest_rel.size() else Basis.IDENTITY
+		var hand_rot := parent.global_transform.basis.orthonormalized()
+		prop.global_transform = Transform3D(hand_rot * rel, prop.global_transform.origin)
+
+
+## World-space scale of one hand attachment. Used by the audit to prove the isolation is
+## exact: this value must not move while the body squashes and the arm smears.
+func prop_world_scale(i: int) -> Vector3:
+	if i < 0 or i >= hand_props.size():
+		return Vector3.ONE
+	var prop := hand_props[i]
+	if prop == null or not is_instance_valid(prop):
+		return Vector3.ONE
+	return prop.global_transform.basis.get_scale()
 
 
 ## 4. Classic arcade defender X-shake while the contact is frozen. Presentation only: the

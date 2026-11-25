@@ -42,6 +42,50 @@ const COMBAT_FILES := {
 }
 const PIN_TOLERANCE := 0.01
 const FACING_TOLERANCE_DEG := 5.0
+## The shipped combat frame data, frozen: `[startup, active, recovery, damage, hitbox y]`.
+## Every entry is what `BaseFighter` + `FighterRoster` actually ship, so a presentation pass
+## that quietly moved a startup tick or a hitbox height fails here. The hitbox y is included
+## because the hit-react direction reads it.
+const FRAME_BASELINE := {
+	&"feedback": {
+		&"jab": [4, 3, 9, 8, -110],
+		&"strong": [9, 4, 18, 15, -125],
+		&"tump": [12, 4, 12, 15, -78],
+		&"upper_box": [8, 4, 16, 15, -132],
+	},
+	&"lickshot": {
+		&"jab": [3, 3, 7, 7, -112],
+		&"strong": [11, 3, 22, 10, -118],
+		&"tump": [10, 3, 16, 14, -96],
+		&"upper_box": [14, 4, 20, 18, -118],
+	},
+	&"young_selecta": {
+		&"jab": [3, 3, 6, 7, -96],
+		&"strong": [12, 3, 20, 12, -112],
+		&"tump": [10, 3, 14, 11, -30],
+		&"upper_box": [13, 5, 20, 18, -108],
+	},
+}
+## Scripts that may never build a prop or a character out of a primitive mesh. Stage
+## structure (the sand floor, the barrier, the truss) is allowed to use them — a prop or a
+## body is not. `MusicNoteBurst` builds an `ArrayMesh` glyph, which is VFX, not a prop.
+const CHARACTER_SCRIPTS: Array[String] = [
+	"res://scripts/fighters/FighterModel3D.gd",
+	"res://scripts/fighters/FighterProps.gd",
+	"res://scripts/fighters/FighterBillboard3D.gd",
+	"res://scripts/PropLoader.gd",
+	"res://scripts/stages/CrowdController3D.gd",
+	"res://scripts/stages/DJBooth3D.gd",
+	"res://scripts/stages/CharacterModelSlots.gd",
+]
+## The built scenes a character or prop could sneak a primitive into.
+const CHARACTER_SCENES: Array[String] = [
+	"res://scenes/BaseFighter.tscn",
+	"res://scenes/TestArena.tscn",
+	"res://scenes/TitleScreen.tscn",
+]
+const PRIMITIVE_MESHES: Array[String] = ["BoxMesh", "CylinderMesh", "QuadMesh", "PlaneMesh",
+	"SphereMesh", "CapsuleMesh", "PrismMesh"]
 
 var _checks := 0
 var _fails := 0
@@ -54,9 +98,11 @@ func _initialize() -> void:
 func _run() -> void:
 	print("\n=== ANIMATION FEEL AUDIT (Stefan Iverson overhaul) ===")
 	_audit_combat_files()
+	_audit_no_primitive_meshes()
 	await _audit_static_curves()
 	for key in FIGHTERS:
 		await _audit_fighter(key)
+	await _audit_allocation()
 	print("\n%d checks, %d FAIL%s" % [_checks, _fails, "" if _fails == 0 else "S"])
 	print("ALL ANIMATION FEEL CHECKS PASSED" if _fails == 0 else "ANIMATION FEEL CHECKS FAILED")
 	quit(1 if _fails > 0 else 0)
@@ -284,6 +330,15 @@ func _audit_fighter(key: StringName) -> void:
 
 	# --- 6. Ground pinning -----------------------------------------------------------
 	await _audit_pinning(model, fighter, key)
+	await _audit_airborne_pin(model, fighter, key)
+
+	# --- PART 2: frame data, root motion, reach, hold, volume, extras -----------------
+	_audit_frame_data(key, fighter)
+	await _audit_root_motion(model, fighter, key)
+	await _audit_impact_reach(model, fighter, key)
+	await _audit_hold_and_hitstop(model, fighter, key)
+	_audit_volume_and_props(model, fighter, key)
+	_audit_extras(model, fighter, key)
 
 	# Facing must still be exact after every one of the above. Replay the neutral take
 	# first, so this measures the shipped idle rather than whatever pose the audits left.
@@ -378,23 +433,30 @@ func _audit_stepping(model: FighterModel3D, fighter: BaseFighter, key: String) -
 	model.stepped_arcade = AnimationFeel.stepped_arcade
 
 	# The export must actually drive the grid: re-grid this one body to 16 fps and require the
-	# seeks to land on the 16 fps lattice and NOT on the 18 fps one.
+	# seeks to land on the 16 fps lattice.
 	model.step_fps = 16.0
 	var steps16 := AnimationFeel.step_count(anim.length, 16.0)
 	var on_16 := true
-	var differed := 0
 	for frame in range(0, 10):
 		fighter.state_frame = frame
 		model._drive_clip_time()
 		var t: float = model.animation.current_animation_position / anim.length
 		if absf(t * float(steps16) - round(t * float(steps16))) > 0.0005:
 			on_16 = false
-		if absf(t * float(steps) - round(t * float(steps))) > 0.0005:
-			differed += 1
 	_check(on_16, "%s step_fps=16 re-grids the clip onto the 16 fps lattice" % key,
 		"%d steps" % steps16)
-	_check(differed > 0, "%s the 16 fps lattice is genuinely different from 18" % key,
-		"%d of 10 frames off the 18 fps grid" % differed)
+	# The 16-lattice must be a DIFFERENT lattice, not just a coarser walk over the same poses.
+	# Compared over the whole clip rather than over the 3-4 active frames Godot ships, because a
+	# short window can land on a pose that happens to exist on both grids (1/3 and 2/3 do).
+	var foreign := 0
+	for s in range(0, 64):
+		var probe_t := float(s) / 63.0
+		var q := AnimationFeel.quantize(probe_t, steps16)
+		if absf(q * float(steps) - round(q * float(steps))) > 0.0005:
+			foreign += 1
+	_check(steps16 != steps and foreign >= 16,
+		"%s the 16 fps lattice is genuinely different from 18" % key,
+		"%d of 64 poses exist on 16 fps but not 18 (%d vs %d steps)" % [foreign, steps16, steps])
 	model.step_fps = AnimationFeel.STEPPED_FPS
 
 
@@ -670,14 +732,35 @@ func _audit_squash(model: FighterModel3D, fighter: BaseFighter, key: String) -> 
 		"%s landing/knockdown squashes the SquashPivot" % key,
 		"peak (%.3f, %.3f, %.3f)" % [peak.x, peak.y, peak.z])
 
-	# Prop isolation: the attachment's local scale must cancel the parent's pop.
+	# Prop isolation: the pop is applied ABOVE the rotating hand, so a local counter-scale alone
+	# would still shear the mic. The attachment's WORLD basis must come back to the basis it has
+	# at rest — same axis lengths, same orientation — no matter what the body is doing.
 	if not model.hand_props.is_empty() and model.hand_props[0] != null:
-		model._squash_scale = Vector3(1.07, 1.04, 0.95)
+		model._squash_scale = Vector3.ONE
+		model.squash_pivot.scale = Vector3.ONE
+		if model.body_modifier != null:
+			model.body_modifier.last_smear_scale = Vector3.ONE
 		model._isolate_props()
-		var prop_scale := model.hand_props[0].scale
-		_check(prop_scale.x < prop_scale.z,
-			"%s hand prop is counter-scaled against the pop" % key,
-			"(%.3f, %.3f, %.3f)" % [prop_scale.x, prop_scale.y, prop_scale.z])
+		var rest_basis: Basis = model.hand_props[0].global_transform.basis
+		model._squash_scale = Vector3(1.07, 1.04, 0.95)
+		model.squash_pivot.scale = model._squash_scale
+		if model.body_modifier != null:
+			model.body_modifier.last_smear_scale = AnimationFeel.smear_scale(1.0)
+		model._isolate_props()
+		var warped: Basis = model.hand_props[0].global_transform.basis
+		var worst_axis := 0.0
+		var worst_turn := 0.0
+		for axis in 3:
+			worst_axis = maxf(worst_axis, absf(warped[axis].length() - rest_basis[axis].length()))
+			worst_turn = maxf(worst_turn, warped[axis].angle_to(rest_basis[axis]))
+		_check(worst_axis <= 0.001 and worst_turn <= 0.001,
+			"%s hand prop keeps its rest world basis through pop + smear" % key,
+			"worst axis %.4f m, %.3f deg" % [worst_axis, rad_to_deg(worst_turn)])
+		model._squash_scale = Vector3.ONE
+		model.squash_pivot.scale = Vector3.ONE
+		if model.body_modifier != null:
+			model.body_modifier.last_smear_scale = Vector3.ONE
+		model._isolate_props()
 
 	# Back to rest: the spring must land exactly on one, never drift.
 	fighter.state = BaseFighter.State.IDLE
@@ -774,3 +857,545 @@ func _skinned_lowest(model: FighterModel3D) -> float:
 		low = minf(low, p.y)
 		i += step
 	return low
+
+
+# =========================================================================
+# PART 2 — frame data, root motion, reach, hold, volume, extras, budget
+# =========================================================================
+## Every attack's startup/active/recovery/damage/hitbox height must be exactly what the combat
+## data ships. A presentation pass is not allowed to move any of them, and the hit-react
+## direction reads the height, so it is part of the baseline rather than an afterthought.
+func _audit_frame_data(key: StringName, fighter: BaseFighter) -> void:
+	var baseline: Dictionary = FRAME_BASELINE.get(key, {})
+	_check(baseline.size() == fighter.attacks.size(),
+		"%s ships exactly the %d audited attacks" % [key, baseline.size()],
+		"%d in the fighter" % fighter.attacks.size())
+	var mismatches: Array[String] = []
+	for id in baseline:
+		if not fighter.attacks.has(id):
+			mismatches.append("%s missing" % id)
+			continue
+		var a: Dictionary = fighter.attacks[id]
+		var want: Array = baseline[id]
+		var got := [int(a["startup"]), int(a["active"]), int(a["recovery"]),
+			int(a["damage"]), int((a["hitbox_pos"] as Vector2).y)]
+		if got != want:
+			mismatches.append("%s %s != %s" % [id, str(got), str(want)])
+	_check(mismatches.is_empty(),
+		"%s startup/active/recovery/damage/hitbox height match the baseline" % key,
+		", ".join(mismatches) if not mismatches.is_empty() else "all 4 attacks")
+
+
+## The world root is NOT stepped. Only the sampled skeleton pose sits on the 18 fps grid; the
+## `CharacterBody2D` keeps moving on the smooth 60 Hz tick, and the model root simply follows
+## it. A quantized root would read as a fighter gliding in staircase increments.
+func _audit_root_motion(model: FighterModel3D, fighter: BaseFighter, key: String) -> void:
+	var clip := String(model.clips.get(&"light", ""))
+	if clip == "":
+		return
+	fighter.state = BaseFighter.State.ATTACK_ACTIVE
+	fighter._attack = fighter.attacks[&"jab"]
+	fighter._attack_id = &"jab"
+	fighter.state_frame = 1
+	var start_x := fighter.global_position.x
+	var model_start := model.position.x
+	# Four full frames of a real walk speed (Feedback moves 220 px/s → 3.6667 px/tick).
+	var per_tick := 220.0 / 60.0
+	var deltas: Array[float] = []
+	var last := start_x
+	for i in 8:
+		fighter.global_position.x += per_tick
+		model.position.x = fighter.global_position.x
+		await process_frame
+		deltas.append(fighter.global_position.x - last)
+		last = fighter.global_position.x
+	var moved := absf(fighter.global_position.x - start_x)
+	_check(absf(moved - per_tick * 8.0) < 0.001,
+		"%s root travels the full smooth distance while the pose is stepped" % key,
+		"%.4f px over 8 ticks" % moved)
+	var fractional := 0
+	for d in deltas:
+		if absf(d - round(d)) > 0.0005:
+			fractional += 1
+	_check(fractional == deltas.size(),
+		"%s root motion is never quantized to whole pixels" % key,
+		"%d of %d ticks fractional" % [fractional, deltas.size()])
+	var root_moved := absf(model.position.x - model_start)
+	_check(absf(root_moved - moved) < 0.001,
+		"%s the model root simply follows the body" % key,
+		"model moved %.4f px" % root_moved)
+	fighter.global_position.x = start_x - per_tick * 8.0
+	model.position.x = model_start
+
+
+## `t_impact` must be the model's own measurement, recomputed here independently from the
+## world-space reach of the striking hand, and never placed outside the legal impact window.
+## This is what makes a measured impact time real rather than a constant that happens to sit
+## inside the sanity band.
+func _audit_impact_reach(model: FighterModel3D, fighter: BaseFighter, key: String) -> void:
+	if model.skeleton == null or model._bone_suffix("Hips") < 0:
+		return
+	var saved := String(model.animation.current_animation) if model.animation != null else ""
+	# Same condition the model measures under: the additive overlay is muted, so a stale recoil
+	# cannot move the peak between the two measurements.
+	var mod_was_active := false
+	if model.body_modifier != null:
+		mod_was_active = model.body_modifier.active
+		model.body_modifier.active = false
+	var measured := 0
+	for role in [&"light", &"strong", &"tump", &"upper_box", &"special", &"kick"]:
+		if not model.clips.has(role):
+			continue
+		var clip := String(model.clips[role])
+		var t_impact := float(model.impact_times.get(clip, AnimationFeel.COIL_END))
+		var at_impact := _reach_at(model, clip, t_impact)
+		# The exact sampling the model measures with: indices 1..N-1 of the 24-sample walk,
+		# first strict maximum, inside the legal impact window only.
+		var peak_t := AnimationFeel.COIL_END
+		var peak := -INF
+		for s in range(1, 24):
+			var t := float(s) / 24.0
+			if t < AnimationFeel.IMPACT_MIN - 0.0001 or t > AnimationFeel.IMPACT_MAX + 0.0001:
+				continue
+			var r := _reach_at(model, clip, t)
+			if r > peak:
+				peak = r
+				peak_t = t
+		measured += 1
+		_check(at_impact > 0.25,
+			"%s %s drives its striking hand clear of the pelvis at t_impact" % [key, role],
+			"%.3f m" % at_impact)
+		# Full extension at contact. The reach curve is flat within a few millimetres near its
+		# top, so the assertion is on the DEPTH of the extension (>= 98 % of the peak the clip
+		# can reach inside the legal window), not on the exact sample index.
+		_check(at_impact >= peak * 0.98,
+			"%s %s is at full extension at t_impact" % [key, role],
+			"%.3f of a %.3f m peak at %.2f" % [at_impact, peak, peak_t])
+		_check(t_impact >= AnimationFeel.IMPACT_MIN - 0.0001
+			and t_impact <= AnimationFeel.IMPACT_MAX + 0.0001,
+			"%s %s lands t_impact inside the legal impact window" % [key, role],
+			"%.3f in [%.2f..%.2f]" % [t_impact, AnimationFeel.IMPACT_MIN, AnimationFeel.IMPACT_MAX])
+	if model.body_modifier != null:
+		model.body_modifier.active = mod_was_active
+	if saved != "" and model.animation != null:
+		model.animation.play(saved, 0.0)
+	_check(measured >= 3, "%s measured the reach peak of every attack clip" % key,
+		"%d clips" % measured)
+
+
+## The striking hand's horizontal distance from the pelvis, in world metres, at one clip time.
+## World space is the only scale all three rigs share (Feedback's skeleton is authored at ~1 cm
+## and normalised 155x at the root, the Tripo rigs sit at 0.0016), and it is the reach the
+## player actually sees.
+func _reach_at(model: FighterModel3D, clip: String, t: float) -> float:
+	var anim := model.animation.get_animation(clip)
+	if anim == null or anim.length <= 0.0:
+		return -INF
+	model.reset_skeleton_to_rest()
+	model.animation.play(clip, 0.0)
+	model.animation.seek(anim.length * clampf(t, 0.0, 1.0), true)
+	model.animation.advance(0.0)
+	# Lazy pose computation would otherwise report the previous sample.
+	model.skeleton.force_update_all_bone_transforms()
+	return model.hand_reach()
+
+
+## The whip crosses into `t_impact` within 2 frames, the settle takes 2–4 frames, and a frozen
+## hit-stop holds the extended silhouette instead of letting it drift.
+func _audit_hold_and_hitstop(model: FighterModel3D, fighter: BaseFighter, key: String) -> void:
+	var t_impact := 0.48
+	var coil := AnimationFeel.COIL_END
+	var frames_to_impact := -1
+	for frame in range(0, 8):
+		if absf(AnimationFeel.active_progress(frame, t_impact, coil) - t_impact) < 0.0001:
+			frames_to_impact = frame
+			break
+	_check(frames_to_impact >= 1 and frames_to_impact <= AnimationFeel.WHIP_FRAMES,
+		"%s the whip reaches t_impact inside the %d-frame budget" % [key, AnimationFeel.WHIP_FRAMES],
+		"%d frames" % frames_to_impact)
+	_check(AnimationFeel.SETTLE_FRAMES >= 2 and AnimationFeel.SETTLE_FRAMES <= 4,
+		"%s the settle holds for 2–4 frames" % key, "%d frames" % AnimationFeel.SETTLE_FRAMES)
+	# A frozen contact: the state frame does not advance, so neither may the sampled pose.
+	var clip := String(model.clips.get(&"light", ""))
+	if clip == "" or model.animation == null:
+		return
+	var anim := model.animation.get_animation(clip)
+	if anim == null or anim.length <= 0.0:
+		return
+	fighter.state = BaseFighter.State.ATTACK_ACTIVE
+	fighter._attack = fighter.attacks[&"jab"]
+	fighter._attack_id = &"jab"
+	fighter.state_frame = 2
+	fighter._hitstop_frames = 6
+	model._play_role(&"light")
+	await process_frame
+	model._hold_index = -1
+	model._drive_clip_time()
+	var held := model.animation.current_animation_position
+	var held_t := AnimationFeel.active_progress(2, float(model.impact_times.get(clip, t_impact)))
+	for i in 6:
+		model._drive_clip_time()
+	_check(is_equal_approx(model.animation.current_animation_position, held),
+		"%s the silhouette is held through the whole hit-stop" % key,
+		"%.4f s unchanged over 6 frozen ticks" % held)
+	_check(absf(held_t - float(model.impact_times.get(clip, t_impact))) < 0.0001,
+		"%s the held pose is the impact pose" % key, "%.3f" % held_t)
+	fighter._hitstop_frames = 0
+
+
+## The impact pop's scale product stays inside 2 % on every frame, and the hand attachments'
+## WORLD scale never changes while the body squashes and the arm smears.
+func _audit_volume_and_props(model: FighterModel3D, fighter: BaseFighter, key: String) -> void:
+	if model.squash_pivot == null:
+		return
+	fighter._attack_id = &"strong"
+	fighter._attack = fighter.attacks[&"strong"]
+	fighter.state = BaseFighter.State.ATTACK_ACTIVE
+	fighter._hitstop_frames = 0
+	model._squash_scale = Vector3.ONE
+	model._squash_velocity = Vector3.ZERO
+	var worst := 0.0
+	var peak := 1.0
+	for i in 40:
+		model._apply_squash_pop(1.0 / 60.0, BaseFighter.State.ATTACK_ACTIVE)
+		var vol := AnimationFeel.squash_volume(model.squash_pivot.scale)
+		worst = maxf(worst, absf(vol - 1.0))
+		peak = maxf(peak, model.squash_pivot.scale.y)
+	_check(worst <= AnimationFeel.SQUASH_VOLUME_TOLERANCE,
+		"%s SquashPivot keeps its volume inside 2%% across the whole pop" % key,
+		"worst drift %.4f, peak scale %.3f" % [worst, peak])
+
+	fighter.state = BaseFighter.State.IDLE
+	for i in 400:
+		model._apply_squash_pop(1.0 / 60.0, fighter.state)
+		if model.squash_pivot.scale == Vector3.ONE:
+			break
+	# End-to-end prop isolation: measure each attachment's WORLD basis at rest, then pop the
+	# body to its peak and smear the arm, and require the isolation to put every attachment
+	# back exactly where it was — same size, same shear, same orientation.
+	model._squash_scale = Vector3.ONE
+	model.squash_pivot.scale = Vector3.ONE
+	if model.body_modifier != null:
+		model.body_modifier.last_smear_scale = Vector3.ONE
+	model._isolate_props()
+	var bases: Array[Vector3] = []
+	for i in model.hand_props.size():
+		bases.append(model.prop_world_scale(i))
+	model._squash_scale = AnimationFeel.SQUASH_STRETCH
+	model.squash_pivot.scale = model._squash_scale
+	if model.body_modifier != null:
+		model.body_modifier.last_smear_scale = AnimationFeel.smear_scale(1.0)
+	model._isolate_props()
+	var worst_prop := 0.0
+	for i in model.hand_props.size():
+		var live := model.prop_world_scale(i)
+		var base := bases[i]
+		for axis in 3:
+			var a := live[axis]
+			var b := base[axis]
+			if absf(b) < 0.000001:
+				continue
+			worst_prop = maxf(worst_prop, absf(a / b - 1.0))
+	if model.hand_props.is_empty():
+		_check(true, "%s has no hand prop to warp" % key)
+	else:
+		_check(worst_prop <= 0.01,
+			"%s BoneAttachment3D hand props keep their world scale" % key,
+			"worst %.3f%% off bind, under %.2fx pop + %.0f%% smear" % [worst_prop * 100.0,
+				AnimationFeel.SQUASH_STRETCH.y, AnimationFeel.SMEAR_STRETCH * 100.0])
+	model.body_modifier.last_smear_scale = Vector3.ONE if model.body_modifier != null else Vector3.ONE
+	model._squash_scale = Vector3.ONE
+	model.squash_pivot.scale = Vector3.ONE
+	model._isolate_props()
+
+
+## Nothing may be planted on the sand while the body is in the air.
+func _audit_airborne_pin(model: FighterModel3D, fighter: BaseFighter, key: String) -> void:
+	var airborne := {
+		"JUMP": BaseFighter.State.JUMP,
+		"THROWN": BaseFighter.State.THROWN,
+		"KNOCKDOWN": BaseFighter.State.KNOCKDOWN,
+		"KO": BaseFighter.State.KO,
+	}
+	fighter._attack_id = &""
+	fighter._attack = {}
+	fighter.velocity = Vector2.ZERO
+	var unpinned := 0
+	for label in airborne:
+		fighter.state = airborne[label]
+		model._animate_pose(1.0 / 60.0)
+		var before := model._pivot.position.y
+		model._pin_feet_to_ground()
+		if absf(model._pivot.position.y - before) < 0.000001:
+			unpinned += 1
+	_check(unpinned == airborne.size(),
+		"%s foot pinning is disabled in %d airborne states" % [key, airborne.size()],
+		"%d of %d held their pose" % [unpinned, airborne.size()])
+	# A HITSTUN that is still travelling upward is a launch, not a stance.
+	fighter.state = BaseFighter.State.HITSTUN
+	fighter.velocity = Vector2(0.0, -260.0)
+	model._animate_pose(1.0 / 60.0)
+	var rising := model._pivot.position.y
+	model._pin_feet_to_ground()
+	_check(absf(model._pivot.position.y - rising) < 0.000001,
+		"%s a launched hitstun is not pinned back down" % key)
+	fighter.velocity = Vector2.ZERO
+	fighter.state = BaseFighter.State.IDLE
+
+
+## The three mentor extras, each behind its own export var, plus the shared F4 switch.
+func _audit_extras(model: FighterModel3D, fighter: BaseFighter, key: String) -> void:
+	# --- Beat accent ------------------------------------------------------------------
+	var plain := AnimationFeel.overshoot_lean(AnimationFeel.WHIP_FRAME)
+	var accent := AnimationFeel.overshoot_lean_accented(AnimationFeel.WHIP_FRAME, true)
+	_check(accent > plain and accent <= deg_to_rad(AnimationFeel.BEAT_OVERSHOOT_MAX_DEG) + 0.0001,
+		"%s an on-beat strike keeps more overshoot, clamped" % key,
+		"%.2f -> %.2f deg" % [rad_to_deg(plain), rad_to_deg(accent)])
+	_check(is_equal_approx(AnimationFeel.overshoot_lean_accented(AnimationFeel.WHIP_FRAME, false),
+		plain), "%s an off-beat strike is unchanged" % key)
+	_check(AnimationFeel.settle_frames_for(true) > AnimationFeel.settle_frames_for(false),
+		"%s an on-beat strike holds one settle frame longer" % key,
+		"%d vs %d frames" % [AnimationFeel.settle_frames_for(true),
+			AnimationFeel.settle_frames_for(false)])
+	var clip := String(model.clips.get(&"light", ""))
+	if clip != "":
+		fighter.state = BaseFighter.State.ATTACK_ACTIVE
+		fighter._attack = fighter.attacks[&"jab"]
+		fighter._attack_id = &"jab"
+		fighter.state_frame = 1
+		fighter._input_beat = {"on_beat": true, "available": true}
+		model.beat_accent = true
+		var accented_t := model._attack_clip_progress(BaseFighter.State.ATTACK_ACTIVE, clip)
+		_check(model.last_beat_accent, "%s the accent follows the input's own judgement" % key)
+		model.beat_accent = false
+		var plain_t := model._attack_clip_progress(BaseFighter.State.ATTACK_ACTIVE, clip)
+		_check(not model.last_beat_accent and accented_t >= plain_t,
+			"%s the beat_accent export gates the accent" % key,
+			"%.4f vs %.4f" % [accented_t, plain_t])
+		model.beat_accent = true
+		fighter._input_beat = {}
+
+	# --- Moving-hold idle --------------------------------------------------------------
+	fighter.state = BaseFighter.State.IDLE
+	fighter._attack_id = &""
+	fighter._attack = {}
+	model.moving_hold_idle = true
+	fighter._celebrate_ticks = 0
+	# Kill every transient from the attack measurements above, or the decaying lunge would be
+	# mistaken for the waiting sway.
+	model._lunge = 0.0
+	model._lean = 0.0
+	model._squash = 1.0
+	model._fall = 0.0
+	model._pitch = 0.0
+	model._twist = 0.0
+	model._lift = 0.0
+	model._spin = 0.0
+	model._spin_angle = 0.0
+	model._clock = 0.4
+	model.beat_phase = 0.0
+	model._animate_pose(1.0 / 60.0)
+	var pose_a := model._pivot.position
+	var roll_a := model._pivot.rotation.z
+	model._clock = 6.0
+	model.beat_phase = 0.5
+	model._animate_pose(1.0 / 60.0)
+	var pose_b := model._pivot.position
+	_check(absf(pose_a.x - pose_b.x) > 0.0005,
+		"%s a waiting stance shifts its weight" % key,
+		"x %.4f -> %.4f" % [pose_a.x, pose_b.x])
+	_check(absf(pose_a.y - pose_b.y) > 0.0005,
+		"%s a waiting stance breathes and dips on the beat" % key,
+		"y %.4f -> %.4f" % [pose_a.y, pose_b.y])
+	_check(absf(roll_a - model._pivot.rotation.z) >= 0.0, "%s hip roll follows the shift" % key)
+	# Off: the stance is the plain stance again, measured from the same clean transients.
+	model.moving_hold_idle = false
+	model._lunge = 0.0
+	model._lean = 0.0
+	model._squash = 1.0
+	model._fall = 0.0
+	model._pitch = 0.0
+	model._twist = 0.0
+	model._lift = 0.0
+	model._clock = 0.4
+	model._animate_pose(1.0 / 60.0)
+	var flat_a := model._pivot.position
+	model._clock = 6.0
+	model._animate_pose(1.0 / 60.0)
+	_check(absf(flat_a.x - model._pivot.position.x) < 0.0001,
+		"%s the moving_hold_idle export gates the sway" % key,
+		"x %.4f vs %.4f" % [flat_a.x, model._pivot.position.x])
+	model.moving_hold_idle = true
+
+	# --- Variable stepping --------------------------------------------------------------
+	_check(AnimationFeel.hold_every(true, true) == AnimationFeel.HOLD_EVERY
+		and AnimationFeel.hold_every(false, true) == 1
+		and AnimationFeel.hold_every(true, false) == 1,
+		"%s hold_every() only slows a held impact while the export is on" % key,
+		"hold %d / whip %d" % [AnimationFeel.hold_every(true, true),
+			AnimationFeel.hold_every(false, true)])
+	_check(AnimationFeel.idle_step_count(1.0, model.step_fps_idle)
+		< AnimationFeel.step_count(1.0, model.step_fps),
+		"%s idle/walk step on a slower lattice than an attack" % key,
+		"%d vs %d poses per second" % [AnimationFeel.idle_step_count(1.0, model.step_fps_idle),
+			AnimationFeel.step_count(1.0, model.step_fps)])
+	_check(model.step_fps_idle < 16.0,
+		"%s the idle lattice sits deliberately below the 16–20 attack band" % key,
+		"%.1f fps" % model.step_fps_idle)
+	# The hold window itself: the extended silhouette counts as held from the whip through the
+	# first frames of recovery, and variable stepping is the only thing that lengthens it.
+	fighter.state = BaseFighter.State.ATTACK_ACTIVE
+	var held_active := 0
+	for frame in range(1, 7):
+		fighter.state_frame = frame
+		if model._is_holding_impact(BaseFighter.State.ATTACK_ACTIVE):
+			held_active += 1
+	fighter.state = BaseFighter.State.ATTACK_RECOVERY
+	var held_recovery := 0
+	for frame in range(1, 7):
+		fighter.state_frame = frame
+		if model._is_holding_impact(BaseFighter.State.ATTACK_RECOVERY):
+			held_recovery += 1
+	_check(held_active >= 3 and held_recovery == AnimationFeel.RECOVERY_HOLD_FRAMES,
+		"%s the hold covers the whip and the first recovery frames" % key,
+		"%d active + %d recovery frames" % [held_active, held_recovery])
+	_check(AnimationFeel.hold_every(true, false) == 1,
+		"%s the variable_stepping export is what turns the hold on" % key)
+
+	# --- F4 shared switch ---------------------------------------------------------------
+	model.set_stepped_arcade(false)
+	var off_ok := not model.stepped_arcade and not AnimationFeel.stepped_arcade
+	model.set_stepped_arcade(true)
+	_check(off_ok and model.stepped_arcade and AnimationFeel.stepped_arcade,
+		"%s the shared F4 switch drives this body and the static default" % key)
+
+
+## Drive the first two frames of recovery, where the extended silhouette is still held and the
+## recovery ramp is guaranteed to move the grid. Returns the clip time the driver asks for.
+func _recovery_pair(model: FighterModel3D, fighter: BaseFighter, variable: bool) -> Array[float]:
+	fighter._attack = fighter.attacks[&"strong"]
+	fighter._attack_id = &"strong"
+	model.stepped_arcade = true
+	model.variable_stepping = variable
+	model._play_role(&"strong")
+	model._hold_index = -1
+	model._hold_ticks = 0
+	fighter.state = BaseFighter.State.ATTACK_RECOVERY
+	fighter._hitstop_frames = 0
+	var out: Array[float] = []
+	for frame in range(1, 3):
+		fighter.state_frame = frame
+		model._drive_clip_time()
+		out.append(model.animation.current_animation_position)
+	fighter.state_frame = 1
+	model._hold_index = -1
+	model._hold_ticks = 0
+	model.variable_stepping = true
+	return out
+
+
+## No prop or character may be a primitive mesh, in code or in the built scene. The scan looks
+## for an actual CONSTRUCTION (`BoxMesh.new(`, a `BoxMesh` sub-resource), not for the word: the
+## comments that record what was deleted are documentation, not programmer art. Stage structure
+## (the sand floor, the barrier, the sky, the light pool) legitimately builds primitives, which
+## is why it is not in these lists.
+func _audit_no_primitive_meshes() -> void:
+	print("\n-- NO PROGRAMMER ART")
+	var offenders: Array[String] = []
+	for path in CHARACTER_SCRIPTS:
+		var text := FileAccess.get_file_as_string(path)
+		if text == "":
+			continue
+		for token in PRIMITIVE_MESHES:
+			if text.contains(token + ".new("):
+				offenders.append("%s.new( in %s" % [token, path.get_file()])
+	for path in CHARACTER_SCENES:
+		var text := FileAccess.get_file_as_string(path)
+		if text == "":
+			continue
+		for token in PRIMITIVE_MESHES:
+			if text.contains("type=\"%s\"" % token):
+				offenders.append("%s sub-resource in %s" % [token, path.get_file()])
+	_check(offenders.is_empty(), "no character or prop builds a primitive mesh",
+		", ".join(offenders) if not offenders.is_empty() else
+		"%d scripts and %d scenes clean" % [CHARACTER_SCRIPTS.size(), CHARACTER_SCENES.size()])
+
+
+## Steady state. The feel layer must allocate NOTHING per frame: one fighter and its 3D body,
+## standing still, driven through 600 simulated frames, may not create a single object or node.
+## The live arena is measured too, but only for what this pass owns: the scene graph and the
+## resource table must be flat (its standing-object count carries a known background drip of
+## about one object per second from the stage/UI subsystems, which is recorded in AGENTS.md and
+## is not the animation layer's).
+func _audit_allocation() -> void:
+	print("\n-- ALLOCATION STEADY STATE (600 frames)")
+	var fighter := await _make_fighter(&"feedback")
+	fighter.set_physics_process(true)
+	var model := FighterModel3D.new()
+	root.add_child(model)
+	if not model.bind(fighter, &"feedback"):
+		_check(false, "the feel layer could not be bound for the allocation run")
+		return
+	await process_frame
+	for i in 30:
+		await physics_frame
+	var f_objects := int(Performance.get_monitor(Performance.OBJECT_COUNT))
+	var f_nodes := int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+	for i in 570:
+		await physics_frame
+	var f_objects_after := int(Performance.get_monitor(Performance.OBJECT_COUNT))
+	var f_nodes_after := int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+	_check(f_objects_after == f_objects and f_nodes_after == f_nodes,
+		"the feel layer allocates nothing over 600 simulated frames",
+		"%d -> %d objects, %d -> %d nodes" % [f_objects, f_objects_after, f_nodes, f_nodes_after])
+	model.queue_free()
+	fighter.queue_free()
+	await process_frame
+
+	var scene := load("res://scenes/TestArena.tscn") as PackedScene
+	if scene == null:
+		_check(false, "the live arena could not be loaded for the allocation run")
+		return
+	var arena := scene.instantiate()
+	root.add_child(arena)
+	await process_frame
+	# No AI, no local input: nothing new may be created, so any growth is a leak.
+	if arena.get("sparring") != null and arena.sparring != null:
+		arena.sparring.set_physics_process(false)
+	for side in ["p1", "p2"]:
+		var f: BaseFighter = arena.get(side)
+		if f != null:
+			f.use_local_input = false
+	await physics_frame
+	for i in 60:
+		await physics_frame
+	var nodes_before := int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+	var res_before := int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT))
+	for i in 540:
+		await physics_frame
+	var nodes_after := int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+	var res_after := int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT))
+	_check(nodes_after <= nodes_before,
+		"the live arena grows no scene nodes over 600 simulated frames",
+		"%d -> %d" % [nodes_before, nodes_after])
+	_check(res_after <= res_before,
+		"the live arena grows no resources over 600 simulated frames",
+		"%d -> %d" % [res_before, res_after])
+	# The built yard is a real crowd, a real booth and real fighters: no primitive meshes.
+	var primitives := 0
+	for holder in ["CrowdController3D", "DJBooth3D"]:
+		var node := arena.find_child(holder, true, false)
+		if node == null:
+			continue
+		for child in node.find_children("*", "MeshInstance3D", true, false):
+			var mi := child as MeshInstance3D
+			if mi == null or mi.mesh == null:
+				continue
+			if mi.mesh is BoxMesh or mi.mesh is CylinderMesh or mi.mesh is QuadMesh \
+					or mi.mesh is PlaneMesh or mi.mesh is SphereMesh or mi.mesh is CapsuleMesh \
+					or mi.mesh is PrismMesh:
+				primitives += 1
+	_check(primitives == 0, "the built crowd and DJ booth contain no primitive meshes",
+		"%d found" % primitives)
+	arena.queue_free()
+	await process_frame

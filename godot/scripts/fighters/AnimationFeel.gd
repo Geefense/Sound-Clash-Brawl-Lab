@@ -54,6 +54,9 @@ const COIL_END := 0.35
 const WHIP_FRAMES := 2
 ## Frames after the whip where the extended silhouette settles and holds.
 const SETTLE_FRAMES := 3
+## Frames of RECOVERY that still count as "holding the impact" for variable stepping, so the
+## extended pose can actually linger once the active window has closed.
+const RECOVERY_HOLD_FRAMES := 3
 ## Extra clip travel the settle is allowed (the pose keeps driving a hair past contact).
 const SETTLE_DRIFT := 0.02
 ## The crisp overshoot impulse, in degrees, on the upper spine/shoulder.

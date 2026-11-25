@@ -227,6 +227,36 @@ const CAMERA_PUNCH_DAMPING := 13.5
 ## Ceiling on one punched frame, so a stacked counter + K.O. cannot swing the lens wide.
 const CAMERA_PUNCH_MAX := 1.6
 
+# --- Dynamic exchange yaw ---------------------------------------------------------------
+## Bug 3 (2026-11-25): the lens leans a few degrees toward whoever is driving the exchange.
+## Four degrees is the clamp: enough to feel the camera lean into a strike, far too little to
+## break the 2D side-on read or push the other fighter out of frame. The scalar is critically
+## damped (damping = 2·√stiffness), preallocated in the arena, and integrated every presented
+## frame, never stepped by combat.
+const CAMERA_YAW_MAX_DEG := 4.0
+const CAMERA_YAW_STIFFNESS := 52.0
+const CAMERA_YAW_DAMPING := 14.42
+
+# --- Strike silhouette ------------------------------------------------------------------
+## The striking fist is pushed a hair further along ±X on the ACTIVE frames. The amount is a
+## fraction of the move's own measured contact reach (never a hand-tuned pose constant), with
+## a floor so a short jab still reads and a ceiling so a heavy cannot stretch an arm.
+const REACH_BOOST_FRACTION := 0.10
+const REACH_BOOST_MIN := 0.012
+const REACH_BOOST_MAX := 0.070
+
+
+## Visual-only reach extension for a move whose measured contact reach is `reference_reach`.
+static func reach_boost(reference_reach: float) -> float:
+	return clampf(maxf(reference_reach, 0.0) * REACH_BOOST_FRACTION,
+		REACH_BOOST_MIN, REACH_BOOST_MAX)
+
+
+## The boost rides the same attack curve as the strike: zero at the coil (so ACTIVE does not
+## pop the fist on) and one at the measured impact, then held through the settle.
+static func reach_boost_curve(progress: float, coil: float = COIL_END) -> float:
+	return clampf((progress - coil) / maxf(1.0 - coil, 0.001), 0.0, 1.0)
+
 
 static func tension_amount(clock: float, hitstop: bool) -> float:
 	if not hitstop:

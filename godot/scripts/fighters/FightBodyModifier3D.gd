@@ -33,6 +33,10 @@ var eye_line_yaw := 0.0
 var chest_yaw := 0.0
 ## Lateral arc bias of the swing, radians (signed toward the fighting side).
 var arc_bias := 0.0
+## Visual reach extension of the striking fist along ±X, metres. Driven by
+## `AnimationFeel.reach_boost()` from the move's own measured contact reach on ACTIVE frames;
+## the hand is translated on top of the clip pose, so no hitbox, hurtbox or root ever moves.
+var reach_boost := 0.0
 ## 0–1 one-frame limb smear amount (see `AnimationFeel.smear_amount`).
 var smear := 0.0
 ## `ACTIVE` overshoot impulse on the upper spine, radians.
@@ -59,6 +63,8 @@ var _arm_l := -1
 var _arm_r := -1
 var _forearm_l := -1
 var _forearm_r := -1
+var _hand_l := -1
+var _hand_r := -1
 ## Bones currently carrying the smear stretch, so exactly one frame is ever scaled and the
 ## pose is restored the moment the smear ends (no drifting bone scale, no per-frame arrays).
 var _smeared_a := -1
@@ -101,6 +107,8 @@ func cache_bones(skel: Skeleton3D) -> void:
 	_arm_r = _find(skel, "RightArm")
 	_forearm_l = _find(skel, "LeftForeArm")
 	_forearm_r = _find(skel, "RightForeArm")
+	_hand_l = _find(skel, "LeftHand")
+	_hand_r = _find(skel, "RightHand")
 	_yaw_budget.resize(8)
 	_yaw_budget.fill(0.0)
 	_cached = true
@@ -192,6 +200,20 @@ func apply_now(force: bool = false) -> void:
 		_add(lead_shoulder, Vector3.UP, arc_bias * face)
 		_add(lead_arm, Vector3.UP, arc_bias * 0.55 * face)
 		_add(lead_forearm, Vector3.BACK, arc_bias * 0.7)
+	# Strike silhouette: the striking hand travels a little further along the fighting axis
+	# than the clip's contact pose. This is a single hand-bone translation on top of the
+	# pose — the arm chain stays connected through the skin weights, and the hips, facing
+	# pivot, collision body and hitboxes are untouched.
+	if not is_zero_approx(reach_boost):
+		var reach_hand := _hand_r if face > 0.0 else _hand_l
+		if reach_hand >= 0:
+			var reach_parent := _skel.get_bone_parent(reach_hand)
+			if reach_parent >= 0:
+				var parent_basis := (_skel.global_transform \
+					* _skel.get_bone_global_pose(reach_parent)).basis
+				var local_reach := parent_basis.inverse() * Vector3(face * reach_boost, 0.0, 0.0)
+				_skel.set_bone_pose_position(reach_hand,
+					_skel.get_bone_pose_position(reach_hand) + local_reach)
 	# One-frame limb smear: bone scale along the limb's own length, restored on the very
 	# next applied frame. Bone scale only — no extra geometry, no re-skin, no mesh rebuild.
 	_clear_smear()
@@ -319,6 +341,7 @@ func reset() -> void:
 	eye_line_yaw = 0.0
 	arc_bias = 0.0
 	chest_yaw = 0.0
+	reach_boost = 0.0
 	smear = 0.0
 	if _skel != null:
 		_clear_smear()

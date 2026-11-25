@@ -75,6 +75,11 @@ var squash_pivot: Node3D = null
 var body_modifier: FightBodyModifier3D = null
 ## clip name -> measured normalised peak reach time (`t_impact`).
 var impact_times: Dictionary = {}
+## Visual-only reach extension of the striking fist on ACTIVE frames, metres. Derived once
+## from the largest contact reach this body's own takes measure, then clamped by
+## `AnimationFeel.reach_boost()`. Never read by the simulation; no hitbox moves.
+@export var reach_boost: float = 0.045
+var _max_impact_reach: float = 0.0
 ## World-space distance from the lowest planted foot/toe bone to the drawn sole, measured
 ## once from the rest pose. The ground pin targets this offset so the SOLE lands on the sand.
 var sole_drop: float = 0.0
@@ -1561,6 +1566,7 @@ func _cache_prop_scales() -> void:
 ## own timing, decides when the body is at contact; this is the time the whip has to reach.
 func _measure_impact_times() -> void:
 	impact_times.clear()
+	_max_impact_reach = 0.0
 	if animation == null or skeleton == null or clips.is_empty():
 		return
 	# Measure the CLIP, not whatever additive overlay happens to be engaged: the body modifier
@@ -1580,6 +1586,7 @@ func _measure_impact_times() -> void:
 		if anim == null or anim.length <= 0.0:
 			continue
 		impact_times[clip_name] = _measure_clip_peak(anim, clip_name)
+	reach_boost = AnimationFeel.reach_boost(_max_impact_reach)
 	if body_modifier != null:
 		body_modifier.active = mod_was_active
 	if saved != "":
@@ -1727,6 +1734,7 @@ func _measure_clip_peak(_anim: Animation, clip_name: String) -> float:
 			best_t = t
 	if body_modifier != null:
 		body_modifier.active = modifier_was_active
+	_max_impact_reach = maxf(_max_impact_reach, best)
 	if best < 0.0:
 		return AnimationFeel.COIL_END
 	return clampf(best_t, AnimationFeel.IMPACT_MIN, AnimationFeel.IMPACT_MAX)
@@ -2008,6 +2016,15 @@ func _configure_body_modifier(state: int) -> void:
 	body_modifier.arc_bias = AnimationFeel.arc_bias(fighter.state_frame, last_attack_weight) \
 		if active else 0.0
 	body_modifier.smear = AnimationFeel.smear_amount(fighter.state_frame) if active else 0.0
+	# 2c. Strike silhouette: the fist reaches a fraction of the move's own measured contact
+	# reach further along ±X, riding the attack curve so ACTIVE never pops it on at the seam.
+	var boost := 0.0
+	if active:
+		var clip_name := String(animation.current_animation) if animation != null else ""
+		var t_impact := float(impact_times.get(clip_name, AnimationFeel.COIL_END))
+		var progress := AnimationFeel.active_progress(fighter.state_frame, t_impact)
+		boost = reach_boost * AnimationFeel.reach_boost_curve(progress)
+	body_modifier.reach_boost = boost
 	# 4. Alive hitstop: the attacker's secondary bones keep a charge while the game is frozen.
 	body_modifier.tension = AnimationFeel.tension_amount(_clock, fighter._hitstop_frames > 0)
 	# 6. Additive hit-react overlay, scaled by the real contact strength and aimed by where

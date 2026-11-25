@@ -60,6 +60,8 @@ func _run() -> void:
 		for b in FIGHTERS:
 			await _check_pair(a, b)
 	await _check_knockdowns()
+	await _check_camera_framing()
+	await _check_strike_silhouette()
 	for a in FIGHTERS:
 		await _check_presses(a)
 	await _check_press_frame()
@@ -385,6 +387,107 @@ func _check_knockdowns() -> void:
 		_check(_no_root_motion_tracks(model),
 			"%s: no installed take animates Hips/Root position — every clip plays in place" % key)
 		await _free(arena)
+
+
+## Bug 3 (2026-11-25): the camera may lean a few degrees toward the exchange, but it may
+## never crop a fighter. Every pairing is checked at the playable spread with the lean held
+## at both extremes; head, hips and both feet have to be inside the frustum and on screen.
+func _check_camera_framing() -> void:
+	print("\n-- CAMERA: 9 pairings at max spacing, ±4° exchange lean")
+	var view := _view_size()
+	for a in FIGHTERS:
+		for b in FIGHTERS:
+			var arena = await _spawn(a, b)
+			var arena3d = arena.get("arena3d")
+			if arena3d == null:
+				_check(false, "%s vs %s: no 3D camera for the framing audit" % [a, b])
+				await _free(arena)
+				continue
+			arena.p1.global_position = Vector2(390.0, 600.0)
+			arena.p2.global_position = Vector2(890.0, 600.0)
+			for i in 45:
+				await process_frame
+			for yaw in [-4.0, 4.0]:
+				arena3d.hold_exchange_yaw(yaw, 5)
+				await process_frame
+				var framed := true
+				var bad := ""
+				for fighter in [arena.p1, arena.p2]:
+					var model = arena3d.model_for(fighter)
+					if model == null:
+						framed = false
+						continue
+					for bone in ["Head", "Hips", "LeftFoot", "RightFoot"]:
+						var point := _bone_world(model, bone)
+						if not arena3d.camera.is_position_in_frustum(point):
+							framed = false
+							bad = "%s frustum (%.2f,%.2f,%.2f)" % [bone, point.x, point.y, point.z]
+						var on_screen: Vector2 = arena3d.camera.unproject_position(point)
+						if on_screen.x < 4.0 or on_screen.y < 4.0 \
+								or on_screen.x > view.x - 4.0 or on_screen.y > view.y - 4.0:
+							framed = false
+							bad = "%s screen (%.1f,%.1f) of (%.0f,%.0f)" % [bone, on_screen.x, on_screen.y, view.x, view.y]
+				_check(framed, "%s vs %s: both fighters fully framed at %+.0f° lean %s" % [a, b, yaw, bad])
+			await _free(arena)
+
+
+## Bug 3: the strike silhouette. On ACTIVE the camera-side fist must reach further across
+## the frame than it does at idle, and the facing pivot must stay inside its 5° band.
+func _check_strike_silhouette() -> void:
+	print("\n-- STRIKE SILHOUETTE: camera-side fist extent")
+	for key in FIGHTERS:
+		var arena = await _spawn(key, &"feedback")
+		var arena3d = arena.get("arena3d")
+		var model = arena3d.models.get("p1") if arena3d != null else null
+		if model == null:
+			_check(false, "%s: no 3D model for the strike-silhouette audit" % key)
+			await _free(arena)
+			continue
+		for i in 24:
+			await process_frame
+		var idle_extent := _fist_extent(arena3d, model)
+		var p1: BaseFighter = arena.p1
+		p1._attack_id = &"jab"
+		p1._attack = p1.attacks[&"jab"]
+		p1.state = BaseFighter.State.ATTACK_ACTIVE
+		p1.state_frame = 2
+		for i in 2:
+			await process_frame
+		var active_extent := _fist_extent(arena3d, model)
+		_check(active_extent > idle_extent + 0.002,
+			"%s: camera-side fist reaches further on ACTIVE (%.3f → %.3f of frame width)"
+			% [key, idle_extent, active_extent])
+		var forward: Vector3 = model.world_forward()
+		var facing_off := absf(rad_to_deg(atan2(forward.z, forward.x)))
+		_check(facing_off <= 5.0,
+			"%s: facing pivot stays inside 5° through the boosted strike" % key, "%.2f°" % facing_off)
+		await _free(arena)
+
+
+## Horizontal screen distance from the pelvis to the striking hand, as a fraction of the
+## frame width. Projection only; nothing here reads a hitbox.
+func _fist_extent(arena3d, model: Node3D) -> float:
+	var cam: Camera3D = arena3d.camera
+	var hand := _bone_world(model, "RightHand")
+	var hips := _bone_world(model, "Hips")
+	var view := _view_size()
+	return absf(cam.unproject_position(hand).x - cam.unproject_position(hips).x) / maxf(view.x, 1.0)
+
+
+func _view_size() -> Vector2:
+	# The window object is 64×64 headlessly, but the camera projects through the project's
+	# 1280×720 viewport; the audit must measure in that space.
+	return root.get_visible_rect().size
+
+
+func _bone_world(model: Node3D, suffix: String) -> Vector3:
+	var skel: Skeleton3D = model.get("skeleton")
+	if skel == null:
+		return Vector3.ZERO
+	var index := _bone(skel, suffix)
+	if index < 0:
+		return Vector3.ZERO
+	return (skel.global_transform * skel.get_bone_global_pose(index)).origin
 
 
 func _world_x(px: float) -> float:

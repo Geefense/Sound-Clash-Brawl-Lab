@@ -23,7 +23,14 @@ const STAGE_LEFT_PX := 70.0
 const STAGE_RIGHT_PX := 1210.0
 
 const CAMERA_FOV := 30.0
-const CAMERA_DISTANCE := 4.8
+## Bug 3 (2026-11-25): 5% tighter than the old 4.80 m so the fighters read larger on a phone,
+## chosen to keep the roster's 55–65 % screen-height framing check inside its band.
+const CAMERA_DISTANCE := 4.58
+## Framing dolly ceiling: when the fighters spread to the stage bounds the lens eases back
+## just enough to keep both bodies (head, hips, feet) inside the frame. Neutral spacing never
+## leaves `CAMERA_DISTANCE`, so the tighter default is what the player sees in a normal
+## exchange.
+const CAMERA_MAX_DISTANCE := 9.0
 const CAMERA_HEIGHT := 1.0
 const CAMERA_FOLLOW := 7.0
 const CAMERA_MIN_X := -1.78
@@ -165,6 +172,13 @@ var _kick_velocity: float = 0.0
 var camera_punch: float = 0.0
 var _shake: float = 0.0
 var _camera_x: float = 0.0
+## Exchange lean (Bug 3): a critically damped scalar in radians, clamped to
+## `AnimationFeel.CAMERA_YAW_MAX_DEG`, integrated every presented frame. Preallocated state;
+## `_yaw_hold` lets the framing audit pin an extreme angle for a few frames.
+var _camera_yaw: float = 0.0
+var _camera_yaw_velocity: float = 0.0
+var _yaw_hold: int = 0
+var _camera_distance: float = CAMERA_DISTANCE
 var _live_bursts: Array = []
 var _phase_index: int = 0
 var _phase_now: Dictionary = {}
@@ -201,6 +215,7 @@ func setup(p1: BaseFighter, p2: BaseFighter) -> void:
 		shadows[key] = _make_contact_shadow()
 		model.position = Vector3(px_to_world_x(fighter.global_position.x), 0.0, 0.0)
 	_camera_x = px_to_world_x((p1.global_position.x + p2.global_position.x) * 0.5) if p1 != null and p2 != null else 0.0
+	_camera_distance = CAMERA_DISTANCE
 	camera.position = Vector3(_camera_x, CAMERA_HEIGHT, CAMERA_DISTANCE)
 	_apply_mirror_variants()
 
@@ -349,7 +364,28 @@ func screen_fraction() -> float:
 
 
 func camera_distance() -> float:
-	return camera.position.z if camera != null else 0.0
+	return _camera_distance if camera != null else 0.0
+
+
+## Frames the exchange lean for the framing audit: hold `deg` for `frames` presented frames.
+func hold_exchange_yaw(deg: float, frames: int = 2) -> void:
+	_camera_yaw = deg_to_rad(deg)
+	_camera_yaw_velocity = 0.0
+	_yaw_hold = maxi(1, frames)
+
+
+## The exchange lean currently written to the lens, degrees.
+func exchange_yaw_deg() -> float:
+	return rad_to_deg(_camera_yaw)
+
+
+## True while this fighter is in any attack phase: that is the side the lens leans toward.
+func _is_exchanging(fighter: BaseFighter) -> bool:
+	if fighter == null:
+		return false
+	return fighter.state == BaseFighter.State.ATTACK_STARTUP \
+		or fighter.state == BaseFighter.State.ATTACK_ACTIVE \
+		or fighter.state == BaseFighter.State.ATTACK_RECOVERY
 
 
 # =========================================================================
@@ -384,11 +420,49 @@ func _update_camera(delta: float) -> void:
 		var mid := (p1.global_position.x + p2.global_position.x) * 0.5
 		var target := clampf(px_to_world_x(mid), CAMERA_MIN_X, CAMERA_MAX_X)
 		_camera_x = lerpf(_camera_x, target, 1.0 - exp(-CAMERA_FOLLOW * delta))
+	# Framing dolly: keep both bodies inside the horizontal half-angle at their spread, with
+	# a margin for fists and hats. At neutral spacing this resolves to the tighter default.
+	var view := get_viewport().get_visible_rect().size if is_inside_tree() else Vector2(1280, 720)
+	var aspect := maxf(view.x / maxf(view.y, 1.0), 1.0)
+	var half_span := 0.0
+	half_span = maxf(half_span, absf(px_to_world_x(p1.global_position.x) - _camera_x))
+	half_span = maxf(half_span, absf(px_to_world_x(p2.global_position.x) - _camera_x))
+	var needed := (half_span + 0.55 + absf(sin(_camera_yaw)) * 2.0) / (tan(deg_to_rad(CAMERA_FOV * 0.5)) * aspect)
+	var dist_target := clampf(maxf(CAMERA_DISTANCE, needed), CAMERA_DISTANCE, CAMERA_MAX_DISTANCE)
+	_camera_distance = lerpf(_camera_distance, dist_target,
+		1.0 - exp(-CAMERA_FOLLOW * delta))
+	# Lean a few degrees toward whoever is driving the exchange. The spring is critically
+	# damped, so the lens drifts in and out without overshoot or a snap on state changes.
+	var yaw_target := 0.0
+	var p1_driving := _is_exchanging(p1)
+	var p2_driving := _is_exchanging(p2)
+	if p1_driving and not p2_driving:
+		yaw_target = deg_to_rad(AnimationFeel.CAMERA_YAW_MAX_DEG)
+	elif p2_driving and not p1_driving:
+		yaw_target = -deg_to_rad(AnimationFeel.CAMERA_YAW_MAX_DEG)
+	if _yaw_hold > 0:
+		_yaw_hold -= 1
+	else:
+		# Critically damped scalar, integrated in place: no array, no allocation, and the
+		# angle can never leave its 4° clamp.
+		var yaw_dt := clampf(delta, 0.0001, 1.0 / 30.0)
+		var yaw_accel := (yaw_target - _camera_yaw) * AnimationFeel.CAMERA_YAW_STIFFNESS \
+			- _camera_yaw_velocity * AnimationFeel.CAMERA_YAW_DAMPING
+		_camera_yaw_velocity += yaw_accel * yaw_dt
+		_camera_yaw += _camera_yaw_velocity * yaw_dt
+		var yaw_limit := deg_to_rad(AnimationFeel.CAMERA_YAW_MAX_DEG)
+		_camera_yaw = clampf(_camera_yaw, -yaw_limit, yaw_limit)
 	var jitter := Vector3(
 		_rng.randf_range(-1.0, 1.0) * _shake,
 		_rng.randf_range(-1.0, 1.0) * _shake * 0.7,
 		0.0)
-	camera.position = Vector3(_camera_x + jitter.x, CAMERA_HEIGHT + jitter.y, CAMERA_DISTANCE)
+	# Orbit the focus point by the yaw instead of rotating in place: both fighters stay on
+	# the same side of the lens and the framing distance is unchanged.
+	camera.position = Vector3(
+		_camera_x + sin(_camera_yaw) * _camera_distance + jitter.x,
+		CAMERA_HEIGHT + jitter.y,
+		cos(_camera_yaw) * _camera_distance)
+	camera.rotation = Vector3(0.0, _camera_yaw, 0.0)
 	# The punch is a widening FOV kick plus a hair of vertical offset, both riding the same
 	# spring value, so the impulse and its recovery are one smooth arc.
 	camera.fov = CAMERA_FOV - _kick * AnimationFeel.CAMERA_PUNCH_FOV_DEG

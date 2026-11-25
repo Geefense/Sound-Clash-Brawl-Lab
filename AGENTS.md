@@ -4954,3 +4954,34 @@ owner's playtest.
 - `facing_audit.gd` grew from 94 to **310 checks**: all 9 pairings × both slots × idle / after an
   attack / after a hitstop / after a slot swap, with toe, chest and head probes each within 5° of
   the opponent's side. Suites: roster 425 (all pass), live 167, facing 310, feel 335 — 0 FAIL.
+
+## 2026-11-25 — PART A2 · Bug 3: readable punches (camera + strike silhouette)
+
+- **Camera (Arena3D).** Steady distance 4.80 → **4.58 m** (−4.6 %, still inside the roster's
+  55–65 % screen-height band). The lens now leans toward whichever fighter is in an attack
+  phase: a **±4°** yaw clamp, driven by a critically damped scalar integrated in place every
+  presented frame (no array, no allocation), and implemented as an orbit around the fighters'
+  midpoint so the framing distance is unchanged. A framing dolly eases back toward 9 m only
+  as the pair spreads, so normal spacing always shows the tighter 4.58 m lens.
+- **Strike silhouette.** `FighterModel3D.reach_boost` is exported and derived per body from the
+  largest contact reach its own takes measure (`AnimationFeel.reach_boost`, 10 %, clamped
+  0.012–0.070 m). On ACTIVE frames `FightBodyModifier3D` translates the striking hand that far
+  along the signed ±X fighting axis; the value rides `AnimationFeel.reach_boost_curve`, which is
+  zero at the coil and one at the measured `t_impact`, so the fist never pops on at the ACTIVE
+  seam. Hand bone only: hips, facing pivot, body root, collision and every hitbox are untouched,
+  and the facing pin stays inside 5°.
+- **Tests.** `live_match_check.gd` grew **167 → 191**: 9 pairings × both ±4° lean extremes at
+  maximum playable spacing, asserting head, hips and both feet are inside the frustum and on
+  screen with a margin, plus per-fighter ACTIVE-vs-idle camera-side fist screen extent and the
+  5° facing check through the boosted strike. Suites: roster all pass, live 191, facing 310,
+  feel 335 — 0 FAIL.
+- **Bug 2 (drawn-mesh knockdown seating) is DEFERRED, deliberately not shipped.** The work
+  existed locally: the lowest skinned vertex was seated to 0.012 m via the VisualPivot and the
+  sand band [−0.02, +0.03] passed for every fighter in both slots, and the foot pin was already
+  off in KNOCKDOWN/KO/JUMP. It failed two contracts: the **head-away orientation** on the two
+  Tripo rigs (their knockdown take topples head-first, so the head landed toward the opponent)
+  and the **get-up release** (3–6 cm single-frame vertical steps remained). The root cause is
+  the same one Bug 1 exposed: the rigs calibrate to different yaw offsets — **Mixamo 86° vs
+  Tripo 135–147°** — so a single downed-facing rule cannot be assumed across them. The
+  uncommitted experiment was reverted rather than committed red; the drawn-mesh tightening
+  remains open.

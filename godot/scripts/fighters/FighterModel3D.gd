@@ -284,6 +284,20 @@ var facing_sign: int = 1
 ## Beat position 0..1 inside the 132 BPM bar, pushed once a frame by the arena. Only the
 ## moving-hold idle reads it — judgement is still the fighter's own input-time record.
 var beat_phase: float = 0.0
+## Per-fighter pose-timing bias (PART 1 commit 2, 2026-11-25). Assigned from
+## `PoseTimingBias.for_fighter()` at bind and exported, so a designer can duplicate one
+## body's resource, retune it in the inspector and never touch another fighter or a single
+## combat value.
+@export var pose_bias: PoseTimingBias = null
+## Cel-shader rim pushed by the stage's time-of-day preset (commit 3). Alpha 0 means "no
+## preset yet", in which case the body keeps its own authored rim.
+var preset_rim := Color(0.0, 0.0, 0.0, 0.0)
+var preset_rim_strength := -1.0
+## Pose steps of frozen impact silhouette still to hold (2–3), and the grid cell it locks to.
+var _impact_lock_steps := 0
+var _impact_lock_index := -1
+## Forward coil currently written on the `VisualPivot`, metres. Zero outside STARTUP.
+var _anticipation_x := 0.0
 ## Whether the LAST attack frame got the beat accent, for the HUD readout and the audit.
 var last_beat_accent: bool = false
 var feet_offset: float = 0.0
@@ -340,6 +354,9 @@ func bind(target: BaseFighter, key: StringName) -> bool:
 	_base_hue = float(src["hue_shift"])
 	_base_rim = src["rim"]
 	model_forward_yaw_offset_deg = float(src["forward_yaw_deg"])
+	# A fresh resource per body: one fighter retuning its bias at runtime can never leak into
+	# the other, even in a mirror match of the same upload.
+	pose_bias = PoseTimingBias.for_fighter(key)
 
 	_pivot = Node3D.new()
 	_pivot.name = "PosePivot"
@@ -467,11 +484,46 @@ func shader_tint() -> Color:
 func _apply_variant() -> void:
 	var tint := MIRROR_TINT if mirror_variant else _base_tint
 	var hue := MIRROR_HUE if mirror_variant else _base_hue
-	var rim := MIRROR_RIM if mirror_variant else _base_rim
 	for mat in materials:
 		mat.set_shader_parameter("tint", tint)
 		mat.set_shader_parameter("hue_shift", hue)
+	_apply_rim()
+
+
+## Cel rim: the P2 mirror accent wins (it is a player-identity cue), otherwise the stage's
+## time-of-day preset owns the rim so the fighter separates from that sky. The authored rim
+## is the fallback for a body that has not been given a preset yet.
+func _apply_rim() -> void:
+	var rim := MIRROR_RIM if mirror_variant else _base_rim
+	if not mirror_variant and preset_rim.a > 0.0:
+		rim = preset_rim
+	for mat in materials:
 		mat.set_shader_parameter("rim_colour", rim)
+		if preset_rim_strength >= 0.0:
+			mat.set_shader_parameter("rim_strength", preset_rim_strength)
+
+
+## Called by the stage whenever its Afternoon / Sunset / Night preset changes. Presentation
+## only: the rim is an emission band in `toon_cel.gdshader`, so the delivered albedo and the
+## fighter's readability are never touched.
+func set_cel_rim(colour: Color, strength: float) -> void:
+	preset_rim = colour
+	preset_rim_strength = clampf(strength, 0.0, 2.5)
+	_apply_rim()
+
+
+## The rim the cel material currently carries, for the per-preset audit.
+func cel_rim() -> Color:
+	if materials.is_empty():
+		return preset_rim
+	var value = materials[0].get_shader_parameter("rim_colour")
+	return value if value is Color else preset_rim
+
+
+func cel_rim_strength() -> float:
+	if materials.is_empty():
+		return preset_rim_strength
+	return float(materials[0].get_shader_parameter("rim_strength"))
 
 
 
@@ -914,6 +966,10 @@ func _process(delta: float) -> void:
 	_compensate_clip_yaw()
 	_pin_body_facing()
 	_animate_rig()
+	# Anticipation built into the forward step: the `VisualPivot` loads along ±X through
+	# STARTUP and is exactly back to zero on the first ACTIVE frame. Runs before the feel
+	# layer, because the modifier carries the same value for the audit.
+	_apply_anticipation(fighter.state)
 	# Feel layer, in dependency order: the additive skeleton work reads the pose the clip
 	# just wrote, then the feet are pinned to the sand, then the downed-state floor guard.
 	# Facing calibration waits until the idle take has driven the skeleton for a few frames:
@@ -1377,9 +1433,13 @@ func _push_flash() -> void:
 	_flash_lit = hit_now
 	if parry != _parry_lit:
 		_parry_lit = parry
-		var rim := PARRY_RIM if parry else (MIRROR_RIM if mirror_variant else _base_rim)
-		for mat in materials:
-			mat.set_shader_parameter("rim_colour", rim)
+		if parry:
+			for mat in materials:
+				mat.set_shader_parameter("rim_colour", PARRY_RIM)
+		else:
+			# Back to whatever owns the rim: the P2 mirror accent, the stage preset, or the
+			# body's own authored colour. A parry flash must never leave a preset rim lost.
+			_apply_rim()
 	if is_equal_approx(target, _flash):
 		return
 	_flash = target
@@ -1756,6 +1816,15 @@ func _build_body_modifier() -> void:
 ## here means the recoil strength comes from the real contact (light / heavy / counter /
 ## blocked) instead of a guess, and nothing has to be added to `BaseFighter`.
 func _on_strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dictionary) -> void:
+	# Attacker side: the contact is where the striking limb chain freezes at peak reach for
+	# 2–3 pose steps. Read from the real signal, so a whiff never locks a pose. A strike whose
+	# target IS this fighter still falls through to the recoil below (that is the defender
+	# path, and the headless audit drives it through this same signal).
+	if attacker == fighter and target != fighter:
+		_impact_lock_index = _hold_index
+		_impact_lock_steps = AnimationFeel.impact_lock_steps(
+			pose_bias.impact_hold if pose_bias != null else AnimationFeel.IMPACT_LOCK_MIN)
+		return
 	if target != fighter:
 		return
 	recoil_strength = AnimationFeel.recoil_strength(int(result.get("damage", 0)),
@@ -1788,6 +1857,11 @@ func _hit_height_y(attacker: BaseFighter, attack_id: StringName) -> float:
 
 
 func _on_state_changed(_old_state: int, new_state: int) -> void:
+	# Leaving ACTIVE (or starting a new attack) drops any remaining impact hold, so the lock
+	# can never bleed into a walk, a taunt or the next strike.
+	if new_state != BaseFighter.State.ATTACK_ACTIVE:
+		_impact_lock_steps = 0
+		_impact_lock_index = -1
 	if new_state != BaseFighter.State.HITSTUN:
 		recoil_strength = 0.0
 		recoil_age = 0.0
@@ -1915,6 +1989,14 @@ func _drive_clip_time() -> void:
 	if stepped_arcade and steps > 1:
 		t = AnimationFeel.quantize(t, steps)
 		var index := int(round(t * float(steps)))
+		# 4. Frozen impact silhouette: after a real contact the striking chain stays on the
+		# contact grid cell for `impact_hold` pose steps (2–3). Only the sampled clip is
+		# held — the additive tension, eye line and off-hand keep moving, so the silhouette
+		# is alive instead of a freeze-frame. No combat tick is extended or shortened.
+		if state == BaseFighter.State.ATTACK_ACTIVE and _impact_lock_steps > 0 \
+				and _impact_lock_index >= 0 and index > _impact_lock_index:
+			_impact_lock_steps -= 1
+			index = _impact_lock_index
 		# Variable stepping: while the extended silhouette is held, keep each grid cell for
 		# `HOLD_EVERY` frames instead of one. The seek is still an exact grid position, so
 		# the lattice the step audit measures is unchanged; only the duration changes.
@@ -1982,9 +2064,37 @@ func _apply_feel_layer(delta: float) -> void:
 	_apply_hitstop_shake(state)
 
 
+## Forward coil of the startup, on the `VisualPivot` only (never the root, the collision
+## body or a hitbox). The offset is a smoothstep of the startup's own progress, so it loads
+## INTO the step instead of pulling back first, and it is written as exactly zero the moment
+## the state leaves STARTUP — which is what makes "returned to zero by ACTIVE" structural
+## rather than a tuned decay. Clamped to `AnimationFeel.ANTICIPATION_MAX`.
+func _apply_anticipation(state: int) -> void:
+	var offset := 0.0
+	if state == BaseFighter.State.ATTACK_STARTUP and fighter != null and pose_bias != null:
+		var startup := 1
+		if not fighter._attack.is_empty():
+			startup = maxi(1, int(fighter._attack.get("startup", 1)))
+		var p := float(fighter.state_frame) / float(startup)
+		offset = AnimationFeel.anticipation_offset(p, pose_bias.anticipation_depth)
+	var wanted := offset * float(facing_sign)
+	if body_modifier != null:
+		body_modifier.anticipation = offset
+	if _visual_pivot == null:
+		return
+	# Only write when it actually changes, so a resting body's pivot is never touched and
+	# the downed-body seat's own Y correction keeps sole ownership of the vertical.
+	if is_zero_approx(wanted) and is_zero_approx(_anticipation_x):
+		return
+	_visual_pivot.position.x = wanted
+	_anticipation_x = wanted
+
+
 func _configure_body_modifier(state: int) -> void:
 	var attacking := state == BaseFighter.State.ATTACK_STARTUP \
 		or state == BaseFighter.State.ATTACK_ACTIVE or state == BaseFighter.State.ATTACK_RECOVERY
+	var bias_twist := pose_bias.twist_gain if pose_bias != null else 1.0
+	var bias_overshoot := pose_bias.overshoot_gain if pose_bias != null else 1.0
 	body_modifier.facing = facing_sign
 	body_modifier.engage_weight = 1.0 if attacking else 0.62
 	# Shoulder / upper-spine counter-twist through the swing: coil away, drive through,
@@ -1997,7 +2107,13 @@ func _configure_body_modifier(state: int) -> void:
 			twist = AnimationFeel.ENGAGE_TWIST
 		BaseFighter.State.ATTACK_RECOVERY:
 			twist = AnimationFeel.ENGAGE_TWIST * 0.35
-	body_modifier.engage_twist = twist
+	body_modifier.engage_twist = twist * bias_twist
+	# 3. C → S → reverse-C whip: the torso and then the striking hand follow the hips by 1–2
+	# pose steps, so the spine snaps through the strike instead of moving as one block. The
+	# hips are never written here — the facing authority stays exactly where it was.
+	body_modifier.whip_step = fighter.state_frame if attacking else -1
+	body_modifier.spine_lag = AnimationFeel.whip_weight(&"spine2", fighter.state_frame) \
+		if state == BaseFighter.State.ATTACK_ACTIVE else 1.0
 	# Negative space lives on the stances (and quietly through an attack), so the off-arm
 	# never merges into the ribcage and the silhouette keeps a readable gap.
 	body_modifier.negative_space = AnimationFeel.NEGATIVE_SPACE
@@ -2011,7 +2127,7 @@ func _configure_body_modifier(state: int) -> void:
 	var active := state == BaseFighter.State.ATTACK_ACTIVE
 	# An on-beat attack keeps a little more of the overshoot impulse (clamped, visual only).
 	body_modifier.overshoot = AnimationFeel.overshoot_lean_accented(
-		fighter.state_frame, last_beat_accent) if active else 0.0
+		fighter.state_frame, last_beat_accent) * bias_overshoot if active else 0.0
 	# 2b. Arc enforcement and the one-frame limb smear, both keyed to the whip frame.
 	body_modifier.arc_bias = AnimationFeel.arc_bias(fighter.state_frame, last_attack_weight) \
 		if active else 0.0
@@ -2025,6 +2141,29 @@ func _configure_body_modifier(state: int) -> void:
 		var progress := AnimationFeel.active_progress(fighter.state_frame, t_impact)
 		boost = reach_boost * AnimationFeel.reach_boost_curve(progress)
 	body_modifier.reach_boost = boost
+	# Commit 3: camera-readable foreshortening of the striking hand, heavy/special contacts
+	# only. `AnimationFeel.foreshorten_amount` is full at the measured `t_impact` and releases
+	# smoothly across RECOVERY, so the limb returns to its authored scale on its own.
+	var fore := 0.0
+	var attack_id: StringName = fighter._attack_id
+	var heavy_or_special := attack_id in BaseFighter.HEAVY_ATTACK_IDS or attack_id == &"special"
+	if heavy_or_special and (active or state == BaseFighter.State.ATTACK_RECOVERY):
+		var clip := String(animation.current_animation) if animation != null else ""
+		var impact := float(impact_times.get(clip, AnimationFeel.COIL_END))
+		var recovery_ticks := maxi(1, int(fighter._attack.get("recovery", 1)))
+		var recovery_p := clampf(float(fighter.state_frame) / float(recovery_ticks), 0.0, 1.0)
+		var progress := AnimationFeel.active_progress(fighter.state_frame, impact) if active \
+			else AnimationFeel.recovery_progress(recovery_p, impact)
+		fore = AnimationFeel.foreshorten_amount(state, progress, impact, recovery_p)
+	body_modifier.foreshorten = fore
+	# 5. Non-linear hip dip and overshoot return in RECOVERY, from the fighter's own recovery
+	# progress. Zero in every other state, so a strike never inherits a settle.
+	var dip := 0.0
+	if state == BaseFighter.State.ATTACK_RECOVERY:
+		var ticks := maxi(1, int(fighter._attack.get("recovery", 1)))
+		var p := clampf(float(fighter.state_frame) / float(ticks), 0.0, 1.0)
+		dip = AnimationFeel.recovery_dip(p, pose_bias.recovery_dip_deg if pose_bias != null else AnimationFeel.RECOVERY_DIP_DEG)
+	body_modifier.recovery_dip = dip
 	# 4. Alive hitstop: the attacker's secondary bones keep a charge while the game is frozen.
 	body_modifier.tension = AnimationFeel.tension_amount(_clock, fighter._hitstop_frames > 0)
 	# 6. Additive hit-react overlay, scaled by the real contact strength and aimed by where
@@ -2154,6 +2293,15 @@ func _lowest_foot_y() -> float:
 	return low
 
 
+## Pose steps of frozen impact silhouette still to hold, for the audit.
+func impact_lock_remaining() -> int:
+	return _impact_lock_steps
+
+
+func impact_lock_index() -> int:
+	return _impact_lock_index
+
+
 ## Read-only summary for the headless audit and the AGENTS inventory.
 func feel_snapshot() -> Dictionary:
 	return {
@@ -2167,4 +2315,7 @@ func feel_snapshot() -> Dictionary:
 		"recoil": recoil_strength,
 		"attack_weight": last_attack_weight,
 		"coil_end": last_coil_end,
+		"pose_bias": pose_bias.label if pose_bias != null else "",
+		"anticipation": _anticipation_x,
+		"impact_lock": _impact_lock_steps,
 	}

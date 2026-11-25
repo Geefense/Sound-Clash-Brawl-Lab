@@ -343,6 +343,9 @@ func _audit_fighter(key: StringName) -> void:
 	_audit_volume_and_props(model, fighter, key)
 	_audit_extras(model, fighter, key)
 
+	# --- PART 1 commits 2–3: Zweifuss / Iverson techniques + foreshortening + rim -------
+	await _audit_zweifuss(model, fighter, key)
+
 	# Facing must still be exact after every one of the above. Replay the neutral take
 	# first, so this measures the shipped idle rather than whatever pose the audits left.
 	fighter.state = BaseFighter.State.IDLE
@@ -1402,3 +1405,227 @@ func _audit_allocation() -> void:
 		"%d found" % primitives)
 	arena.queue_free()
 	await process_frame
+
+
+# =========================================================================
+# PART 1 commits 2–3 — Zweifuss / Iverson techniques, foreshortening, preset rim
+# =========================================================================
+## Five techniques from the Zweifuss 3rd Strike archive and the Stefan Iverson Makoto
+## breakdown, plus the commit-3 foreshortening and cel-rim work. Every check reads the same
+## functions the runtime uses, and every live measurement runs on the real `FighterModel3D`
+## bound to the real `BaseFighter` — with the fighter's own physics frozen, so the attack
+## phase below is exactly the phase being measured.
+func _audit_zweifuss(model: FighterModel3D, fighter: BaseFighter, key: String) -> void:
+	print("\n-- %s: ZWEIFUSS / IVERSON LAYER" % key)
+
+	# --- 1. Archetype pose-timing bias, as an exported resource --------------------------
+	var bias: PoseTimingBias = model.pose_bias
+	_check(bias != null and bias.is_authored(),
+		"%s carries an authored pose-timing bias resource" % key,
+		bias.label if bias != null else "<null>")
+	if bias != null:
+		_check(bias.impact_hold >= AnimationFeel.IMPACT_LOCK_MIN
+				and bias.impact_hold <= AnimationFeel.IMPACT_LOCK_MAX,
+			"%s authored impact hold sits in the 2–3 pose-step contract" % key,
+			"%d steps" % bias.impact_hold)
+		_check(bias.whip_lead >= 1 and bias.whip_lead <= 2,
+			"%s authored a 1–2 step hip lead" % key, "%d steps" % bias.whip_lead)
+		_check(bias.anticipation_depth > 0.0
+				and bias.anticipation_depth <= AnimationFeel.ANTICIPATION_MAX,
+			"%s anticipation travel stays inside the few-cm clamp" % key,
+			"%.3f m" % bias.anticipation_depth)
+	# The three archetypes are genuinely different, not one bias copied three times.
+	var dudley := PoseTimingBias.for_fighter(&"feedback")
+	var makoto := PoseTimingBias.for_fighter(&"lickshot")
+	var stylist := PoseTimingBias.for_fighter(&"young_selecta")
+	_check(makoto.impact_hold > dudley.impact_hold
+			and stylist.recovery_dip_deg > dudley.recovery_dip_deg
+			and makoto.anticipation_depth > dudley.anticipation_depth,
+		"the archetypes differ: the lunge loads deeper and holds longer, the stylist settles deeper",
+		"coil %.3f/%.3f m, hold %d/%d steps, settle %.1f/%.1f deg" % [
+			makoto.anticipation_depth, dudley.anticipation_depth, makoto.impact_hold,
+			dudley.impact_hold, stylist.recovery_dip_deg, dudley.recovery_dip_deg])
+	_check(PoseTimingBias.for_fighter(&"feedback") != PoseTimingBias.for_fighter(&"feedback"),
+		"each body gets its own bias instance (no shared runtime state)")
+
+	# --- 2. Anticipation built INTO the forward step ------------------------------------
+	var depth := bias.anticipation_depth if bias != null else 0.04
+	var peak := clampf(depth, 0.0, AnimationFeel.ANTICIPATION_MAX)
+	_check(is_zero_approx(AnimationFeel.anticipation_offset(0.0, depth))
+			and absf(AnimationFeel.anticipation_offset(1.0, depth) - peak) < 0.0001
+			and AnimationFeel.anticipation_offset(0.5, depth) > 0.0,
+		"%s the coil loads into the step and peaks on the last startup tick" % key,
+		"%.3f m at the peak" % peak)
+	_check(is_equal_approx(AnimationFeel.anticipation_offset(1.0, 1.0),
+			AnimationFeel.ANTICIPATION_MAX),
+		"%s an over-tuned coil is clamped to the few-cm ceiling" % key,
+		"%.3f m" % AnimationFeel.ANTICIPATION_MAX)
+	fighter._attack_id = &"strong"
+	fighter._attack = fighter.attacks[&"strong"]
+	fighter.state = BaseFighter.State.ATTACK_STARTUP
+	fighter.state_frame = maxi(1, int(fighter._attack.get("startup", 1)) - 1)
+	model._play_role(&"strong")
+	await process_frame
+	await process_frame
+	var coil_x: float = model._visual_pivot.position.x
+	_check(absf(coil_x) > 0.0015 and absf(coil_x) <= AnimationFeel.ANTICIPATION_MAX + 0.0001,
+		"%s the live startup coils forward on the VisualPivot only" % key, "%.3f m" % coil_x)
+	_check(is_equal_approx(model.body_modifier.anticipation, absf(coil_x)),
+		"%s the modifier reports the same coil the pivot carries" % key,
+		"%.3f m" % model.body_modifier.anticipation)
+	# The facing pin's own contract: the drawn toes land on ±X. Measured from the toe vector,
+	# exactly what `_pin_body_facing()` corrects — a mid-startup hips turn is performance, not
+	# facing, so it must not be read as an error here.
+	var toe: Vector3 = model.toe_forward_world()
+	var toe_target := 0.0 if model.facing_sign >= 0 else PI
+	var coil_off := 0.0 if toe == Vector3.ZERO else absf(rad_to_deg(
+		wrapf(toe_target - atan2(toe.z, toe.x), -PI, PI)))
+	_check(coil_off <= FACING_TOLERANCE_DEG,
+		"%s the forward coil keeps the facing pin inside 5°" % key, "%.2f°" % coil_off)
+	fighter.state = BaseFighter.State.ATTACK_ACTIVE
+	fighter.state_frame = 1
+	await process_frame
+	_check(is_zero_approx(model._visual_pivot.position.x)
+			and is_zero_approx(model.body_modifier.anticipation),
+		"%s the coil is exactly zero by the first ACTIVE frame" % key,
+		"%.5f m" % model._visual_pivot.position.x)
+
+	# --- 3. C → S → reverse-C whip: hips lead the torso and the striking hand ------------
+	_check(AnimationFeel.whip_delay(&"hips") == 0
+			and AnimationFeel.whip_delay(&"spine1") >= 1 and AnimationFeel.whip_delay(&"spine1") <= 2
+			and AnimationFeel.whip_delay(&"spine2") >= 1 and AnimationFeel.whip_delay(&"spine2") <= 2
+			and AnimationFeel.whip_delay(&"hand") >= 1 and AnimationFeel.whip_delay(&"hand") <= 2,
+		"%s the whip chain lags the hips by 1–2 pose steps" % key,
+		"spine1 %d, spine2 %d, hand %d" % [AnimationFeel.whip_delay(&"spine1"),
+			AnimationFeel.whip_delay(&"spine2"), AnimationFeel.whip_delay(&"hand")])
+	_check(is_equal_approx(AnimationFeel.whip_weight(&"hips", 0), 1.0)
+			and is_zero_approx(AnimationFeel.whip_weight(&"spine1", 0))
+			and AnimationFeel.whip_weight(&"spine1", AnimationFeel.whip_delay(&"spine1")) > 0.0
+			and is_zero_approx(AnimationFeel.whip_weight(&"hand", 1))
+			and AnimationFeel.whip_weight(&"hand", AnimationFeel.whip_delay(&"hand")) > 0.0,
+		"%s the hips lead, the torso follows, the striking hand follows last" % key)
+	fighter.state = BaseFighter.State.ATTACK_ACTIVE
+	fighter.state_frame = 0
+	await process_frame
+	var lag_early: float = model.body_modifier.spine_lag
+	fighter.state_frame = 3
+	await process_frame
+	var lag_late: float = model.body_modifier.spine_lag
+	_check(lag_early < 0.5 and lag_late >= 0.99,
+		"%s the torso arrives behind the hips on the live body" % key,
+		"%.2f → %.2f share" % [lag_early, lag_late])
+
+	# --- 4. Frozen impact silhouette -----------------------------------------------------
+	var hold := AnimationFeel.impact_lock_steps(bias.impact_hold if bias != null else 2)
+	_check(hold >= 2 and hold <= 3,
+		"%s the impact silhouette locks for 2–3 pose steps" % key, "%d steps" % hold)
+	fighter.state = BaseFighter.State.ATTACK_ACTIVE
+	fighter._attack_id = &"strong"
+	fighter._attack = fighter.attacks[&"strong"]
+	fighter.state_frame = 2
+	model._play_role(&"strong")
+	await process_frame
+	model._hold_index = -1
+	model._impact_lock_steps = 0
+	model._impact_lock_index = -1
+	model._drive_clip_time()
+	model._on_strike_resolved(fighter, null, {"damage": 15, "attack_id": &"strong"})
+	_check(model.impact_lock_remaining() == hold,
+		"%s a landed contact locks the peak-reach silhouette" % key,
+		"%d steps" % model.impact_lock_remaining())
+	# While the lock is armed the sampled pose stays on the contact cell, even though the
+	# combat phase has moved on. Only the clip is held; the additive layer keeps moving.
+	var held_seek: float = model.animation.current_animation_position
+	fighter.state_frame = 4
+	model._drive_clip_time()
+	_check(is_equal_approx(model.animation.current_animation_position, held_seek),
+		"%s the armed lock holds the contact pose" % key,
+		"%.4f s held while the phase advanced" % held_seek)
+	# Leaving ACTIVE drops whatever is left, so a lock can never bleed into a walk or a taunt.
+	model._on_state_changed(BaseFighter.State.ATTACK_ACTIVE, BaseFighter.State.IDLE)
+	_check(model.impact_lock_remaining() == 0 and model.impact_lock_index() < 0,
+		"%s the lock is cleared when the state leaves ACTIVE" % key)
+	var profile: Dictionary = fighter.attacks[&"strong"]
+	var baseline: Array = FRAME_BASELINE[key][&"strong"]
+	_check(int(profile.get("startup", -1)) == int(baseline[0])
+			and int(profile.get("active", -1)) == int(baseline[1])
+			and int(profile.get("recovery", -1)) == int(baseline[2]),
+		"%s the impact lock leaves STARTUP/ACTIVE/RECOVERY untouched" % key,
+		"%d/%d/%d" % [int(profile.get("startup", -1)), int(profile.get("active", -1)),
+			int(profile.get("recovery", -1))])
+
+	# --- 5. Non-linear hip dip and overshoot return -------------------------------------
+	var dip_deg := bias.recovery_dip_deg if bias != null else AnimationFeel.RECOVERY_DIP_DEG
+	_check(is_zero_approx(AnimationFeel.recovery_dip(0.0, dip_deg))
+			and is_zero_approx(AnimationFeel.recovery_dip(1.0, dip_deg))
+			and AnimationFeel.recovery_dip(0.3, dip_deg) > 0.0,
+		"%s the recovery dip starts and ends at neutral" % key)
+	var overshoot := AnimationFeel.recovery_dip(0.85, dip_deg)
+	_check(overshoot < 0.0,
+		"%s the recovery overshoots back past neutral (not a linear return)" % key,
+		"%.4f rad at p=0.85" % overshoot)
+	fighter.state = BaseFighter.State.ATTACK_RECOVERY
+	fighter.state_frame = 1
+	await process_frame
+	var live_dip: float = model.body_modifier.recovery_dip
+	_check(not is_zero_approx(live_dip),
+		"%s the live body folds into its recovery" % key, "%.4f rad" % live_dip)
+	fighter.state = BaseFighter.State.IDLE
+	fighter.state_frame = 0
+	await process_frame
+	_check(is_zero_approx(model.body_modifier.recovery_dip),
+		"%s the dip is gone once the fighter is idle" % key)
+
+	# --- Commit 3: camera-readable foreshortening ---------------------------------------
+	_check(is_equal_approx(AnimationFeel.foreshorten_scale(1.0), AnimationFeel.SILHOUETTE_CLAMP),
+		"%s foreshortening tops out on the shared silhouette clamp" % key,
+		"%.3f×" % AnimationFeel.foreshorten_scale(1.0))
+	var stacked := AnimationFeel.foreshorten_scale(1.0) * AnimationFeel.smear_scale(1.0).y
+	_check(is_equal_approx(AnimationFeel.clamp_limb(1.0, 1.0), AnimationFeel.SILHOUETTE_CLAMP)
+			and AnimationFeel.clamp_limb(1.0, 1.0) < stacked,
+		"%s the foreshorten + smear stack is trimmed to the one shared clamp" % key,
+		"%.3f× requested → %.3f×" % [stacked, AnimationFeel.clamp_limb(1.0, 1.0)])
+	_check(AnimationFeel.foreshorten_amount(BaseFighter.State.ATTACK_ACTIVE, 0.9, 0.5, 0.0) == 1.0
+			and AnimationFeel.foreshorten_amount(BaseFighter.State.ATTACK_ACTIVE, 0.4, 0.5, 0.0) == 0.0
+			and is_zero_approx(AnimationFeel.foreshorten_amount(
+				BaseFighter.State.ATTACK_RECOVERY, 0.5, 0.5, 1.0))
+			and AnimationFeel.foreshorten_amount(BaseFighter.State.IDLE, 1.0, 0.5, 0.0) == 0.0,
+		"%s foreshortening is full at impact and releases through recovery" % key)
+	fighter.state = BaseFighter.State.ATTACK_ACTIVE
+	fighter._attack_id = &"strong"
+	fighter._attack = fighter.attacks[&"strong"]
+	fighter.state_frame = 3
+	await process_frame
+	await process_frame
+	var hand_scale: Vector3 = model.body_modifier.hand_scale_now()
+	var hand_peak := maxf(hand_scale.x, maxf(hand_scale.y, hand_scale.z))
+	_check(hand_peak > 1.0 and hand_peak <= AnimationFeel.SILHOUETTE_CLAMP + 0.0001,
+		"%s the striking hand foreshortens inside the clamp" % key, "%.3f×" % hand_peak)
+	fighter.state = BaseFighter.State.IDLE
+	fighter.state_frame = 0
+	await process_frame
+	await process_frame
+	_check(model.body_modifier.hand_scale_now().is_equal_approx(Vector3.ONE),
+		"%s the hand returns to its authored scale after the contact" % key,
+		str(model.body_modifier.hand_scale_now()))
+
+	# --- Commit 3: the cel shader carries the preset rim --------------------------------
+	var cel_shader := load("res://assets/shaders/toon_cel.gdshader") as Shader
+	var uniform_names: Array[String] = []
+	if cel_shader != null:
+		for uniform in cel_shader.get_shader_uniform_list():
+			uniform_names.append(String(uniform["name"]))
+	_check("rim_colour" in uniform_names and "rim_strength" in uniform_names,
+		"%s the cel shader exposes rim_colour and rim_strength" % key,
+		"%d uniforms" % uniform_names.size())
+	var saved_rim := model.preset_rim
+	var saved_strength := model.preset_rim_strength
+	model.set_cel_rim(Color(0.42, 0.90, 1.0, 1.0), 1.30)
+	var live_rim := model.cel_rim()
+	_check(live_rim.b > live_rim.r and is_equal_approx(model.cel_rim_strength(), 1.30),
+		"%s a preset rim reaches the cel material" % key,
+		"%s %.2f" % [str(live_rim), model.cel_rim_strength()])
+	# Restore whatever the stage had pushed, so the checks after this one see the shipped body.
+	model.preset_rim = saved_rim
+	model.preset_rim_strength = saved_strength
+	model._apply_variant()

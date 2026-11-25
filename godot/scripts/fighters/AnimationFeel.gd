@@ -507,3 +507,153 @@ static func hold_every(holding: bool, variable: bool) -> int:
 ## A planted foot/toe bone sits flush on the sand: the lowest *drawn* sole is allowed to
 ## miss world y 0 by at most this much.
 const GROUND_PIN_TOLERANCE := 0.01
+
+
+# =========================================================================
+# 8. Zweifuss / Iverson technique layer (PART 1 commits 2–3, 2026-11-25)
+# =========================================================================
+## Five techniques lifted from the Zweifuss 3rd Strike animation archive and the Stefan
+## Iverson Makoto breakdown. Every one of them is presentation: the sampled skeleton pose,
+## the pose pivot or the camera. `startup`, `active`, `recovery`, damage, hitboxes, the
+## 132 BPM beat window and the 31 Patois entries are untouched — the audit re-hashes
+## `BaseFighter.gd` and `FighterRoster.gd` to prove it.
+##
+## Per-fighter weights live in `PoseTimingBias` (an exported `Resource`), so each archetype's
+## timing bias is authored data rather than a constant hidden in a call site.
+
+# --- 2. Anticipation built INTO the forward step -----------------------------------------
+## Ceiling on the coil's forward travel along the facing axis, metres. "A few cm": a body that
+## visibly loads into the step without sliding its root, its collision body or a hitbox.
+const ANTICIPATION_MAX := 0.055
+
+
+## Forward coil offset in metres for a startup at `p` (0 on the first startup tick, 1 on the
+## last). `depth` is the archetype's authored travel, clamped to `ANTICIPATION_MAX`. The
+## caller passes 0 outside STARTUP, which is what returns the offset to exactly zero by the
+## first ACTIVE frame: the anticipation never leaks into the strike.
+static func anticipation_offset(p: float, depth: float) -> float:
+	var t := clampf(p, 0.0, 1.0)
+	return clampf(depth, 0.0, ANTICIPATION_MAX) * smoothstep(0.0, 1.0, t)
+
+
+# --- 3. C-shape -> S-shape -> reverse-C spine whip ---------------------------------------
+## The whip chain, hips first. Each link trails the hips by `WHIP_CHAIN_DELAY` pose steps, so
+## the torso snaps through C -> S -> reverse-C instead of moving as one block. These are
+## precomputed constants: the per-frame path only samples a curve, it never builds a list.
+const WHIP_CHAIN: Array[StringName] = [&"hips", &"spine1", &"spine2", &"hand"]
+const WHIP_CHAIN_DELAY: Array[int] = [0, 1, 1, 2]
+## Pose steps a link takes to travel from zero to its full share of the strike once its own
+## delay has elapsed. Two steps is the whole ramp, so a one-step delay still reads as a snap.
+const WHIP_RAMP_STEPS := 2
+
+
+## Pose steps this link trails the hips by. 0 for the hips themselves (the leader).
+static func whip_delay(link: StringName) -> int:
+	var index := WHIP_CHAIN.find(link)
+	return WHIP_CHAIN_DELAY[index] if index >= 0 else 0
+
+
+## 0–1 share of the strike a link carries `step` pose steps into ACTIVE. The hips lead at full
+## share on step 0; the upper spine arrives one step later and the striking hand two steps
+## later, which is the measured 1–2 step hip lead the brief asks for.
+static func whip_weight(link: StringName, step: int) -> float:
+	if step < 0:
+		return 0.0
+	var delay := whip_delay(link)
+	if delay <= 0:
+		return 1.0
+	return clampf(float(step - delay + 1) / float(WHIP_RAMP_STEPS), 0.0, 1.0)
+
+
+# --- 4. Frozen impact silhouette ---------------------------------------------------------
+## Pose steps the striking limb chain is held at peak reach after a contact. Inside the
+## existing hit-stop hold, the clip keeps the contact pose for 2–3 grid cells while the
+## off-hand, head and shoulders keep moving (the additive tension / eye-line layer) and
+## settle one step later. No combat tick is extended or shortened.
+const IMPACT_LOCK_MIN := 2
+const IMPACT_LOCK_MAX := 3
+
+
+## Clamp an authored hold into the 2–3 pose-step contract.
+static func impact_lock_steps(authored: int) -> int:
+	return clampi(authored, IMPACT_LOCK_MIN, IMPACT_LOCK_MAX)
+
+
+# --- 5. Non-linear hip dip and overshoot return to idle ----------------------------------
+## Peak of the recovery dip, degrees. The dip is a sine arc that folds the body down, then a
+## smaller opposite arc that overshoots back past neutral before the idle resumes — never a
+## linear slide to zero.
+const RECOVERY_DIP_DEG := 3.4
+## Normalised recovery point where the fold ends and the overshoot begins.
+const RECOVERY_DIP_END := 0.55
+## Depth of the overshoot as a fraction of the dip, 0–1.
+const RECOVERY_DIP_OVERSHOOT := 0.30
+
+
+## Recovery dip in radians at `p` (0 = first recovery tick, 1 = back in the stance).
+## Positive folds the body down into the settle, negative is the overshoot back past neutral.
+static func recovery_dip(p: float, degrees: float = RECOVERY_DIP_DEG) -> float:
+	var t := clampf(p, 0.0, 1.0)
+	var depth := deg_to_rad(clampf(degrees, 0.0, 8.0))
+	if t < RECOVERY_DIP_END:
+		return depth * sin(PI * t / RECOVERY_DIP_END)
+	var over := (t - RECOVERY_DIP_END) / maxf(1.0 - RECOVERY_DIP_END, 0.001)
+	return -depth * RECOVERY_DIP_OVERSHOOT * sin(PI * over)
+
+
+## The same curve normalised to the dip's own peak: 1 at the bottom of the fold, a small
+## negative value through the overshoot, 0 at both ends. Drives the volume-locked pop.
+static func recovery_compress(p: float, degrees: float = RECOVERY_DIP_DEG) -> float:
+	return clampf(recovery_dip(p, degrees) / deg_to_rad(maxf(degrees, 0.001)),
+		-RECOVERY_DIP_OVERSHOOT, 1.0)
+
+
+# --- Commit 3: camera-readable foreshortening --------------------------------------------
+## Peak scale of the striking hand/foot bone on the contact frames. Small on purpose: it is a
+## few percent of extra volume on the limb that is nearest the lens, not a cartoon balloon.
+const FORESHORTEN_MAX := 1.08
+## ONE ceiling shared by every effect that makes a striking limb read bigger on the 2D plane
+## (the foreshortening scale, the one-frame smear and the reach extension), so three systems
+## authored separately can never stack past it.
+const SILHOUETTE_CLAMP := 1.08
+
+
+## Scale for a foreshortening `amount` (0–1). Exactly `SILHOUETTE_CLAMP` at 1.
+static func foreshorten_scale(amount: float) -> float:
+	return 1.0 + clampf(amount, 0.0, 1.0) * (FORESHORTEN_MAX - 1.0)
+
+
+## The shared clamp in action: the product of the foreshortening scale and the smear's own
+## stretch, capped at `SILHOUETTE_CLAMP`. The runtime uses it on the hand bone; the audit
+## proves a double-max request is trimmed instead of doubling the limb.
+static func clamp_limb(foreshorten: float, smear: float) -> float:
+	return minf(foreshorten_scale(foreshorten) * smear_scale(smear).y, SILHOUETTE_CLAMP)
+
+
+## 0–1 foreshortening for the strike. Full from the measured `t_impact` through the end of
+## ACTIVE, then a smooth release across RECOVERY (`recovery_p` 0 at the first recovery tick,
+## 1 at the last) so the limb is back to its authored scale before the fighter is idle again.
+static func foreshorten_amount(state: int, progress: float, t_impact: float,
+		recovery_p: float) -> float:
+	if state == BaseFighter.State.ATTACK_ACTIVE:
+		return 0.0 if progress < t_impact - 0.0001 else 1.0
+	if state == BaseFighter.State.ATTACK_RECOVERY:
+		return 1.0 - smoothstep(0.0, 1.0, clampf(recovery_p, 0.0, 1.0))
+	return 0.0
+
+
+# --- Cinematic camera accent -------------------------------------------------------------
+## Round-winning K.O. blow / special activation: a brief clamped push-in and angle accent,
+## composited with the existing exchange lean and hit-stop punch through one clamped total.
+## The accent decays on its own critically damped spring, so the lens always returns to the
+## neutral framing — it can never hold a crop or alter hit-stop length or input timing.
+const CAMERA_ACCENT_MAX := 0.85
+const CAMERA_ACCENT_YAW_DEG := 2.0
+const CAMERA_ACCENT_FOV_DEG := 0.55
+## How far the accent may pull the lens in, metres. The framing dolly adds the same amount to
+## its required distance, so the pull-in can never crop a fighter.
+const CAMERA_ACCENT_DOLLY := 0.22
+const CAMERA_ACCENT_STIFFNESS := 34.0
+const CAMERA_ACCENT_DAMPING := 11.66
+## Presented frames a held accent peak stays at full before the spring takes it back.
+const CAMERA_ACCENT_HOLD_FRAMES := 3

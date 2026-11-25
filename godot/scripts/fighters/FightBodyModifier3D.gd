@@ -52,6 +52,22 @@ var recoil_high := 0.5
 var tension := 0.0
 ## Facing sign, so the counter-twist and the off-arm clearance follow the fighting side.
 var facing := 1
+## Pose steps into `ACTIVE` this frame is, or -1 when no attack owns the body. Drives the
+## per-link whip lag: the hips lead, the upper spine and then the striking hand follow.
+var whip_step := -1
+## 0–1 share of the strike the upper torso carries this step (see `AnimationFeel.whip_weight`).
+## The hips are never written here, so the facing authority stays untouched.
+var spine_lag := 1.0
+## Forward coil of the startup, metres along ±X. The model writes it on the `VisualPivot`;
+## this copy is the one authoritative value the audit reads.
+var anticipation := 0.0
+## Non-linear recovery dip, radians (positive folds forward, negative is the overshoot back).
+var recovery_dip := 0.0
+## 0–1 camera-readable foreshortening of the striking hand on the contact frames.
+var foreshorten := 0.0
+## Hand bone currently carrying the foreshortening scale, or -1. Restored every frame, so the
+## limb can never keep a scale after the contact is over.
+var _foreshortened_hand := -1
 ## Bound bone indices, resolved once. No per-frame `find_bone()` calls.
 var _spine1 := -1
 var _spine2 := -1
@@ -164,8 +180,10 @@ func apply_now(force: bool = false) -> void:
 
 	# --- 3. Move everything in the body -----------------------------------------------
 	# Shoulder / upper-spine counter-twist: the striking side turns through the torso while
-	# the lower spine stays quiet, so no limb or torso goes dead during a swing.
-	var twist := engage_twist * engage
+	# the lower spine stays quiet, so no limb or torso goes dead during a swing. The
+	# `spine_lag` share is the C → S → reverse-C whip: the hips have already gone, the torso
+	# arrives 1–2 pose steps behind them, and the striking hand behind that.
+	var twist := engage_twist * engage * clampf(spine_lag, 0.0, 1.0)
 	if not is_zero_approx(twist):
 		_add(_spine1, Vector3.UP, twist * face)
 		_add(_spine2, Vector3.UP, twist * 0.55 * face)
@@ -188,6 +206,12 @@ func apply_now(force: bool = false) -> void:
 	if not is_zero_approx(overshoot):
 		_add(_spine2, Vector3.RIGHT, overshoot)
 		_add(_shoulder_r if face > 0.0 else _shoulder_l, Vector3.RIGHT, overshoot * 0.6)
+	# 5. Non-linear recovery settle: a hip-dip fold through the upper spine, then a smaller
+	# overshoot back past neutral. Never a linear slide to the idle.
+	if not is_zero_approx(recovery_dip):
+		_add(_spine1, Vector3.RIGHT, recovery_dip)
+		_add(_spine2, Vector3.RIGHT, recovery_dip * 0.6)
+		_add(_shoulder_r if face > 0.0 else _shoulder_l, Vector3.RIGHT, recovery_dip * 0.25)
 
 	# --- 3b. Arc enforcement: the swing travels a curve, not a straight line ---------
 	# The striking shoulder leads outward, the upper arm follows and the forearm lags, so the
@@ -228,6 +252,17 @@ func apply_now(force: bool = false) -> void:
 			_skel.set_bone_pose_scale(smear_forearm, stretch)
 			_smeared_b = smear_forearm
 		last_smear_scale = stretch
+	# Camera-readable foreshortening (commit 3): the striking hand gains a few percent of
+	# volume on the contact frames, so the limb nearest the lens reads at gameplay size. One
+	# shared clamp (`AnimationFeel.clamp_limb`) covers this and the smear, so the two can
+	# never stack past `SILHOUETTE_CLAMP`. The reach boost is a translation, not a scale, so
+	# it is not part of this product.
+	if foreshorten > 0.0:
+		var fore_hand := _hand_r if face > 0.0 else _hand_l
+		if fore_hand >= 0:
+			var fore_scale := AnimationFeel.clamp_limb(foreshorten, 0.0)
+			_skel.set_bone_pose_scale(fore_hand, Vector3.ONE * fore_scale)
+			_foreshortened_hand = fore_hand
 
 	# --- 4. Alive hitstop -----------------------------------------------------------------
 	if not is_zero_approx(tension):
@@ -251,16 +286,32 @@ func apply_now(force: bool = false) -> void:
 		_add(_head, Vector3.UP, AnimationFeel.recoil_head_yaw(recoil_high) * whip * face)
 
 
-## Undo any stretch left by the previous frame's smear. Called at the top of every applied
-## frame, so the smear is one frame long by construction and a bone can never keep a scale.
+## Undo any stretch left by the previous frame's smear and any scale left by the previous
+## frame's foreshortening. Called at the top of every applied frame, so each is one contact
+## long by construction and a bone can never keep a scale.
 func _clear_smear() -> void:
 	if _smeared_a >= 0:
 		_skel.set_bone_pose_scale(_smeared_a, Vector3.ONE)
 	if _smeared_b >= 0:
 		_skel.set_bone_pose_scale(_smeared_b, Vector3.ONE)
+	if _foreshortened_hand >= 0:
+		_skel.set_bone_pose_scale(_foreshortened_hand, Vector3.ONE)
 	_smeared_a = -1
 	_smeared_b = -1
+	_foreshortened_hand = -1
 	last_smear_scale = Vector3.ONE
+
+
+## Bone carrying the current foreshortening scale, or -1.
+func foreshortened_hand() -> int:
+	return _foreshortened_hand
+
+
+## The scale the striking hand currently carries, for the audit.
+func hand_scale_now() -> Vector3:
+	if _foreshortened_hand >= 0:
+		return _skel.get_bone_pose_scale(_foreshortened_hand)
+	return Vector3.ONE
 
 
 ## True while a smear stretch is applied, for the audit.
@@ -343,6 +394,11 @@ func reset() -> void:
 	chest_yaw = 0.0
 	reach_boost = 0.0
 	smear = 0.0
+	foreshorten = 0.0
+	recovery_dip = 0.0
+	anticipation = 0.0
+	whip_step = -1
+	spine_lag = 1.0
 	if _skel != null:
 		_clear_smear()
 	overshoot = 0.0

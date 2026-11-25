@@ -100,6 +100,8 @@ var last_coil_end: float = AnimationFeel.COIL_END
 var stepped_hold_ticks: int = 0
 
 var _foot_bones: Array[int] = []
+## Hips/spine/head bone indices, cached once: the downed-body seat reads them every frame.
+var _core_bones: Array[int] = []
 var _prop_rest_rel: Array[Basis] = []
 var _measure_pending := false
 var _measure_frame := 0
@@ -738,10 +740,19 @@ const FLOOR_BONE_CLEARANCE := 0.10
 ## Above this fall progress the body is still toppling or getting up, not standing: the foot
 ## pin must not treat it as a planted stance and drag a tilted torso onto the sand.
 const FALL_UPRIGHT := 0.05
+## Downed bodies are seated by their core, not their feet: the lowest of these bones sits at
+## `DOWNED_CORE_CLEARANCE` in world Y. Only the `VisualPivot` moves — the pose pivot, the body
+## root, the collision body and every hitbox keep their authored transform.
+const DOWNED_CORE_CLEARANCE := 0.08
+const CORE_BONES := ["Hips", "Spine", "Spine1", "Spine2", "Head"]
 
 func _clamp_to_floor() -> void:
 	if skeleton == null or _pivot == null:
 		return
+	if _is_downed():
+		_seat_downed_core()
+		return
+	_clear_down_seat()
 	if _is_pinned_state() and _fall <= FALL_UPRIGHT:
 		# A grounded body is already pinned exactly onto the sand by `_pin_feet_to_ground()`,
 		# and this guard's 0.10 m bone clearance would lift a planted foot back off it. During
@@ -757,6 +768,51 @@ func _clamp_to_floor() -> void:
 	var want := FLOOR_BONE_CLEARANCE - lowest
 	if want > 0.0:
 		_pivot.position.y += want
+
+
+## True while the combat state has the body on the ground (knockdown / K.O.). The feet are
+## not planted in these states, so the foot pin is hard-off and the core seating is in charge.
+func _is_downed() -> bool:
+	if fighter == null:
+		return false
+	return fighter.state == BaseFighter.State.KNOCKDOWN or fighter.state == BaseFighter.State.KO
+
+
+## Seat a downed body: the lowest core bone (hips/spine/head) is placed at
+## `DOWNED_CORE_CLEARANCE` in world Y through the `VisualPivot` position only. When the pose
+## is flat the core IS the lowest part of the body, so it lands exactly on 0.08 m; a limb that
+## swings below it raises the same offset just enough to keep the drawn body out of the sand,
+## and the core then reads above 0.08 rather than the limb clipping through the beach. The
+## offset is converted through the pose pivot's basis, so it is a true world-Y lift even while
+## the body is rotated flat, and it is applied as a delta — it can neither stack nor fight the
+## pose.
+func _seat_downed_core() -> void:
+	if _visual_pivot == null or _core_bones.is_empty():
+		return
+	var skel_xf := skeleton.global_transform
+	var core_low := INF
+	for index in _core_bones:
+		core_low = minf(core_low, (skel_xf * skeleton.get_bone_global_pose(index).origin).y)
+	if core_low == INF:
+		return
+	var bone_low := INF
+	for i in skeleton.get_bone_count():
+		bone_low = minf(bone_low, (skel_xf * skeleton.get_bone_global_pose(i).origin).y)
+	# Core floor first, then the drawn-body guard: take the larger lift so neither rule is
+	# ever satisfied by sinking the other.
+	var want := maxf(DOWNED_CORE_CLEARANCE - core_low, FLOOR_BONE_CLEARANCE - bone_low)
+	if want <= 0.0005:
+		return
+	var parent := _visual_pivot.get_parent() as Node3D
+	var basis := parent.global_transform.basis if parent != null else _pivot.global_transform.basis
+	_visual_pivot.position += basis.inverse() * Vector3(0.0, want, 0.0)
+
+
+## Drop any downed-seat offset once the body is back on its feet, so a get-up, attack or walk
+## carries none of the ground correction and the `VisualPivot` returns to its authored pose.
+func _clear_down_seat() -> void:
+	if _visual_pivot != null and not is_zero_approx(_visual_pivot.position.y):
+		_visual_pivot.position.y = 0.0
 
 
 ## Facing is authoritative (playtest fix 2026-11-24). A few delivered takes (stun, stumble,
@@ -1138,12 +1194,17 @@ func toggle_stepped_arcade() -> bool:
 
 func _cache_foot_bones() -> void:
 	_foot_bones.clear()
+	_core_bones.clear()
 	if skeleton == null:
 		return
 	for suffix in FEEL_FOOT_BONES:
 		var index := _bone_suffix(suffix)
 		if index >= 0 and not _foot_bones.has(index):
 			_foot_bones.append(index)
+	for suffix in CORE_BONES:
+		var index := _bone_suffix(suffix)
+		if index >= 0 and not _core_bones.has(index):
+			_core_bones.append(index)
 
 
 ## Distance from the lowest planted foot/toe bone down to the DRAWN sole, measured once
@@ -1799,6 +1860,10 @@ func _apply_hitstop_shake(state: int) -> void:
 ## lifts the body 8 cm off the sand is corrected on the frame it happens.
 func _pin_feet_to_ground() -> void:
 	if _pivot == null or skeleton == null or _foot_bones.is_empty():
+		return
+	# Bug 2: no foot may be planted in a knockdown, a K.O. or a jump. The pin is fully off in
+	# those states, and `_clamp_to_floor()` seats a downed body by its core instead.
+	if _is_downed() or (fighter != null and fighter.state == BaseFighter.State.JUMP):
 		return
 	if not _is_pinned_state():
 		return

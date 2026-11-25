@@ -21,7 +21,7 @@ extends Node3D
 ## of eight. Every slot cycles through **all seven delivered Mixamo characters** (3 male +
 ## 4 female), in sorted filename order, so the whole cast is on screen at once and no two
 ## neighbours share a model. Characters are fitted to their own height and stand on the
-## sand in their own row's depth.
+## row's depth tier — a per-row Y offset only, never a riser prop.
 ##
 ## Cost: each body is a real ~3 500-triangle rig, so 22 of them is ~75 000 triangles — still a
 ## trivial load for an Intel Chromebook GPU, and the geometry is shared (see
@@ -44,6 +44,10 @@ const ZONE_RIGHT := 1
 ## ones that answer last, which is what makes a reaction ripple instead of snapping.
 const ROW_Z := [-4.15, -5.05, -5.95]
 const ROW_COUNTS := [4, 4, 3]              # per zone, per row
+## Depth tiers as a plain per-row Y offset, never a prop: the back rows stand a little higher
+## so their heads read over the front row from the stage camera. The barrier, the sands and
+## the PropLoader contract are untouched, and no riser geometry is drawn.
+const ROW_Y := [0.0, 0.20, 0.40]
 ## Row base delay plus a per-metre stagger: ringside answers first, the back row last.
 const ROW_DELAY := [0.0, 0.11, 0.22]
 ## Half-width bands (mirrored by the zone sign), wide enough to read as a packed crowd and
@@ -146,15 +150,16 @@ func _make_member(index: int, zone: int, row: int, x: float) -> Member:
 
 	var anchor := Node3D.new()
 	anchor.name = "Spectator%02d" % index
-	# A little depth jitter inside the row keeps the line from looking like a shelf.
-	anchor.position = Vector3(x, 0.0, ROW_Z[row] + _rng.randf_range(-0.14, 0.14))
+	# A little depth jitter inside the row keeps the line from looking like a shelf; the row's
+	# own Y offset is the depth tier, so the back rows read over the front row.
+	anchor.position = Vector3(x, ROW_Y[row], ROW_Z[row] + _rng.randf_range(-0.14, 0.14))
 	# Everyone turns slightly towards the centre of the yard, where the fight is.
 	var inward := 14.0 if zone == ZONE_LEFT else -14.0
 	anchor.rotation.y = deg_to_rad(inward) + _rng.randf_range(-0.14, 0.14)
 	add_child(anchor)
 
 	m.node = anchor
-	m.base_y = 0.0
+	m.base_y = ROW_Y[row]
 	return m
 
 
@@ -511,6 +516,11 @@ func row_count(row: int) -> int:
 
 func row_z(row: int) -> float:
 	return ROW_Z[clampi(row, 0, ROW_Z.size() - 1)]
+
+
+## The row's depth tier: a Y offset only, so no crowd riser prop exists to load or draw.
+func row_y(row: int) -> float:
+	return ROW_Y[clampi(row, 0, ROW_Y.size() - 1)]
 
 
 ## Depth spread of the built crowd, used to prove the rows are genuinely staggered.

@@ -60,6 +60,10 @@ var _forearm_r := -1
 ## pose is restored the moment the smear ends (no drifting bone scale, no per-frame arrays).
 var _smeared_a := -1
 var _smeared_b := -1
+## The scale triple the last smear applied, or `Vector3.ONE`. The hand props ride bones
+## downstream of the arm, so they inherit this stretch; `FighterModel3D._isolate_props()`
+## divides it straight back out so a mic or a mic stand is never smeared with the limb.
+var last_smear_scale := Vector3.ONE
 var _applied_frame := -1
 ## Yaw spent this frame, so the layer can never exceed `AnimationFeel.INFLUENCE_CAP`.
 var _yaw_spent := 0.0
@@ -198,6 +202,7 @@ func apply_now(force: bool = false) -> void:
 		if smear_forearm >= 0:
 			_skel.set_bone_pose_scale(smear_forearm, stretch)
 			_smeared_b = smear_forearm
+		last_smear_scale = stretch
 
 	# --- 4. Alive hitstop -----------------------------------------------------------------
 	if not is_zero_approx(tension):
@@ -227,6 +232,7 @@ func _clear_smear() -> void:
 		_skel.set_bone_pose_scale(_smeared_b, Vector3.ONE)
 	_smeared_a = -1
 	_smeared_b = -1
+	last_smear_scale = Vector3.ONE
 
 
 ## True while a smear stretch is applied, for the audit.

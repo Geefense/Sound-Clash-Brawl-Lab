@@ -243,6 +243,8 @@ var _fall: float = 0.0
 var _spin: float = 0.0
 var _spin_angle: float = 0.0
 var _flash: float = 0.0
+## Rising-edge latch for the one-frame impact flash.
+var _flash_lit: bool = false
 var _last_facing: int = 1
 var _base_tint: Color = Color.WHITE
 var _base_hue: float = 0.0
@@ -1009,11 +1011,14 @@ func _add_bone(bone_name: String, axis: Vector3, angle: float) -> void:
 
 
 func _push_flash() -> void:
-	# The 2D fighter counts its own impact-flash ticks; the 3D material follows the same
-	# two-tick window so hit confirmation reads identically. A Record Static Parry lights the
-	# same flash plus a gold rim, which is the 3D half of the vinyl-static read.
+	# One-frame impact flash (owner spec, PART 2 commit 5). The 2D fighter still counts a
+	# two-tick flash for the sprite path, but the 3D material lights on the RISING EDGE only
+	# and drops on the very next frame, so the contact reads as a single crisp strobe instead
+	# of a two-frame wash. Nothing in the combat FSM is touched to get this.
 	var parry := fighter._parry_flash_ticks > 0
-	var target := 1.0 if fighter._impact_flash_ticks > 0 or parry else 0.0
+	var hit_now := fighter._impact_flash_ticks > 0
+	var target := 1.0 if (hit_now and not _flash_lit) or parry else 0.0
+	_flash_lit = hit_now
 	if parry != _parry_lit:
 		_parry_lit = parry
 		var rim := PARRY_RIM if parry else (MIRROR_RIM if mirror_variant else _base_rim)
@@ -1370,6 +1375,10 @@ func _apply_feel_layer(delta: float) -> void:
 	if body_modifier != null:
 		_configure_body_modifier(state)
 		body_modifier.apply_now()
+		# AFTER the skeleton has written this frame's smear, never before: the prop
+		# compensation is the inverse of both the pop and whatever stretch the arm actually
+		# carries, so reading it a frame late would leave one frame of warp on the mic.
+		_isolate_props()
 	_apply_hitstop_shake(state)
 
 
@@ -1429,19 +1438,34 @@ func _apply_squash_pop(delta: float, state: int) -> void:
 	# into the millions. 1/30 s is the widest stable step for this stiffness.
 	var step := AnimationFeel.spring_step(_squash_scale, _squash_velocity, target,
 		clampf(delta, 0.0001, 1.0 / 30.0))
-	_squash_scale = step[0]
+	# Volume lock: the spring interpolates linearly between two scale triples, so a mid-spring
+	# frame is NOT volume-preserving on its own. Renormalising every frame keeps the pop's
+	# scale product at exactly 1.0, which is what stops a squash from reading as the body
+	# gaining or losing mass. `Vector3.ONE` is a fixed point, so the rest pose is unaffected.
+	_squash_scale = AnimationFeel.volume_preserve(step[0])
 	_squash_velocity = step[1]
+	if _squash_scale.distance_to(Vector3.ONE) < 0.00005:
+		_squash_scale = Vector3.ONE
 	squash_pivot.scale = _squash_scale
-	_isolate_props()
 
 
-## Inverse-scale every hand prop against the current pop, so the attachment keeps its own
-## proportions while the body squashes. Exact per-axis cancellation, no allocation.
+## Inverse-scale every hand prop against everything the body currently does to its parent
+## chain, so a mic keeps its own proportions while the body squashes and while the arm is
+## smeared. Two known, exact terms are divided out:
+##   * the `SquashPivot` pop, which scales the whole model under the fighter;
+##   * the one-frame limb smear, which the modifier writes on the striking upper arm and
+##     forearm — the hand is downstream of the forearm, so it would inherit the stretch.
+## `BoneAttachment3D` carries both, and both are values this node already owns, so the
+## cancellation is per-axis arithmetic with no scene-graph reads and no feedback loop.
 func _isolate_props() -> void:
 	if hand_props.is_empty():
 		return
 	var s := _squash_scale
-	var inv := Vector3(1.0 / maxf(s.x, 0.001), 1.0 / maxf(s.y, 0.001), 1.0 / maxf(s.z, 0.001))
+	var smear := body_modifier.last_smear_scale if body_modifier != null else Vector3.ONE
+	var inv := Vector3(
+		1.0 / maxf(s.x * smear.x, 0.001),
+		1.0 / maxf(s.y * smear.y, 0.001),
+		1.0 / maxf(s.z * smear.z, 0.001))
 	for i in hand_props.size():
 		var prop := hand_props[i]
 		if prop == null:

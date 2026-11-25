@@ -185,11 +185,35 @@ func _audit_static_curves() -> void:
 		and AnimationFeel.recoil_curve(AnimationFeel.RECOIL_SECONDS) == 0.0,
 		"recoil whip is instant then decays to zero over %.2fs" % AnimationFeel.RECOIL_SECONDS)
 
-	# 5. Squash presets and the spring.
-	_check(AnimationFeel.SQUASH_POP == Vector3(1.06, 0.92, 1.06),
-		"anticipation / landing squash is (1.06, 0.92, 1.06)")
-	_check(AnimationFeel.SQUASH_STRETCH == Vector3(1.07, 1.04, 0.95),
-		"heavy / special stretch is (1.07, 1.04, 0.95)")
+	# 5. Squash presets and the spring. The contract is the VOLUME, not a hand-copied triple:
+	# every preset must preserve it to within `SQUASH_VOLUME_TOLERANCE`, which is a stronger
+	# requirement than any particular set of numbers.
+	for preset in [["anticipation / landing squash", AnimationFeel.SQUASH_POP],
+			["heavy / special stretch", AnimationFeel.SQUASH_STRETCH],
+			["crouch / knockdown compression", AnimationFeel.SQUASH_LANDING]]:
+		var s: Vector3 = preset[1]
+		var vol := AnimationFeel.squash_volume(s)
+		_check(absf(vol - 1.0) <= AnimationFeel.SQUASH_VOLUME_TOLERANCE,
+			"%s preserves volume" % preset[0],
+			"(%.3f, %.3f, %.3f) -> product %.4f" % [s.x, s.y, s.z, vol])
+	_check(AnimationFeel.SQUASH_POP.x > 1.0 and AnimationFeel.SQUASH_POP.y < 1.0,
+		"the squash preset is wider and shorter", "(%.3f, %.3f, %.3f)" % [
+			AnimationFeel.SQUASH_POP.x, AnimationFeel.SQUASH_POP.y, AnimationFeel.SQUASH_POP.z])
+	_check(AnimationFeel.SQUASH_STRETCH.x > 1.0 and AnimationFeel.SQUASH_STRETCH.z < 1.0,
+		"the stretch preset is taller/wider and thinner", "(%.3f, %.3f, %.3f)" % [
+			AnimationFeel.SQUASH_STRETCH.x, AnimationFeel.SQUASH_STRETCH.y,
+			AnimationFeel.SQUASH_STRETCH.z])
+	# A tripled non-unit scale must come straight back out of the renorm helper, and the
+	# half-way frame of an interpolation must be renormalised too (that is the real bug the
+	# helper exists for — the linear lerp of two unit-product triples is NOT unit-product).
+	var mid := AnimationFeel.volume_preserve(Vector3.ONE.lerp(AnimationFeel.SQUASH_POP, 0.5))
+	_check(absf(AnimationFeel.squash_volume(mid) - 1.0) < 0.0001,
+		"volume_preserve() fixes a mid-spring interpolation",
+		"product %.6f" % AnimationFeel.squash_volume(mid))
+	var raw_mid := Vector3.ONE.lerp(AnimationFeel.SQUASH_POP, 0.5)
+	_check(absf(AnimationFeel.squash_volume(raw_mid) - 1.0) > 0.0005,
+		"the raw interpolation really does drift, so the lock is load-bearing",
+		"raw product %.6f" % AnimationFeel.squash_volume(raw_mid))
 	var cur := AnimationFeel.SQUASH_STRETCH
 	var vel := Vector3.ZERO
 	var settled := false

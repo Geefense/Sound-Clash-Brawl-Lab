@@ -206,6 +206,18 @@ const TENSION_HZ := 7.5
 ## Defender X-shake during hitstop, metres either side of the planted pose.
 const HITSTOP_SHAKE := 0.012
 
+# --- Hit-stop camera punch ---------------------------------------------------------------
+## The camera answers a frozen contact with a tiny widening FOV kick and a hair of vertical
+## offset, then a damped scalar spring carries both back to rest over a few frames. It is
+## impulse-then-spring, never a step: the camera keeps integrating every presented frame at
+## 60 fps, so a hit-stop cannot judder the view.
+const CAMERA_PUNCH_FOV_DEG := 1.15
+const CAMERA_PUNCH_OFFSET_M := 0.012
+const CAMERA_PUNCH_STIFFNESS := 96.0
+const CAMERA_PUNCH_DAMPING := 13.5
+## Ceiling on one punched frame, so a stacked counter + K.O. cannot swing the lens wide.
+const CAMERA_PUNCH_MAX := 1.6
+
 
 static func tension_amount(clock: float, hitstop: bool) -> float:
 	if not hitstop:
@@ -213,21 +225,67 @@ static func tension_amount(clock: float, hitstop: bool) -> float:
 	return sin(clock * TAU * TENSION_HZ) * TENSION_PEAK
 
 
+## Camera punch impulse for a contact that froze the fight for `frames` ticks. A jab's
+## 4-tick stop is a flick; a K.O.'s longer stop is a full lens kick, still clamped inside
+## `CAMERA_PUNCH_MAX`. Visual only — the hit-stop itself stays in the combat FSM.
+static func camera_punch(frames: int) -> float:
+	if frames <= 0:
+		return 0.0
+	return clampf(float(frames) / 9.0, 0.18, CAMERA_PUNCH_MAX)
+
+
 # =========================================================================
 # 5. SquashPivot volume-preserving impact pop
 # =========================================================================
-## Anticipation / landing / knockdown: wider and shorter, volume preserved.
-const SQUASH_POP := Vector3(1.06, 0.92, 1.06)
-## Heavy and special contact: longer and narrower.
-const SQUASH_STRETCH := Vector3(1.07, 1.04, 0.95)
+## Anticipation / landing / knockdown: wider and shorter. Every preset below is authored so
+## `x * y * z == 1.0` by construction — a body that squashes must not also swell, or the
+## silhouette gains weight it does not have. `volume_preserve()` then pins the product at
+## exactly 1.0 on every frame the spring passes through, including the interpolation.
+const SQUASH_POP := Vector3(1.06, 0.89, 1.06)
+## Heavy and special contact: taller and wider, thinner into the depth axis (which the camera
+## looks along, so the stretch reads up and across the sand instead of toward the lens).
+const SQUASH_STRETCH := Vector3(1.06, 1.02, 0.925)
 ## A light strike gets half of the stretch so light exchanges stay clean.
 const SQUASH_LIGHT_WEIGHT := 0.5
 ## Damped spring back to rest: stiff enough to snap, damped enough never to wobble.
 const SQUASH_STIFFNESS := 210.0
 const SQUASH_DAMPING := 26.0
+## How far the impact pop's scale product may drift from 1.0. The presets are exact; this is
+## the guard the audit holds the live `SquashPivot` to, including mid-spring frames.
+const SQUASH_VOLUME_TOLERANCE := 0.02
 
 ## `CROUCH`/`KNOCKDOWN`-style compression shared by every fighter.
-const SQUASH_LANDING := Vector3(1.06, 0.92, 1.06)
+const SQUASH_LANDING := Vector3(1.06, 0.89, 1.06)
+
+
+## Volume of a scale triple: 1.0 means the body gained or lost nothing.
+static func squash_volume(s: Vector3) -> float:
+	return s.x * s.y * s.z
+
+
+## Renormalise a scale triple so its product is exactly 1.0. Interpolating a spring between
+## `Vector3.ONE` and a volume-preserving target does NOT preserve volume (the product is
+## multiplicative, the interpolation linear), so every frame the pop writes goes through
+## here. A degenerate triple returns `Vector3.ONE` rather than a division blow-up.
+static func volume_preserve(s: Vector3) -> Vector3:
+	var v := s.x * s.y * s.z
+	if v <= 0.000001:
+		return Vector3.ONE
+	var k := pow(v, -1.0 / 3.0)
+	return Vector3(s.x * k, s.y * k, s.z * k)
+
+
+## Scalar version of `spring_step`, for values that are not a Vector3 — the camera's hit-stop
+## punch. Same stiffness/damping contract: a snap out, then a clean settle with no wobble.
+static func spring_scalar_step(current: float, velocity: float, target: float,
+		delta: float, stiffness: float = SQUASH_STIFFNESS,
+		damping: float = SQUASH_DAMPING) -> Array:
+	var accel := (target - current) * stiffness - velocity * damping
+	var next_velocity := velocity + accel * delta
+	var next := current + next_velocity * delta
+	if absf(next - target) < 0.0002 and absf(next_velocity) < 0.002:
+		return [target, 0.0]
+	return [next, next_velocity]
 
 
 ## Target scale for the impact pop, from the fighter's own combat phase. Returns

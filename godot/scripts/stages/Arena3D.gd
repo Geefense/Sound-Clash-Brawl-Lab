@@ -157,6 +157,12 @@ var crowd3d: CrowdController3D = null
 var dj_booth: DJBooth3D = null
 var _pulse: float = 0.0
 var _kick: float = 0.0
+## Velocity of the hit-stop punch spring. The lens is impulse-then-spring, never stepped:
+## `_update_camera` integrates it every presented frame at 60 fps, so a frozen contact can
+## punch the view without the camera ever entering the combat tick.
+var _kick_velocity: float = 0.0
+## Last punch value written to the lens, read by the audit. Zero is a resting camera.
+var camera_punch: float = 0.0
 var _shake: float = 0.0
 var _camera_x: float = 0.0
 var _live_bursts: Array = []
@@ -241,8 +247,18 @@ func pulse_speakers(strength: float = 1.0) -> void:
 ## Heavy contact / KO / knockdown: a brief subtle zoom-in plus camera shake. Hit-stop itself
 ## stays in the combat FSM — this never freezes or changes simulation time.
 func hit_kick(strength: float = 1.0) -> void:
-	_kick = maxf(_kick, clampf(strength, 0.0, 1.6))
+	_kick = maxf(_kick, clampf(strength, 0.0, AnimationFeel.CAMERA_PUNCH_MAX))
 	_shake = maxf(_shake, clampf(strength, 0.0, 1.4) * 0.045)
+
+
+## Hit-stop camera punch: a tiny FOV/offset impulse sized by how long the contact froze the
+## fight, carried back to rest by a damped scalar spring. Purely presentational — the ticks
+## still belong to `BaseFighter`, and nothing here can move a fighter or a hitbox.
+func hitstop_punch(stop_frames: int, strength: float = 1.0) -> void:
+	var punch := AnimationFeel.camera_punch(stop_frames) * clampf(strength, 0.2, 1.4)
+	if punch <= 0.0:
+		return
+	_kick = minf(AnimationFeel.CAMERA_PUNCH_MAX, maxf(_kick, punch))
 
 
 func apply_phase(index: int, duration: float = 0.0) -> void:
@@ -341,7 +357,15 @@ func camera_distance() -> float:
 # =========================================================================
 func _process(delta: float) -> void:
 	_pulse = move_toward(_pulse, 0.0, delta * 4.2)
-	_kick = move_toward(_kick, 0.0, delta * 2.4)
+	# Scalar spring decay for the hit-stop punch (never a stepped or linear falloff).
+	var kick_step: Array = AnimationFeel.spring_scalar_step(_kick, _kick_velocity, 0.0,
+		clampf(delta, 0.0001, 1.0 / 30.0), AnimationFeel.CAMERA_PUNCH_STIFFNESS,
+		AnimationFeel.CAMERA_PUNCH_DAMPING)
+	_kick = kick_step[0]
+	_kick_velocity = kick_step[1]
+	if absf(_kick) < 0.0002:
+		_kick = 0.0
+		_kick_velocity = 0.0
 	_shake = move_toward(_shake, 0.0, delta * 3.0)
 	_update_phase(delta)
 	_update_camera(delta)
@@ -365,9 +389,12 @@ func _update_camera(delta: float) -> void:
 		_rng.randf_range(-1.0, 1.0) * _shake * 0.7,
 		0.0)
 	camera.position = Vector3(_camera_x + jitter.x, CAMERA_HEIGHT + jitter.y, CAMERA_DISTANCE)
-	camera.fov = CAMERA_FOV - _kick * 3.2
+	# The punch is a widening FOV kick plus a hair of vertical offset, both riding the same
+	# spring value, so the impulse and its recovery are one smooth arc.
+	camera.fov = CAMERA_FOV - _kick * AnimationFeel.CAMERA_PUNCH_FOV_DEG
 	camera.h_offset = 0.0
-	camera.v_offset = 0.0
+	camera.v_offset = -_kick * AnimationFeel.CAMERA_PUNCH_OFFSET_M
+	camera_punch = _kick
 
 
 func _update_fighters() -> void:

@@ -721,6 +721,11 @@ func _on_strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dic
 				_announce_callout(impact_kind)
 	if arena3d != null:
 		arena3d.hit_kick(0.9 if bool(result.get("counter", false)) else 0.3)
+		# Hit-stop camera punch: sized from the freeze this contact actually caused, so a jab
+		# flicks the lens and a counter or K.O. kicks it. `_hitstop_frames` is read, never
+		# written — the camera cannot extend or shorten a freeze.
+		arena3d.hitstop_punch(target._hitstop_frames if target != null else 0,
+			1.3 if bool(result.get("counter", false)) else 1.0)
 		arena3d.pulse_speakers(0.8 if unblocked else 0.3)
 		# DJs and crowd answer the contact itself (owner request, 2026-11-22). The cue only
 		# starts their staggered timers; no combat value is read back out of the yard.

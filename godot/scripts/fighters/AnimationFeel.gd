@@ -92,7 +92,8 @@ static func startup_progress(p: float, coil: float = COIL_END) -> float:
 ## `ACTIVE`: a 1–2 frame whip from the coil across the breakdown poses to the measured
 ## `t_impact`, then a 2–4 frame settle that keeps the extended silhouette. `frame` is the
 ## fighter's own `state_frame`, so hitstop (which does not advance it) holds the pose.
-static func active_progress(frame: int, t_impact: float, coil: float = COIL_END) -> float:
+static func active_progress(frame: int, t_impact: float, coil: float = COIL_END,
+		settle_frames: int = SETTLE_FRAMES) -> float:
 	if frame <= 0:
 		return clampf(coil, 0.0, 1.0)
 	var whip := clampf(float(mini(frame, WHIP_FRAMES)) / float(WHIP_FRAMES), 0.0, 1.0)
@@ -101,7 +102,7 @@ static func active_progress(frame: int, t_impact: float, coil: float = COIL_END)
 		# clip has visibly snapped across the breakdown poses rather than crept to them.
 		var eased := 1.0 - (1.0 - whip) * (1.0 - whip)
 		return lerpf(clampf(coil, 0.0, 1.0), t_impact, eased)
-	var settle := clampf(float(frame - WHIP_FRAMES) / float(maxi(1, SETTLE_FRAMES)), 0.0, 1.0)
+	var settle := clampf(float(frame - WHIP_FRAMES) / float(maxi(1, settle_frames)), 0.0, 1.0)
 	return lerpf(t_impact, minf(t_impact + SETTLE_DRIFT, 1.0), settle)
 
 
@@ -387,6 +388,84 @@ static func recoil_curve(age: float) -> float:
 	if p >= 1.0:
 		return 0.0
 	return (1.0 - p) * (1.0 - p)
+
+
+# =========================================================================
+# 7. Mentor extras (PART 2 commit 7) — beat accent, moving-hold idle, variable stepping
+# =========================================================================
+## A strike whose INPUT was judged on the 132 BPM grid keeps a little more overshoot and
+## holds its extended silhouette one settle frame longer. Visual only, and clamped: the beat
+## window belongs to `BeatService` and §9 item 1, and nothing here changes when `ACTIVE`
+## starts or ends, how long it lasts, or what it hits.
+const BEAT_OVERSHOOT_GAIN := 1.35
+const BEAT_OVERSHOOT_MAX_DEG := 6.5
+const BEAT_SETTLE_EXTRA := 1
+
+
+## Overshoot for an `ACTIVE` frame, accented when the attack was judged on the beat.
+static func overshoot_lean_accented(frame: int, on_beat: bool) -> float:
+	var base := overshoot_lean(frame)
+	if not on_beat or is_zero_approx(base):
+		return base
+	return minf(base * BEAT_OVERSHOOT_GAIN, deg_to_rad(BEAT_OVERSHOOT_MAX_DEG))
+
+
+## Settle length for an attack: one extra frame when the input landed on the grid.
+static func settle_frames_for(on_beat: bool) -> int:
+	return SETTLE_FRAMES + (BEAT_SETTLE_EXTRA if on_beat else 0)
+
+
+# --- Moving-hold idle: a stance is never a frozen loop --------------------------------
+## Slow lateral weight shift, a breathing rise, and a small dip on every 132 BPM beat. All
+## three ride the presentation pivot, so the root, the facing and the collision body never
+## move; they exist so a fighter waiting out a clash still looks alive.
+const IDLE_WEIGHT_HZ := 0.21
+const IDLE_WEIGHT_SWAY := 0.012
+const IDLE_WEIGHT_ROLL := 0.014
+const IDLE_BREATH_HZ := 0.30
+const IDLE_BREATH := 0.005
+const IDLE_BEAT_DIP := 0.007
+const IDLE_BEAT_DECAY := 5.5
+
+
+## Lateral weight shift, metres, either side of the stance.
+static func idle_sway(clock: float) -> float:
+	return sin(clock * TAU * IDLE_WEIGHT_HZ) * IDLE_WEIGHT_SWAY
+
+
+## Hip roll that goes with the shift, radians.
+static func idle_roll(clock: float) -> float:
+	return sin(clock * TAU * IDLE_WEIGHT_HZ) * IDLE_WEIGHT_ROLL
+
+
+## Breathing rise, metres.
+static func idle_breath(clock: float) -> float:
+	return sin(clock * TAU * IDLE_BREATH_HZ) * IDLE_BREATH
+
+
+## Vertical dip that starts on the beat and decays away from it, metres (negative = down).
+static func idle_beat_dip(beat_phase: float) -> float:
+	return -IDLE_BEAT_DIP * exp(-clampf(beat_phase, 0.0, 1.0) * IDLE_BEAT_DECAY)
+
+
+# --- Variable stepping: the held impact pose steps slower than the whip that reached it --
+## While the extended silhouette is held, a new grid cell is taken only every Nth frame. The
+## pose stays an exact 16–20 fps grid position (nothing is re-quantized off the lattice); it
+## simply persists, so the contact reads held instead of drifting through the settle at the
+## whip's rate. Anything that snapped IN is unaffected — only the hold slows.
+const HOLD_EVERY := 2
+
+
+## Discrete poses for the slower idle/walk lattice. Unclamped — unlike `step_count()`, whose
+## 16–20 fps band is the attack contract — because the whole point of this lattice is to sit
+## BELOW the attack rate.
+static func idle_step_count(length: float, fps: float) -> int:
+	return maxi(1, int(round(length * clampf(fps, 1.0, 20.0))))
+
+
+## Frames one grid cell is kept for: 2 while the impact pose is being held, 1 otherwise.
+static func hold_every(holding: bool, variable: bool) -> int:
+	return HOLD_EVERY if (holding and variable) else 1
 
 
 # =========================================================================

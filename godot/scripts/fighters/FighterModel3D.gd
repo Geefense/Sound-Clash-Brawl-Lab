@@ -103,6 +103,10 @@ var _squash_velocity := Vector3.ZERO
 var _shake_ticks := 0
 var _hold_ticks := 0
 var _hold_index := -1
+## Virtual clock for the slower idle/walk lattice, so the player's own advance can never fight
+## the seek. Reset (from the player's position, not from zero) whenever the take changes.
+var _slow_clock := 0.0
+var _slow_clip := ""
 
 ## Per-move whole-body profiles (2026-11-22). Every fighter shares the same FSM, so the 3D
 ## differentiation lives here: `w_` is the startup coil, `s_` the contact drive. Lean and
@@ -230,6 +234,26 @@ var facing_sign: int = 1
 ## body from the inspector without touching code. The world root, the collision body and the
 ## camera are never stepped — only the sampled skeleton pose is.
 @export_range(16.0, 20.0, 1.0) var step_fps: float = AnimationFeel.STEPPED_FPS
+
+# --- Mentor extras (PART 2 commit 7) ------------------------------------------------------
+# Each look-changing extra sits behind its own documented export var, so any one of them can
+# be switched off from the inspector without touching code or the F4 stepping switch.
+## An attack whose INPUT was judged on the 132 BPM grid keeps more overshoot and holds its
+## extended pose one settle frame longer. Visual only; combat timing is untouched.
+@export var beat_accent: bool = true
+## Weight shift + breathing + a dip on the beat, so a stance is never a frozen loop.
+@export var moving_hold_idle: bool = true
+## The held impact pose is re-gridded onto a coarser lattice, and idle/walk step slower than
+## an attack does, while the whip keeps the full 16–20 fps grid.
+@export var variable_stepping: bool = true
+## Discrete poses per second for idle/walk under `variable_stepping`. Deliberately below
+## `step_fps`: a waiting body steps, an attacking body snaps.
+@export_range(1.0, 20.0, 0.5) var step_fps_idle: float = 12.0
+## Beat position 0..1 inside the 132 BPM bar, pushed once a frame by the arena. Only the
+## moving-hold idle reads it — judgement is still the fighter's own input-time record.
+var beat_phase: float = 0.0
+## Whether the LAST attack frame got the beat accent, for the HUD readout and the audit.
+var last_beat_accent: bool = false
 var feet_offset: float = 0.0
 
 ## The fighter root (this node) is never rotated and only ever follows the fighter's X.
@@ -672,6 +696,7 @@ func _process(delta: float) -> void:
 	_apply_facing()
 	_animate_pose(delta)
 	_drive_clips()
+	_step_moving_holds(delta)
 	_lock_root_yaw()
 	_compensate_clip_yaw()
 	_animate_rig()
@@ -909,6 +934,20 @@ func _animate_pose(delta: float) -> void:
 				lean_target = -0.07
 		_:
 			bob += sin(_clock * TAU * 0.5) * 0.003
+	# Moving-hold idle (PART 2 commit 7): weight shift, breathing and a dip on the 132 BPM
+	# beat, so a body waiting out a clash is never a frozen loop. All of it rides the pose
+	# pivot — the root, the facing pivot and the collision body never move.
+	var sway := 0.0
+	var roll := 0.0
+	var breath := 0.0
+	if moving_hold_idle and state in [BaseFighter.State.IDLE, BaseFighter.State.WALK,
+			BaseFighter.State.CROUCH]:
+		sway = AnimationFeel.idle_sway(_clock)
+		roll = AnimationFeel.idle_roll(_clock)
+		breath = AnimationFeel.idle_breath(_clock)
+		if state == BaseFighter.State.IDLE:
+			breath += AnimationFeel.idle_beat_dip(beat_phase)
+
 	if _spin > 0.0 and state != BaseFighter.State.THROWN:
 		_spin = move_toward(_spin, 0.0, 10.0 * delta)
 	if state == BaseFighter.State.THROWN:
@@ -925,13 +964,13 @@ func _animate_pose(delta: float) -> void:
 	_lift = _approach(_lift, lift_target, 18.0, delta)
 
 	var face := float(facing_sign)
-	_pivot.position = Vector3(_lunge * face, bob + _lift, 0.0)
+	_pivot.position = Vector3(_lunge * face + sway * face, bob + _lift + breath, 0.0)
 	_pivot.scale = Vector3(1.0 + (1.0 - _squash) * 0.35, _squash, 1.0)
 	_pivot.rotation.x = _pitch
 	# NOTHING on this pivot may yaw: `VisualPivot` owns facing alone, so the whole body's
 	# forward stays within a few degrees of ±X in every animation (playtest fix 2026-11-24).
 	# The per-move body twist still reads, because it rides the spine in `_apply_twist()`.
-	_pivot.rotation.z = -_lean * face - _fall * face * PI * 0.5 * 0.94 + _spin_angle
+	_pivot.rotation.z = -_lean * face - _fall * face * PI * 0.5 * 0.94 + _spin_angle + roll * face
 	_apply_twist(face)
 
 
@@ -1359,6 +1398,50 @@ func _on_state_changed(_old_state: int, new_state: int) -> void:
 ## thrown body, a knockdown's fall and a K.O. are the others, and a HITSTUN whose vertical
 ## velocity is still upward is a launch that has not come down yet. `velocity` is the 2D
 ## simulation's own value — read-only here, never written.
+## True while an attack is holding its extended silhouette: the settle after the whip, and
+## every frozen hit-stop tick. This is where `variable_stepping` slows the lattice down.
+func _is_holding_impact(state: int) -> bool:
+	if fighter == null:
+		return false
+	if state == BaseFighter.State.ATTACK_ACTIVE and fighter.state_frame >= AnimationFeel.WHIP_FRAMES:
+		return true
+	return fighter._hitstop_frames > 0 and (state == BaseFighter.State.ATTACK_ACTIVE
+		or state == BaseFighter.State.HITSTUN)
+
+
+## Idle / walk / crouch are not driven by the combat phase, so the player advances them. When
+## `variable_stepping` is on they are re-gridded onto their own slower lattice, which is what
+## makes a waiting body step more slowly than a striking one. A virtual clock — seeded from
+## wherever the player already was when the take changed — keeps the two from fighting: the
+## pose is held on the lattice cell and only moves when the clock crosses into the next one.
+func _step_moving_holds(delta: float) -> void:
+	if not variable_stepping or not stepped_arcade or animation == null \
+			or not animation.is_playing() or fighter == null:
+		_slow_clip = ""
+		return
+	var state: int = fighter.state
+	if _owns_clip_time(state) or _is_airborne():
+		_slow_clip = ""
+		return
+	if state != BaseFighter.State.IDLE and state != BaseFighter.State.WALK \
+			and state != BaseFighter.State.CROUCH:
+		_slow_clip = ""
+		return
+	var clip_name := String(animation.current_animation)
+	var anim := animation.get_animation(clip_name)
+	if anim == null or anim.length <= 0.0:
+		return
+	if clip_name != _slow_clip:
+		_slow_clip = clip_name
+		_slow_clock = animation.current_animation_position
+	_slow_clock = fposmod(_slow_clock + delta, anim.length)
+	var steps := AnimationFeel.idle_step_count(anim.length, step_fps_idle)
+	if steps <= 1:
+		return
+	var q := AnimationFeel.quantize(_slow_clock / anim.length, steps)
+	animation.seek(q * anim.length, true)
+
+
 func _is_airborne() -> bool:
 	if fighter == null:
 		return true
@@ -1426,11 +1509,21 @@ func _drive_clip_time() -> void:
 	if stepped_arcade and steps > 1:
 		t = AnimationFeel.quantize(t, steps)
 		var index := int(round(t * float(steps)))
+		# Variable stepping: while the extended silhouette is held, keep each grid cell for
+		# `HOLD_EVERY` frames instead of one. The seek is still an exact grid position, so
+		# the lattice the step audit measures is unchanged; only the duration changes.
+		var keep := AnimationFeel.hold_every(_is_holding_impact(state), variable_stepping)
 		if index != _hold_index:
-			_hold_index = index
-			_hold_ticks = 0
+			if keep > 1 and _hold_index >= 0 and _hold_ticks < keep - 1:
+				_hold_ticks += 1
+				index = _hold_index
+			else:
+				_hold_index = index
+				_hold_ticks = 0
 		else:
 			_hold_ticks += 1
+		if _hold_index >= 0:
+			t = float(_hold_index) / float(steps)
 	animation.seek(t * anim.length, true)
 
 
@@ -1447,12 +1540,16 @@ func _attack_clip_progress(state: int, clip_name: String) -> float:
 	var coil := AnimationFeel.coil_end(weight)
 	last_attack_weight = weight
 	last_coil_end = coil
+	# Beat accent: read the INPUT's own judgement (§9 item 1 judges the press, not the
+	# contact), so the accent can never disagree with what the HUD told the player.
+	last_beat_accent = beat_accent and bool((fighter._input_beat as Dictionary).get("on_beat", false))
 	match state:
 		BaseFighter.State.ATTACK_STARTUP:
 			return AnimationFeel.startup_progress(
 				float(fighter.state_frame) / float(maxi(1, int(a.get("startup", 1)))), coil)
 		BaseFighter.State.ATTACK_ACTIVE:
-			return AnimationFeel.active_progress(fighter.state_frame, t_impact, coil)
+			return AnimationFeel.active_progress(fighter.state_frame, t_impact, coil,
+				AnimationFeel.settle_frames_for(last_beat_accent))
 		_:
 			return AnimationFeel.recovery_progress(
 				float(fighter.state_frame) / float(maxi(1, int(a.get("recovery", 1)))), t_impact)
@@ -1506,7 +1603,9 @@ func _configure_body_modifier(state: int) -> void:
 	body_modifier.chest_yaw = AnimationFeel.CHEST_CHEAT * (1.0 if strike else 0.33)
 	# 2. The +4° overshoot impulse on the first ACTIVE frames, settling to zero by frame 4.
 	var active := state == BaseFighter.State.ATTACK_ACTIVE
-	body_modifier.overshoot = AnimationFeel.overshoot_lean(fighter.state_frame) if active else 0.0
+	# An on-beat attack keeps a little more of the overshoot impulse (clamped, visual only).
+	body_modifier.overshoot = AnimationFeel.overshoot_lean_accented(
+		fighter.state_frame, last_beat_accent) if active else 0.0
 	# 2b. Arc enforcement and the one-frame limb smear, both keyed to the whip frame.
 	body_modifier.arc_bias = AnimationFeel.arc_bias(fighter.state_frame, last_attack_weight) \
 		if active else 0.0

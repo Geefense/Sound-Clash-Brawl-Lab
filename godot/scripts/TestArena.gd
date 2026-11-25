@@ -502,7 +502,21 @@ func _process(delta: float) -> void:
 	_thump = maxf(0.0, _thump - delta * THUMP_DECAY)
 	_follow_action(delta)
 	_update_shake(delta)
+	_push_beat_phase()
 	hud.queue_redraw()
+
+
+## The moving-hold idle grooves on the real 132 BPM grid, so the beat phase is pushed to both
+## 3D bodies once a frame. It is the same `BeatService` clock that judges input — read only,
+## never used to decide anything (§9 item 1 still judges the press).
+func _push_beat_phase() -> void:
+	if arena3d == null or arena3d.models == null:
+		return
+	var phase := beat.beat_phase() if beat != null else 0.0
+	for side in arena3d.models:
+		var model := arena3d.models[side] as FighterModel3D
+		if model != null:
+			model.beat_phase = phase
 
 
 ## F3 playtest readout (issue 1 step 8). Prints, for every fighter, the facing yaw of the

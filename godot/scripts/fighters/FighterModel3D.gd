@@ -82,6 +82,11 @@ var sole_bind_mapped := true
 ## Live additive recoil state, driven from the existing `strike_resolved` signal.
 var recoil_strength: float = 0.0
 var recoil_age: float = 0.0
+## Where the last contact landed, 0 = body shot … 1 = head shot (see `AnimationFeel`).
+var recoil_high: float = 0.5
+## Progress into the hitstun take at which the body has been thrown furthest backward — the
+## pose the defender snaps to on the first frozen frame. Measured from the clip at bind.
+var recoil_extreme: float = AnimationFeel.HIT_SNAP
 ## Last `t_impact` the attack curve used, exposed for the F3/F4 readout and the audit.
 var last_impact_time: float = AnimationFeel.COIL_END
 ## Visual weight and coil depth of the move driving the body right now (read-only, for the
@@ -1043,6 +1048,7 @@ func _install_feel_layer() -> void:
 	_cache_foot_bones()
 	_measure_sole_drop()
 	_measure_impact_times()
+	_measure_recoil_extreme()
 	_cache_prop_scales()
 	_build_body_modifier()
 	stepped_arcade = AnimationFeel.stepped_arcade
@@ -1211,6 +1217,58 @@ func _measure_impact_times() -> void:
 		animation.play(saved, 0.0)
 
 
+## The rearward extreme of the hitstun take: the sampled time at which the head sits furthest
+## BEHIND the hips along the rig's own rest forward axis. That is the pose the defender has to
+## snap to in one frame, measured from the shipped clip rather than guessed as "0.3 of it".
+## Falls back to `HIT_SNAP` when the fighter has no hitstun take. Runs once at bind.
+func _measure_recoil_extreme() -> void:
+	recoil_extreme = AnimationFeel.HIT_SNAP
+	if animation == null or skeleton == null or clips.is_empty():
+		return
+	# The hitstun state resolves through `MixamoClips.role_for()`/`resolve()`, so only a genuine
+	# reaction take has a meaningful rearward extreme. Feedback and L!ckshot ship no `hit`/
+	# `stun`/`stumble` take at all (their hitstun falls back to a neutral clip), so they keep
+	# `HIT_SNAP` and the additive whip does the whole job of selling the contact.
+	var role: StringName = &""
+	for candidate in [&"hit", &"stun", &"stumble"]:
+		if clips.has(candidate):
+			role = candidate
+			break
+	if role == &"":
+		return
+	var clip_name := String(clips[role])
+	var anim := animation.get_animation(clip_name)
+	if anim == null or anim.length <= 0.0:
+		return
+	var hips := _bone_suffix("Hips")
+	var head := _bone_suffix("Head")
+	if hips < 0 or head < 0:
+		return
+	var saved := String(animation.current_animation)
+	animation.play(clip_name, 0.0)
+	animation.seek(0.0, true)
+	var rest := skeleton.get_bone_global_rest(hips).basis
+	var fwd := _heading_dir(rest)
+	if fwd == Vector3.ZERO:
+		return
+	var best := -INF
+	var best_t := AnimationFeel.HIT_SNAP
+	for s in range(0, FEEL_IMPACT_SAMPLES):
+		var t := float(s) / float(FEEL_IMPACT_SAMPLES - 1)
+		animation.seek(anim.length * t, true)
+		animation.advance(0.0)
+		var delta := skeleton.get_bone_global_pose(head).origin \
+			- skeleton.get_bone_global_pose(hips).origin
+		# Negative projection = the head has travelled against the rig's forward.
+		var behind := -delta.dot(fwd)
+		if behind > best:
+			best = behind
+			best_t = t
+	if saved != "":
+		animation.play(saved, 0.0)
+	recoil_extreme = clampf(best_t, 0.05, 0.85)
+
+
 ## Walk the clip and take the sampled time with the largest horizontal hand/foot
 ## extension from the hips — the frame a strike actually reaches at.
 func _measure_clip_peak(anim: Animation, clip_name: String) -> float:
@@ -1257,12 +1315,36 @@ func _build_body_modifier() -> void:
 ## `strike_resolved` is emitted on the ATTACKER with the target and the result. Reading it
 ## here means the recoil strength comes from the real contact (light / heavy / counter /
 ## blocked) instead of a guess, and nothing has to be added to `BaseFighter`.
-func _on_strike_resolved(_attacker: BaseFighter, target: BaseFighter, result: Dictionary) -> void:
+func _on_strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dictionary) -> void:
 	if target != fighter:
 		return
 	recoil_strength = AnimationFeel.recoil_strength(int(result.get("damage", 0)),
 		bool(result.get("blocked", false)), bool(result.get("counter", false)))
 	recoil_age = 0.0
+	# Aim the whip by where the contact actually landed. The height comes from the attack
+	# profile the strike carries (a read of `FighterRoster`/`BaseFighter` data, never a write),
+	# so a new move is direction-aware as soon as its hitbox is authored.
+	recoil_high = AnimationFeel.hit_height_weight(
+		_hit_height_y(attacker, StringName(result.get("attack_id", &""))))
+	if body_modifier != null:
+		body_modifier.recoil_high = recoil_high
+
+
+## Contact height in the hitbox's own pixels for the move that landed. Falls back to the
+## middle of the band (a plain body-height contact) when the profile cannot be found, so a
+## projectile from a fighter who is not mid-attack still whips the spine cleanly.
+func _hit_height_y(attacker: BaseFighter, attack_id: StringName) -> float:
+	if attacker == null:
+		return (AnimationFeel.HIT_HIGH_Y + AnimationFeel.HIT_LOW_Y) * 0.5
+	var profile: Dictionary = {}
+	if attack_id != &"" and attacker.attacks.has(attack_id):
+		profile = attacker.attacks[attack_id]
+	elif not attacker._attack.is_empty():
+		profile = attacker._attack
+	if profile.is_empty():
+		return (AnimationFeel.HIT_HIGH_Y + AnimationFeel.HIT_LOW_Y) * 0.5
+	var pos: Vector2 = profile.get("hitbox_pos", Vector2(0.0, -105.0))
+	return pos.y
 
 
 func _on_state_changed(_old_state: int, new_state: int) -> void:
@@ -1271,6 +1353,20 @@ func _on_state_changed(_old_state: int, new_state: int) -> void:
 		recoil_age = 0.0
 	if body_modifier != null and new_state == BaseFighter.State.IDLE:
 		body_modifier.reset()
+
+
+## Airborne states, where nothing may be planted on the sand. A jump is the obvious case; a
+## thrown body, a knockdown's fall and a K.O. are the others, and a HITSTUN whose vertical
+## velocity is still upward is a launch that has not come down yet. `velocity` is the 2D
+## simulation's own value — read-only here, never written.
+func _is_airborne() -> bool:
+	if fighter == null:
+		return true
+	var s: int = fighter.state
+	if s == BaseFighter.State.JUMP or s == BaseFighter.State.THROWN \
+			or s == BaseFighter.State.KNOCKDOWN or s == BaseFighter.State.KO:
+		return true
+	return s == BaseFighter.State.HITSTUN and fighter.velocity.y < -1.0
 
 
 ## Grounded states: the planted foot owns the vertical, so the floor guard must not lift it.
@@ -1317,8 +1413,9 @@ func _drive_clip_time() -> void:
 		BaseFighter.State.ATTACK_STARTUP, BaseFighter.State.ATTACK_ACTIVE, BaseFighter.State.ATTACK_RECOVERY:
 			t = _attack_clip_progress(state, clip_name)
 		BaseFighter.State.HITSTUN:
+			# Snaps to the measured rearward extreme on the first frozen frame, then eases out.
 			t = AnimationFeel.hit_clip_progress(
-				float(fighter.state_frame) / float(maxi(1, fighter._stun_frames)))
+				float(fighter.state_frame) / float(maxi(1, fighter._stun_frames)), recoil_extreme)
 		BaseFighter.State.TAUNT:
 			t = clampf(float(fighter.state_frame) / float(BaseFighter.TAUNT_TICKS), 0.0, 1.0)
 	# 1. Stepped arcade quantization. `steps` is how many discrete poses the whole clip
@@ -1416,10 +1513,12 @@ func _configure_body_modifier(state: int) -> void:
 	body_modifier.smear = AnimationFeel.smear_amount(fighter.state_frame) if active else 0.0
 	# 4. Alive hitstop: the attacker's secondary bones keep a charge while the game is frozen.
 	body_modifier.tension = AnimationFeel.tension_amount(_clock, fighter._hitstop_frames > 0)
-	# 6. Additive hit-react overlay, scaled by the real contact strength.
+	# 6. Additive hit-react overlay, scaled by the real contact strength and aimed by where
+	# that contact landed (head shot vs body shot).
 	var whip := 0.0
 	if state == BaseFighter.State.HITSTUN and recoil_strength > 0.0:
 		whip = recoil_strength * AnimationFeel.recoil_curve(recoil_age)
+	body_modifier.recoil_high = recoil_high
 	body_modifier.recoil_strength = recoil_strength
 	body_modifier.recoil_curve = AnimationFeel.recoil_curve(recoil_age) if whip > 0.0 else 0.0
 
@@ -1494,6 +1593,8 @@ func _pin_feet_to_ground() -> void:
 	if _pivot == null or skeleton == null or _foot_bones.is_empty():
 		return
 	if not _is_pinned_state():
+		return
+	if _is_airborne():
 		return
 	var lowest := _lowest_foot_y()
 	if lowest == INF:

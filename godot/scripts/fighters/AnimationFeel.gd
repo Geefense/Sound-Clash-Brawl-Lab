@@ -166,9 +166,14 @@ static func smear_scale(amount: float) -> Vector3:
 	return Vector3(thin, stretch, thin)
 
 
-## `HITSTUN` / blockstun clip progress: an instant snap into the recoil, then a slow settle.
-static func hit_clip_progress(p: float) -> float:
-	return pow(clampf(p, 0.0, 1.0), 0.45)
+## `HITSTUN` / blockstun clip progress: the defender lands on the recoil extreme on the FIRST
+## frozen frame and then eases out of it slowly, instead of running the take from its neutral
+## start while the hit is already over. `extreme` is the measured rearward peak of the clip
+## (falling back to `HIT_SNAP`); the exponent keeps the exit slow, so the pose is held far
+## longer than it is left.
+static func hit_clip_progress(p: float, extreme: float = HIT_SNAP) -> float:
+	var t := clampf(p, 0.0, 1.0)
+	return lerpf(clampf(extreme, 0.0, 0.9), 1.0, pow(t, 2.2))
 
 
 # =========================================================================
@@ -330,6 +335,40 @@ const RECOIL_HEAVY := 1.00
 const RECOIL_COUNTER := 1.35
 ## Seconds the additive whip takes to travel head-to-spine and settle.
 const RECOIL_SECONDS := 0.42
+
+# --- Direction awareness: a jaw shot and a body shot are different whips -----------------
+## Contact heights in the same pixels the hitboxes use (negative is up from the fighter's
+## origin). At or above `HIT_HIGH_Y` reads as a head/jaw shot, at or below `HIT_LOW_Y` as a
+## body shot, and the band between them blends. Read from the move's own `hitbox_pos`, so a
+## new move is direction-aware the moment its hitbox is authored.
+const HIT_HIGH_Y := -115.0
+const HIT_LOW_Y := -95.0
+## Back-bend per bone at whip 1.0, radians: `[Spine1, Spine2, Neck, Head]`. A head shot
+## throws the neck and head hardest and leaves the lower spine comparatively quiet; a body
+## shot folds the spine and lets the head trail. The hips are never in either table.
+const RECOIL_PITCH_HIGH := Vector4(0.030, 0.058, 0.132, 0.174)
+const RECOIL_PITCH_LOW := Vector4(0.052, 0.064, 0.068, 0.086)
+## Head off-axis turn at whip 1.0, radians — a jaw shot twists the head, a body shot does not.
+const RECOIL_YAW_HIGH := 0.062
+const RECOIL_YAW_LOW := 0.018
+## Progress into the hitstun take the defender SNAPS to on the first frozen frame. The runtime
+## replaces this with the measured rearward extreme of the clip when one can be measured.
+const HIT_SNAP := 0.30
+
+
+## 0..1 blend of a contact's height: 1.0 is a head shot, 0.0 a body shot.
+static func hit_height_weight(hit_y: float) -> float:
+	return clampf(inverse_lerp(HIT_LOW_Y, HIT_HIGH_Y, hit_y), 0.0, 1.0)
+
+
+## Per-bone back-bend for a contact at `high` (0 = body, 1 = head), radians.
+static func recoil_pitch(high: float) -> Vector4:
+	return RECOIL_PITCH_LOW.lerp(RECOIL_PITCH_HIGH, clampf(high, 0.0, 1.0))
+
+
+## Head off-axis turn for a contact at `high`, radians (signed by the caller's facing).
+static func recoil_head_yaw(high: float) -> float:
+	return lerpf(RECOIL_YAW_LOW, RECOIL_YAW_HIGH, clampf(high, 0.0, 1.0))
 
 
 static func recoil_strength(damage: int, blocked: bool, counter: bool) -> float:

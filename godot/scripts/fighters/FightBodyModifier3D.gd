@@ -41,6 +41,9 @@ var overshoot := 0.0
 var recoil_strength := 0.0
 ## 0–1 decay curve of that whip.
 var recoil_curve := 0.0
+## Where the contact landed, 0 = body shot … 1 = head shot. Selects which bone table the
+## whip uses, so a jab to the jaw and a tump to the ribs do not produce the same bend.
+var recoil_high := 0.5
 ## Micro-tension while a contact is held frozen, radians.
 var tension := 0.0
 ## Facing sign, so the counter-twist and the off-arm clearance follow the fighting side.
@@ -210,17 +213,20 @@ func apply_now(force: bool = false) -> void:
 		_add(_head, Vector3.UP, -tension * 1.6)
 
 	# --- 6. Additive hit-react bone overlay -----------------------------------------------
-	# Instant spine -> neck -> head whip on hitstun and blockstun, scaled by contact
-	# strength. Mixamo bones point along local +Y, so local X is the back-bend axis; the
-	# negative sign throws the torso away from the strike.
+	# Instant spine -> neck -> head whip on hitstun and blockstun, scaled by contact strength
+	# AND aimed by contact height: a high shot throws the neck/head hardest, a low shot folds
+	# the spine and lets the head trail. Mixamo bones point along local +Y, so local X is the
+	# back-bend axis; the negative sign throws the torso away from the strike. The hips are
+	# never written here, so the facing authority stays untouched.
 	if recoil_strength > 0.0 and recoil_curve > 0.0:
 		var whip := recoil_strength * recoil_curve
-		_add(_spine1, Vector3.RIGHT, -0.055 * whip)
-		_add(_spine2, Vector3.RIGHT, -0.085 * whip)
-		_add(_neck, Vector3.RIGHT, -0.105 * whip)
-		_add(_head, Vector3.RIGHT, -0.135 * whip)
-		# A heavy contact also turns the head off-axis, which is what sells a jaw shot.
-		_add(_head, Vector3.UP, 0.045 * whip * face)
+		var pitch := AnimationFeel.recoil_pitch(recoil_high)
+		_add(_spine1, Vector3.RIGHT, -pitch.x * whip)
+		_add(_spine2, Vector3.RIGHT, -pitch.y * whip)
+		_add(_neck, Vector3.RIGHT, -pitch.z * whip)
+		_add(_head, Vector3.RIGHT, -pitch.w * whip)
+		# A head contact also turns the head off-axis, which is what sells a jaw shot.
+		_add(_head, Vector3.UP, AnimationFeel.recoil_head_yaw(recoil_high) * whip * face)
 
 
 ## Undo any stretch left by the previous frame's smear. Called at the top of every applied
@@ -319,4 +325,5 @@ func reset() -> void:
 	overshoot = 0.0
 	recoil_strength = 0.0
 	recoil_curve = 0.0
+	recoil_high = 0.5
 	tension = 0.0

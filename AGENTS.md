@@ -6,6 +6,21 @@ This is the project instruction and handoff document for all agents. It records 
 
 Working repository for this blueprint: `Geefense/Sound-Clash-Brawl-Lab`, root `AGENTS.md`. Original development repository: `Geefense/Sound-Clash-Brawl`. Keep both histories intact. [TODO] Explicitly choose the long-term production repository before migration merges across repositories. This document does not authorize deleting or replacing either project.
 
+**Companion documents (cross-referenced):**
+
+- `INDUSTRY_REFERENCE_ANALYSIS.md` — the citable reference analysis behind the visual layer
+  (Dragon Ball FighterZ, Guilty Gear -Strive-, Tekken 8, Street Fighter 6, Fatal Fury: City of
+  the Wolves, the Zweifuss 3rd Strike archive and the Stefan Iverson Makoto breakdown). Each
+  section has confirmed findings with a named source, an **OWNER TO FILL** footage prompt list,
+  and a Godot 4.5 proposal split into "now on Web/Compatibility" and "console scaling path".
+  Created 2026-11-25; see the PART 1 section at the end of this file for what was implemented
+  from it.
+- `CONSOLE_READINESS.md` — the Web/Compatibility baseline, the measured budgets, the console
+  tier plan and the platform gates that are still **[TODO]**. It cross-references this file
+  and `INDUSTRY_REFERENCE_ANALYSIS.md`.
+
+Both are documentation only. Neither approves an asset, a console port or a purchase.
+
 ## 1. Project Overview & Creative Vision
 
 **Sound Clash Brawl** is a 2D *Street Fighter II*-style rhythm-fighting game rooted in Jamaican **sound system culture**. Sound clash is the competitive side of that culture: selectors, DJs, MCs, dubplates, crews, towering speaker stacks, dances, musical rivalry, and crowd response. Combine Dancehall-inspired fighting stances, rhythm-synced strikes, DJ selectors, towering sound systems, and slapstick party comedy.
@@ -5091,3 +5106,145 @@ off.
 - The instance-uniform path is exercised on the desktop renderer in the headless audits; the Web
   behaviour of the instance buffer is the exact case Godot's open issue describes, which is why the
   accent is emission-only.
+
+---
+
+## 2026-11-25 — PART 1 · Industry reference, Zweifuss/Iverson techniques, foreshortening, rim and cinematic camera
+
+Scope: three commits on `feature/3d-cel-shaded` after `b3c6e99`. **Visual layer only.** No
+change to `BaseFighter.gd` (`ANIM_OFFSET`, frame data, hitboxes), the 132 BPM clock, the Crowd
+Hype rules, the 31 Patois entries, the facing pivot pin / toe calibration (`cc2a7b5`), the
+camera lean and `reach_boost` (`5b46948`), the 22-rig crowd, the 7-light budget, or
+`PropLoader`'s exactly five empty slots. `BaseFighter.gd` and `FighterRoster.gd` are re-hashed
+by `animation_feel_audit` on every run, so a frame-data edit fails the build instead of
+surviving.
+
+### Commit 1 — documentation
+
+- **`INDUSTRY_REFERENCE_ANALYSIS.md`** (new, root). Seven sections — Dragon Ball FighterZ,
+  Guilty Gear -Strive-, Tekken 8, Street Fighter 6, Fatal Fury: City of the Wolves, the Zweifuss
+  3rd Strike animation archive, the Stefan Iverson Makoto breakdown — each with exactly three
+  subsections: confirmed findings with a named, reached source; **OWNER TO FILL** footage prompts;
+  and a Godot 4.5 proposal split into "now (Web/Compatibility)" and "console scaling path".
+  Sources actually reached on 2026-11-25 are listed with URLs (GDC 2015 Xrd slides, the Strive
+  Unreal interview, three Capcom SF6 dev columns and the Capcom IR report, the Famitsu and
+  Autodesk Tekken 8 pieces, the PlayStation.Blog and PCMag Fatal Fury pieces, the GDC 2014
+  Skullgirls talk). **No source was found for the Zweifuss archive or the Iverson breakdown**, so
+  every item attributed to them is labelled "unverified, general knowledge" rather than
+  dressed up as a finding. **No gameplay footage was watched** — that is why the middle
+  subsection of every section is a prompt list, not invented observations.
+- **`CONSOLE_READINESS.md`** (new, root). Verified Web/Compatibility baseline (renderer, 7 lights,
+  8-light ceiling, screen-space effects off, mesh/crowd tri counts, pose grid, export size,
+  allocation run), a tier-2/tier-3 feature table with the reason each is unavailable on Web, the
+  platform gates that are still [TODO], known risks and owner questions.
+- Both documents are cross-referenced from the top of this file, and `CONSOLE_READINESS.md`
+  cross-references this file and `INDUSTRY_REFERENCE_ANALYSIS.md`.
+
+### Commit 2 — Zweifuss / Iverson techniques
+
+New `scripts/fighters/PoseTimingBias.gd` (`Resource`) and a new section 8 in
+`AnimationFeel.gd`. `PoseTimingBias` is **exported on `FighterModel3D`** and assigned from
+`PoseTimingBias.for_fighter()` at bind, so a designer can duplicate one body's resource and retune
+it in the inspector; each call returns a fresh instance, so one body can never leak its bias into
+the other (including a mirror match).
+
+| Archetype | Coil (m) | Hold (steps) | Hip lead | Recovery dip | Overshoot gain | Beat bounce |
+| --- | --- | --- | --- | --- | --- | --- |
+| Feedback — Dudley: crisp boxing, clean silhouette | 0.028 | 2 | 1 | 2.6° | 0.90 | 0.55 |
+| L!ckshot — Makoto: explosive lunge, long holds | 0.052 | 3 | 2 | 3.9° | 1.30 | 0.85 |
+| L!kkle Moore — Sean/Elena: rhythmic, expressive settle | 0.038 | 2 | 2 | 4.7° | 1.10 | 1.65 |
+
+1. **Anticipation built INTO the forward step.** `AnimationFeel.anticipation_offset` is a
+   smoothstep of the startup's own progress, clamped to **`ANTICIPATION_MAX = 0.055 m`**. It is
+   written on `VisualPivot.position.x` only — never the root, the collision body or a hitbox — and
+   is written as **exactly zero the moment the state leaves STARTUP**, so "returned to zero by
+   ACTIVE" is structural, not a tuned decay.
+2. **C → S → reverse-C spine whip.** `WHIP_CHAIN_DELAY = [0, 1, 1, 2]` pose steps: the hips lead,
+   spine1/spine2 arrive one step later, the striking hand two steps later. Sampled from one
+   precomputed table (`whip_weight`) — no allocation. Applied as the `spine_lag` share of the
+   existing torso counter-twist. **The Hips bone is still never written**, so the facing authority
+   is untouched.
+3. **Frozen impact silhouette.** On a landed contact the attacker's model locks the sampled clip
+   to the **contact grid cell for 2–3 pose steps** (`impact_lock_steps`), while the additive
+   tension / eye-line / off-hand layer keeps moving. Only the clip seek is held: no combat tick is
+   extended or shortened, and leaving ACTIVE clears the lock.
+4. **Non-linear recovery.** `recovery_dip` is a sine fold (peak per archetype), then a smaller
+   opposite arc that **overshoots back past neutral** and returns to 0 at the end of recovery.
+   Applied through the upper spine; the idle carries none of it.
+5. **Per-fighter tuning resources** are the `PoseTimingBias` values above; **no frame-data change**.
+
+### Commit 3 — foreshortening, rim separation, cinematic camera
+
+- **Foreshortening.** `foreshorten_scale` gives the striking hand a camera-readable **1.08×** on
+  heavy/special contact frames (`foreshorten_amount`: full from the measured `t_impact`, smooth
+  release across RECOVERY). Applied as a bone scale in `FightBodyModifier3D`, restored every frame.
+  **One shared clamp** (`SILHOUETTE_CLAMP = 1.08`) covers this and the existing one-frame smear;
+  `clamp_limb(1,1)` is asserted to be trimmed to exactly the clamp, so the two can never stack.
+  The reach boost is a translation, not part of the scale product. Hand props are rebuilt from the
+  hand's **rotation only** (`_isolate_props`), so a mic never scales or shears, and the
+  `SquashPivot` volume lock is unchanged (±2 %).
+- **Rim per preset.** `Arena3D.PHASES` now carries `cel_rim` + `cel_rim_strength`:
+  Afternoon warm cream `(1.0, 0.88, 0.62)` @ 0.55, Sunset hot amber `(1.0, 0.62, 0.30)` @ 1.05,
+  Night cyan `(0.42, 0.90, 1.0)` @ 1.30. `FighterModel3D.set_cel_rim()` writes `rim_colour` and
+  `rim_strength` on the body's **existing** cel material — no new material per rig. The P2 mirror
+  accent still wins (player identity), and a parry flash now restores the preset rim instead of
+  the authored fallback.
+- **Cinematic camera accent.** `Arena3D.accent_camera()` on a round-winning K.O. blow
+  (`TestArena._on_fighter_died`) and on **special activation** (specials exist — L!ckshot's
+  dubplate and L!kkle Moore's dictionary — so this was wired, not skipped). Clamped
+  `CAMERA_ACCENT_MAX = 0.85`, `+2.0°` yaw, `0.55°` FOV, `0.22 m` dolly, on its own critically
+  damped spring. It composites with the exchange lean and the hit-stop punch through **one
+  clamped total**, and the framing dolly adds the accent's own yaw and dolly to the required
+  distance, so the zoom **cannot crop**. Hit-stop length and input timing are read-only.
+
+### Test counts (all 0 FAIL, baselines only raised)
+
+- `headless_roster_check.gd` **442 → 446**: four new checks — every preset pushes its own cel rim
+  onto the fighters, three distinct rims, warm daylight / cool night, night rim stronger than
+  daylight.
+- `live_match_check.gd` **191 → 200**: the framing audit now also holds the **accent peak** for all
+  nine pairings (head, hips and both feet inside the frustum and on screen). The shared framing
+  helper replaced the duplicated inline loop without weakening any assertion.
+- `animation_feel_audit.gd` **335 → 428**: a new `_audit_zweifuss` block per fighter — archetype
+  resource present and authored, 2–3 step hold, 1–2 step hip lead, coil inside the clamp, the three
+  archetypes genuinely different, fresh instance per body, the coil curve (zero at 0, peak at 1),
+  the live coil on `VisualPivot` and **exactly zero on the first ACTIVE frame**, the facing pin
+  inside 5° through the coil, the whip delays/weights and the live `spine_lag` ramp, the impact lock
+  arming on a landed contact and holding the contact pose, the lock clearing when the state leaves
+  ACTIVE, STARTUP/ACTIVE/RECOVERY still matching the frozen frame baseline, the recovery dip and
+  its overshoot, the live dip and its return to zero, the foreshortening clamp and the trimmed
+  foreshorten + smear stack, the contact-window curve, the live hand scale inside the clamp and its
+  return to 1, and the cel shader's rim uniforms plus a preset rim reaching the material.
+- `facing_audit.gd` **310**, unchanged and green.
+
+### Decisions and why
+
+- **The bias is a Resource, not a dictionary constant.** The brief asked for exported per-fighter
+  tuning resources; a Resource is the only form the inspector can edit, and a fresh instance per
+  body removes a whole class of mirror-match state leaks.
+- **The whip lag is applied to the torso, never the hips.** Writing the Hips bone would rotate the
+  whole drawn body away from ±X and fight `_pin_body_facing()`; the hips are already the leader in
+  the clip, so lagging the chain behind them produces the same C → S → reverse-C read without
+  touching the facing authority.
+- **The impact hold counts grid cells, not frames.** "2–3 pose steps" is the unit the pose grid
+  actually has; counting presented frames would stretch with frame rate.
+- **Foreshortening is a bone scale on the hand, not a projection cheat.** A projection change would
+  need a second camera path and would break the frustum contract; a 1.08× hand scale reads the same
+  at 720p and stays inside the existing volume lock.
+- **The camera accent is part of the framing math, not a post effect.** Adding its yaw/dolly to
+  `needed` is what makes "never crops a fighter" a property rather than a hope.
+- **Commits 2 and 3 split by ownership, not by feature purity.** The shared maths for
+  foreshortening and the rim setter landed with commit 2 (where `AnimationFeel` and
+  `FighterModel3D` were already being edited); commit 3 wires the stage, the camera and the tests
+  that observe them. Both trees build, and the counts above are from the final tree.
+
+### Unresolved / not verified
+
+- **Nothing was viewed.** There is no GPU or browser in this environment: the coil, the whip,
+  the impact hold, the recovery dip, the foreshortening, the three rim colours and the camera
+  accent are verified as **numbers and contracts**, not as pixels.
+- **The three archetypes are authored from the brief's references**, not from watching Dudley,
+  Makoto, Sean or Elena. The footage prompts in `INDUSTRY_REFERENCE_ANALYSIS.md` are the way to
+  correct them.
+- **No console work exists.** `CONSOLE_READINESS.md` records the gates; none is started.
+- Bug 2 (drawn-mesh knockdown tightening) remains deferred, unchanged.

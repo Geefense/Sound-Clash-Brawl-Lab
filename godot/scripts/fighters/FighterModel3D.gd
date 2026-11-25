@@ -216,6 +216,11 @@ var facing_sign: int = 1
 ## upload face +X; loaded from MODEL_SOURCES and kept exported so a designer can re-tune a
 ## future upload from the inspector without touching the facing code.
 @export var model_forward_yaw_offset_deg: float = 0.0
+## Discrete poses per second while an attack, hitstun/blockstun or a taunt owns the body.
+## 18 sits inside the owner's 16–20 fps band; the export exists so a designer can re-grid one
+## body from the inspector without touching code. The world root, the collision body and the
+## camera are never stepped — only the sampled skeleton pose is.
+@export_range(16.0, 20.0, 1.0) var step_fps: float = AnimationFeel.STEPPED_FPS
 var feet_offset: float = 0.0
 
 ## The fighter root (this node) is never rotated and only ever follows the fighter's X.
@@ -1040,7 +1045,9 @@ func _install_feel_layer() -> void:
 
 
 ## `F4` in the arena. Both fighters share the one switch so a live toggle can never leave
-## one body stepped and the other smooth.
+## one body stepped and the other smooth. Because this writes the shared default, a caller
+## that only wants to re-grid ONE body (an A/B measurement, a cutscene take) must set the
+## per-instance `stepped_arcade` field instead and leave the static alone.
 func set_stepped_arcade(on: bool) -> void:
 	stepped_arcade = on
 	AnimationFeel.stepped_arcade = on
@@ -1309,7 +1316,7 @@ func _drive_clip_time() -> void:
 	# offers at 18 fps; holding a pose for ~3.3 frames at 60 fps is what makes the strike
 	# read as anticipation -> breakdown -> hit. The root, the camera and the collision body
 	# are untouched, so movement and framing stay silky.
-	var steps := AnimationFeel.step_count(anim.length)
+	var steps := AnimationFeel.step_count(anim.length, step_fps)
 	if stepped_arcade and steps > 1:
 		t = AnimationFeel.quantize(t, steps)
 		var index := int(round(t * float(steps)))
@@ -1467,6 +1474,7 @@ func _lowest_foot_y() -> float:
 func feel_snapshot() -> Dictionary:
 	return {
 		"stepped": stepped_arcade,
+		"step_fps": step_fps,
 		"impact_times": impact_times.duplicate(),
 		"sole_drop": sole_drop,
 		"squash": squash_pivot.scale if squash_pivot != null else Vector3.ONE,

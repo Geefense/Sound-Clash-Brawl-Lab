@@ -4700,3 +4700,31 @@ behaviour instead of exposing a defect, with one measurement corrected (below).
     `0.10/0.46/1.60`, each keeping `shadow_enabled` with `light_angular_distance ≤ 0.001` — the crisp
     directional fighter shadow the owner asked for never disappears.
 - Facing stays **94/94**, roster **425/425**, feel audit **142/142** on the same commit.
+
+### COMMIT 2 — Stepped arcade pose quantization (`step_fps` export)
+
+The stepping itself already existed at `7d4adbb`; this commit gives it the export the spec asks for
+and pins the re-grid behaviour with tests. **Presentation only** — no combat value, hitbox or tick
+count changed.
+
+- `FighterModel3D` gains **`@export_range(16, 20, 1) var step_fps := 18.0`** (default
+  `AnimationFeel.STEPPED_FPS`). `_drive_clip_time()` now derives the pose lattice from
+  `AnimationFeel.step_count(anim.length, step_fps)`, so a designer can re-grid one body from the
+  inspector inside the owner's 16–20 band without touching code. `feel_snapshot()` reports it.
+- The world root, the `CharacterBody2D`, the camera and every collision stay on the smooth 60 fps
+  path; only the **sampled skeleton pose** is quantized. Idle, walk and jump never step — the gate is
+  still the combat states (startup/active/recovery, hitstun/blockstun, taunt).
+- `F4` still flips both bodies through the shared `AnimationFeel.stepped_arcade` and flashes the HUD
+  label; the default is ON. `set_stepped_arcade()` is now documented as the *shared* switch, because
+  writing it also updates the static default.
+
+**Defect found by the new check (test-only, no player impact).** The audit's F4 A/B used
+`set_stepped_arcade(false)` and then "restored" `AnimationFeel.stepped_arcade` — but the OFF call had
+already flipped that static, so the restore was a no-op, quantisation stayed off for the rest of the
+run, and the new 16 fps lattice check failed on all three fighters with **unquantized** times. The
+A/B now sets the **per-instance** `stepped_arcade` field and restores from the static. The 16 fps
+checks pass: lattice 36 / 21 / 52 steps for the three light clips, **7–10 of 10** frames off the
+18 fps grid, proving the export really drives the grid.
+
+Suites on this commit: feel audit **151** (was 142), facing **94**, live match **167**, roster **425**
+— all 0 FAIL.

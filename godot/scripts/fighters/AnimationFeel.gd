@@ -37,9 +37,11 @@ static func quantize(t: float, steps: int) -> float:
 	return floor(clampf(t, 0.0, 1.0) * float(steps)) / float(steps)
 
 
-## Number of discrete poses a clip of `length` seconds offers at the stepped rate.
-static func step_count(length: float) -> int:
-	return maxi(1, int(round(length * STEPPED_FPS)))
+## Number of discrete poses a clip of `length` seconds offers at the stepped rate. `fps`
+## defaults to the shared 18 and is supplied by `FighterModel3D.step_fps`, so a designer can
+## re-grid one body from the inspector inside the owner's 16–20 band.
+static func step_count(length: float, fps: float = STEPPED_FPS) -> int:
+	return maxi(1, int(round(length * clampf(fps, 16.0, 20.0))))
 
 
 # =========================================================================

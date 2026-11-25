@@ -187,6 +187,10 @@ func _audit_fighter(key: StringName) -> void:
 	_check(bool(snap["feet"]) and int(snap["feet"]) >= 2,
 		"%s found its foot/toe bones" % key, "%d bones" % int(snap["feet"]))
 	_check(bool(snap["modifier"]), "%s has a cached SkeletonModifier3D" % key)
+	_check(is_equal_approx(model.step_fps, AnimationFeel.STEPPED_FPS)
+		and model.step_fps >= 16.0 and model.step_fps <= 20.0,
+		"%s exports step_fps at the default inside the 16–20 band" % key,
+		"%.1f fps" % model.step_fps)
 	_check(model.squash_pivot != null and model.squash_pivot.get_parent() == model._visual_pivot,
 		"%s SquashPivot sits directly under VisualPivot" % key)
 	_check(model.sole_drop >= 0.0 and model.sole_drop <= 0.35,
@@ -290,8 +294,10 @@ func _audit_stepping(model: FighterModel3D, fighter: BaseFighter, key: String) -
 	_check(distinct.size() < samples.size(), "%s pose advances discretely, not linearly" % key,
 		"%d distinct of %d frames" % [distinct.size(), samples.size()])
 
-	# F4 OFF: the same span must now be smooth (no grid snapping).
-	model.set_stepped_arcade(false)
+	# F4 OFF: the same span must now be smooth (no grid snapping). The per-instance flag is
+	# used here on purpose — `set_stepped_arcade()` is the shared F4 switch and would leave
+	# the static default off for every later fighter in this run.
+	model.stepped_arcade = false
 	var off_grid := 0
 	var smooth: Array[float] = []
 	for frame in range(0, 14):
@@ -303,7 +309,27 @@ func _audit_stepping(model: FighterModel3D, fighter: BaseFighter, key: String) -
 			off_grid += 1
 	_check(off_grid >= 6, "%s F4 OFF restores smooth playback" % key,
 		"%d of 14 frames off the grid" % off_grid)
-	model.set_stepped_arcade(AnimationFeel.stepped_arcade)
+	model.stepped_arcade = AnimationFeel.stepped_arcade
+
+	# The export must actually drive the grid: re-grid this one body to 16 fps and require the
+	# seeks to land on the 16 fps lattice and NOT on the 18 fps one.
+	model.step_fps = 16.0
+	var steps16 := AnimationFeel.step_count(anim.length, 16.0)
+	var on_16 := true
+	var differed := 0
+	for frame in range(0, 10):
+		fighter.state_frame = frame
+		model._drive_clip_time()
+		var t: float = model.animation.current_animation_position / anim.length
+		if absf(t * float(steps16) - round(t * float(steps16))) > 0.0005:
+			on_16 = false
+		if absf(t * float(steps) - round(t * float(steps))) > 0.0005:
+			differed += 1
+	_check(on_16, "%s step_fps=16 re-grids the clip onto the 16 fps lattice" % key,
+		"%d steps" % steps16)
+	_check(differed > 0, "%s the 16 fps lattice is genuinely different from 18" % key,
+		"%d of 10 frames off the 18 fps grid" % differed)
+	model.step_fps = AnimationFeel.STEPPED_FPS
 
 
 ## Systems 3, 4 and 6: the additive layer must move the upper body, must scale with the

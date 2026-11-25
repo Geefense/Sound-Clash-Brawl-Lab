@@ -5378,3 +5378,112 @@ shipped in `2b46ecc`; this step changed no camera code. Any crowd eruption or ov
 keep that audit at 0 FAIL — it measures the lens against the yard, the four backdrop corners and a
 12 px fighter margin, so a new overlay that moves the camera or paints past the backdrop borders will
 show up there first.
+
+## 2026-11-25 — PART 2 · Arcade FX, crowd eruption, PropLoader seating, Web export
+
+Second half of the visual-layer brief, on `feature/3d-cel-shaded` from `76d9d52` (Step 0 complete).
+The citable reference analysis behind these choices is `INDUSTRY_REFERENCE_ANALYSIS.md`; the
+Web/Compatibility budget the export below is measured against is `CONSOLE_READINESS.md`.
+
+**Untouched by all four commits, verified by diff and by suite:** `BaseFighter.gd` (`ANIM_OFFSET`,
+frame data, hitboxes, the 132 BPM clock, the Crowd Hype rules), the 31 Patois entries, the facing pin
+and toe calibration, every camera clamp (`CAMERA_ACCENT_MAX 0.85`, `ACCENT_YAW_DEG 2.0`,
+`ACCENT_FOV_DEG 0.55`, `ACCENT_DOLLY 0.22`, `CAMERA_YAW_MAX_DEG 4.0`, stacked total 6.0,
+`CAMERA_PUNCH_MAX 1.6`), `live_match_check._check_camera_stage_clearance`, the 22-rig crowd, the
+7-light rig (Compatibility's 8-light cap), `PropLoader`'s exactly-five slots and Bug 2's downed
+seating.
+
+### Commit 4 — `ArcadeVFX2D` (retro arcade FX layer)
+
+- **New:** `scripts/stages/ArcadeVFX2D.gd` on its own `CanvasLayer` (`VFX`, layer 0, so it draws
+  over the 3D world and under the HUD at layer 1), created once in `TestArena._setup_3d_presentation()`.
+- **Sheet contract:** `assets/sprites/arcade_fx/README.md` specifies `hit_spark_sheet.png`,
+  `bass_shockwave_sheet.png`, `clash_callout_sheet.png`, `ko_callout_sheet.png` — **4 × 4 = 16 frames
+  per sheet, 256 px per frame (1024 × 1024 sheet), 24 fps, one pass, no gutters, additive-friendly,
+  centre pivot.** **All four files are missing in this build**, which is the supported state: each
+  is logged **once** at boot and draws nothing.
+- **Toggles and call surface:** nothing is `@export` here — the layer is driven by
+  `play_at_world(kind, world_pos, strength)`. Constants: `HFRAMES/VFRAMES 4`, `FRAME_COUNT 16`,
+  `FRAME_PX 256`, `PLAYBACK_FPS 24`, `POOL_PER_SHEET 3`, `DRAW_SCALE 0.45`. The pool is built in
+  `_ready()` and reused; a fourth simultaneous effect recycles the oldest. Playback is
+  `Sprite2D.frame` stepping — no `AtlasTexture`, no `AnimatedSprite2D`, no node creation at runtime.
+- **Triggers:** `hit_spark` on every unblocked contact; `bass_shockwave` on a **heavy strike judged
+  on the beat**; `clash_callout` on a **Record Static Parry** (the build's only authored clash moment
+  — `BaseFighter` has no trade event and none was invented); `ko_callout` on the round-winning K.O.
+  Positions come from `Arena3D.world_point_of()` (2D arena space → 3D world) and
+  `Camera3D.unproject_position()`. The layer never writes camera state, so the clearance audit is
+  unaffected.
+- **Test +11 (`live 344 → 355`):** layer parented to its own CanvasLayer; all four paths; four
+  missing sheets; **exactly one warning per sheet**; each reported independently; zero sprites and
+  zero children; 160 trigger calls stay no-ops; 600 presented frames add no node (the count may fall
+  by an expired spark, never rise); no extra warnings.
+
+### Commit 5 — Sound-clash crowd eruption
+
+- **`CrowdController3D.erupt(energy, whole_yard_act)`** — energy is clamped 0–1, the peak holds for
+  `ERUPT_PEAK_SECONDS 0.9` and settles to `ERUPT_SECONDS 3.2`. The jump is
+  `ERUPT_JUMP 0.09 m × energy × |sin(π × beat)|` on the **same 132 BPM clock as the skank**, and the
+  sway gains `ERUPT_SWAY 0.5`. The wave reuses the delays the crowd already owns —
+  `ROW_DELAY 0.00 / 0.11 / 0.22 s` plus the lateral stagger and jitter — so ringside answers first
+  and the back tier last. The hands-up read comes from the delivered hype take, **not** from bone
+  writes, so the eruption cannot fight the AnimationPlayer.
+- **`Arena3D.notify_combat_event(kind, side, on_beat)`** — new third argument, defaulted, so every
+  existing caller is unchanged. It erupts on `heavy_hit`, `knockdown`, `ko`, `victory`, `hype`,
+  `special` and on an on-beat `hit`; `TestArena` passes `on_beat` from the strike result and sends
+  `special` from `_on_projectile_spawned()`.
+- **Energy is read, never written.** `Arena3D._hype_energy()` takes the higher of the two fighters'
+  `hype / HYPE_MAX`. Nothing awards, spends or clamps hype — the Crowd Hype rules are untouched.
+- **Light pulse, no light added.** `ERUPT_LIGHT_PUMP 0.55` multiplies the **existing** stage spots and
+  booth lights' energy by `1 + pump × 0.55 × stage_pulse()`; the pump decays at 1.6/s. `light_count()
+  == 7` and `stage_spot_count() == 4` before and after.
+- **A regression the roster check caught, kept in the record:** the first version had `erupt()` force
+  `react(&"hype", -1)` on every cue, which overwrote the winner's cheer / rival's disbelief that
+  `react(kind, side)` had just cued — `headless_roster_check` failed three checks. The eruption's
+  **jump** is yard-wide, but the **act** is only overwritten for whole-yard cues (`hype`, `special`).
+- **Test +22 (`live 355 → 377`):** 22 rigs covered; delay ordering 0 < 0.11 < 0.22 s; an eruption at
+  zero hype (wave fires, energy 0); energy 0.50 at half hype and 1.00 at full hype; pump inside 0–1;
+  no light added and the four spots kept; ringside reacting while the back tier is still waiting; all
+  22 joined; the beat-locked jump visible and under 0.30 m; 300 frames add no crowd node; the
+  eruption decays after its peak; energy bounded through a settle; and the camera/yard clearance
+  audit now runs **with the crowd erupting** (each pairing erupts before the obstacle boxes are
+  measured and one check proves the crowd is still at peak during the stacks).
+
+### Commit 6 — PropLoader auto-seat (still exactly five slots)
+
+- **New exports on `PropLoader`:** `auto_ground_y: bool = true` and `target_height_m: float = 0.0`
+  (0.0 = use the table). **Per-slot table** `TARGET_HEIGHT_M`: `jamaican_speaker 2.6`,
+  `rasta_speaker 2.6`, `dj_booth 1.15`, `wireless_mic 0.0`, `mic_stand 0.0` (0.0 = keep native
+  scale). Resolution is by file stem, so no slot repeats its own number.
+- **What it does:** once, at load, the model's local AABB is measured, a **uniform** scale is applied
+  to reach the target height, and the node is lifted by `-box.position.y × scale` so the lowest
+  vertex sits at **Y = 0.0** (Meshy exports arrive with a centred origin). Nothing runs per frame.
+- **Empty slots still build nothing** and seat nothing; the speaker is **not** placed in the scene by
+  this commit (no prop model exists yet).
+- **Test +7 (`roster 446 → 453`), data only (no new asset):** a 2.4 m box scales to 2.6 m by
+  1.083; the offset puts the lowest vertex at 0.0000 m; a 0.0 target and a degenerate box both keep
+  scale 1.0; every stem resolves its table height; the five slots ship with seating on and no
+  override; an empty slot seats nothing. Slot count stays exactly 5 (checked every run).
+
+### Commit 7 — Verify and export
+
+- **Suites, 0 FAIL:** `headless_roster_check` **453**, `live_match_check` **377**,
+  `facing_audit` **310**, `animation_feel_audit` **428**. All baselines raised, none reduced.
+- **Primitive audit:** the only `BoxMesh`/`CylinderMesh`/`TorusMesh` left in `scripts/` are the sand
+  mounds, the speaker rings and the note-trail rings (`Arena3D`, `MusicNoteBurst`) — yard terrain and
+  2D VFX, not props or characters. `DJBooth3D.gd` and `PropLoader.gd` mention the primitives only in
+  the comments recording that they were deleted. No prop slot or character is built from a primitive.
+- **Export:** `Godot_v4.5-stable` headless, `--export-release "Web" ../docs/index.html`, exit 0, no
+  errors. `/docs` is **103 MB** total (`index.pck` 68,773,156 B, `index.wasm` 38,057,390 B), with the
+  companion `index.html`, `index.js`, worklets and icons.
+
+### Not visually verified
+
+- No GPU and no browser in this environment. The arcade sheets do not exist, so the FX layer is
+  proven only as "nothing drawn, four warnings, no nodes"; its pool path (a delivered sheet playing
+  16 frames at 24 fps) has **never been exercised with art**. Authoring one 1024² sheet and running
+  the arena once is the check that closes it.
+- The eruption's jump height, sway and light pump are numbers inside their bounds; nobody has watched
+  22 rigs erupt, and the delivered hype take is assumed to read as hands-up.
+- The PropLoader seating maths is proved on a synthetic AABB; no `.glb` has been seated, scaled or
+  seen standing on the sand.
+- The Web export builds and packages; it has not been loaded in a browser or on a Chromebook.

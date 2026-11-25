@@ -571,10 +571,17 @@ func _check_strike_silhouette() -> void:
 		_check(active_extent > idle_extent + 0.002,
 			"%s: camera-side fist reaches further on ACTIVE (%.3f → %.3f of frame width)"
 			% [key, idle_extent, active_extent])
-		var forward: Vector3 = model.world_forward()
+		# Step 0 (2026-11-25): the drawn toe line, which is the axis `_pin_body_facing()` owns
+		# and the only one this assertion ever meant. It used to read `world_forward()`, the
+		# mesh axis: that legitimately turns with the take's own pelvis twist during a boosted
+		# strike (16.6° on Feedback while the feet stay on ±X), so it reported animation as a
+		# facing error and swung between 1.9° and 16.6° with whichever blend frame the sample
+		# landed on. The 5° tolerance is untouched.
+		var forward: Vector3 = model.toe_forward_world()
 		var facing_off := absf(rad_to_deg(atan2(forward.z, forward.x)))
-		_check(facing_off <= 5.0,
-			"%s: facing pivot stays inside 5° through the boosted strike" % key, "%.2f°" % facing_off)
+		_check(forward != Vector3.ZERO and facing_off <= 5.0,
+			"%s: facing pivot keeps the drawn toes inside 5° through the boosted strike" % key,
+			"%.2f°" % facing_off)
 		await _free(arena)
 
 

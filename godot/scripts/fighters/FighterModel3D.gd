@@ -799,6 +799,15 @@ func _calibrate_facing() -> void:
 	# assumed rotation convention: each pass re-reads the actual world-space toes after the
 	# pivot and the take's yaw cancellation have been applied, so it lands exactly on axis
 	# whatever sign convention a rig uses.
+	# Deterministic sample (Step 0, 2026-11-25). This used to measure whatever frame of the
+	# live idle blend the deferred calibration happened to land on. On Feedback the opening
+	# sweep moves the feet several degrees inside the first frames, so the same rig calibrated
+	# to 109.8°, 105.3° or 112.6° on different boots — and every `world_forward()` derived from
+	# that offset moved with it. Snapping the take to a fixed time makes the measurement a
+	# function of the clip, not of frame order or frame delta.
+	if animation != null and String(animation.current_animation) != "":
+		animation.seek(0.0, true)
+		animation.advance(0.0)
 	var target := 0.0 if facing_sign >= 0 else PI
 	var worst := 0.0
 	for _pass in 6:
@@ -849,7 +858,10 @@ func authored_forward() -> Vector3:
 ## World-space forward of the RENDERED body, flattened onto the fighting plane. Two honest
 ## halves: the authored forward turned by the pivot that actually shipped, plus the turn the
 ## PLAYING take adds on top of the rig's own rest pose (`pose_turn_yaw()`). A clip that baked
-## in its own heading, or a pivot that failed to apply, therefore shows up here.
+## in its own heading, or a pivot that failed to apply, therefore shows up here. This is the
+## MESH axis, not the feet: the drawn toe line is `toe_forward_world()` and is the quantity the
+## facing pin owns — the two differ by the take's own pelvis/feet split and must not be
+## conflated (Step 0, 2026-11-25).
 func world_forward() -> Vector3:
 	var fwd := authored_forward()
 	if _visual_pivot != null:

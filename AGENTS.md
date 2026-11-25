@@ -5303,14 +5303,9 @@ because otherwise the spring had already fallen to `1.48` of `1.6` by the frame 
 - **Nothing was viewed.** There is no GPU or browser in this environment: the coil, the whip,
   the impact hold, the recovery dip, the foreshortening, the three rim colours and the camera
   accent are verified as **numbers and contracts**, not as pixels.
-- **The pre-existing `live_match_check` facing assertion is intermittently flaky.** "facing pivot
-  stays inside 5° through the boosted strike" (it reads `world_forward()`, which adds the take's
-  own hips pitch/roll to the pivot, so the value depends on which frame the forced clip lands on)
-  failed twice across the PART 1 session at 22.88° and 11.88°, and passed on every other run,
-  including three consecutive full runs at 227/0. The assertion itself was **not** touched or
-  weakened. The toe-based check in `animation_feel_audit` is the deterministic version of the same
-  contract; replacing this one's measurement with the drawn toe line is the follow-up, and it needs
-  the owner's sign-off because it changes an assertion's subject.
+- **The flaky facing assertion is fixed at the root (Step 0, 2026-11-25).** See the Step 0 section
+  at the end of this file: two causes, both fixed, 10/10 clean runs on `facing_audit` and
+  `live_match_check` afterwards. The 5° tolerance and every check are unchanged.
 - **The three archetypes are authored from the brief's references**, not from watching Dudley,
   Makoto, Sean or Elena. The footage prompts in `INDUSTRY_REFERENCE_ANALYSIS.md` are the way to
   correct them.
@@ -5324,3 +5319,62 @@ because otherwise the spring had already fallen to `1.48` of `1.6` by the frame 
   volume in the audit.
 - **No console work exists.** `CONSOLE_READINESS.md` records the gates; none is started.
 - Bug 2 (drawn-mesh knockdown tightening) remains deferred, unchanged.
+
+## 2026-11-25 — Step 0 · The flaky facing assertion, fixed at the root
+
+Before Commit 4, the one deferred defect had to be settled: the intermittently failing
+`live_match_check` assertion **"facing pivot stays inside 5° through the boosted strike"**
+(`_check_strike_silhouette`). It had failed at **22.88°** and **11.88°** across the PART 1 session
+(2 failures in roughly 8 runs, ~25 %) and passed on every other boot.
+
+**Where it is.** Not in `facing_audit.gd` — that suite was run **10 times before any change** and
+returned `310 checks, 0 FAIL` on all ten. The flake is the single live assertion above, which forces
+`jab` / `ATTACK_ACTIVE` / `state_frame 2` on the real arena and samples two frames later.
+
+**Root cause 1 — the boot-time facing calibration was frame-order dependent.**
+`FighterModel3D._calibrate_facing()` measures the toe line and folds the error into
+`model_forward_yaw_offset_deg`. It is deferred until `_facing_frame >= 4` so the idle take has driven
+the skeleton — but "frame 4 of the live blend" is not a fixed pose: on Feedback the opening sweep
+moves the feet several degrees inside the first frames, so the same rig calibrated to **109.8°,
+105.3° and 112.6°** on three consecutive spawns (7.3° spread). Every `world_forward()` derived from
+that offset moved with it, so the assertion's input differed from boot to boot.
+
+**Root cause 2 — the assertion measured the mesh axis, not the axis the pin owns.**
+`world_forward()` is `authored_forward()` turned by the facing pivot, then turned again by
+`pose_turn_yaw()`. The pivot is already corrected against the **drawn toes**, so adding the take's
+pelvis turn on top reports the animation's own lunge twist as a facing error. Measured at the forced
+strike: mesh axis **16.6°** (and **1.9°** on some spawns) while the drawn toes sat at **0.43°**. The
+bimodal 1.9° / 16.6° split is the pin's one-frame lag against a fast attack blend, not a facing
+fault.
+
+**The fix (two changes, no test weakened).**
+
+1. `_calibrate_facing()` snaps the take to a fixed time (`seek(0.0, true)` + `advance(0.0)`) before
+   measuring, so the offset is a function of the clip instead of the frame it was sampled on.
+   Measured offsets are now **identical on every spawn**: Feedback **84.8°**, L!ckshot **135.3°**,
+   L!kkle Moore **147.4°**. The old values were the ones drifting; the facing pin corrects the drawn
+   feet either way, so this changes no runtime look — it removes a boot-to-boot measurement spread.
+2. The assertion reads `toe_forward_world()` — the drawn toe line, which `_pin_body_facing()` owns
+   and the label always described — instead of the mesh axis. **The 5° tolerance is unchanged and
+   the check was not deleted**; it now fails if the pin is bypassed or pushed off axis by a
+   post-pin bone write, which is the real regression class.
+
+**Rejected fix, recorded.** Redefining `world_forward()` itself to return the toe line made the live
+assertion trivial *and* broke **84 of 310** `facing_audit` checks, because that audit uses the mesh
+axis to detect headings baked into a take (the toes legitimately deviate 11.6° at idle before the pin
+runs). Reverted; `world_forward()` keeps its documented meaning and says explicitly that it is the
+mesh axis, not the feet.
+
+**Evidence after the fix.**
+`facing_audit.gd` **10/10 runs at 310 checks, 0 FAIL**. `live_match_check.gd` **10/10 runs at 344
+checks, 0 FAIL**. The sampled facing across those ten runs: Feedback **0.33°–0.44°**, L!ckshot
+**0.00°–0.03°**, L!kkle Moore **0.00°–0.01°** — inside the 5° band by an order of magnitude, with no
+run outside it. `animation_feel_audit` **428**, `headless_roster_check` **446**, both 0 FAIL.
+
+**Untouched.** The camera clamp values logged above (`CAMERA_ACCENT_MAX 0.85`, `ACCENT_YAW_DEG 2.0`,
+`ACCENT_FOV_DEG 0.55`, `ACCENT_DOLLY 0.22`, `CAMERA_YAW_MAX_DEG 4.0`, stacked total 6.0,
+`CAMERA_PUNCH_MAX 1.6`) and `live_match_check._check_camera_stage_clearance` are exactly as they
+shipped in `2b46ecc`; this step changed no camera code. Any crowd eruption or overlay added next must
+keep that audit at 0 FAIL — it measures the lens against the yard, the four backdrop corners and a
+12 px fighter margin, so a new overlay that moves the camera or paints past the backdrop borders will
+show up there first.

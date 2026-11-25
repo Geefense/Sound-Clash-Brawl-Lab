@@ -337,6 +337,10 @@ const NO_SEPARATION_STATES := [
 ## 3D presentation toggle (AGENTS.md §9 item 43). Presentation only.
 @export var presentation_3d: bool = true
 var arena3d: Arena3D = null
+## Retro arcade FX layer (PART 2 commit 4). Its own CanvasLayer below the HUD, built once in
+## `_setup_3d_presentation()`; with no sheets delivered it draws nothing and costs nothing.
+var arcade_vfx: ArcadeVFX2D = null
+var vfx_layer: CanvasLayer = null
 
 @onready var p1: BaseFighter = $P1
 @onready var p2: BaseFighter = $P2
@@ -713,6 +717,15 @@ func _on_strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dic
 	if target != null:
 		_add_spark(target.global_position + Vector2(0.0, -110.0),
 			&"hit_onbeat" if on_beat else &"hit")
+	# Arcade FX: a spark on every unblocked contact, and the bass shockwave on a heavy strike
+	# that landed on the beat — timing reads as a visual, not only as a sound.
+	if not bool(result.get("blocked", false)):
+		var fx_point := target.global_position + Vector2(0.0, -110.0) if target != null \
+			else attacker.global_position + Vector2(0.0, -100.0)
+		_play_arcade_fx(&"hit_spark", fx_point, 0.55 if on_beat else 0.4)
+		var fx_heavy := StringName(result.get("attack_id", &"")) in BaseFighter.HEAVY_ATTACK_IDS
+		if on_beat and fx_heavy:
+			_play_arcade_fx(&"bass_shockwave", fx_point, 1.0)
 	# Punish: the hit interrupted an attack or a taunt, so it gets the show-off callout.
 	if bool(result.get("punish", false)) and not bool(result.get("blocked", false)):
 		_announce_callout(&"punish")
@@ -788,6 +801,10 @@ func _on_fighter_died() -> void:
 		# changes neither the hit-stop length nor the input timing.
 		arena3d.accent_camera(1 if winner_side == 0 else -1, 1.0)
 		arena3d.notify_combat_event(&"ko", winner_side)
+		# Arcade K.O. callout over the fighter that went down.
+		var downed: BaseFighter = p1 if winner_side == 1 else p2
+		if downed != null:
+			_play_arcade_fx(&"ko_callout", downed.global_position + Vector2(0.0, -110.0), 1.0)
 
 
 ## Round win: the winner throws its celebration pose while the result banner runs
@@ -871,6 +888,9 @@ func _on_static_parry(defender: BaseFighter, attacker: BaseFighter) -> void:
 		return
 	var mid := (defender.global_position + attacker.global_position) * 0.5 + Vector2(0.0, -110.0)
 	_add_spark(mid)
+	# The clash callout: the parry is this build's authored clash moment (there is no trade
+	# event in `BaseFighter`, and none was invented for an overlay).
+	_play_arcade_fx(&"clash_callout", mid, 1.0)
 	if arena3d != null:
 		arena3d.spawn_vinyl_parry(mid)
 		arena3d.pulse_speakers(0.5)
@@ -1245,6 +1265,7 @@ func _setup_3d_presentation() -> void:
 	arena3d.name = "Arena3D"
 	add_child(arena3d)
 	arena3d.setup(p1, p2)
+	_setup_arcade_vfx()
 	# The 3D proxies replace these drawings; the nodes stay alive so their measured values
 	# (shadow stretch, crowd darkness, palette) keep driving the headless checks and any
 	# later 2D fallback.
@@ -1261,6 +1282,31 @@ func _setup_3d_presentation() -> void:
 			(node as Node3D).visible = false
 	p1.set_3d_presentation(true)
 	p2.set_3d_presentation(true)
+
+
+## Arcade FX layer: one CanvasLayer (below the HUD) and one `ArcadeVFX2D` on it, created here
+## so no node is ever added while the match runs. The layer reads the arena's camera to place
+## each effect over a world point; it is created even when all four sheets are missing, which
+## is the state the headless check measures.
+func _setup_arcade_vfx() -> void:
+	if arcade_vfx != null:
+		return
+	vfx_layer = CanvasLayer.new()
+	vfx_layer.name = "VFX"
+	vfx_layer.layer = 0            # above the 3D world, below the HUD's layer 1
+	add_child(vfx_layer)
+	arcade_vfx = ArcadeVFX2D.new()
+	arcade_vfx.name = "ArcadeVFX2D"
+	arcade_vfx.camera = arena3d.camera if arena3d != null else null
+	vfx_layer.add_child(arcade_vfx)
+
+
+## Play an arcade effect over a 2D arena point (the space `BaseFighter` uses). No-op when the
+## sheet is missing or the 3D layer is off — the caller never has to check.
+func _play_arcade_fx(kind: StringName, at: Vector2, strength: float = 1.0) -> void:
+	if arcade_vfx == null or arena3d == null:
+		return
+	arcade_vfx.play_at_world(kind, arena3d.world_point_of(at), strength)
 
 
 ## Round start: the ~6 s intro slot begins on the announce, so the single guitar stab lands

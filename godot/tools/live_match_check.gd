@@ -66,6 +66,7 @@ func _run() -> void:
 	for a in FIGHTERS:
 		await _check_presses(a)
 	await _check_press_frame()
+	await _check_arcade_vfx()
 	await _check_arena_integrity()
 	print("\n%d checks, %d FAIL%s" % [_checks, _fails, "" if _fails == 0 else "S"])
 	print("ALL LIVE MATCH CHECKS PASSED" if _fails == 0 else "LIVE MATCH CHECKS FAILED")
@@ -228,6 +229,68 @@ func _check_press_frame() -> void:
 		_check(up, "%s: S raises the guard on the press frame" % key)
 		await _settle(fighter)
 		await _free(arena)
+
+
+## Commit 4: the arcade FX layer with no sheets delivered. Nothing is drawn, each missing sheet
+## is reported exactly once, and 600 presented frames add no node to the arena.
+func _check_arcade_vfx() -> void:
+	print("\n-- ARCADE VFX: no sheets delivered, 600 frames")
+	var arena = await _spawn(&"feedback", &"lickshot")
+	var vfx: ArcadeVFX2D = arena.get("arcade_vfx")
+	var layer: CanvasLayer = arena.get("vfx_layer")
+	_check(vfx != null and layer != null and vfx.get_parent() == layer,
+		"the arcade FX layer sits on its own CanvasLayer")
+	if vfx == null:
+		await _free(arena)
+		return
+	var expected := {
+		&"hit_spark": "hit_spark_sheet.png",
+		&"bass_shockwave": "bass_shockwave_sheet.png",
+		&"clash_callout": "clash_callout_sheet.png",
+		&"ko_callout": "ko_callout_sheet.png",
+	}
+	var paths_ok := true
+	var missing := 0
+	for kind in expected:
+		var want := "res://assets/sprites/arcade_fx/" + String(expected[kind])
+		if vfx.sheet_path(kind) != want:
+			paths_ok = false
+		if not vfx.has_sheet(kind):
+			missing += 1
+	_check(paths_ok, "all four sheet paths follow assets/sprites/arcade_fx/<name>_sheet.png")
+	_check(missing == 4, "no arcade FX sheet is delivered in this build", "%d missing" % missing)
+	_check(vfx.warning_count() == 4,
+		"exactly one warning per missing sheet", "%d warnings" % vfx.warning_count())
+	var each_once := true
+	for kind in expected:
+		if vfx.warned(kind) == vfx.has_sheet(kind):
+			each_once = false
+	_check(each_once, "each sheet is reported independently, and only once")
+	_check(vfx.sprite_count() == 0,
+		"no sprite pool exists without a sheet", "%d sprites" % vfx.sprite_count())
+	var before := arena.find_children("*", "Node", true, false).size()
+	# Poke every trigger: a missing sheet must stay a no-op, never a node factory.
+	for i in 40:
+		vfx.play_at_world(&"hit_spark", Vector3.ZERO)
+		vfx.play_at_world(&"bass_shockwave", Vector3.ZERO)
+		vfx.play_at_world(&"clash_callout", Vector3.ZERO)
+		vfx.play_at_world(&"ko_callout", Vector3.ZERO)
+	_check(vfx.playing_count() == 0, "nothing plays when no sheet exists")
+	# The layer holds exactly one node — `ArcadeVFX2D` itself — and that node holds no sprite.
+	var layer_sprites: int = layer.find_children("*", "Sprite2D", true, false).size()
+	_check(layer_sprites == 0 and vfx.get_child_count() == 0,
+		"the FX layer creates no sprite without a sheet",
+		"%d sprites, %d children" % [layer_sprites, vfx.get_child_count()])
+	for i in 600:
+		await process_frame
+	var after := arena.find_children("*", "Node", true, false).size()
+	# Never grows. A single expired transient (a spark or note trail the fight itself created)
+	# can leave the count one lower; only a list of new nodes is a leak.
+	_check(after <= before, "600 frames add no node to the arena", "%d → %d" % [before, after])
+	_check(vfx.warning_count() == 4,
+		"600 frames add no further warning", "%d" % vfx.warning_count())
+	_check(vfx.playing_count() == 0, "still nothing playing after 600 frames")
+	await _free(arena)
 
 
 ## The live arena's non-combat presentation contract: none of the five prop slots may draw a

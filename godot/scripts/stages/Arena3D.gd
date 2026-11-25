@@ -543,6 +543,13 @@ func camera_distance() -> float:
 	return _camera_distance if camera != null else 0.0
 
 
+## Presentation bridge: a 2D arena point (the space `BaseFighter` uses — 1280×720 with the
+## floor line at y 600) as a point on the 3D fighting plane. Read-only; no camera state is
+## touched, so the framing and yard-clearance audits are unaffected.
+func world_point_of(p: Vector2) -> Vector3:
+	return Vector3(px_to_world_x(p.x), maxf(0.0, (FLOOR_PX - p.y) / PX_PER_M), 0.0)
+
+
 ## Frames the exchange lean for the framing audit: hold `deg` for `frames` presented frames.
 func hold_exchange_yaw(deg: float, frames: int = 2) -> void:
 	_camera_yaw = deg_to_rad(deg)

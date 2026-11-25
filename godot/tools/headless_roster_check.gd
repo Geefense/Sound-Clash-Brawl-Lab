@@ -2063,6 +2063,48 @@ func _run() -> void:
 	_check(compat_ok, "no SSAO / SDFGI / volumetric fog, with ACES tonemap and glow enabled")
 	_check(sand_colours.size() == 3, "sand and horizon albedo respond to each preset",
 		"%d distinct sand colours" % sand_colours.size())
+
+	# ---- Commit 3 (2026-11-25): the fighter cel rim follows the preset --------------------
+	# Each sky needs a different edge colour for the fighters to separate cleanly: warm cream
+	# against daylight, hot amber against the crimson band, cyan against the indigo night.
+	# The rim is an emission band in `toon_cel.gdshader`; the delivered albedo never moves.
+	var cel_rims := {}
+	var rim_match_ok := true
+	var rim_detail: Array[String] = []
+	var rim_warm_afternoon := false
+	var rim_cool_night := false
+	var rim_night_strength := 0.0
+	var rim_afternoon_strength := 0.0
+	for idx in [0, 1, 2]:
+		stage.apply_phase(idx, 0.0)
+		await process_frame
+		var model := stage.models.get("p1") as FighterModel3D
+		if model == null:
+			rim_match_ok = false
+			continue
+		var rim_now: Color = model.cel_rim()
+		var strength_now: float = model.cel_rim_strength()
+		cel_rims[str(rim_now)] = true
+		if not rim_now.is_equal_approx(stage.cel_rim_colour()) \
+				or absf(strength_now - stage.cel_rim_strength()) > 0.001:
+			rim_match_ok = false
+		rim_detail.append("%s %s %.2f" % [stage.phase_name(), str(rim_now), strength_now])
+		if idx == 0:
+			rim_warm_afternoon = rim_now.r > rim_now.b
+			rim_afternoon_strength = strength_now
+		elif idx == 2:
+			rim_cool_night = rim_now.b > rim_now.r
+			rim_night_strength = strength_now
+	_check(rim_match_ok, "each preset pushes its own cel rim onto the fighters",
+		", ".join(rim_detail))
+	_check(cel_rims.size() == 3, "the three presets use three distinct fighter rims",
+		"%d colours" % cel_rims.size())
+	_check(rim_warm_afternoon and rim_cool_night,
+		"the daylight rim is warm and the night rim is cool against its sky")
+	_check(rim_night_strength > rim_afternoon_strength,
+		"the night rim burns harder so fighters read between the stage beams",
+		"%.2f vs %.2f" % [rim_night_strength, rim_afternoon_strength])
+
 	stage.apply_phase(2, 0.0)
 	await process_frame
 	var beams := {}

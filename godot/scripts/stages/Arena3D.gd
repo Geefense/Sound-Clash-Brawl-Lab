@@ -89,6 +89,10 @@ const PHASES := [
 		"pool_alpha": 0.10,
 		"rim": Color(1.0, 0.85, 0.52, 1.0),
 		"rim_energy": 0.85,
+		# Commit 3: the fighter cel rim per preset. Warm cream against a blue afternoon sky,
+		# so the body's edge separates without fighting the key light.
+		"cel_rim": Color(1.0, 0.88, 0.62, 1.0),
+		"cel_rim_strength": 0.55,
 		"disc": 0.35,
 		"disc_colour": Color(1.0, 0.95, 0.78, 1.0),
 		"disc_pos": Vector3(-3.4, 3.1, -13.6),
@@ -129,6 +133,10 @@ const PHASES := [
 		"pool_alpha": 0.26,
 		"rim": Color(1.0, 0.353, 0.212, 1.0),
 		"rim_energy": 1.45,
+		# Hot amber edge against the crimson band: the fighter reads as a silhouette lit from
+		# behind instead of dissolving into the sunset.
+		"cel_rim": Color(1.0, 0.62, 0.30, 1.0),
+		"cel_rim_strength": 1.05,
 		"disc": 1.0,
 		"disc_colour": Color(1.0, 0.62, 0.26, 1.0),
 		"disc_pos": Vector3(3.2, 1.30, -13.6),
@@ -169,6 +177,10 @@ const PHASES := [
 		"pool_alpha": 0.42,
 		"rim": Color(0.26, 0.92, 1.0, 1.0),
 		"rim_energy": 1.60,
+		# Cyan edge against the indigo night. It burns hardest here because the sky is darkest
+		# and the fighters have to stay readable between the stage beams.
+		"cel_rim": Color(0.42, 0.90, 1.0, 1.0),
+		"cel_rim_strength": 1.30,
 		"disc": 0.0,
 		"disc_colour": Color(0.6, 0.8, 1.0, 1.0),
 		"disc_pos": Vector3(-3.4, 3.1, -13.6),
@@ -232,6 +244,16 @@ var _camera_yaw_velocity: float = 0.0
 var _yaw_hold: int = 0
 var _camera_distance: float = CAMERA_DISTANCE
 var _live_bursts: Array = []
+## The fighter cel rim the current preset owns (commit 3), and the accent spring that gives
+## a K.O. blow or a special its brief cinematic push. All presentation: the camera is never
+## stepped by combat and the fighters' framing distance is computed from these values.
+var _cel_rim := Color(1.0, 0.88, 0.62, 1.0)
+var _cel_rim_strength := 0.55
+var cinematic_accent: float = 0.0
+var _accent: float = 0.0
+var _accent_velocity: float = 0.0
+var _accent_side: int = 0
+var _accent_hold: int = 0
 var _phase_index: int = 0
 var _phase_now: Dictionary = {}
 var _phase_from: Dictionary = {}
@@ -270,6 +292,8 @@ func setup(p1: BaseFighter, p2: BaseFighter) -> void:
 	_camera_distance = CAMERA_DISTANCE
 	camera.position = Vector3(_camera_x, CAMERA_HEIGHT, CAMERA_DISTANCE)
 	_apply_mirror_variants()
+	# A model built after the preset was selected still gets that preset's rim.
+	_push_cel_rim()
 
 
 ## Default FEEDBACK vs FEEDBACK showcase: both sides use the same uploaded 3D mesh, so P2
@@ -326,6 +350,31 @@ func hitstop_punch(stop_frames: int, strength: float = 1.0) -> void:
 	if punch <= 0.0:
 		return
 	_kick = minf(AnimationFeel.CAMERA_PUNCH_MAX, maxf(_kick, punch))
+
+
+## Round-winning K.O. blow / special activation: a brief clamped zoom-and-angle accent.
+## It composites with the exchange lean and the hit-stop punch through one clamped total
+## (`_update_camera`), decays on its own critically damped spring, and can never change the
+## hit-stop's length or the input timing — it reads neither. `side` +1 leans toward P1's
+## side of the frame, −1 toward P2's, 0 stays centred.
+func accent_camera(side: int = 0, strength: float = 1.0) -> void:
+	var want := clampf(strength, 0.0, 1.0) * AnimationFeel.CAMERA_ACCENT_MAX
+	_accent = maxf(_accent, want)
+	_accent_side = 0 if absi(side) > 1 else side
+	_accent_hold = AnimationFeel.CAMERA_ACCENT_HOLD_FRAMES
+
+
+## Hold the accent at its peak for `frames` presented frames, for the framing audit.
+func hold_cinematic_accent(strength: float = 1.0, frames: int = 3) -> void:
+	_accent = clampf(strength, 0.0, 1.0) * AnimationFeel.CAMERA_ACCENT_MAX
+	_accent_velocity = 0.0
+	_accent_side = 0
+	_accent_hold = maxi(1, frames)
+
+
+## The accent currently written to the lens; 0 is a resting camera.
+func camera_accent() -> float:
+	return cinematic_accent
 
 
 func apply_phase(index: int, duration: float = 0.0) -> void:
@@ -519,6 +568,20 @@ func _process(delta: float) -> void:
 	if absf(_kick) < 0.0002:
 		_kick = 0.0
 		_kick_velocity = 0.0
+	# Cinematic accent spring (K.O. / special). Same impulse-then-spring contract as the
+	# punch: integrated every presented frame, clamped to CAMERA_ACCENT_MAX, never stepped by
+	# the combat tick.
+	if _accent_hold > 0:
+		_accent_hold -= 1
+	else:
+		var accent_step: Array = AnimationFeel.spring_scalar_step(_accent, _accent_velocity,
+			0.0, clampf(delta, 0.0001, 1.0 / 30.0), AnimationFeel.CAMERA_ACCENT_STIFFNESS,
+			AnimationFeel.CAMERA_ACCENT_DAMPING)
+		_accent = clampf(float(accent_step[0]), 0.0, AnimationFeel.CAMERA_ACCENT_MAX)
+		_accent_velocity = float(accent_step[1])
+		if absf(_accent) < 0.0002:
+			_accent = 0.0
+			_accent_velocity = 0.0
 	_shake = move_toward(_shake, 0.0, delta * 3.0)
 	_update_phase(delta)
 	_update_camera(delta)
@@ -542,13 +605,21 @@ func _update_camera(delta: float) -> void:
 	# a margin for fists and hats. At neutral spacing this resolves to the tighter default.
 	var view := get_viewport().get_visible_rect().size if is_inside_tree() else Vector2(1280, 720)
 	var aspect := maxf(view.x / maxf(view.y, 1.0), 1.0)
+	# Cinematic accent (commit 3), clamped. Its yaw and dolly are added to the required
+	# framing distance, so the accent can never crop a fighter: `needed` is the floor the
+	# final camera distance may never go below.
+	var accent := clampf(_accent, 0.0, AnimationFeel.CAMERA_ACCENT_MAX)
+	var accent_yaw := deg_to_rad(AnimationFeel.CAMERA_ACCENT_YAW_DEG) * accent \
+		* float(_accent_side)
 	var half_span := 0.0
 	half_span = maxf(half_span, absf(px_to_world_x(p1.global_position.x) - _camera_x))
 	half_span = maxf(half_span, absf(px_to_world_x(p2.global_position.x) - _camera_x))
-	var needed := (half_span + 0.55 + absf(sin(_camera_yaw)) * 2.0) / (tan(deg_to_rad(CAMERA_FOV * 0.5)) * aspect)
+	var needed := (half_span + 0.55 + absf(sin(_camera_yaw + accent_yaw)) * 2.0
+		+ accent * AnimationFeel.CAMERA_ACCENT_DOLLY) / (tan(deg_to_rad(CAMERA_FOV * 0.5)) * aspect)
 	var dist_target := clampf(maxf(CAMERA_DISTANCE, needed), CAMERA_DISTANCE, CAMERA_MAX_DISTANCE)
 	_camera_distance = lerpf(_camera_distance, dist_target,
 		1.0 - exp(-CAMERA_FOLLOW * delta))
+	var distance := maxf(_camera_distance - accent * AnimationFeel.CAMERA_ACCENT_DOLLY, needed)
 	# Lean a few degrees toward whoever is driving the exchange. The spring is critically
 	# damped, so the lens drifts in and out without overshoot or a snap on state changes.
 	var yaw_target := 0.0
@@ -574,19 +645,27 @@ func _update_camera(delta: float) -> void:
 		_rng.randf_range(-1.0, 1.0) * _shake,
 		_rng.randf_range(-1.0, 1.0) * _shake * 0.7,
 		0.0)
+	# ONE clamped total for the lens angle: the exchange lean plus the accent's own bias.
+	var yaw_limit := deg_to_rad(AnimationFeel.CAMERA_YAW_MAX_DEG + AnimationFeel.CAMERA_ACCENT_YAW_DEG)
+	var yaw_total := clampf(_camera_yaw + accent_yaw, -yaw_limit, yaw_limit)
 	# Orbit the focus point by the yaw instead of rotating in place: both fighters stay on
 	# the same side of the lens and the framing distance is unchanged.
 	camera.position = Vector3(
-		_camera_x + sin(_camera_yaw) * _camera_distance + jitter.x,
+		_camera_x + sin(yaw_total) * distance + jitter.x,
 		CAMERA_HEIGHT + jitter.y,
-		cos(_camera_yaw) * _camera_distance)
-	camera.rotation = Vector3(0.0, _camera_yaw, 0.0)
+		cos(yaw_total) * distance)
+	camera.rotation = Vector3(0.0, yaw_total, 0.0)
 	# The punch is a widening FOV kick plus a hair of vertical offset, both riding the same
-	# spring value, so the impulse and its recovery are one smooth arc.
-	camera.fov = CAMERA_FOV - _kick * AnimationFeel.CAMERA_PUNCH_FOV_DEG
+	# spring value, so the impulse and its recovery are one smooth arc. The accent adds its
+	# own clamped share to the same total, so the two can never stack past the punch ceiling.
+	var total_kick_deg := clampf(_kick * AnimationFeel.CAMERA_PUNCH_FOV_DEG
+		+ accent * AnimationFeel.CAMERA_ACCENT_FOV_DEG, 0.0,
+		AnimationFeel.CAMERA_PUNCH_MAX * AnimationFeel.CAMERA_PUNCH_FOV_DEG)
+	camera.fov = CAMERA_FOV - total_kick_deg
 	camera.h_offset = 0.0
 	camera.v_offset = -_kick * AnimationFeel.CAMERA_PUNCH_OFFSET_M
 	camera_punch = _kick
+	cinematic_accent = accent
 
 
 func _update_fighters() -> void:
@@ -729,6 +808,30 @@ func _push_palette(p: Dictionary) -> void:
 			_sun_disc.position = p["disc_pos"]
 			var s := float(p["disc_size"])
 			_sun_disc.scale = Vector3(s, s, 1.0)
+	# Commit 3: every fighter's cel material takes this preset's rim colour and strength, so a
+	# body separates cleanly from the sky it is standing against. One parameter write per
+	# body — the material itself is never rebuilt, and the albedo is never touched.
+	_cel_rim = p.get("cel_rim", _cel_rim)
+	_cel_rim_strength = float(p.get("cel_rim_strength", _cel_rim_strength))
+	_push_cel_rim()
+
+
+## Push the preset rim onto both fighter models. Presentation only; a null model (the
+## billboard fallback) is simply skipped.
+func _push_cel_rim() -> void:
+	for key in models:
+		var model := models[key] as FighterModel3D
+		if model != null and is_instance_valid(model):
+			model.set_cel_rim(_cel_rim, _cel_rim_strength)
+
+
+## The cel rim the current preset owns, for the per-preset audit.
+func cel_rim_colour() -> Color:
+	return _cel_rim
+
+
+func cel_rim_strength() -> float:
+	return _cel_rim_strength
 
 
 # =========================================================================

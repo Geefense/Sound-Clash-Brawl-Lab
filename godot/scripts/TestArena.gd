@@ -783,6 +783,10 @@ func _on_fighter_died() -> void:
 		arena3d.pulse_speakers(1.6)
 		# The corner that is still standing erupts; the other bank puts its hands on its head.
 		var winner_side := 1 if p1 != null and p1.state == BaseFighter.State.KO else 0
+		# Round-winning K.O. blow: a brief clamped push-in and angle toward the winner. It
+		# composites with the lean and the punch inside the arena's one camera clamp, and it
+		# changes neither the hit-stop length nor the input timing.
+		arena3d.accent_camera(1 if winner_side == 0 else -1, 1.0)
 		arena3d.notify_combat_event(&"ko", winner_side)
 
 
@@ -963,6 +967,10 @@ func _on_projectile_spawned(attacker: BaseFighter, _attack_id: StringName, wave:
 	arena3d.spawn_projectile(wave.kind, wave.global_position.x, int(signf(wave.dir)),
 		wave.lifetime, wave.travel_distance())
 	arena3d.pulse_speakers(1.9)
+	# Special activation: the camera takes its brief cinematic accent. Specials exist in this
+	# build (L!ckshot's dubplate, L!kkle Moore's dictionary), so the accent is wired rather
+	# than skipped. Presentation only.
+	arena3d.accent_camera(attacker.facing, 0.65)
 	_add_note_trail(Vector2(wave.global_position.x, attacker.global_position.y - 104.0),
 		attacker.facing, true)
 

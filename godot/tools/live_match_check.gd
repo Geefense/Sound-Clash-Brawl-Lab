@@ -393,7 +393,7 @@ func _check_knockdowns() -> void:
 ## never crop a fighter. Every pairing is checked at the playable spread with the lean held
 ## at both extremes; head, hips and both feet have to be inside the frustum and on screen.
 func _check_camera_framing() -> void:
-	print("\n-- CAMERA: 9 pairings at max spacing, ±4° exchange lean")
+	print("\n-- CAMERA: 9 pairings at max spacing, ±4° exchange lean, accent peak")
 	var view := _view_size()
 	for a in FIGHTERS:
 		for b in FIGHTERS:
@@ -410,25 +410,37 @@ func _check_camera_framing() -> void:
 			for yaw in [-4.0, 4.0]:
 				arena3d.hold_exchange_yaw(yaw, 5)
 				await process_frame
-				var framed := true
-				var bad := ""
-				for fighter in [arena.p1, arena.p2]:
-					var model = arena3d.model_for(fighter)
-					if model == null:
-						framed = false
-						continue
-					for bone in ["Head", "Hips", "LeftFoot", "RightFoot"]:
-						var point := _bone_world(model, bone)
-						if not arena3d.camera.is_position_in_frustum(point):
-							framed = false
-							bad = "%s frustum (%.2f,%.2f,%.2f)" % [bone, point.x, point.y, point.z]
-						var on_screen: Vector2 = arena3d.camera.unproject_position(point)
-						if on_screen.x < 4.0 or on_screen.y < 4.0 \
-								or on_screen.x > view.x - 4.0 or on_screen.y > view.y - 4.0:
-							framed = false
-							bad = "%s screen (%.1f,%.1f) of (%.0f,%.0f)" % [bone, on_screen.x, on_screen.y, view.x, view.y]
-				_check(framed, "%s vs %s: both fighters fully framed at %+.0f° lean %s" % [a, b, yaw, bad])
+				var lean := _framing_ok(arena3d, arena, view)
+				_check(bool(lean[0]), "%s vs %s: both fighters fully framed at %+.0f° lean %s"
+					% [a, b, yaw, String(lean[1])])
+			# PART 1 commit 3: the cinematic accent (K.O. blow / special activation) pulls the
+			# lens in and leans it at its peak. Both fighters still have to be fully framed —
+			# the accent's own dolly and yaw are part of the required framing distance.
+			arena3d.hold_cinematic_accent(1.0, 5)
+			await process_frame
+			var accent := _framing_ok(arena3d, arena, view)
+			_check(bool(accent[0]), "%s vs %s: both fighters fully framed at the accent peak %s"
+				% [a, b, String(accent[1])])
 			await _free(arena)
+
+
+## Head, hips and both feet of both fighters inside the frustum and at least 4 px on screen.
+## Returns `[ok, detail]`. Shared by the lean and the accent-peak framing checks.
+func _framing_ok(arena3d, arena, view: Vector2) -> Array:
+	for fighter in [arena.p1, arena.p2]:
+		var model = arena3d.model_for(fighter)
+		if model == null:
+			return [false, "no model"]
+		for bone in ["Head", "Hips", "LeftFoot", "RightFoot"]:
+			var point := _bone_world(model, bone)
+			if not arena3d.camera.is_position_in_frustum(point):
+				return [false, "%s frustum (%.2f,%.2f,%.2f)" % [bone, point.x, point.y, point.z]]
+			var on_screen: Vector2 = arena3d.camera.unproject_position(point)
+			if on_screen.x < 4.0 or on_screen.y < 4.0 \
+					or on_screen.x > view.x - 4.0 or on_screen.y > view.y - 4.0:
+				return [false, "%s screen (%.1f,%.1f) of (%.0f,%.0f)"
+					% [bone, on_screen.x, on_screen.y, view.x, view.y]]
+	return [true, ""]
 
 
 ## Bug 3: the strike silhouette. On ACTIVE the camera-side fist must reach further across

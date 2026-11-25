@@ -19,6 +19,14 @@ extends SceneTree
 ##   Plus the facing the render shows: the posed body forward must be within 5° of +X for P1
 ##   and −X for P2, measured from the live skeleton (Foot → ToeBase), not from the pivot.
 ##
+## PART 1 commit 1 adds two more contracts, measured on the same live arena:
+##   (d) every attack/guard action answers on the PRESS FRAME (one physics tick with the press
+##       already visible), not merely "within a few frames" as the polling check above allows.
+##   (e) the presentation contract: all five PropLoader slots stay empty and draw no
+##       procedural stand-in, the yard keeps 18–24 spectators drawn from all seven delivered
+##       Mixamo crowd models, and Afternoon/Sunset/Night are three distinct rigs that each keep
+##       a crisp directional fighter shadow.
+##
 ## Exit code is non-zero when any assertion fails.
 
 const FIGHTERS := [&"feedback", &"lickshot", &"young_selecta"]
@@ -54,18 +62,21 @@ func _run() -> void:
 	await _check_knockdowns()
 	for a in FIGHTERS:
 		await _check_presses(a)
+	await _check_press_frame()
+	await _check_arena_integrity()
 	print("\n%d checks, %d FAIL%s" % [_checks, _fails, "" if _fails == 0 else "S"])
 	print("ALL LIVE MATCH CHECKS PASSED" if _fails == 0 else "LIVE MATCH CHECKS FAILED")
 	quit(1 if _fails > 0 else 0)
 
 
-func _check(ok: bool, label: String) -> void:
+func _check(ok: bool, label: String, detail: String = "") -> void:
 	_checks += 1
+	var line := "%s%s" % [label, (" — " + detail) if detail != "" else ""]
 	if not ok:
 		_fails += 1
-		print("FAIL  %s" % label)
+		print("FAIL  %s" % line)
 	else:
-		print("PASS  %s" % label)
+		print("PASS  %s" % line)
 
 
 func _spawn(p1_key: StringName, p2_key: StringName, rounds_enabled: bool = false):
@@ -179,6 +190,130 @@ func _check_presses(a: StringName) -> void:
 		[tag, String(BaseFighter.State.keys()[fighter.state])])
 	fighter._hitstop_frames = 0
 	await _free(arena)
+
+
+## Press-frame responsiveness (PART 1 commit 1). `_check_presses` above polls for up to 8 ticks,
+## so a one- or two-tick lag would still pass it. Here the press goes down, the fighter is given
+## exactly ONE physics tick in which the press is already visible, and the state must have
+## changed by the end of that same tick — the buttons answer on the press frame.
+func _check_press_frame() -> void:
+	for key in FIGHTERS:
+		var arena = await _spawn(key, &"lickshot", true)
+		var fighter: BaseFighter = arena.p1
+		for entry in PRESSES:
+			await _settle(fighter)
+			var before: int = fighter.state
+			Input.action_press(entry[0])
+			# Frame A begins with the press already down; frame B begins once frame A (and its
+			# single `_physics_process`) has finished. No second chance is given.
+			await physics_frame
+			await physics_frame
+			Input.action_release(entry[0])
+			var got: int = fighter.state
+			_check(got in entry[2],
+				"%s: %s answers on the press frame (state %s)" % [key, entry[1],
+					String(BaseFighter.State.keys()[got])])
+			_check(before == BaseFighter.State.IDLE or got in entry[2],
+				"%s: %s was pressed from a settled stance" % [key, entry[1]])
+			await _settle(fighter)
+		# Guard is held, not latched: it must be up on the tick after the press as well.
+		Input.action_press("p1_guard")
+		await physics_frame
+		await physics_frame
+		var up: bool = fighter.guarding
+		Input.action_release("p1_guard")
+		_check(up, "%s: S raises the guard on the press frame" % key)
+		await _settle(fighter)
+		await _free(arena)
+
+
+## The live arena's non-combat presentation contract: none of the five prop slots may draw a
+## procedural stand-in, the yard keeps all seven delivered crowd models, and the three light
+## phases are genuinely different rigs with a crisp fighter shadow in every one.
+func _check_arena_integrity() -> void:
+	var arena = await _spawn(&"feedback", &"lickshot", false)
+	var slots := arena.find_children("*", "PropLoader", true, false)
+	_check(slots.size() == 5, "the arena carries the five PropLoader slots (%d)" % slots.size())
+	var empty := 0
+	var stray_meshes := 0
+	var paths: Array[String] = []
+	for node in slots:
+		var slot := node as PropLoader
+		if slot.is_empty():
+			empty += 1
+		paths.append(slot.model_path.get_file())
+		for child in slot.find_children("*", "MeshInstance3D", true, false):
+			var mi := child as MeshInstance3D
+			if mi != null and mi.mesh != null:
+				stray_meshes += 1
+	_check(empty == slots.size(), "every prop slot is empty while no .glb is delivered",
+		"%d of %d" % [empty, slots.size()])
+	_check(stray_meshes == 0, "no prop slot draws a procedural stand-in mesh",
+		"%d stray meshes" % stray_meshes)
+	var wanted := ["jamaican_speaker.glb", "rasta_speaker.glb", "dj_booth.glb"]
+	var stage_slots := 0
+	for file in wanted:
+		if paths.has(file):
+			stage_slots += 1
+	_check(stage_slots == 3, "the yard's three environment slots are live",
+		", ".join(paths))
+	_check(paths.count("wireless_mic.glb") == 2,
+		"both adult fighters mount a wireless-mic slot",
+		"%d wireless_mic.glb" % paths.count("wireless_mic.glb"))
+
+	var stage3d = arena.get_node_or_null("Arena3D")
+	if stage3d != null:
+		var crowd = stage3d.crowd3d
+		_check(crowd != null and crowd.count() >= 18 and crowd.count() <= 24,
+			"the packed yard stands 18–24 spectators",
+			"%d" % (crowd.count() if crowd != null else -1))
+		if crowd != null:
+			var models := {}
+			for m in crowd._models:
+				if m != null:
+					models[m.scene_file_path] = true
+			_check(models.size() == 7, "all seven delivered Mixamo crowd models are on stage",
+				"%d distinct" % models.size())
+		# Three phases, three genuinely different rigs, one crisp shadow throughout.
+		var rigs: Array[String] = []
+		var crisp := true
+		for phase in [0, 1, 2]:
+			stage3d.apply_phase(phase, 0.0)
+			await physics_frame
+			var sun: DirectionalLight3D = stage3d.sun
+			if not sun.shadow_enabled or sun.light_angular_distance > 0.001:
+				crisp = false
+			rigs.append("%.2f/%.2f/%.2f" % [sun.light_energy,
+				stage3d.fill.light_energy, stage3d.rim.light_energy])
+		_check(crisp, "the key light casts a crisp fighter shadow in every phase")
+		var distinct := {}
+		for r in rigs:
+			distinct[r] = true
+		_check(distinct.size() == 3, "Afternoon / Sunset / Night are three distinct light rigs",
+			", ".join(rigs))
+		stage3d.apply_phase(0, 0.0)
+	await _free(arena)
+	# L!kkle Moore is the only fighter who asks for the mic stand, so his slot only exists in a
+	# match he is in. Checked in its own arena rather than inferred.
+	var moore = await _spawn(&"young_selecta", &"feedback", false)
+	var moore_paths: Array[String] = []
+	var moore_empty := 0
+	var moore_stray := 0
+	for node in moore.find_children("*", "PropLoader", true, false):
+		var slot := node as PropLoader
+		moore_paths.append(slot.model_path.get_file())
+		if slot.is_empty():
+			moore_empty += 1
+		for child in slot.find_children("*", "MeshInstance3D", true, false):
+			var mi := child as MeshInstance3D
+			if mi != null and mi.mesh != null:
+				moore_stray += 1
+	_check(moore_paths.has("mic_stand.glb"),
+		"L!kkle Moore's mic-stand slot is present and empty",
+		", ".join(moore_paths))
+	_check(moore_empty == moore_paths.size() and moore_stray == 0,
+		"his mic stand and dictionary draw nothing without a .glb")
+	await _free(moore)
 
 
 ## Wait for a controllable, grounded, idle fighter without forcing state by hand.

@@ -4671,3 +4671,32 @@ and were not staged.
 | C4 · subtle limb clearance from the torso | **EXISTS** | `negative_space` on arms + shoulders | keep |
 | C4 · camera-facing **chest**/eye-line cheat at the strike pose | **PARTIAL** | neck + head only; the chest never turns | **BUILD** the chest part |
 | C4 · cap total influence, facing stays within 5° | **MISSING** | no explicit cap; only the outcome was asserted | **BUILD** the cap + assertion |
+
+### COMMIT 1 — Live-match integrity (tests tightened, no combat change)
+
+`tools/live_match_check.gd` grew **123 → 167 checks** (44 new) and stays **0 FAIL**. Nothing in
+`BaseFighter.gd`, the frame data or the F4 feel layer needed fixing: the extra checks confirmed the
+behaviour instead of exposing a defect, with one measurement corrected (below).
+
+- **(d) Press-frame response.** The old `_press()` polls up to 8 ticks, so a 1–2 tick lag would have
+  passed. The new check presses the real InputMap action, gives the fighter **exactly one** physics
+  tick in which the press is already visible (frame A begins with the key down; the state is read
+  once frame A has finished), and requires the state change by the end of that tick. Verified for
+  J / K / L / I / U and the held S guard, on all three fighters: every one transitions on the press
+  frame — `ATTACK_STARTUP` (or `GRAB`) on the same tick the key goes down, guard up on the same tick.
+  This also re-validates the hitstop press latch from the earlier fix from the outside.
+- **(e) Presentation contract, measured on the live `TestArena.tscn`:**
+  - five `PropLoader` slots, **all empty**, **zero** child `MeshInstance3D` — no procedural stand-in
+    anywhere. The yard's three environment slots (`jamaican_speaker.glb`, `rasta_speaker.glb`,
+    `dj_booth.glb`) plus one wireless-mic slot per adult fighter.
+  - **Correction to an earlier assumption, not a bug:** a Feedback-vs-L!ckshot match carries five
+    slots but only *four distinct* files, because L!kkle Moore's `mic_stand.glb` slot only exists when
+    he is in the match. The check now asserts the three environment slots by name, both adult
+    wireless-mic slots, and then spawns a **L!kkle Moore vs Feedback** arena to prove his
+    `mic_stand.glb` slot is present and equally empty. Asserting a fixed five-name set against one
+    match would have been a false failure.
+  - **22** spectators (18–24 band) drawn from **all seven** delivered Mixamo crowd models.
+  - **Three distinct light rigs**, sun / fill / rim energies `1.90/0.26/0.80`, `1.55/0.38/1.35`,
+    `0.10/0.46/1.60`, each keeping `shadow_enabled` with `light_angular_distance ≤ 0.001` — the crisp
+    directional fighter shadow the owner asked for never disappears.
+- Facing stays **94/94**, roster **425/425**, feel audit **142/142** on the same commit.

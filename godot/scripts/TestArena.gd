@@ -760,7 +760,7 @@ func _on_strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dic
 			var heavy_contact := hit_id in BaseFighter.HEAVY_ATTACK_IDS \
 				or bool(result.get("counter", false))
 			arena3d.notify_combat_event(&"heavy_hit" if heavy_contact else &"hit",
-				_corner_of(attacker))
+				_corner_of(attacker), on_beat)
 
 	# 2.5D impact juice (AGENTS.md §9 item 41): musical-note trails on heavies and on-beat
 	# contacts, and the black-and-gold comic frame plus a micro-zoom on a counter-hit. Light
@@ -991,6 +991,9 @@ func _on_projectile_spawned(attacker: BaseFighter, _attack_id: StringName, wave:
 	# build (L!ckshot's dubplate, L!kkle Moore's dictionary), so the accent is wired rather
 	# than skipped. Presentation only.
 	arena3d.accent_camera(attacker.facing, 0.65)
+	# Special activation is one of the owned eruption cues (PART 2 commit 5): the whole yard
+	# answers, at the hype reading, on the existing row delays.
+	arena3d.notify_combat_event(&"special", _corner_of(attacker))
 	_add_note_trail(Vector2(wave.global_position.x, attacker.global_position.y - 104.0),
 		attacker.facing, true)
 

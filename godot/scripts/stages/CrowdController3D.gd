@@ -95,6 +95,16 @@ const BEAT_SEC := 60.0 / BPM
 const SKANK_RISE := 0.055
 const SKANK_SWAY := 0.045
 
+## --- Commit 5: the sound-clash eruption ----------------------------------------------------
+## A whole-yard eruption rides the energy the arena passes in. Full energy holds for
+## `ERUPT_PEAK_SECONDS`, then settles over the rest of `ERUPT_SECONDS`; the jump itself is
+## locked to the same 132 BPM clock as the skank (`BEAT_SEC`), so the yard never erupts off the
+## music. The row tiers keep their existing delays, so the wave ripples from ringside back.
+const ERUPT_SECONDS := 3.2
+const ERUPT_PEAK_SECONDS := 0.9
+const ERUPT_JUMP := 0.09
+const ERUPT_SWAY := 0.5
+
 const STATE_IDLE := &"idle"
 const STATE_CHEER := &"cheer"
 const STATE_DISBELIEF := &"disbelief"
@@ -132,6 +142,13 @@ var _models: Array[Node3D] = []
 var _cel_materials: Array[ShaderMaterial] = []
 var _time: float = 0.0
 var _reactions: int = 0
+## Eruption state (PART 2, commit 5). Scalar only: `_eruption` is the 0–1 energy the arena
+## passed in (read from the hype meters, never written back), `_eruption_age` runs the peak
+## then the settle, and nothing here creates a node or a light.
+var _eruption: float = 0.0
+var _eruption_age: float = 0.0
+var _eruption_live: bool = false
+var _eruptions: int = 0
 var _rng := RandomNumberGenerator.new()
 
 
@@ -330,6 +347,13 @@ func react(kind: StringName, side: int = -1) -> void:
 ## `_process`; the headless check calls it directly so the ripple is measurable off-screen.
 func tick(delta: float) -> void:
 	_time += delta
+	if _eruption_live:
+		_eruption_age += delta
+		if _eruption_age > ERUPT_PEAK_SECONDS:
+			_eruption = maxf(0.0, _eruption - delta / (ERUPT_SECONDS - ERUPT_PEAK_SECONDS))
+		if _eruption <= 0.0:
+			_eruption = 0.0
+			_eruption_live = false
 	for m in _members:
 		if m.timer > 0.0:
 			m.timer -= delta
@@ -347,8 +371,59 @@ func tick(delta: float) -> void:
 		_pose_member(m)
 
 
+## Sound-clash eruption (commit 5): all 22 spectators take the hype act on the row-tier delays
+## they already carry, and the beat-locked jump is scaled by `energy` — the arena's read-only
+## hype reading, 0–1. Called by `Arena3D.notify_combat_event()`; nothing about Crowd Hype,
+## the meters or the combat rules changes here.
+func erupt(energy: float = 1.0, whole_yard_act: bool = true) -> void:
+	var e := clampf(energy, 0.0, 1.0)
+	_eruption = maxf(_eruption, e)
+	_eruption_age = 0.0
+	_eruption_live = true
+	_eruptions += 1
+	# The jump and the sway are yard-wide, but the ACT is only overwritten when the cue really
+	# is a whole-yard moment (a Hype surge, a special). On a side-specific cue — a heavy hit, a
+	# knockdown, a K.O. — `react(kind, side)` has already given the winner's bank its cheer and
+	# the rival bank its disbelief, and that read must survive the eruption.
+	if whole_yard_act:
+		# Both banks, on the delays they already own (`ROW_DELAY` + lateral stagger + jitter),
+		# so the wave goes ringside → mid → back instead of every rig snapping at once.
+		react(&"hype", -1)
+
+
+## Live eruption energy, 0–1. Zero once the settle has finished.
+func eruption_energy() -> float:
+	return _eruption
+
+
+func eruption_active() -> bool:
+	return _eruption_live
+
+
+func eruption_count() -> int:
+	return _eruptions
+
+
+## The row-tier delay the wave uses, seconds. Strictly increasing with depth, which is what
+## the headless check asserts.
+func row_delay(row: int) -> float:
+	return ROW_DELAY[clampi(row, 0, ROW_DELAY.size() - 1)]
+
+
+## Highest anchor lift above its row tier right now. Bounded by `SKANK_RISE + BOB + ERUPT_JUMP`.
+func max_lift() -> float:
+	var best := 0.0
+	for m in _members:
+		if m.node != null:
+			best = maxf(best, m.node.position.y - m.base_y)
+	return best
+
+
 ## Back to neutral: a fresh round must never open on a stale celebration.
 func settle() -> void:
+	_eruption = 0.0
+	_eruption_age = 0.0
+	_eruption_live = false
 	for m in _members:
 		m.state = STATE_IDLE
 		m.pending = &""
@@ -385,6 +460,12 @@ func _pose_member(m: Member) -> void:
 	var beat := fposmod(_time / BEAT_SEC + m.beat_offset, 1.0)
 	var hop := absf(sin(PI * beat)) * SKANK_RISE
 	var sway := sin(TAU * beat) * SKANK_SWAY
+	# Eruption ride: a beat-locked jump and a wider sway on top of whatever act is playing. The
+	# arms and the hands-up read come from the delivered hype take, not from bone writes here,
+	# so the eruption cannot fight the AnimationPlayer.
+	if _eruption > 0.0:
+		hop += _eruption * ERUPT_JUMP * absf(sin(PI * beat))
+		sway *= 1.0 + _eruption * ERUPT_SWAY
 	var t := m.phase
 	match m.state:
 		STATE_CHEER:

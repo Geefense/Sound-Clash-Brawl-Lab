@@ -36,6 +36,9 @@ const CAMERA_FOLLOW := 7.0
 const CAMERA_MIN_X := -1.78
 const CAMERA_MAX_X := 1.78
 
+## Commit 5: how much extra energy the existing spots take at a full eruption peak.
+const ERUPT_LIGHT_PUMP := 0.55
+
 const MAX_BURSTS := 4
 const NOTE_SPARK := 0.35
 const NOTE_HEAVY := 1.0
@@ -210,6 +213,10 @@ const BPM := 132.0
 var _stage_energy_base: float = 0.0
 var _stage_pulse_amount: float = 0.0
 var _beat_phase: float = 0.0
+## Commit 5: eruption pump on the EXISTING stage spots and booth lights. A scalar multiplier
+## only — no light is created, moved or re-parented, so the 7-light Compatibility ceiling and
+## `light_count()` are unchanged.
+var _light_pump: float = 0.0
 var sky_material: ShaderMaterial
 var pool_material: ShaderMaterial
 var sun_material: ShaderMaterial
@@ -415,11 +422,43 @@ func active_bursts() -> int:
 ## already receives (HIT_LANDED, HEAVY_HIT, KNOCKDOWN, K.O., VICTORY, plus DJ tags and Hype
 ## surges); nothing about the fight, the hitboxes or the audio is changed here.
 ## `side` 0 = P1's left corner, 1 = P2's right corner, −1 = a neutral roar.
-func notify_combat_event(kind: StringName, side: int = -1) -> void:
+func notify_combat_event(kind: StringName, side: int = -1, on_beat: bool = false) -> void:
 	if dj_booth != null:
 		dj_booth.react(kind, side)
 	if crowd3d != null:
 		crowd3d.react(kind, side)
+	# Commit 5: the eruption is reserved for the moments the yard actually loses it — a big
+	# impact, a heavy that landed on the beat, a special, a knockdown, the K.O. and a Hype
+	# surge. Energy is READ from the hype meters (`_hype_energy()`), never written back, so
+	# the Crowd Hype rules are untouched.
+	var erupt := false
+	match kind:
+		&"heavy_hit", &"knockdown", &"ko", &"victory", &"hype", &"special":
+			erupt = true
+		&"hit":
+			erupt = on_beat
+	if erupt:
+		if crowd3d != null:
+			# A Hype surge and a special are whole-yard moments; the rest keep the per-bank
+			# reaction `react(kind, side)` just cued and let the eruption add the jump on top.
+			crowd3d.erupt(_hype_energy(), kind == &"hype" or kind == &"special")
+		_light_pump = 1.0
+
+
+## Highest hype meter in the match as 0–1. Read-only: the eruption scales with the crowd's
+## own reading of the fight and can never award, spend or clamp hype.
+func _hype_energy() -> float:
+	var best := 0.0
+	for key in fighters:
+		var fighter: BaseFighter = fighters[key]
+		if fighter != null:
+			best = maxf(best, float(fighter.hype) / float(maxi(BaseFighter.HYPE_MAX, 1)))
+	return clampf(best, 0.0, 1.0)
+
+
+## Current eruption pump applied to the existing spots, 0–1.
+func light_pump() -> float:
+	return _light_pump
 
 
 ## 132 BPM downbeat: the DJs nod, the mixer keeps moving even in a quiet moment, and the
@@ -438,11 +477,13 @@ func stage_pulse() -> float:
 
 func _update_stage_lights(delta: float) -> void:
 	_beat_phase = fposmod(_beat_phase + delta * BPM / 60.0, 1.0)
+	_light_pump = maxf(0.0, _light_pump - delta * 1.6)
 	_apply_stage_energies()
 
 
 func _apply_stage_energies() -> void:
-	var pulse := 1.0 + _stage_pulse_amount * stage_pulse()
+	var pulse := (1.0 + _stage_pulse_amount * stage_pulse()) \
+		* (1.0 + _light_pump * ERUPT_LIGHT_PUMP * stage_pulse())
 	if spot_left != null:
 		spot_left.light_energy = _stage_energy_base * pulse
 	if spot_right != null:

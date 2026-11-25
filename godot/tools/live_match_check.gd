@@ -67,6 +67,7 @@ func _run() -> void:
 		await _check_presses(a)
 	await _check_press_frame()
 	await _check_arcade_vfx()
+	await _check_crowd_eruption()
 	await _check_arena_integrity()
 	print("\n%d checks, %d FAIL%s" % [_checks, _fails, "" if _fails == 0 else "S"])
 	print("ALL LIVE MATCH CHECKS PASSED" if _fails == 0 else "LIVE MATCH CHECKS FAILED")
@@ -290,6 +291,80 @@ func _check_arcade_vfx() -> void:
 	_check(vfx.warning_count() == 4,
 		"600 frames add no further warning", "%d" % vfx.warning_count())
 	_check(vfx.playing_count() == 0, "still nothing playing after 600 frames")
+	await _free(arena)
+
+
+## Commit 5: the sound-clash eruption. It must fire on the owned cues, scale with the hype
+## readout without writing it, ripple by row tier, stay bounded, add no light, and leave the
+## crowd's node count unchanged across a full eruption.
+func _check_crowd_eruption() -> void:
+	print("\n-- CROWD ERUPTION: cues, hype scale, row wave, bounds, 300 frames")
+	var arena = await _spawn(&"feedback", &"lickshot")
+	var arena3d = arena.get("arena3d")
+	if arena3d == null or arena3d.crowd3d == null:
+		_check(false, "no crowd for the eruption audit")
+		await _free(arena)
+		return
+	var crowd: CrowdController3D = arena3d.crowd3d
+	_check(crowd.member_count() == 22,
+		"the eruption covers the full crowd", "%d rigs" % crowd.member_count())
+	_check(crowd.row_delay(0) < crowd.row_delay(1) and crowd.row_delay(1) < crowd.row_delay(2),
+		"the wave is ordered ringside → mid → back",
+		"%.2f / %.2f / %.2f s" % [crowd.row_delay(0), crowd.row_delay(1), crowd.row_delay(2)])
+	var lights_before: int = arena3d.light_count()
+	var spots_before: int = arena3d.stage_spot_count()
+	var crowd_nodes: int = crowd.node_count()
+	# Energy is the hype reading: a big impact still erupts at zero hype (the wave fires, the
+	# jump is zero), 50 hype is half, 100 hype is full and never more than full.
+	arena.p1.hype = 0
+	arena3d.notify_combat_event(&"heavy_hit", 0)
+	_check(crowd.eruption_active() and is_zero_approx(crowd.eruption_energy()),
+		"a big impact erupts even with empty hype meters",
+		"energy %.2f" % crowd.eruption_energy())
+	arena.p1.hype = int(BaseFighter.HYPE_MAX / 2)
+	arena3d.notify_combat_event(&"hype", -1)
+	_check(absf(crowd.eruption_energy() - 0.5) < 0.01,
+		"the eruption energy follows the hype readout", "%.2f at half hype" % crowd.eruption_energy())
+	arena.p1.hype = BaseFighter.HYPE_MAX
+	arena3d.notify_combat_event(&"ko", 0)
+	_check(absf(crowd.eruption_energy() - 1.0) < 0.01,
+		"full hype is full energy and never past it", "%.2f" % crowd.eruption_energy())
+	_check(arena3d.light_pump() >= 0.0 and arena3d.light_pump() <= 1.0,
+		"the light pump stays inside 0–1", "%.2f" % arena3d.light_pump())
+	_check(arena3d.light_count() == lights_before and arena3d.stage_spot_count() == spots_before,
+		"the eruption adds no light and keeps the stage spots",
+		"%d lights, %d spots" % [arena3d.light_count(), arena3d.stage_spot_count()])
+	# Row wave, measured on the crowd's own clock so the arena cannot interleave a tick.
+	# 0.12 s clears the ringside tier's own delay (row 0 + lateral stagger + jitter, worst ≈
+	# 0.15 s at the bank's far end) while the back tier is still at 0.22 s and up.
+	crowd.tick(0.12)
+	_check(crowd.row_reacting(0) > 0 and crowd.row_reacting(2) == 0,
+		"the ringside tier answers before the back tier",
+		"row0 %d, row2 %d" % [crowd.row_reacting(0), crowd.row_reacting(2)])
+	crowd.tick(0.45)
+	var joined: int = crowd.row_reacting(0) + crowd.row_reacting(1) + crowd.row_reacting(2)
+	_check(joined == 22, "all 22 spectators join the eruption", "%d of 22" % joined)
+	# Settling, measured on the crowd's own clock and immediately, because the live match
+	# keeps firing its own eruption cues as the frames run.
+	crowd.erupt(1.0)
+	var full_energy := crowd.eruption_energy()
+	crowd.tick(crowd.ERUPT_PEAK_SECONDS + 0.6)
+	_check(crowd.eruption_energy() < full_energy - 0.2 and crowd.eruption_energy() >= 0.0,
+		"the eruption decays after its peak",
+		"%.2f → %.2f" % [full_energy, crowd.eruption_energy()])
+	var peak_lift := 0.0
+	for i in 90:
+		await process_frame
+		peak_lift = maxf(peak_lift, crowd.max_lift())
+	_check(peak_lift > 0.02 and peak_lift < 0.30,
+		"the beat-locked jump is visible and bounded", "%.3f m" % peak_lift)
+	for i in 240:
+		await process_frame
+	_check(crowd.node_count() == crowd_nodes,
+		"300 frames of eruption add no crowd node", "%d → %d" % [crowd_nodes, crowd.node_count()])
+	_check(crowd.eruption_energy() >= 0.0 and crowd.eruption_energy() <= 1.0,
+		"the eruption energy stays bounded through a whole settle",
+		"energy %.3f" % crowd.eruption_energy())
 	await _free(arena)
 
 
@@ -544,6 +619,15 @@ func _check_camera_stage_clearance() -> void:
 			arena.p2.global_position = Vector2(890.0, 600.0)
 			for i in 45:
 				await process_frame
+			# PART 2 commit 5: the clearance must hold with the crowd at its ERUPTION PEAK, so
+			# the yard is erupting before the obstacle boxes are measured and stays erupting
+			# (0.9 s peak) across all four stacks.
+			if arena3d.crowd3d != null:
+				arena3d.crowd3d.erupt(1.0)
+				for i in 2:
+					await process_frame
+				_check(arena3d.crowd3d.eruption_active() and arena3d.crowd3d.max_lift() > 0.0,
+					"%s vs %s: the yard clearance runs with the crowd erupting" % [a, b])
 			var obstacles: Array = arena3d.camera_obstacles()
 			var sky_centre: Vector3 = arena3d.backdrop_centre()
 			var sky_half: Vector2 = arena3d.backdrop_half_extent()

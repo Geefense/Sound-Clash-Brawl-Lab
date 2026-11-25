@@ -1943,6 +1943,56 @@ func _run() -> void:
 		"female spectators stand in the front-row 3D banks with the male crowd",
 		"%d female / %d ringside" % [female_front, crowd3d.model_slots().size()])
 
+	# ---- Bug 4: crowd scale, spacing, palette, 132 BPM motion (2026-11-25) ------------
+	var crowd_fighter_h: float = 1.62
+	if mp1_model != null and mp1_model.get("model_height") != null:
+		crowd_fighter_h = float(mp1_model.model_height)
+	var scale_ok := true
+	for i in crowd3d.count():
+		if absf(crowd3d.member_height(i) - crowd_fighter_h) / crowd_fighter_h > 0.10:
+			scale_ok = false
+	_check(scale_ok, "every crowd rig stands within 10 percent of the fighters' height",
+		"%.2f m reference" % crowd_fighter_h)
+	_check(crowd3d.min_in_row_gap() >= CrowdController3D.MIN_GAP - 0.001,
+		"crowd neighbours in a row never overlap or clip",
+		"min gap %.3f m" % crowd3d.min_in_row_gap())
+	_check(crowd3d.row_y(0) < crowd3d.row_y(1) and crowd3d.row_y(1) < crowd3d.row_y(2),
+		"row Y strictly increases with depth",
+		"%.2f / %.2f / %.2f" % [crowd3d.row_y(0), crowd3d.row_y(1), crowd3d.row_y(2)])
+	var accents := {}
+	for i in crowd3d.count():
+		accents[crowd3d.member_accent(i).to_html()] = true
+	_check(accents.size() >= 4,
+		"the crowd wears the vibrant Jamaican palette through instance uniforms",
+		"%d accents / %d rigs" % [accents.size(), crowd3d.count()])
+	_check(crowd3d.shared_material_count() > 0 and crowd3d.shared_material_count() < crowd3d.count(),
+		"crowd rigs share cel materials instead of one material each",
+		"%d materials / %d rigs" % [crowd3d.shared_material_count(), crowd3d.count()])
+	_check(absf(crowd3d.beat_hz() - 132.0 / 60.0) < 0.0001,
+		"the crowd skank is locked to the 132 BPM beat", "%.3f Hz" % crowd3d.beat_hz())
+	var nodes_before := crowd3d.find_children("*", "Node", true, false).size()
+	for i in 600:
+		crowd3d.tick(1.0 / 60.0)
+	var nodes_after := crowd3d.find_children("*", "Node", true, false).size()
+	_check(nodes_before == nodes_after,
+		"crowd node count stays stable over 600 frames",
+		"%d -> %d" % [nodes_before, nodes_after])
+	# ---- Bug 5: lighting rig ----------------------------------------------------------
+	_check(atmosphere.night_spot_count() == 3,
+		"Night owns three coloured stage SpotLight3Ds",
+		"%d" % atmosphere.night_spot_count())
+	_check(atmosphere.stage_light_count() <= 8,
+		"the stage rig stays inside the Web / Compatibility per-object light budget",
+		"%d lights" % atmosphere.stage_light_count())
+	_check(atmosphere.sky_material != null and atmosphere.sun_material != null
+			and atmosphere.world_env != null and atmosphere.world_env.environment != null,
+		"all three presets have real sky and environment resources")
+	atmosphere.apply_phase(2)
+	_check(atmosphere.night_spots[0].light_color.r > atmosphere.night_spots[0].light_color.g
+			and atmosphere.night_spots[1].light_color.b > atmosphere.night_spots[1].light_color.r,
+		"the night spots are magenta and cyan, not white floods")
+	atmosphere.apply_phase(0)
+
 	# Palette: the phase rim reaches every character through its own cel material, and
 	# nothing else about the material moves — albedo and brightness stay untouched.
 	atmosphere.apply_phase(2)
@@ -2079,10 +2129,11 @@ func _run() -> void:
 	_check(unbound == 0 and surfaces >= crowd3d.model_slots().size() + booth.model_slots().size(),
 		"every crowd and DJ surface binds a delivered albedo — none is null",
 		"%d surfaces / %d unbound" % [surfaces, unbound])
-	# One cel material per character, never shared between characters: that is what stops one
-	# spectator's tint or dimming from repainting the rest of the bank.
+	# Bug 4: rigs of the SAME delivered character share one cel material (the palette is a
+	# shader instance uniform), while different characters never share a material — so no
+	# spectator's tint can repaint another character.
 	var owners := {}
-	var doubled := 0
+	var cross_character := 0
 	var bindings := 0
 	for model in crowd3d.model_slots():
 		for child in model.find_children("*", "MeshInstance3D", true, false):
@@ -2093,14 +2144,16 @@ func _run() -> void:
 				var material := mi.get_surface_override_material(surface)
 				if material == null:
 					continue
+				var albedo: Texture2D = material.get_shader_parameter("albedo_texture")
+				var albedo_path := albedo.resource_path if albedo != null else ""
 				var id := material.get_instance_id()
-				if owners.has(id) and owners[id] != model.get_instance_id():
-					doubled += 1
-				owners[id] = model.get_instance_id()
+				if owners.has(id) and owners[id] != albedo_path:
+					cross_character += 1
+				owners[id] = albedo_path
 				bindings += 1
-	_check(doubled == 0 and bindings > 0,
-		"cel materials are per character, so no two characters can tint each other",
-		"%d shared material binds across %d character bindings" % [doubled, bindings])
+	_check(cross_character == 0 and bindings > 0 and owners.size() < bindings,
+		"crowd rigs share one material per character and never across characters",
+		"%d materials / %d binds / %d cross-character" % [owners.size(), bindings, cross_character])
 	var tint_amount := 1.0
 	for model in crowd3d.model_slots():
 		for child in model.find_children("*", "MeshInstance3D", true, false):

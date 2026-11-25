@@ -62,6 +62,27 @@ const REACT_HOLD := 2.4
 ## Beat bob: an anchor rise of at most 2.5 cm. Small on purpose — the character's own clip
 ## carries the dancing; this only stops four rigs from ticking in perfect lockstep.
 const BOB := 0.025
+## Bug 4: the crowd must read as people, not giants or children. Every rig is fitted inside
+## ±10 % of the roster's authored fighter height.
+const FIGHTER_HEIGHT := 1.62
+const HEIGHT_SPREAD := 0.05
+## Minimum centre-to-centre spacing inside one row/bank, so bodies never intersect. The row
+## bands are ~2.0 m wide with 3–4 people, so this still reads as a packed yard.
+const MIN_GAP := 0.34
+## 132 BPM beat clock for the skank: one bounce per beat, each rig on its own phase.
+const BEAT_HZ := 132.0 / 60.0
+## Vibrant Jamaican dancehall palette + neon accents. Applied per instance through the
+## `crowd_accent` shader instance uniform; the material itself is shared per delivered model.
+const PALETTE := [
+	Color(0.00, 0.61, 0.23),   # sound-system green
+	Color(1.00, 0.82, 0.00),   # gold
+	Color(0.85, 0.16, 0.11),   # red
+	Color(0.06, 0.06, 0.07),   # black
+	Color(1.00, 0.18, 0.58),   # neon magenta
+	Color(0.00, 0.90, 1.00),   # neon cyan
+	Color(0.71, 1.00, 0.00),   # neon lime
+	Color(1.00, 0.48, 0.10),   # neon orange
+]
 
 const STATE_IDLE := &"idle"
 const STATE_CHEER := &"cheer"
@@ -88,6 +109,7 @@ class Member:
 	var timer: float = 0.0
 	var hold: float = 0.0
 	var tint: Color = Color.WHITE   # per-instance albedo nudge (never a dimmer)
+	var accent: Color = Color.WHITE # palette accent for the shared-instance rim
 	var hue: float = 0.0            # per-instance hue nudge, ±0.012
 	var model_path: String = ""     # which of the seven delivered characters this is
 
@@ -124,7 +146,7 @@ func build() -> void:
 				var t := (float(i) + 0.5) / float(count)
 				var band: Vector2 = ROW_BANK_X[row]
 				var side := -1.0 if zone == ZONE_LEFT else 1.0
-				var x := lerpf(band.x, band.y, t) * side + _rng.randf_range(-0.14, 0.14)
+				var x := lerpf(band.x, band.y, t) * side + _rng.randf_range(-0.05, 0.05)
 				_members.append(_make_member(index, zone, row, x))
 				index += 1
 	_load_models()
@@ -139,7 +161,8 @@ func _make_member(index: int, zone: int, row: int, x: float) -> Member:
 	m.rate = _rng.randf_range(0.85, 1.35)
 	# Row base + distance along the bank + jitter: near people first, back rows last.
 	m.delay = ROW_DELAY[row] + absf(x) * LATERAL_DELAY + _rng.randf_range(0.0, JITTER)
-	m.height = _rng.randf_range(1.52, 1.92)
+	m.height = FIGHTER_HEIGHT * _rng.randf_range(1.0 - HEIGHT_SPREAD, 1.0 + HEIGHT_SPREAD)
+	m.accent = PALETTE[index % PALETTE.size()]
 	# Per-instance look: a sub-3 % brightness nudge and a ±0.012 hue nudge, so a bank of
 	# seven models reads as twenty-two different people without recolouring any albedo.
 	var warm := _rng.randf_range(0.975, 1.025)
@@ -184,7 +207,7 @@ func _load_models() -> void:
 		# `variant` is per member: one material each, so no two bodies can ever share a
 		# tint. The look itself is the member's own tiny nudge on its bank's light colour.
 		var applied := CharacterModelSlots.apply_cel(model, m.tint, MODEL_RIMS[m.zone], slot,
-			m.hue, path)
+			m.hue, path, "crowd|%s|%d" % [path, m.zone])
 		if applied == 0:
 			push_warning("CrowdController3D: %s has no textured surface — empty slot"
 				% m.node.name)
@@ -200,6 +223,12 @@ func _load_models() -> void:
 			model.queue_free()
 			continue
 		CharacterModelSlots.collect_cel_materials(model, _cel_materials)
+		# The vibrant palette rides a shader instance uniform: the rigs share the material,
+		# so no per-spectator material is created for the look.
+		for child in model.find_children("*", "MeshInstance3D", true, false):
+			var crowd_mi := child as MeshInstance3D
+			if crowd_mi != null:
+				crowd_mi.set_instance_shader_parameter("crowd_accent", m.accent)
 		m.clips = CharacterModelSlots.install_act_clips(model)
 		m.player = m.clips.get("player") as AnimationPlayer
 		if m.player != null:
@@ -299,7 +328,7 @@ func tick(delta: float) -> void:
 			if m.hold <= 0.0:
 				m.state = STATE_IDLE
 				_play_model_act(m, m.state)
-		m.phase = fposmod(m.phase + m.rate * delta, TAU)
+		m.phase = fposmod(m.phase + TAU * BEAT_HZ * m.rate * delta, TAU)
 		_pose_member(m)
 
 
@@ -338,17 +367,19 @@ func _pose_member(m: Member) -> void:
 	if m.node == null:
 		return
 	var t := m.phase
-	var hop := 0.0
+	var energy := 1.0
 	match m.state:
 		STATE_CHEER:
-			hop = absf(sin(t * 1.9)) * BOB
+			energy = 1.35
 		STATE_DISBELIEF:
-			hop = absf(sin(t * 2.4)) * BOB * 0.5
+			energy = 0.55
 		STATE_HYPE:
-			hop = absf(sin(t * 1.55)) * BOB * 1.4
-		_:
-			hop = absf(sin(t)) * BOB
+			energy = 1.8
+	# One bounce per 132 BPM beat, plus a small alternating shoulder lean so the bank reads as
+	# skanking rather than marching. Each rig has its own phase; scalar maths only.
+	var hop := absf(sin(t)) * BOB * energy
 	m.node.position.y = m.base_y + hop
+	m.node.rotation.z = sin(t) * 0.035 * energy
 
 
 # =========================================================================
@@ -526,3 +557,55 @@ func row_y(row: int) -> float:
 ## Depth spread of the built crowd, used to prove the rows are genuinely staggered.
 func depth_span() -> float:
 	return ROW_Z[0] - ROW_Z[ROW_Z.size() - 1]
+
+
+# =========================================================================
+# Bug 4 reporting (headless checks)
+# =========================================================================
+func member_height(index: int) -> float:
+	return _members[index].height if index >= 0 and index < _members.size() else 0.0
+
+
+func member_x(index: int) -> float:
+	return _members[index].x if index >= 0 and index < _members.size() else 0.0
+
+
+func member_row_of(index: int) -> int:
+	return _members[index].row if index >= 0 and index < _members.size() else -1
+
+
+func member_zone_of(index: int) -> int:
+	return _members[index].zone if index >= 0 and index < _members.size() else -1
+
+
+func member_accent(index: int) -> Color:
+	return _members[index].accent if index >= 0 and index < _members.size() else Color.WHITE
+
+
+## Smallest centre-to-centre gap between two spectators sharing a row and bank; the crowd may
+## never overlap or clip through a neighbour.
+func min_in_row_gap() -> float:
+	var best := INF
+	for i in _members.size():
+		for j in range(i + 1, _members.size()):
+			var a := _members[i]
+			var b := _members[j]
+			if a.row != b.row or a.zone != b.zone:
+				continue
+			best = minf(best, absf(a.x - b.x))
+	return 0.0 if best == INF else best
+
+
+## Cel materials actually created for the crowd. With one shared material per delivered model
+## and bank this stays well under the rig count.
+func shared_material_count() -> int:
+	var ids := {}
+	for material in _cel_materials:
+		if material != null:
+			ids[material.get_instance_id()] = true
+	return ids.size()
+
+
+## The beat the skank is locked to (132 BPM ÷ 60).
+func beat_hz() -> float:
+	return BEAT_HZ

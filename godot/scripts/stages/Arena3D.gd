@@ -59,10 +59,10 @@ const PHASES := [
 	# bounce behind them so the yard reads as bright midday rather than a flat wash.
 	{
 		"name": "Afternoon Sun",
-		"sky_top": Color(0.20, 0.49, 0.92, 1.0),
-		"sky_bottom": Color(1.0, 0.87, 0.60, 1.0),
-		"sky_haze": Color(1.0, 0.94, 0.74, 1.0),
-		"sun_colour": Color(1.0, 0.93, 0.76, 1.0),
+		"sky_top": Color(0.118, 0.435, 0.851, 1.0),
+		"sky_bottom": Color(1.0, 0.906, 0.690, 1.0),
+		"sky_haze": Color(1.0, 0.94, 0.78, 1.0),
+		"sun_colour": Color(1.0, 0.824, 0.478, 1.0),
 		"sun_energy": 1.90,
 		"sun_rotation": Vector3(-56.0, -30.0, 0.0),
 		"ambient": Color(0.42, 0.58, 0.88, 1.0),
@@ -75,6 +75,8 @@ const PHASES := [
 		"spot_colour": Color(1.0, 0.94, 0.80, 1.0),
 		"pool": Color(1.0, 0.88, 0.62, 1.0),
 		"pool_alpha": 0.10,
+		"sand": Color(0.86, 0.70, 0.44, 1.0),
+		"mound": Color(0.78, 0.62, 0.38, 1.0),
 		"rim": Color(1.0, 0.85, 0.52, 1.0),
 		"rim_energy": 0.80,
 		"disc": 0.40,
@@ -86,12 +88,12 @@ const PHASES := [
 	# magenta fill and rim, and warm amber fog so the fighters keep a long crisp shadow.
 	{
 		"name": "Golden Hour / Sunset Clash",
-		"sky_top": Color(0.24, 0.15, 0.44, 1.0),
-		"sky_bottom": Color(1.0, 0.44, 0.28, 1.0),
-		"sky_haze": Color(1.0, 0.58, 0.42, 1.0),
-		"sun_colour": Color(1.0, 0.50, 0.22, 1.0),
+		"sky_top": Color(0.231, 0.114, 0.431, 1.0),
+		"sky_bottom": Color(1.0, 0.478, 0.102, 1.0),
+		"sky_haze": Color(0.839, 0.200, 0.424, 1.0),
+		"sun_colour": Color(1.0, 0.604, 0.302, 1.0),
 		"sun_energy": 1.55,
-		"sun_rotation": Vector3(-9.0, -66.0, 0.0),
+		"sun_rotation": Vector3(-10.0, -66.0, 0.0),
 		"ambient": Color(0.68, 0.36, 0.52, 1.0),
 		"ambient_energy": 0.48,
 		"fill_colour": Color(0.76, 0.50, 1.0, 1.0),
@@ -102,7 +104,9 @@ const PHASES := [
 		"spot_colour": Color(1.0, 0.64, 0.44, 1.0),
 		"pool": Color(1.0, 0.56, 0.30, 1.0),
 		"pool_alpha": 0.26,
-		"rim": Color(1.0, 0.42, 0.56, 1.0),
+		"sand": Color(0.74, 0.42, 0.27, 1.0),
+		"mound": Color(0.60, 0.32, 0.22, 1.0),
+		"rim": Color(1.0, 0.353, 0.212, 1.0),
 		"rim_energy": 1.35,
 		"disc": 1.0,
 		"disc_colour": Color(1.0, 0.60, 0.24, 1.0),
@@ -114,11 +118,11 @@ const PHASES := [
 	# the dark while their contact shadows keep reading on the sand.
 	{
 		"name": "Late-Night Sound Clash",
-		"sky_top": Color(0.016, 0.024, 0.072, 1.0),
-		"sky_bottom": Color(0.05, 0.065, 0.20, 1.0),
+		"sky_top": Color(0.027, 0.043, 0.180, 1.0),
+		"sky_bottom": Color(0.165, 0.106, 0.369, 1.0),
 		"sky_haze": Color(0.12, 0.09, 0.30, 1.0),
-		"sun_colour": Color(0.28, 0.36, 0.78, 1.0),
-		"sun_energy": 0.10,
+		"sun_colour": Color(0.435, 0.549, 1.0, 1.0),
+		"sun_energy": 0.18,
 		"sun_rotation": Vector3(-64.0, 150.0, 0.0),
 		"ambient": Color(0.11, 0.13, 0.30, 1.0),
 		"ambient_energy": 0.32,
@@ -130,6 +134,8 @@ const PHASES := [
 		"spot_colour": Color(0.78, 0.92, 1.0, 1.0),
 		"pool": Color(0.42, 0.78, 1.0, 1.0),
 		"pool_alpha": 0.42,
+		"sand": Color(0.17, 0.18, 0.30, 1.0),
+		"mound": Color(0.12, 0.13, 0.22, 1.0),
 		"rim": Color(0.26, 0.92, 1.0, 1.0),
 		"rim_energy": 1.60,
 		"disc": 0.0,
@@ -146,9 +152,15 @@ var fill: DirectionalLight3D
 var rim: OmniLight3D
 var spot_left: SpotLight3D
 var spot_right: SpotLight3D
+## Night's three coloured stage spots (magenta / cyan / amber), pulsing on the beat. They
+## stay at zero energy in the two daylight presets.
+var night_spots: Array[SpotLight3D] = []
+const NIGHT_SPOT_COLOURS := [Color(1.0, 0.16, 0.62), Color(0.05, 0.88, 1.0), Color(1.0, 0.62, 0.12)]
 var sky_material: ShaderMaterial
 var pool_material: ShaderMaterial
 var sun_material: ShaderMaterial
+var _sand_material: StandardMaterial3D
+var _mound_material: StandardMaterial3D
 
 var fighters: Dictionary = {}          # "p1"/"p2" -> BaseFighter
 var models: Dictionary = {}            # "p1"/"p2" -> FighterModel3D or FighterBillboard3D
@@ -363,6 +375,19 @@ func screen_fraction() -> float:
 	return absf(feet.y - head.y) / maxf(frame, 1.0)
 
 
+func night_spot_count() -> int:
+	return night_spots.size()
+
+
+## Every light in the stage rig (sun, fill, rim, two overhead spots, three night spots).
+## The Web / Compatibility renderer's per-object limit is 8, so this must stay at or under.
+func stage_light_count() -> int:
+	var n := night_spots.size() + 2  # spots + sun/fill
+	if rim != null:
+		n += 1
+	return n
+
+
 func camera_distance() -> float:
 	return _camera_distance if camera != null else 0.0
 
@@ -403,6 +428,12 @@ func _process(delta: float) -> void:
 		_kick = 0.0
 		_kick_velocity = 0.0
 	_shake = move_toward(_shake, 0.0, delta * 3.0)
+	# Night rig: the three coloured spots ride the same beat pulse as the speaker cones.
+	# A scalar multiply per light, no allocation, and zero energy outside the Night preset.
+	var night := _phase_index == 2
+	for i in night_spots.size():
+		var base := 1.35 if night else 0.0
+		night_spots[i].light_energy = base * (1.0 + _pulse * 0.45 + _kick * 0.12)
 	_update_phase(delta)
 	_update_camera(delta)
 	_update_fighters()
@@ -573,6 +604,12 @@ func _push_palette(p: Dictionary) -> void:
 		crowd3d.set_palette(p["rim"], p["spot_colour"], float(p["rim_energy"]))
 	if dj_booth != null:
 		dj_booth.set_palette(p["rim"], p["spot_colour"], float(p["rim_energy"]))
+	# Sand/floor albedo response: each preset repaints the yard's own material, so the floor
+	# follows the light instead of staying one fixed ochre card under every sky.
+	if _sand_material != null and p.has("sand"):
+		_sand_material.albedo_color = p["sand"]
+	if _mound_material != null and p.has("mound"):
+		_mound_material.albedo_color = p["mound"]
 	if spot_left != null:
 		spot_left.light_color = p["spot_colour"]
 		spot_left.light_energy = float(p["spot_energy"])
@@ -633,7 +670,8 @@ var _sun_disc: MeshInstance3D = null
 
 func _build_yard() -> void:
 	# Sand floor with real perspective depth.
-	var sand := _mat(Color(0.80, 0.64, 0.38), 1.0)
+	var sand := _mat(Color(0.86, 0.70, 0.44), 1.0)
+	_sand_material = sand
 	var floor_mesh := PlaneMesh.new()
 	floor_mesh.size = Vector2(24.0, 18.0)
 	floor_mesh.subdivide_width = 1
@@ -646,7 +684,8 @@ func _build_yard() -> void:
 	add_child(floor_node)
 
 	# Damp sand mounds, so the floor is not a flat colour card.
-	var mound_mat := _mat(Color(0.72, 0.56, 0.33), 1.0)
+	var mound_mat := _mat(Color(0.78, 0.62, 0.38), 1.0)
+	_mound_material = mound_mat
 	for i in 14:
 		var mound := MeshInstance3D.new()
 		var disc := CylinderMesh.new()
@@ -788,6 +827,22 @@ func _build_truss_and_lights() -> void:
 	spot_right.light_energy = 1.0
 	spot_right.shadow_enabled = false
 	add_child(spot_right)
+
+	# Street Fighter 6 / Fatal Fury night rig: three coloured spots over the yard, each on
+	# its own side, kept at zero in daylight. The beat pulse is a scalar energy multiplier.
+	for i in NIGHT_SPOT_COLOURS.size():
+		var night_spot := SpotLight3D.new()
+		night_spot.name = "NightSpot%d" % i
+		night_spot.position = Vector3(-2.6 + i * 2.6, 4.1, -1.35)
+		night_spot.rotation_degrees = Vector3(-78.0, -18.0 + i * 18.0, 0.0)
+		night_spot.spot_range = 9.0
+		night_spot.spot_angle = 40.0
+		night_spot.spot_angle_attenuation = 0.8
+		night_spot.light_color = NIGHT_SPOT_COLOURS[i]
+		night_spot.light_energy = 0.0
+		night_spot.shadow_enabled = false
+		add_child(night_spot)
+		night_spots.append(night_spot)
 
 	sun = DirectionalLight3D.new()
 	sun.name = "Sun"

@@ -304,7 +304,7 @@ static func play_act(node: Node3D, acts: Dictionary, act: StringName,
 ## Convert every surface to the cel shader + ink outline, keeping the upload's own albedo.
 ## `variant` keeps a cached material per look (warm left bank, cool right bank, gold booth).
 static func apply_cel(node: Node3D, tint: Color, rim: Color, variant: int = 0,
-		hue_shift: float = 0.0, source_path: String = "") -> int:
+		hue_shift: float = 0.0, source_path: String = "", share_key: String = "") -> int:
 	var applied := 0
 	var fallback := delivered_atlas(source_path)
 	for child in node.find_children("*", "MeshInstance3D", true, false):
@@ -333,7 +333,9 @@ static func apply_cel(node: Node3D, tint: Color, rim: Color, variant: int = 0,
 			# characters can ever share (and therefore tint, dim or recolour) a material.
 			# Every surface of one upload draws from the same atlas, which also keeps the draw
 			# state cheap on a Chromebook.
-			var key := "%s_%d" % [node.get_instance_id(), variant]
+			# A caller may pool the look across rigs (the crowd shares one material per
+			# delivered model + bank); otherwise one character owns its material.
+			var key := share_key if share_key != "" else "%s_%d" % [node.get_instance_id(), variant]
 			var material: ShaderMaterial = _cel_materials.get(key)
 			if material == null:
 				material = ShaderMaterial.new()

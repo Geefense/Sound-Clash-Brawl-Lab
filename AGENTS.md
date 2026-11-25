@@ -4985,3 +4985,74 @@ owner's playtest.
   Tripo 135–147°** — so a single downed-facing rule cannot be assumed across them. The
   uncommitted experiment was reverted rather than committed red; the drawn-mesh tightening
   remains open.
+
+## 2026-11-25 — PART B · Bug 4: the crowd reads as a packed, colourful yard
+
+**Root cause.** The ringside rigs were spawned at `1.52–1.92 m` with ±0.14 m of jitter inside a
+2 m band, so tall neighbours clipped through each other and a few spectators towered over the
+fighters. Every rig also wore one fixed tint, so the yard read as a beige wall, and the bounce
+ran on arbitrary per-rig rates (0.85–1.35×) instead of the track.
+
+**Fix (extension of `CrowdController3D`, not a rewrite).**
+- **Scale.** `FIGHTER_HEIGHT = 1.62` with `HEIGHT_SPREAD = 0.05`, so every rig is 1.539–1.701 m —
+  within ±10 % of the authored fighter height measured from the real model, asserted in the roster.
+- **Spacing.** X jitter cut to ±0.05 m and `MIN_GAP = 0.34 m` asserted as the minimum centre-to-
+  centre distance between any two rigs sharing a row and bank. Row Y tiers (0.0 / 0.20 / 0.40) and
+  the 4/4/3 layout were already satisfied and are unchanged.
+- **Palette.** Eight vibrant Jamaican/dancehall accents (sound-system green, gold, red, black,
+  neon magenta/cyan/lime/orange) are assigned per rig and pushed through a new
+  `instance uniform vec4 crowd_accent` in `toon_cel.gdshader`, which blends into the existing rim
+  term (`mix(rim_colour, crowd_accent.rgb, crowd_accent.a)`). No new material per rig:
+  `CharacterModelSlots.apply_cel` gained an optional `share_key`, and the crowd passes
+  `crowd|<model>|<bank>`, so one material is shared per delivered character and bank (8 materials
+  for 22 rigs) while **different characters never share one** — the original “no spectator can
+  tint another character” invariant is preserved and re-asserted against albedo paths.
+- **132 BPM skank.** The phase advances at `TAU * 132/60 * rate` per second with per-rig rate
+  0.985–1.015 and initial phase offsets, one hop per beat plus a ±0.035 rad shoulder lean; energy
+  scales by state (disbelief 0.55, cheer 1.35, hype 1.8). Scalar math only, no per-frame
+  allocation, node count stable over 600 ticks. Crowd Hype rules untouched.
+
+**Tests.** Roster grew by 12 checks: height ratio, minimum in-row gap, row Y monotonicity, palette
+variety, shared-material count, 132 BPM, 600-frame node stability, night spot count, light budget,
+sky/environment resources and night spot colours. The old per-character material check was
+re-pointed at albedo identity (same character may share, different characters may not) because
+per-rig materials are now deliberately shared. Suites: roster all pass, live 191, facing 310,
+feel 335 — 0 FAIL. Frustum, facing pin and reach boost untouched.
+
+## 2026-11-25 — PART B · Bug 5: Afternoon / Sunset / Night are three different times of day
+
+**Root cause.** The three presets only differed by a slight sky tint and light energy; sand, haze
+and rim stayed one fixed ochre/pink, and Night had no coloured stage lighting at all, so dusk and
+night read as “afternoon with the brightness down”.
+
+**Fix (`Arena3D`).**
+- **Afternoon:** zenith `#1E6FD9`, pale golden-haze horizon `#FFE7B0`, warm key `#FFD27A`,
+  warm-lit sand `(0.86, 0.70, 0.44)`.
+- **Sunset:** zenith `#3B1D6E`, crimson haze band `#D6336C`, orange horizon `#FF7A1A`, low sun
+  `#FF9A4D` at −10° elevation, warm rim `#FF5A36`, red-shifted sand `(0.74, 0.42, 0.27)`.
+- **Night:** zenith `#070B2E` → horizon `#2A1B5E`, cool moon key `#6F8CFF` at 0.18 energy, cool
+  sand `(0.17, 0.18, 0.30)`, plus **three coloured `SpotLight3D`s** (magenta / cyan / amber) over
+  the yard. Their energy is `1.35 * (1 + pulse*0.45 + kick*0.12)` on the same beat clock as the
+  speaker cones, and exactly 0 in the two daylight presets (scalar update in `_process`).
+- Light budget: sun + fill + rim + 2 overhead spots + 3 night spots = **8**, the Web /
+  Compatibility per-object maximum; no volumetric fog, SDFGI or SSAO added. Shadows unchanged.
+
+**Tests.** Night spot count, light budget ≤ 8, live sky/environment resources and spot colours are
+asserted in the roster; camera/facing suites unchanged and green.
+
+**Known limitations.** Nothing here is visually verified: this environment is headless (no GPU or
+display), so the look is validated only by rendered-resource and numeric assertions. The
+`crowd_accent` **instance uniform** is authored for the Compatibility renderer used by the Web
+export, but Godot's Compatibility backend support for instance uniforms in a custom spatial shader
+has not been confirmed on a real WebGL2 device; if it is ignored there, the crowd falls back to the
+per-model material rim (still varied per character/bank, just not per rig). The beat-synced night
+spot pulse is likewise numeric-only here.
+
+**Export.** Rebuilt `docs/` with Godot 4.5 `Web` (thread support off, Compatibility):
+`index.pck` 66 MB, `index.wasm` 37 MB, `index.js` 299 KB, `index.html` 5.4 KB. Only benign
+“fontconfig disabled” warnings, which are unrelated to the game (no bundled system fonts).
+The 4.5 stable export templates were not installed on this VM, so they were downloaded from the
+official release once into `~/.local/share/godot/export_templates/4.5.stable/` and the archive
+removed. `df -h .` after the export: 27 GB free on a 63 GB volume.
+
+**Bug 2 stays deferred** (drawn-mesh knockdown seating); the downed-pose path was not touched.

@@ -20,6 +20,10 @@ uniform vec4 shadow_tint : source_color = vec4(0.30, 0.36, 0.58, 1.0);
 uniform float shadow_tint_amount : hint_range(0.0, 1.0) = 0.20;
 uniform float flash_amount : hint_range(0.0, 1.0) = 0.0;
 uniform vec4 flash_colour : source_color = vec4(1.0, 0.93, 0.72, 1.0);
+// Per-spectator accent (green/gold/red/black + neon), pushed as an instance uniform so the
+// 22 crowd rigs can share one material per delivered model instead of each owning one.
+// Alpha 0 keeps the roster's authored rim exactly as it was.
+instance uniform vec4 crowd_accent : source_color = vec4(0.0, 0.0, 0.0, 0.0);
 
 vec3 rotate_hue(vec3 colour, float shift) {
 	float angle = shift * 6.28318530718;
@@ -42,5 +46,6 @@ void fragment() {
 
 	// Directional rim band; constant and cheap. `VIEW`/`NORMAL` are already in view space.
 	float rim = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), rim_power);
-	EMISSION = rim_colour.rgb * rim * rim_strength;
+	vec3 rim_used = mix(rim_colour.rgb, crowd_accent.rgb, crowd_accent.a);
+	EMISSION = rim_used * rim * rim_strength;
 }

@@ -5220,7 +5220,53 @@ the other (including a mirror match).
   its overshoot, the live dip and its return to zero, the foreshortening clamp and the trimmed
   foreshorten + smear stack, the contact-window curve, the live hand scale inside the clamp and its
   return to 1, and the cel shader's rim uniforms plus a preset rim reaching the material.
+- `live_match_check.gd` **227 → 344**: a new `_check_camera_stage_clearance` holds the accent **and**
+  the ±4° lean **and** the hit-stop punch at 1.6 — all three at their ceilings at once — at max
+  spacing for all nine pairings, and measures the lens against the yard itself. Three assertions per
+  stack × four stacks per pairing (lean ±4° × accent side ±1) plus one per pairing that the stack
+  really reached the lens (`5.70°`, punch `1.60`), so the numbers sum to 108 + 9.
 - `facing_audit.gd` **310**, unchanged and green.
+
+### Camera vs the yard, stacked to its maximum (2026-11-25)
+
+The accent had only ever been measured against the fighters. This audit measures it against
+**everything else on screen**, with the accent's `0.22 m` dolly and `±2°` yaw stacked on top of the
+`±4°` exchange lean and the `1.6` hit-stop punch — the tightest frame the game can ever produce —
+at max spacing (`390` / `890` px), for all nine pairings:
+
+1. **The lens body never enters the yard.** `Arena3D.camera_obstacles()` returns the world AABBs of
+   all 22 crowd rigs, the barrier rail, lower rail and all nine posts, the horizon band, the DJ
+   booth and both prop slots, plus the truss and fixtures from `_add_box`. Each box is grown by the
+   `0.12 m` camera body radius and the camera position is tested against it; the lens is also
+   required to sit above the sand (`y > 0.2`). **42 boxes per arena**, nearest one **0.87–1.10 m**
+   clear of the lens in every one of the four stacks.
+2. **No corner of the frame shows void.** Every viewport corner's ray is intersected with the
+   `SkyBackdrop` plane (`z −15`) and must land inside its `44 × 22` rect. Measured worst corner at
+   the max stack: `|dx| 11.2` of `22`, `|dy| 10.1` of `11` — the lower corners are the closest
+   thing to leaving the backdrop, with about 0.9 m of quad left, and the sand covers that band
+   anyway, so the check is stricter than the visible contract.
+3. **Both fighters still inside the frame, with margin.** The same head/hips/both-feet contract as
+   the lean cases, but at a **12 px** margin instead of 4 px. Measured worst body point at the max
+   stack: **116.9 px** from the frame edge (`LeftFoot`), so the accent + lean + punch stack has
+   ~10× the margin it is held to and can never be the thing that crops a fighter.
+
+**Nothing was reduced, because nothing failed.** The final clamp values the audit signed off are the
+authored ones, unchanged:
+
+| Clamp | Value |
+| --- | --- |
+| `AnimationFeel.CAMERA_ACCENT_MAX` | `0.85` |
+| `AnimationFeel.CAMERA_ACCENT_YAW_DEG` | `2.0°` |
+| `AnimationFeel.CAMERA_ACCENT_FOV_DEG` | `0.55°` |
+| `AnimationFeel.CAMERA_ACCENT_DOLLY` | `0.22 m` |
+| `AnimationFeel.CAMERA_YAW_MAX_DEG` | `4.0°` (stacked total hard-clamped at `6.0°`) |
+| `AnimationFeel.CAMERA_PUNCH_MAX` | `1.6` (stacked FOV loss hard-clamped at `1.84°`) |
+| `Arena3D.CAMERA_HEIGHT` / `CAMERA_MIN_X`…`MAX_X` | `1.0 m`, `±1.78 m` |
+
+The audit hook that makes the measurement honest is `Arena3D.hold_camera_pressure(yaw, accent, side,
+ punch, frames)`: it pins the lean, the accent spring, the accent side and the punch for a few
+presented frames at once. The punch needed its own `_kick_hold` counter (mirroring `_accent_hold`),
+because otherwise the spring had already fallen to `1.48` of `1.6` by the frame being measured.
 
 ### Decisions and why
 
@@ -5238,6 +5284,15 @@ the other (including a mirror match).
   at 720p and stays inside the existing volume lock.
 - **The camera accent is part of the framing math, not a post effect.** Adding its yaw/dolly to
   `needed` is what makes "never crops a fighter" a property rather than a hope.
+- **The yard boxes are kept by reference, not found by name.** `_add_box` appends every box it
+  builds to `_yard_solids`. Godot renames the eight duplicate `BarrierPost` siblings to anonymous
+  `@MeshInstance3D@N`, so any name-based or `find_children` lookup silently loses them — the first
+  version of this audit only saw 23 of the 42 boxes and would have passed on a broken barrier.
+  `_meshes_world_aabb()` likewise had to include the node itself: `find_children` only ever walks
+  descendants, so every leaf mesh returned an empty box.
+- **Reducing the clamp is the fallback, not the fix.** The brief asked for the accent clamp to come
+  down if the stacked case failed. It passed with 10× the required margin, so the authored values
+  stand; a future failure should first be read as "the yard moved", not "the camera is too bold".
 - **Commits 2 and 3 split by ownership, not by feature purity.** The shared maths for
   foreshortening and the rim setter landed with commit 2 (where `AnimationFeel` and
   `FighterModel3D` were already being edited); commit 3 wires the stage, the camera and the tests
@@ -5259,5 +5314,13 @@ the other (including a mirror match).
 - **The three archetypes are authored from the brief's references**, not from watching Dudley,
   Makoto, Sean or Elena. The footage prompts in `INDUSTRY_REFERENCE_ANALYSIS.md` are the way to
   correct them.
+- **Both prop slots are empty in this build.** `assets/models/props/` holds only a README, so
+  `jamaican_speaker.glb` and `rasta_speaker.glb` are absent and the two towers log `PropLoader:
+  missing`. The clearance audit iterates the slots and therefore covers them automatically once a
+  tower is delivered, but until then the "prop slot" half of assertion (1) has no geometry to hit —
+  it is a reservation, not a measurement.
+- **The crowd's depth "tiers" have no volume.** They are a per-row Y offset (`ROW_Y`), not riser
+  geometry, so there is nothing for the lens to intersect; the rigs themselves are the only crowd
+  volume in the audit.
 - **No console work exists.** `CONSOLE_READINESS.md` records the gates; none is started.
 - Bug 2 (drawn-mesh knockdown tightening) remains deferred, unchanged.

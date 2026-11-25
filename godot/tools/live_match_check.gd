@@ -61,6 +61,7 @@ func _run() -> void:
 			await _check_pair(a, b)
 	await _check_knockdowns()
 	await _check_camera_framing()
+	await _check_camera_stage_clearance()
 	await _check_strike_silhouette()
 	for a in FIGHTERS:
 		await _check_presses(a)
@@ -437,9 +438,10 @@ func _check_camera_framing() -> void:
 			await _free(arena)
 
 
-## Head, hips and both feet of both fighters inside the frustum and at least 4 px on screen.
-## Returns `[ok, detail]`. Shared by the lean and the accent-peak framing checks.
-func _framing_ok(arena3d, arena, view: Vector2) -> Array:
+## Head, hips and both feet of both fighters inside the frustum and at least `margin` px on
+## screen (4 px for the lean and accent-peak checks, a wider band for the stacked yard case).
+## Returns `[ok, detail]`.
+func _framing_ok(arena3d, arena, view: Vector2, margin: float = 4.0) -> Array:
 	for fighter in [arena.p1, arena.p2]:
 		var model = arena3d.model_for(fighter)
 		if model == null:
@@ -449,11 +451,98 @@ func _framing_ok(arena3d, arena, view: Vector2) -> Array:
 			if not arena3d.camera.is_position_in_frustum(point):
 				return [false, "%s frustum (%.2f,%.2f,%.2f)" % [bone, point.x, point.y, point.z]]
 			var on_screen: Vector2 = arena3d.camera.unproject_position(point)
-			if on_screen.x < 4.0 or on_screen.y < 4.0 \
-					or on_screen.x > view.x - 4.0 or on_screen.y > view.y - 4.0:
+			if on_screen.x < margin or on_screen.y < margin \
+					or on_screen.x > view.x - margin or on_screen.y > view.y - margin:
 				return [false, "%s screen (%.1f,%.1f) of (%.0f,%.0f)"
 					% [bone, on_screen.x, on_screen.y, view.x, view.y]]
 	return [true, ""]
+
+
+const YARD_MARGIN_PX := 12.0
+## The lens body is a point plus this radius: the camera's near plane sits 0.05 m out and the
+## audit should flag a rail or a chest that is merely grazing it, not only a dead centre hit.
+const CAMERA_BODY_RADIUS := 0.12
+## Everything the lens can carry at once, stacked: the accent's 0.85 dolly and ±2° yaw, the ±4°
+## exchange lean, and the hit-stop punch at its 1.6 ceiling. At max spacing this is the tightest
+## the frame ever gets, so it is the case where a crop, a clipped backdrop edge or a camera
+## inside the crowd would actually show.
+func _check_camera_stage_clearance() -> void:
+	print("\n-- CAMERA vs YARD: accent + lean + punch at max, 9 pairings, max spacing")
+	var view := _view_size()
+	for a in FIGHTERS:
+		for b in FIGHTERS:
+			var arena = await _spawn(a, b)
+			var arena3d = arena.get("arena3d")
+			if arena3d == null:
+				_check(false, "%s vs %s: no 3D camera for the yard clearance audit" % [a, b])
+				await _free(arena)
+				continue
+			arena.p1.global_position = Vector2(390.0, 600.0)
+			arena.p2.global_position = Vector2(890.0, 600.0)
+			for i in 45:
+				await process_frame
+			var obstacles: Array = arena3d.camera_obstacles()
+			var sky_centre: Vector3 = arena3d.backdrop_centre()
+			var sky_half: Vector2 = arena3d.backdrop_half_extent()
+			var stacked_angle := 0.0
+			var stacked_punch := 0.0
+			for yaw in [-4.0, 4.0]:
+				for side in [-1, 1]:
+					var cam: Camera3D = arena3d.camera
+					# Re-pin every frame: the punch and accent springs decay every presented frame,
+					# and the case is "all three at their maximum", not "one frame after".
+					for step in 2:
+						arena3d.hold_camera_pressure(yaw, 1.0, side, AnimationFeel.CAMERA_PUNCH_MAX, 4)
+						await process_frame
+					stacked_angle = rad_to_deg(cam.rotation.y)
+					stacked_punch = float(arena3d.camera_punch)
+					var label := "%s vs %s: %+.0f° lean, accent side %+d" % [a, b, yaw, side]
+					# (1) The lens body never enters the yard's own furniture.
+					var cam_pos: Vector3 = cam.global_position
+					var intruder := ""
+					for box in obstacles:
+						if (box as AABB).grow(CAMERA_BODY_RADIUS).has_point(cam_pos):
+							intruder = "inside a %.1f×%.1f×%.1f box at (%.2f, %.2f, %.2f)" % [
+								(box as AABB).size.x, (box as AABB).size.y, (box as AABB).size.z,
+								cam_pos.x, cam_pos.y, cam_pos.z]
+							break
+					_check(intruder == "" and cam_pos.y > 0.2,
+						"%s: lens body clear of every crowd rig, barrier, prop slot and booth" % label,
+						intruder if intruder != "" else "%d boxes, y %.2f" % [obstacles.size(), cam_pos.y])
+					# (2) No corner of the frame looks past the yard's backdrop.
+					var void_detail := _void_corner(cam, view, sky_centre, sky_half)
+					_check(void_detail == "",
+						"%s: all four view corners land on the sky backdrop" % label, void_detail)
+					# (3) Both fighters fully framed, with margin to spare.
+					var framed := _framing_ok(arena3d, arena, view, YARD_MARGIN_PX)
+					_check(bool(framed[0]),
+						"%s: both fighters framed with %.0f px margin" % [label, YARD_MARGIN_PX],
+						String(framed[1]))
+			# The stack is real: lean + accent yaw must actually reach the lens ceiling, and the
+		# punch must still be pinned there, or the three checks above prove nothing.
+			_check(absf(stacked_angle) > 5.0 and stacked_punch > 1.55,
+				"%s vs %s: the max stack reaches the lens (%.2f°, punch %.2f)" % [a, b, stacked_angle, stacked_punch])
+			await _free(arena)
+
+
+## Empty when every viewport corner's ray lands inside the sky backdrop rect; otherwise the
+## first corner that escapes it — the void the owner would see past the yard.
+func _void_corner(cam: Camera3D, view: Vector2, centre: Vector3, half: Vector2) -> String:
+	var corners := [Vector2(0.0, 0.0), Vector2(view.x, 0.0),
+		Vector2(0.0, view.y), Vector2(view.x, view.y)]
+	for corner in corners:
+		var origin: Vector3 = cam.project_ray_origin(corner)
+		var dir: Vector3 = cam.project_ray_normal(corner)
+		if absf(dir.z) < 0.00001:
+			return "corner (%.0f,%.0f) runs parallel to the backdrop" % [corner.x, corner.y]
+		var t: float = (centre.z - origin.z) / dir.z
+		if t <= 0.0:
+			return "corner (%.0f,%.0f) never reaches the backdrop" % [corner.x, corner.y]
+		var hit: Vector3 = origin + dir * t
+		if absf(hit.x - centre.x) > half.x or absf(hit.y - centre.y) > half.y:
+			return "corner (%.0f,%.0f) exits the backdrop at (%.1f, %.1f) of ±(%.1f, %.1f)" % [
+				corner.x, corner.y, hit.x, hit.y, half.x, half.y]
+	return ""
 
 
 ## Bug 3: the strike silhouette. On ACTIVE the camera-side fist must reach further across

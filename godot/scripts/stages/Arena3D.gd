@@ -254,6 +254,14 @@ var _accent: float = 0.0
 var _accent_velocity: float = 0.0
 var _accent_side: int = 0
 var _accent_hold: int = 0
+## Audit pin for the hit-stop punch, mirroring `_accent_hold`: `hold_camera_pressure()` holds the
+## punch at its ceiling for a few presented frames so the yard clearance test can measure the
+## true stacked maximum instead of an already-decaying spring.
+var _kick_hold: int = 0
+## Every box `_add_box()` builds (barrier rails and posts, horizon band, truss, fixtures, contact
+## shadows). Kept by reference because Godot renames duplicate siblings to anonymous
+## `@MeshInstance3D@N`, so the barrier's nine posts cannot be found by name afterwards.
+var _yard_solids: Array[MeshInstance3D] = []
 var _phase_index: int = 0
 var _phase_now: Dictionary = {}
 var _phase_from: Dictionary = {}
@@ -547,6 +555,87 @@ func exchange_yaw_deg() -> float:
 	return rad_to_deg(_camera_yaw)
 
 
+## Framing audit: hold every pressure the lens can carry AT ONCE at its ceiling — the exchange
+## lean, the cinematic accent (dolly + its own yaw, with the side it leans toward) and the
+## hit-stop punch — so the yard clearance test can measure the true stacked worst case instead
+## of three springs already decaying at different rates. Presentational test hook only, same
+## contract as `hold_exchange_yaw`; nothing in the game calls it.
+func hold_camera_pressure(yaw_deg: float, accent: float = 1.0, side: int = 0,
+		punch: float = 1.0, frames: int = 2) -> void:
+	hold_exchange_yaw(yaw_deg, frames)
+	_accent = clampf(accent, 0.0, 1.0) * AnimationFeel.CAMERA_ACCENT_MAX
+	_accent_velocity = 0.0
+	_accent_side = clampi(side, -1, 1)
+	_accent_hold = maxi(1, frames)
+	_kick = clampf(punch, 0.0, AnimationFeel.CAMERA_PUNCH_MAX)
+	_kick_velocity = 0.0
+	_kick_hold = maxi(1, frames)
+
+
+## World-space AABBs of everything the lens must never enter, for the yard clearance audit:
+## every crowd rig, the barrier's rail, lower rail and posts, the horizon band, the DJ booth and
+## both filled prop slots. The crowd's depth "tiers" are a per-row Y offset, not riser geometry,
+## so the rigs themselves are the only volume there is to hit. Allocated on call — audit only,
+## never per frame.
+func camera_obstacles() -> Array[AABB]:
+	var out: Array[AABB] = []
+	if crowd3d != null:
+		for model in crowd3d.model_slots():
+			_append_bounds(out, model)
+	# Every box the yard was built from: barrier rail, lower rail, all nine posts, the horizon
+	# band, the truss and the fixtures. Kept by reference in `_yard_solids`, since eight of the
+	# posts end up with anonymous node names.
+	for solid in _yard_solids:
+		_append_bounds(out, solid)
+	_append_bounds(out, dj_booth)
+	for slot in _sound_stacks:
+		if slot != null:
+			_append_bounds(out, slot.model)
+	return out
+
+
+## The sky backdrop's world centre — its quad faces +Z, unrotated, so its plane is `z`.
+func backdrop_centre() -> Vector3:
+	var sky := get_node_or_null("SkyBackdrop") as MeshInstance3D
+	return sky.global_position if sky != null else Vector3.ZERO
+
+
+## Half the sky backdrop's width and height, so a ray can be tested against the visible rect.
+func backdrop_half_extent() -> Vector2:
+	var sky := get_node_or_null("SkyBackdrop") as MeshInstance3D
+	if sky == null or not (sky.mesh is QuadMesh):
+		return Vector2.ZERO
+	return (sky.mesh as QuadMesh).size * 0.5
+
+
+func _append_bounds(out: Array[AABB], root_node: Node) -> void:
+	var box := _meshes_world_aabb(root_node)
+	if box.size != Vector3.ZERO:
+		out.append(box)
+
+
+## Union of `root_node`'s own mesh box (when it is one) and every mesh box beneath it, in world
+## space. Rest-pose AABBs for skinned rigs: the crowd's animation never leaves its own body
+## volume by more than a hand, and the audit only needs the volume the lens must stay out of.
+func _meshes_world_aabb(root_node: Node) -> AABB:
+	var out := AABB()
+	var first := true
+	if root_node == null:
+		return out
+	var meshes: Array[Node] = []
+	if root_node is MeshInstance3D:
+		meshes.append(root_node)
+	meshes.append_array(root_node.find_children("*", "MeshInstance3D", true, false))
+	for child in meshes:
+		var mi := child as MeshInstance3D
+		if mi == null or mi.mesh == null:
+			continue
+		var box: AABB = mi.global_transform * mi.mesh.get_aabb()
+		out = box if first else out.merge(box)
+		first = false
+	return out
+
+
 ## True while this fighter is in any attack phase: that is the side the lens leans toward.
 func _is_exchanging(fighter: BaseFighter) -> bool:
 	if fighter == null:
@@ -562,14 +651,18 @@ func _is_exchanging(fighter: BaseFighter) -> bool:
 func _process(delta: float) -> void:
 	_pulse = move_toward(_pulse, 0.0, delta * 4.2)
 	# Scalar spring decay for the hit-stop punch (never a stepped or linear falloff).
-	var kick_step: Array = AnimationFeel.spring_scalar_step(_kick, _kick_velocity, 0.0,
-		clampf(delta, 0.0001, 1.0 / 30.0), AnimationFeel.CAMERA_PUNCH_STIFFNESS,
-		AnimationFeel.CAMERA_PUNCH_DAMPING)
-	_kick = kick_step[0]
-	_kick_velocity = kick_step[1]
-	if absf(_kick) < 0.0002:
-		_kick = 0.0
+	if _kick_hold > 0:
+		_kick_hold -= 1
 		_kick_velocity = 0.0
+	else:
+		var kick_step: Array = AnimationFeel.spring_scalar_step(_kick, _kick_velocity, 0.0,
+			clampf(delta, 0.0001, 1.0 / 30.0), AnimationFeel.CAMERA_PUNCH_STIFFNESS,
+			AnimationFeel.CAMERA_PUNCH_DAMPING)
+		_kick = kick_step[0]
+		_kick_velocity = kick_step[1]
+		if absf(_kick) < 0.0002:
+			_kick = 0.0
+			_kick_velocity = 0.0
 	# Cinematic accent spring (K.O. / special). Same impulse-then-spring contract as the
 	# punch: integrated every presented frame, clamped to CAMERA_ACCENT_MAX, never stepped by
 	# the combat tick.
@@ -1367,6 +1460,7 @@ func _add_box(parent: Node3D, node_name: String, size: Vector3, at: Vector3,
 	mi.position = at
 	mi.material_override = material
 	parent.add_child(mi)
+	_yard_solids.append(mi)
 	return mi
 
 

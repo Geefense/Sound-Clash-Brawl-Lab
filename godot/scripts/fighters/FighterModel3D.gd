@@ -735,13 +735,18 @@ func _process(delta: float) -> void:
 ## `_animate_pose()` rebuilds `_pivot.position` from scratch every frame, so the correction is
 ## added fresh each frame and can never stack.
 const FLOOR_BONE_CLEARANCE := 0.10
+## Above this fall progress the body is still toppling or getting up, not standing: the foot
+## pin must not treat it as a planted stance and drag a tilted torso onto the sand.
+const FALL_UPRIGHT := 0.05
 
 func _clamp_to_floor() -> void:
 	if skeleton == null or _pivot == null:
 		return
-	if _is_pinned_state():
+	if _is_pinned_state() and _fall <= FALL_UPRIGHT:
 		# A grounded body is already pinned exactly onto the sand by `_pin_feet_to_ground()`,
-		# and this guard's 0.10 m bone clearance would lift a planted foot back off it.
+		# and this guard's 0.10 m bone clearance would lift a planted foot back off it. During
+		# the get-up the state is already IDLE while the fall is still decaying, so the guard
+		# keeps running until the body is actually upright.
 		return
 	var lowest := INF
 	var skel_xf := skeleton.global_transform
@@ -1798,6 +1803,11 @@ func _pin_feet_to_ground() -> void:
 	if not _is_pinned_state():
 		return
 	if _is_airborne():
+		return
+	# Get-up lands in IDLE while the topple is still easing out. Pinning the lowest foot bone
+	# then pulls the still-tilted body down through the sand; wait until it is upright again
+	# (`_clamp_to_floor()` owns the pose until then).
+	if _fall > FALL_UPRIGHT:
 		return
 	var lowest := _lowest_foot_y()
 	if lowest == INF:

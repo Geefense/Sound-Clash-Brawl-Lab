@@ -49,6 +49,8 @@ static var _cel_materials: Dictionary = {}
 ## importer detail, not a guarantee. This cache binds the FIRST instance's Mesh to every
 ## later instance by node path, so the crowd's GPU memory is seven meshes, not twenty-two.
 static var _mesh_cache: Dictionary = {}
+## The delivered diffuse atlas per source file, resolved once (`<model>_0.png`).
+static var _atlas_cache: Dictionary = {}
 
 
 ## Every loadable character source in a slot folder, sorted for a stable assignment.
@@ -302,8 +304,9 @@ static func play_act(node: Node3D, acts: Dictionary, act: StringName,
 ## Convert every surface to the cel shader + ink outline, keeping the upload's own albedo.
 ## `variant` keeps a cached material per look (warm left bank, cool right bank, gold booth).
 static func apply_cel(node: Node3D, tint: Color, rim: Color, variant: int = 0,
-		hue_shift: float = 0.0) -> int:
+		hue_shift: float = 0.0, source_path: String = "") -> int:
 	var applied := 0
+	var fallback := delivered_atlas(source_path)
 	for child in node.find_children("*", "MeshInstance3D", true, false):
 		var mi := child as MeshInstance3D
 		if mi == null or mi.mesh == null:
@@ -315,9 +318,14 @@ static func apply_cel(node: Node3D, tint: Color, rim: Color, variant: int = 0,
 			if source is BaseMaterial3D:
 				texture = (source as BaseMaterial3D).albedo_texture
 			if texture == null:
-				# A surface with no albedo is not given a white stand-in: that is what turned
-				# a whole bank of spectators into untextured mannequins. The surface keeps the
-				# material the exporter shipped and the caller is told the instance is short.
+				# Some delivered female FBX exports arrive with their body/clothing material
+				# unbound even though the character's own diffuse atlas was extracted beside it
+				# (`<model>_0.png`). Bind that delivered atlas instead of leaving an untextured
+				# surface or dropping the character — no invented art, and no empty slot.
+				texture = fallback
+			if texture == null:
+				# With no delivered diffuse either, the surface keeps the material the exporter
+				# shipped and the caller is told the instance is short.
 				push_warning("CharacterModelSlots: %s surface %d has no albedo texture — left as imported"
 					% [node.name, surface])
 				continue
@@ -346,6 +354,23 @@ static func apply_cel(node: Node3D, tint: Color, rim: Color, variant: int = 0,
 			mi.set_surface_override_material(surface, material)
 			applied += 1
 	return applied
+
+
+## The character's own extracted diffuse atlas: `<model>_0.png` beside the source file.
+## Godot's FBX importer extracts embedded images in source order, and every delivered
+## crowd/DJ set keeps its diffuse map at index 0 (index 1 is the normal map), so this is the
+## character's own delivered art, cached once per source. Null when the set was not delivered.
+static func delivered_atlas(source_path: String) -> Texture2D:
+	if source_path == "":
+		return null
+	if _atlas_cache.has(source_path):
+		return _atlas_cache[source_path]
+	var atlas: Texture2D = null
+	var candidate := source_path.get_basename() + "_0.png"
+	if ResourceLoader.exists(candidate):
+		atlas = load(candidate) as Texture2D
+	_atlas_cache[source_path] = atlas
+	return atlas
 
 
 ## Per-instance albedo diagnostic (playtest fix 2026-11-24, issue 2). Prints the model name,

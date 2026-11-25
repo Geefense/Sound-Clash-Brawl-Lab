@@ -178,7 +178,8 @@ func _load_models() -> void:
 		m.model_path = path.get_file()
 		# `variant` is per member: one material each, so no two bodies can ever share a
 		# tint. The look itself is the member's own tiny nudge on its bank's light colour.
-		var applied := CharacterModelSlots.apply_cel(model, m.tint, MODEL_RIMS[m.zone], slot, m.hue)
+		var applied := CharacterModelSlots.apply_cel(model, m.tint, MODEL_RIMS[m.zone], slot,
+			m.hue, path)
 		if applied == 0:
 			push_warning("CrowdController3D: %s has no textured surface — empty slot"
 				% m.node.name)

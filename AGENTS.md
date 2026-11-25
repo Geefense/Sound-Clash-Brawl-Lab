@@ -4986,73 +4986,108 @@ owner's playtest.
   uncommitted experiment was reverted rather than committed red; the drawn-mesh tightening
   remains open.
 
-## 2026-11-25 — PART B · Bug 4: the crowd reads as a packed, colourful yard
+## 2026-11-25 — PART B · Bugs 4 and 5: crowd redesign, Afternoon/Sunset/Night overhaul, Web export
 
-**Root cause.** The ringside rigs were spawned at `1.52–1.92 m` with ±0.14 m of jitter inside a
-2 m band, so tall neighbours clipped through each other and a few spectators towered over the
-fighters. Every rig also wore one fixed tint, so the yard read as a beige wall, and the bounce
-ran on arbitrary per-rig rates (0.85–1.35×) instead of the track.
+Branch `feature/3d-cel-shaded`, based on `5b46948`. A parallel PART B commit `15baeda`
+landed on this branch first; the implementation below **supersedes** its crowd and preset
+code — the same Bug 4/5 scope, measured against the built rigs and audited by 17 more checks
+— while its history stays intact. Everything below **extends** the existing files
+— `CrowdController3D.gd`, `Arena3D.gd`, `CharacterModelSlots.gd`, `toon_cel.gdshader`,
+`sky_gradient.gdshader`, `tools/headless_roster_check.gd` — nothing was duplicated. `BaseFighter.gd`
+`ANIM_OFFSET`, frame data, hitboxes, 132 BPM, Crowd Hype rules, all 31 Patois lines, the Bug 2
+downed-pose seating, the facing pivot pin / toe calibration (`cc2a7b5`) and the camera lean /
+`reach_boost` (`5b46948`) are untouched.
 
-**Fix (extension of `CrowdController3D`, not a rewrite).**
-- **Scale.** `FIGHTER_HEIGHT = 1.62` with `HEIGHT_SPREAD = 0.05`, so every rig is 1.539–1.701 m —
-  within ±10 % of the authored fighter height measured from the real model, asserted in the roster.
-- **Spacing.** X jitter cut to ±0.05 m and `MIN_GAP = 0.34 m` asserted as the minimum centre-to-
-  centre distance between any two rigs sharing a row and bank. Row Y tiers (0.0 / 0.20 / 0.40) and
-  the 4/4/3 layout were already satisfied and are unchanged.
-- **Palette.** Eight vibrant Jamaican/dancehall accents (sound-system green, gold, red, black,
-  neon magenta/cyan/lime/orange) are assigned per rig and pushed through a new
-  `instance uniform vec4 crowd_accent` in `toon_cel.gdshader`, which blends into the existing rim
-  term (`mix(rim_colour, crowd_accent.rgb, crowd_accent.a)`). No new material per rig:
-  `CharacterModelSlots.apply_cel` gained an optional `share_key`, and the crowd passes
-  `crowd|<model>|<bank>`, so one material is shared per delivered character and bank (8 materials
-  for 22 rigs) while **different characters never share one** — the original “no spectator can
-  tint another character” invariant is preserved and re-asserted against albedo paths.
-- **132 BPM skank.** The phase advances at `TAU * 132/60 * rate` per second with per-rig rate
-  0.985–1.015 and initial phase offsets, one hop per beat plus a ±0.035 rad shoulder lean; energy
-  scales by state (disbelief 0.55, cheer 1.35, hype 1.8). Scalar math only, no per-frame
-  allocation, node count stable over 600 ticks. Crowd Hype rules untouched.
+### Bug 4 — the yard read as giants, could clip, and drifted off the beat
 
-**Tests.** Roster grew by 12 checks: height ratio, minimum in-row gap, row Y monotonicity, palette
-variety, shared-material count, 132 BPM, 600-frame node stability, night spot count, light budget,
-sky/environment resources and night spot colours. The old per-character material check was
-re-pointed at albedo identity (same character may share, different characters may not) because
-per-rig materials are now deliberately shared. Suites: roster all pass, live 191, facing 310,
-feel 335 — 0 FAIL. Frustum, facing pin and reach boost untouched.
+**Root cause.** The packed yard drew heights from a 1.52–1.92 m band against a 1.55 m fighter (up to
+**+24 %**, a head taller than the fighters); its even spread carried **±0.14 m** seeded jitter on a
+ringside spacing of only **0.51 m**, narrower than a pair of shoulders, so neighbours could overlap
+and rows could clip; and every rig owned its own `ShaderMaterial` (22 materials for 22 bodies), so
+any palette work would have multiplied materials again. Motion was a generic sine bob unrelated to
+the 132 BPM clock.
 
-## 2026-11-25 — PART B · Bug 5: Afternoon / Sunset / Night are three different times of day
+**Fix.**
+- **(a) Scale.** `Member.height` now comes from `FIGHTER_HEIGHT ± 8 %` (1.426–1.674 m). The audit
+  measures the *built* rig through `CharacterModelSlots.local_height()` (anchor yaw excluded, so a
+  rotated body cannot inflate the AABB) and compares it to 1.55 m.
+- **(b) Spacing.** Each slot's jitter is capped by its own row spacing,
+  `max(0, (spacing − MIN_SPACING) / 2)`, so no pair can close under **0.50 m**; the ringside band
+  widened 12 cm a side to make the room. `overlap_count()` tests a 0.50 × 0.34 m body footprint in
+  plan across all 231 pairs, which also proves rows cannot clip.
+- **(c) Look.** A seven-entry dancehall palette — green, gold, red, black, neon cyan, neon magenta,
+  neon lime — is assigned per rig and worn through the cel shader's **per-instance uniform**
+  `instance_accent`. `CharacterModelSlots.apply_cel_shared()` caches **one material per delivered
+  atlas** (10 for 22 rigs) instead of one per rig; crisp `diffuse_toon` banding and the
+  inverted-hull ink pass are unchanged.
+- **(d) Motion.** A 132 BPM skank: one bounce per beat plus a half-beat hip sway, every rig offset
+  inside the bar, all scalar math on the cached anchor — no per-frame allocation, no new nodes.
+  `react()` (the Crowd Hype rules) is untouched.
 
-**Root cause.** The three presets only differed by a slight sky tint and light energy; sand, haze
-and rim stayed one fixed ochre/pink, and Night had no coloured stage lighting at all, so dusk and
-night read as “afternoon with the brightness down”.
+### Bug 5 — three flat tints instead of three designed rigs
 
-**Fix (`Arena3D`).**
-- **Afternoon:** zenith `#1E6FD9`, pale golden-haze horizon `#FFE7B0`, warm key `#FFD27A`,
-  warm-lit sand `(0.86, 0.70, 0.44)`.
-- **Sunset:** zenith `#3B1D6E`, crimson haze band `#D6336C`, orange horizon `#FF7A1A`, low sun
-  `#FF9A4D` at −10° elevation, warm rim `#FF5A36`, red-shifted sand `(0.74, 0.42, 0.27)`.
-- **Night:** zenith `#070B2E` → horizon `#2A1B5E`, cool moon key `#6F8CFF` at 0.18 energy, cool
-  sand `(0.17, 0.18, 0.30)`, plus **three coloured `SpotLight3D`s** (magenta / cyan / amber) over
-  the yard. Their energy is `1.35 * (1 + pulse*0.45 + kick*0.12)` on the same beat clock as the
-  speaker cones, and exactly 0 in the two daylight presets (scalar update in `_process`).
-- Light budget: sun + fill + rim + 2 overhead spots + 3 night spots = **8**, the Web /
-  Compatibility per-object maximum; no volumetric fog, SDFGI or SSAO added. Shadows unchanged.
+**Root cause.** The presets were two-stop gradients with one spot colour, one fixed sand albedo, no
+horizon response, no tonemap or glow, and a night rig of two overhead spots that never moved with
+the music. The sand stayed the same brown card under three different skies.
 
-**Tests.** Night spot count, light budget ≤ 8, live sky/environment resources and spot colours are
-asserted in the roster; camera/facing suites unchanged and green.
+**Fix.** A three-stop sky (zenith / mid / horizon) plus a separate horizon-haze band in
+`sky_gradient.gdshader`; per-preset fog tint and density; sand, mound and horizon-band albedo
+re-graded with the phase; and **four** coloured stage `SpotLight3D`s whose night energies ride a
+scalar 132 BPM envelope (`stage_pulse()`), re-locked by `Arena3D.beat_pulse()`. The environment is
+now ACES tone-mapped with low additive glow; SSAO, SSIL, SDFGI and volumetric fog are explicitly
+off.
 
-**Known limitations.** Nothing here is visually verified: this environment is headless (no GPU or
-display), so the look is validated only by rendered-resource and numeric assertions. The
-`crowd_accent` **instance uniform** is authored for the Compatibility renderer used by the Web
-export, but Godot's Compatibility backend support for instance uniforms in a custom spatial shader
-has not been confirmed on a real WebGL2 device; if it is ignored there, the crowd falls back to the
-per-model material rim (still varied per character/bank, just not per rig). The beat-synced night
-spot pulse is likewise numeric-only here.
+| Preset | Sky top / mid / horizon | Key light | Rim | Sand albedo | Stage spots |
+| --- | --- | --- | --- | --- | --- |
+| Afternoon | `#1E6FD9` / `#6BAEF5` / `#FFE7B0` | `#FFD27A` @ 2.05, −52° | `#FFD98A` @ 0.85 | `#E0B875` | 0.20, resting |
+| Sunset | `#3B1D6E` / `#D6336C` / `#FF7A1A` | `#FF9A4D` @ 1.75, **−10°** (10° elevation) | `#FF5A36` @ 1.45 | `#F08F57` | 0.85, amber/violet |
+| Night | `#070B2E` / `#17134A` / `#2A1B5E` | `#6F8CFF` @ **0.16**, still shadowing | `#42EBFF` @ 1.60 | `#525275` | 2.60, cyan / magenta / amber / gold, ±45 % pulse |
 
-**Export.** Rebuilt `docs/` with Godot 4.5 `Web` (thread support off, Compatibility):
-`index.pck` 66 MB, `index.wasm` 37 MB, `index.js` 299 KB, `index.html` 5.4 KB. Only benign
-“fontconfig disabled” warnings, which are unrelated to the game (no bundled system fonts).
-The 4.5 stable export templates were not installed on this VM, so they were downloaded from the
-official release once into `~/.local/share/godot/export_templates/4.5.stable/` and the archive
-removed. `df -h .` after the export: 27 GB free on a 63 GB volume.
+### Decisions worth keeping
 
-**Bug 2 stays deferred** (drawn-mesh knockdown seating); the downed-pose path was not touched.
+- **Per-instance uniforms carry emission only.** `instance_accent` is added to the rim band, never
+  multiplied into `ALBEDO`. Two reasons: the earlier playtest fix forbids dimming the delivered
+  texture, and Godot has a known WebGL2 defect where an overflowed instance-uniform buffer renders
+  affected instances black (`godotengine/godot#112674`). Under this design a dropped instance
+  buffer costs the accent, never the body.
+- **"Black" in the palette** is carried as a near-black ink accent over the gold pairing plus the
+  shader's existing ink outline; painting a body black would be a dimmer, which the crowd contract
+  forbids.
+- **Library limits.** The yard runs **7** lights (2 directional + 1 omni + 4 spots), inside
+  Compatibility's default `max_lights_per_object = 8`; `Arena3D.light_count()` and
+  `max_lights_per_object()` make that auditable rather than assumed.
+- **No programmer art.** No mesh, prop or character was added: `PropLoader` is still exactly five
+  empty slots (no `crowd_riser`), `legacy_mannequin_count()` stays 0, and the only new geometry is
+  the two lights themselves (no MeshInstance3D).
+
+### Tests and checks actually run (Godot 4.5.stable.official.876b29033, headless, Linux)
+
+- `headless_roster_check.gd` **425 → 442** checks, 0 FAIL: the new block asserts row Y strictly
+  rising with depth, every rig inside ±10 % of the fighter height, zero overlapping pairs, row
+  spacing ≥ 0.50 m, the green/gold/red/black + neon palette present, materials shared (10 < 22),
+  the skank locked to 132 BPM, 600 frames creating no nodes, every preset loading, sky/environment
+  resources present, the directional key still shadowing, 7 ≤ 8 lights, ACES + glow on with no
+  SSAO/SDFGI/volumetric fog, three distinct sand responses, four coloured night beams and a
+  beat-pulsed energy. The old "one material per character" assertion was replaced — not weakened —
+  by the stronger per-instance contract (every rig owns an accent; writing one rig's accent leaves
+  its neighbour and the shared material untouched).
+- `live_match_check.gd` **191**, `facing_audit.gd` **310**, `animation_feel_audit.gd` **335** — all
+  0 FAIL. Frustum and facing checks are unaffected.
+- Web export (4.5-stable headless, `Web` preset, GL Compatibility / no threads):
+  `godot --headless --path godot --export-release "Web" ../docs/index.html` — **no export errors**
+  (`docs/` 103 MB: `index.pck` 68.7 MB, `index.wasm` 38.1 MB plus companions).
+- Grep audit: no `CapsuleMesh` / `SphereMesh` / procedural character or prop builder anywhere under
+  `godot/scripts/`; the only `CylinderMesh` uses are the existing dubplate/dictionary projectile,
+  the vinyl parry and the sand mounds.
+
+### Unresolved / not verified
+
+- **Bug 2 (drawn-mesh knockdown tightening) stays deferred**, unchanged from PART A2: the knockdown
+  take on the two Tripo rigs topples head-first and the get-up still has 3–6 cm single-frame steps.
+- **Nothing was viewed.** There is no GPU or browser in this environment, so the palette, the
+  three skies, the haze, the glow/ACES response, the night beam colours and the skank feel are
+  **not visually verified**; the glow and tonemap are verified as *settings* only (they are
+  Compatibility-supported, and the export contains them without error).
+- The instance-uniform path is exercised on the desktop renderer in the headless audits; the Web
+  behaviour of the instance buffer is the exact case Godot's open issue describes, which is why the
+  accent is emission-only.

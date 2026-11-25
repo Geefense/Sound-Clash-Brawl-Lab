@@ -51,6 +51,10 @@ static var _cel_materials: Dictionary = {}
 static var _mesh_cache: Dictionary = {}
 ## The delivered diffuse atlas per source file, resolved once (`<model>_0.png`).
 static var _atlas_cache: Dictionary = {}
+## Shared cel materials for a whole bank (Bug 4c, 2026-11-25). Keyed by source file + atlas,
+## so every rig wearing the same character reuses ONE ShaderMaterial and takes its palette
+## from the per-instance uniform instead of owning a material of its own.
+static var _shared_cel: Dictionary = {}
 
 
 ## Every loadable character source in a slot folder, sorted for a stable assignment.
@@ -304,7 +308,7 @@ static func play_act(node: Node3D, acts: Dictionary, act: StringName,
 ## Convert every surface to the cel shader + ink outline, keeping the upload's own albedo.
 ## `variant` keeps a cached material per look (warm left bank, cool right bank, gold booth).
 static func apply_cel(node: Node3D, tint: Color, rim: Color, variant: int = 0,
-		hue_shift: float = 0.0, source_path: String = "", share_key: String = "") -> int:
+		hue_shift: float = 0.0, source_path: String = "") -> int:
 	var applied := 0
 	var fallback := delivered_atlas(source_path)
 	for child in node.find_children("*", "MeshInstance3D", true, false):
@@ -333,9 +337,7 @@ static func apply_cel(node: Node3D, tint: Color, rim: Color, variant: int = 0,
 			# characters can ever share (and therefore tint, dim or recolour) a material.
 			# Every surface of one upload draws from the same atlas, which also keeps the draw
 			# state cheap on a Chromebook.
-			# A caller may pool the look across rigs (the crowd shares one material per
-			# delivered model + bank); otherwise one character owns its material.
-			var key := share_key if share_key != "" else "%s_%d" % [node.get_instance_id(), variant]
+			var key := "%s_%d" % [node.get_instance_id(), variant]
 			var material: ShaderMaterial = _cel_materials.get(key)
 			if material == null:
 				material = ShaderMaterial.new()
@@ -356,6 +358,81 @@ static func apply_cel(node: Node3D, tint: Color, rim: Color, variant: int = 0,
 			mi.set_surface_override_material(surface, material)
 			applied += 1
 	return applied
+
+
+## Cel treatment for a whole bank of characters sharing one material (Bug 4c, 2026-11-25).
+##
+## The crowd cannot afford one material per rig, so every rig wearing the same delivered atlas
+## binds the SAME ShaderMaterial and takes its dancehall palette from the shader's per-instance
+## `instance_accent` uniform. `rim` is the phase rim colour the arena already owns; `accent` is
+## this rig's own palette accent. Only emission is per-instance — ALBEDO stays the delivered
+## texture at full brightness, so a Web build that drops the instance buffer cannot black a body.
+static func apply_cel_shared(node: Node3D, source_path: String, rim: Color, accent: Color,
+		rim_strength: float = 0.52, accent_strength: float = 0.9) -> int:
+	var applied := 0
+	var fallback := delivered_atlas(source_path)
+	for child in node.find_children("*", "MeshInstance3D", true, false):
+		var mi := child as MeshInstance3D
+		if mi == null or mi.mesh == null:
+			continue
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		for surface in mi.mesh.get_surface_count():
+			var texture: Texture2D = null
+			var source := mi.mesh.surface_get_material(surface)
+			if source is BaseMaterial3D:
+				texture = (source as BaseMaterial3D).albedo_texture
+			if texture == null:
+				texture = fallback
+			if texture == null:
+				push_warning("CharacterModelSlots: %s surface %d has no albedo texture — left as imported"
+					% [node.name, surface])
+				continue
+			var key := "%s|%d" % [source_path, texture.get_instance_id()]
+			var material: ShaderMaterial = _shared_cel.get(key)
+			if material == null:
+				material = ShaderMaterial.new()
+				material.shader = TOON_SHADER
+				material.set_shader_parameter("albedo_texture", texture)
+				material.set_shader_parameter("tint", Color.WHITE)
+				material.set_shader_parameter("rim_colour", rim)
+				material.set_shader_parameter("rim_strength", rim_strength)
+				material.set_shader_parameter("accent_strength", accent_strength)
+				material.set_shader_parameter("shadow_tint_amount", 0.0)
+				var ink := ShaderMaterial.new()
+				ink.shader = OUTLINE_SHADER
+				ink.set_shader_parameter("ink_width", 0.0026)
+				material.next_pass = ink
+				_shared_cel[key] = material
+			mi.set_surface_override_material(surface, material)
+			mi.set_instance_shader_parameter("instance_accent", accent)
+			applied += 1
+	return applied
+
+
+## Distinct shared cel materials built so far — twenty-two rigs must not mean twenty-two.
+static func shared_cel_material_count() -> int:
+	return _shared_cel.size()
+
+
+## Height of one character in its own unscaled space times its fit scale, ignoring any yaw the
+## parent anchor applies. `mesh_bounds()` is world space and would inflate with a rotated
+## anchor, so the crowd's scale audit needs this instead.
+static func local_height(node: Node3D) -> float:
+	if node == null:
+		return 0.0
+	var inverse := node.global_transform.affine_inverse()
+	var merged := AABB()
+	var first := true
+	for child in node.find_children("*", "MeshInstance3D", true, false):
+		var mi := child as MeshInstance3D
+		if mi == null or mi.mesh == null:
+			continue
+		var box: AABB = inverse * mi.global_transform * mi.get_aabb()
+		merged = box if first else merged.merge(box)
+		first = false
+	if first:
+		return 0.0
+	return merged.size.y * node.scale.y
 
 
 ## The character's own extracted diffuse atlas: `<model>_0.png` beside the source file.

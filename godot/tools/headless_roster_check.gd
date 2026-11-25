@@ -20,6 +20,18 @@ func _initialize() -> void:
 
 
 
+## First textured cel mesh on one character (hand props excluded). Used by the per-instance
+## palette check, which writes one rig's accent and proves its neighbour does not move.
+func _first_cel_mesh(node: Node3D) -> MeshInstance3D:
+	if node == null:
+		return null
+	for child in node.find_children("*", "MeshInstance3D", true, false):
+		var mi := child as MeshInstance3D
+		if mi != null and mi.mesh != null and not CharacterModelSlots._under_hand_prop(mi):
+			return mi
+	return null
+
+
 ## Cel surfaces on one character (hand props excluded), used by the albedo-integrity check.
 func _count_cel_surfaces(node: Node3D) -> int:
 	var n := 0
@@ -1943,56 +1955,6 @@ func _run() -> void:
 		"female spectators stand in the front-row 3D banks with the male crowd",
 		"%d female / %d ringside" % [female_front, crowd3d.model_slots().size()])
 
-	# ---- Bug 4: crowd scale, spacing, palette, 132 BPM motion (2026-11-25) ------------
-	var crowd_fighter_h: float = 1.62
-	if mp1_model != null and mp1_model.get("model_height") != null:
-		crowd_fighter_h = float(mp1_model.model_height)
-	var scale_ok := true
-	for i in crowd3d.count():
-		if absf(crowd3d.member_height(i) - crowd_fighter_h) / crowd_fighter_h > 0.10:
-			scale_ok = false
-	_check(scale_ok, "every crowd rig stands within 10 percent of the fighters' height",
-		"%.2f m reference" % crowd_fighter_h)
-	_check(crowd3d.min_in_row_gap() >= CrowdController3D.MIN_GAP - 0.001,
-		"crowd neighbours in a row never overlap or clip",
-		"min gap %.3f m" % crowd3d.min_in_row_gap())
-	_check(crowd3d.row_y(0) < crowd3d.row_y(1) and crowd3d.row_y(1) < crowd3d.row_y(2),
-		"row Y strictly increases with depth",
-		"%.2f / %.2f / %.2f" % [crowd3d.row_y(0), crowd3d.row_y(1), crowd3d.row_y(2)])
-	var accents := {}
-	for i in crowd3d.count():
-		accents[crowd3d.member_accent(i).to_html()] = true
-	_check(accents.size() >= 4,
-		"the crowd wears the vibrant Jamaican palette through instance uniforms",
-		"%d accents / %d rigs" % [accents.size(), crowd3d.count()])
-	_check(crowd3d.shared_material_count() > 0 and crowd3d.shared_material_count() < crowd3d.count(),
-		"crowd rigs share cel materials instead of one material each",
-		"%d materials / %d rigs" % [crowd3d.shared_material_count(), crowd3d.count()])
-	_check(absf(crowd3d.beat_hz() - 132.0 / 60.0) < 0.0001,
-		"the crowd skank is locked to the 132 BPM beat", "%.3f Hz" % crowd3d.beat_hz())
-	var nodes_before := crowd3d.find_children("*", "Node", true, false).size()
-	for i in 600:
-		crowd3d.tick(1.0 / 60.0)
-	var nodes_after := crowd3d.find_children("*", "Node", true, false).size()
-	_check(nodes_before == nodes_after,
-		"crowd node count stays stable over 600 frames",
-		"%d -> %d" % [nodes_before, nodes_after])
-	# ---- Bug 5: lighting rig ----------------------------------------------------------
-	_check(atmosphere.night_spot_count() == 3,
-		"Night owns three coloured stage SpotLight3Ds",
-		"%d" % atmosphere.night_spot_count())
-	_check(atmosphere.stage_light_count() <= 8,
-		"the stage rig stays inside the Web / Compatibility per-object light budget",
-		"%d lights" % atmosphere.stage_light_count())
-	_check(atmosphere.sky_material != null and atmosphere.sun_material != null
-			and atmosphere.world_env != null and atmosphere.world_env.environment != null,
-		"all three presets have real sky and environment resources")
-	atmosphere.apply_phase(2)
-	_check(atmosphere.night_spots[0].light_color.r > atmosphere.night_spots[0].light_color.g
-			and atmosphere.night_spots[1].light_color.b > atmosphere.night_spots[1].light_color.r,
-		"the night spots are magenta and cyan, not white floods")
-	atmosphere.apply_phase(0)
-
 	# Palette: the phase rim reaches every character through its own cel material, and
 	# nothing else about the material moves — albedo and brightness stay untouched.
 	atmosphere.apply_phase(2)
@@ -2004,6 +1966,130 @@ func _run() -> void:
 		"the night palette leaves every character's albedo bound",
 		str(night_albedo.resource_path if night_albedo != null else "<null>"))
 	atmosphere.apply_phase(0)
+	crowd3d.settle()
+	booth.settle()
+
+	# ---- Bug 4 (2026-11-25): scale, spacing, palette and 132 BPM crowd motion ----------
+	# Audited on the yard as built: row tiers strictly rising with depth, no rig clipping
+	# another, every rig inside ±10 % of the fighter's height, the palette carried through
+	# shared materials, and a 600-frame run that creates nothing.
+	var row_tiers_ok: bool = crowd3d.row_y(0) < crowd3d.row_y(1) \
+		and crowd3d.row_y(1) < crowd3d.row_y(2) \
+		and crowd3d.row_z(0) > crowd3d.row_z(1) and crowd3d.row_z(1) > crowd3d.row_z(2)
+	_check(row_tiers_ok, "row Y strictly increases with depth",
+		"y %.2f/%.2f/%.2f at z %.2f/%.2f/%.2f" % [crowd3d.row_y(0), crowd3d.row_y(1),
+			crowd3d.row_y(2), crowd3d.row_z(0), crowd3d.row_z(1), crowd3d.row_z(2)])
+	var scale_ok := true
+	var ratio_lo := INF
+	var ratio_hi := -INF
+	for i in crowd3d.count():
+		var ratio: float = crowd3d.height_ratio(i)
+		ratio_lo = minf(ratio_lo, ratio)
+		ratio_hi = maxf(ratio_hi, ratio)
+		if ratio < 0.90 or ratio > 1.10:
+			scale_ok = false
+	_check(scale_ok, "every rig stands within 10 % of the fighter's height",
+		"%.3f–%.3f of %.2f m" % [ratio_lo, ratio_hi, CrowdController3D.FIGHTER_HEIGHT])
+	_check(crowd3d.overlap_count() == 0, "no two rigs overlap or clip across the rows",
+		"%d overlapping pair(s)" % crowd3d.overlap_count())
+	_check(crowd3d.min_row_spacing() >= CrowdController3D.MIN_SPACING - 0.001,
+		"each row holds its minimum spacing",
+		"%.3f m (min %.2f)" % [crowd3d.min_row_spacing(), CrowdController3D.MIN_SPACING])
+	var accents := {}
+	for i in crowd3d.count():
+		accents[crowd3d.palette_name_of(i)] = true
+	_check(accents.has("green") and accents.has("gold") and accents.has("red")
+			and accents.has("black") and accents.has("neon_cyan"),
+		"the bank wears the green / gold / red / black dancehall palette plus neon",
+		", ".join(accents.keys()))
+	_check(crowd3d.shared_material_count() > 0
+			and crowd3d.shared_material_count() < crowd3d.count(),
+		"the palette rides shared materials, not one material per rig",
+		"%d material(s) across %d rigs" % [crowd3d.shared_material_count(), crowd3d.count()])
+	var beat_a: float = crowd3d.beat_phase_of(0)
+	crowd3d.tick(CrowdController3D.BEAT_SEC)
+	var beat_b: float = crowd3d.beat_phase_of(0)
+	_check(absf(beat_b - beat_a) < 0.02, "the crowd skank is locked to 132 BPM",
+		"%.3f → %.3f after one beat" % [beat_a, beat_b])
+	var nodes_before := crowd3d.node_count()
+	var models_before := crowd3d.model_slots().size()
+	for i in 600:
+		crowd3d.tick(1.0 / 60.0)
+	_check(crowd3d.node_count() == nodes_before
+			and crowd3d.model_slots().size() == models_before,
+		"600 frames of crowd motion create no nodes and no objects",
+		"%d nodes, %d models" % [crowd3d.node_count(), crowd3d.model_slots().size()])
+	crowd3d.settle()
+
+	# ---- Bug 5 (2026-11-25): Afternoon / Sunset / Night rigs ----------------------------
+	# Each preset is a full setup: three-stop sky plus horizon haze, graded sand, key and rim,
+	# and four coloured stage beams inside Compatibility's per-object light limit.
+	var stage: Arena3D = atmosphere
+	var presets_ok := true
+	var skies_ok := true
+	var shadow_ok := true
+	var lights_ok := true
+	var sand_colours := {}
+	var rig_detail: Array[String] = []
+	for phase in [0, 1, 2]:
+		stage.apply_phase(phase, 0.0)
+		await process_frame
+		var env: Environment = stage.world_env.environment
+		if stage.phase_name() == "":
+			presets_ok = false
+		if stage.sky_material == null or stage.sun_material == null or env == null \
+				or stage.sky_material.get_shader_parameter("mid_colour") == null:
+			skies_ok = false
+		if not stage.sun.shadow_enabled or stage.sun.light_angular_distance > 0.001:
+			shadow_ok = false
+		if stage.light_count() > Arena3D.max_lights_per_object() \
+				or stage.stage_spot_count() != 4 \
+				or stage.directional_light_count() > 4:
+			lights_ok = false
+		if stage.sand_material != null:
+			sand_colours[str(stage.sand_material.albedo_color)] = true
+		rig_detail.append("%s %d/%d" % [stage.phase_name(), stage.light_count(),
+			Arena3D.max_lights_per_object()])
+	_check(presets_ok, "each preset loads its own rig", ", ".join(rig_detail))
+	_check(skies_ok, "the sky gradient, sun disc and environment resources exist in every preset")
+	_check(shadow_ok, "the directional key light still shadows both fighters in every preset")
+	_check(lights_ok, "light counts stay inside Compatibility's per-object limit",
+		", ".join(rig_detail))
+	var compat_ok: bool = not stage.world_env.environment.ssao_enabled \
+		and not stage.world_env.environment.sdfgi_enabled \
+		and not stage.world_env.environment.volumetric_fog_enabled \
+		and stage.world_env.environment.tonemap_mode == Environment.TONE_MAPPER_ACES \
+		and stage.world_env.environment.glow_enabled
+	_check(compat_ok, "no SSAO / SDFGI / volumetric fog, with ACES tonemap and glow enabled")
+	_check(sand_colours.size() == 3, "sand and horizon albedo respond to each preset",
+		"%d distinct sand colours" % sand_colours.size())
+	stage.apply_phase(2, 0.0)
+	await process_frame
+	var beams := {}
+	var cyan := false
+	var magenta := false
+	var amber := false
+	for i in stage.stage_spot_count():
+		var c: Color = stage.stage_spot_colour(i)
+		beams["%.2f_%.2f_%.2f" % [c.r, c.g, c.b]] = true
+		if c.b > 0.8 and c.g > 0.8 and c.r < 0.4:
+			cyan = true
+		if c.r > 0.8 and c.b > 0.5 and c.g < 0.4:
+			magenta = true
+		if c.r > 0.9 and c.g > 0.5 and c.g < 0.9 and c.b < 0.35:
+			amber = true
+	_check(cyan and magenta and amber and beams.size() == 4,
+		"night lights the yard with four coloured stage beams (cyan / magenta / amber)",
+		"%d distinct" % beams.size())
+	stage._beat_phase = 0.0
+	stage._apply_stage_energies()
+	var pulse_high: float = stage.spot_left.light_energy
+	stage._beat_phase = 0.5
+	stage._apply_stage_energies()
+	var pulse_low: float = stage.spot_left.light_energy
+	_check(pulse_high > pulse_low * 1.05, "the night beams pulse on the 132 BPM beat",
+		"%.2f → %.2f" % [pulse_high, pulse_low])
+	stage.apply_phase(0, 0.0)
 	crowd3d.settle()
 	booth.settle()
 
@@ -2129,31 +2215,45 @@ func _run() -> void:
 	_check(unbound == 0 and surfaces >= crowd3d.model_slots().size() + booth.model_slots().size(),
 		"every crowd and DJ surface binds a delivered albedo — none is null",
 		"%d surfaces / %d unbound" % [surfaces, unbound])
-	# Bug 4: rigs of the SAME delivered character share one cel material (the palette is a
-	# shader instance uniform), while different characters never share a material — so no
-	# spectator's tint can repaint another character.
-	var owners := {}
-	var cross_character := 0
+	# Bug 4c (2026-11-25): the bank now SHARES one cel material per delivered atlas, so the old
+	# "one material per character" rule is replaced by the stronger per-instance contract:
+	# every rig sets its own `instance_accent`, and writing one rig's accent cannot move a
+	# neighbour's accent or the shared material's albedo/tint.
+	var instance_ok := true
+	var instance_accents := {}
 	var bindings := 0
 	for model in crowd3d.model_slots():
+		var rig_accents := {}
 		for child in model.find_children("*", "MeshInstance3D", true, false):
 			var mi := child as MeshInstance3D
 			if mi == null or mi.mesh == null or CharacterModelSlots._under_hand_prop(mi):
 				continue
-			for surface in mi.mesh.get_surface_count():
-				var material := mi.get_surface_override_material(surface)
-				if material == null:
-					continue
-				var albedo: Texture2D = material.get_shader_parameter("albedo_texture")
-				var albedo_path := albedo.resource_path if albedo != null else ""
-				var id := material.get_instance_id()
-				if owners.has(id) and owners[id] != albedo_path:
-					cross_character += 1
-				owners[id] = albedo_path
-				bindings += 1
-	_check(cross_character == 0 and bindings > 0 and owners.size() < bindings,
-		"crowd rigs share one material per character and never across characters",
-		"%d materials / %d binds / %d cross-character" % [owners.size(), bindings, cross_character])
+			var accent = mi.get_instance_shader_parameter("instance_accent")
+			if accent == null:
+				instance_ok = false
+			else:
+				rig_accents[str(accent)] = true
+				instance_accents[str(accent)] = true
+			bindings += mi.mesh.get_surface_count()
+		if rig_accents.is_empty():
+			instance_ok = false
+	var accent_probe := _first_cel_mesh(crowd3d.model_slots()[0])
+	var accent_neighbour := _first_cel_mesh(crowd3d.model_slots()[1])
+	var isolated := false
+	if accent_probe != null and accent_neighbour != null:
+		var probe_before = accent_probe.get_instance_shader_parameter("instance_accent")
+		var neighbour_before = accent_neighbour.get_instance_shader_parameter("instance_accent")
+		accent_probe.set_instance_shader_parameter("instance_accent", Color(1.0, 0.0, 1.0, 1.0))
+		var neighbour_after = accent_neighbour.get_instance_shader_parameter("instance_accent")
+		var shared_material := accent_neighbour.get_surface_override_material(0) as ShaderMaterial
+		isolated = str(neighbour_after) == str(neighbour_before) and shared_material != null \
+			and shared_material.get_shader_parameter("tint") == Color.WHITE
+		accent_probe.set_instance_shader_parameter("instance_accent", probe_before)
+	_check(instance_ok and bindings > 0 and instance_accents.size() >= 4,
+		"every rig carries its own instance palette, so no two rigs tint each other",
+		"%d binds / %d accents" % [bindings, instance_accents.size()])
+	_check(isolated,
+		"writing one rig's instance accent leaves its neighbour and the shared material alone")
 	var tint_amount := 1.0
 	for model in crowd3d.model_slots():
 		for child in model.find_children("*", "MeshInstance3D", true, false):

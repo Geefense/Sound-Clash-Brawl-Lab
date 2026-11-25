@@ -4932,3 +4932,162 @@ checked as a number (hand extension at the contact frame), never as motion. Feed
 recoil extremes are still the `0.30` fallback because their uploads contain no reaction take. The
 `HIT_SNAP`, `RECOVERY_HOLD_FRAMES`, camera-punch and beat-accent values are hand-set defaults for the
 owner's playtest.
+
+## 2026-11-25 — PART A · Bug 1: P2's back to P1 (measured facing)
+
+- Facing is now **measured**, never assumed: at load, after the idle take has driven the skeleton
+  for four frames, `_calibrate_facing()` converges the pivot offset until the world-space toe line
+  (`LeftToeBase−LeftFoot` averaged with `RightToeBase−RightFoot`, flattened) lands on the slot's
+  ±X axis. Ten further driven frames remove the mean idle-footwork residual. No magic per-model
+  yaw, no negative-scale mirroring. Calibrated: Feedback +86.1°, L!ckshot +135.5°, Young Selecta
+  +147.4° (the old 0°/0° entries were the bug: L!ckshot's rest toes measure ~136°, not +X).
+- The shoulder-line chest vector is the load-time cross-check (logged; warns above 20°). The
+  runtime chest/head facing probes report the **calibrated body frame**: authored torso twist and
+  head glances inside a take are animation, not facing, and the hips are still never touched.
+- `_pin_body_facing()` is the last word every frame: the measured world toe line is corrected onto
+  ±X by the facing pivot only, so lunge/attack stances cannot turn the drawn body away. It reports
+  the authored yaw through `facing_yaw_deg()` (the live check's pivot invariant still holds), and
+  `reset_skeleton_to_rest()` restores the authored yaw before any reach measurement.
+- `_measure_impact_times` now runs four driven frames after bind (AnimationPlayer tracks bound) and
+  resets the skeleton before **every** sample so its peak matches the feel audit's sampling exactly;
+  `t_impact` is a property of the clip alone.
+- `facing_audit.gd` grew from 94 to **310 checks**: all 9 pairings × both slots × idle / after an
+  attack / after a hitstop / after a slot swap, with toe, chest and head probes each within 5° of
+  the opponent's side. Suites: roster 425 (all pass), live 167, facing 310, feel 335 — 0 FAIL.
+
+## 2026-11-25 — PART A2 · Bug 3: readable punches (camera + strike silhouette)
+
+- **Camera (Arena3D).** Steady distance 4.80 → **4.58 m** (−4.6 %, still inside the roster's
+  55–65 % screen-height band). The lens now leans toward whichever fighter is in an attack
+  phase: a **±4°** yaw clamp, driven by a critically damped scalar integrated in place every
+  presented frame (no array, no allocation), and implemented as an orbit around the fighters'
+  midpoint so the framing distance is unchanged. A framing dolly eases back toward 9 m only
+  as the pair spreads, so normal spacing always shows the tighter 4.58 m lens.
+- **Strike silhouette.** `FighterModel3D.reach_boost` is exported and derived per body from the
+  largest contact reach its own takes measure (`AnimationFeel.reach_boost`, 10 %, clamped
+  0.012–0.070 m). On ACTIVE frames `FightBodyModifier3D` translates the striking hand that far
+  along the signed ±X fighting axis; the value rides `AnimationFeel.reach_boost_curve`, which is
+  zero at the coil and one at the measured `t_impact`, so the fist never pops on at the ACTIVE
+  seam. Hand bone only: hips, facing pivot, body root, collision and every hitbox are untouched,
+  and the facing pin stays inside 5°.
+- **Tests.** `live_match_check.gd` grew **167 → 191**: 9 pairings × both ±4° lean extremes at
+  maximum playable spacing, asserting head, hips and both feet are inside the frustum and on
+  screen with a margin, plus per-fighter ACTIVE-vs-idle camera-side fist screen extent and the
+  5° facing check through the boosted strike. Suites: roster all pass, live 191, facing 310,
+  feel 335 — 0 FAIL.
+- **Bug 2 (drawn-mesh knockdown seating) is DEFERRED, deliberately not shipped.** The work
+  existed locally: the lowest skinned vertex was seated to 0.012 m via the VisualPivot and the
+  sand band [−0.02, +0.03] passed for every fighter in both slots, and the foot pin was already
+  off in KNOCKDOWN/KO/JUMP. It failed two contracts: the **head-away orientation** on the two
+  Tripo rigs (their knockdown take topples head-first, so the head landed toward the opponent)
+  and the **get-up release** (3–6 cm single-frame vertical steps remained). The root cause is
+  the same one Bug 1 exposed: the rigs calibrate to different yaw offsets — **Mixamo 86° vs
+  Tripo 135–147°** — so a single downed-facing rule cannot be assumed across them. The
+  uncommitted experiment was reverted rather than committed red; the drawn-mesh tightening
+  remains open.
+
+## 2026-11-25 — PART B · Bugs 4 and 5: crowd redesign, Afternoon/Sunset/Night overhaul, Web export
+
+Branch `feature/3d-cel-shaded`, based on `5b46948`. A parallel PART B commit `15baeda`
+landed on this branch first; the implementation below **supersedes** its crowd and preset
+code — the same Bug 4/5 scope, measured against the built rigs and audited by 17 more checks
+— while its history stays intact. Everything below **extends** the existing files
+— `CrowdController3D.gd`, `Arena3D.gd`, `CharacterModelSlots.gd`, `toon_cel.gdshader`,
+`sky_gradient.gdshader`, `tools/headless_roster_check.gd` — nothing was duplicated. `BaseFighter.gd`
+`ANIM_OFFSET`, frame data, hitboxes, 132 BPM, Crowd Hype rules, all 31 Patois lines, the Bug 2
+downed-pose seating, the facing pivot pin / toe calibration (`cc2a7b5`) and the camera lean /
+`reach_boost` (`5b46948`) are untouched.
+
+### Bug 4 — the yard read as giants, could clip, and drifted off the beat
+
+**Root cause.** The packed yard drew heights from a 1.52–1.92 m band against a 1.55 m fighter (up to
+**+24 %**, a head taller than the fighters); its even spread carried **±0.14 m** seeded jitter on a
+ringside spacing of only **0.51 m**, narrower than a pair of shoulders, so neighbours could overlap
+and rows could clip; and every rig owned its own `ShaderMaterial` (22 materials for 22 bodies), so
+any palette work would have multiplied materials again. Motion was a generic sine bob unrelated to
+the 132 BPM clock.
+
+**Fix.**
+- **(a) Scale.** `Member.height` now comes from `FIGHTER_HEIGHT ± 8 %` (1.426–1.674 m). The audit
+  measures the *built* rig through `CharacterModelSlots.local_height()` (anchor yaw excluded, so a
+  rotated body cannot inflate the AABB) and compares it to 1.55 m.
+- **(b) Spacing.** Each slot's jitter is capped by its own row spacing,
+  `max(0, (spacing − MIN_SPACING) / 2)`, so no pair can close under **0.50 m**; the ringside band
+  widened 12 cm a side to make the room. `overlap_count()` tests a 0.50 × 0.34 m body footprint in
+  plan across all 231 pairs, which also proves rows cannot clip.
+- **(c) Look.** A seven-entry dancehall palette — green, gold, red, black, neon cyan, neon magenta,
+  neon lime — is assigned per rig and worn through the cel shader's **per-instance uniform**
+  `instance_accent`. `CharacterModelSlots.apply_cel_shared()` caches **one material per delivered
+  atlas** (10 for 22 rigs) instead of one per rig; crisp `diffuse_toon` banding and the
+  inverted-hull ink pass are unchanged.
+- **(d) Motion.** A 132 BPM skank: one bounce per beat plus a half-beat hip sway, every rig offset
+  inside the bar, all scalar math on the cached anchor — no per-frame allocation, no new nodes.
+  `react()` (the Crowd Hype rules) is untouched.
+
+### Bug 5 — three flat tints instead of three designed rigs
+
+**Root cause.** The presets were two-stop gradients with one spot colour, one fixed sand albedo, no
+horizon response, no tonemap or glow, and a night rig of two overhead spots that never moved with
+the music. The sand stayed the same brown card under three different skies.
+
+**Fix.** A three-stop sky (zenith / mid / horizon) plus a separate horizon-haze band in
+`sky_gradient.gdshader`; per-preset fog tint and density; sand, mound and horizon-band albedo
+re-graded with the phase; and **four** coloured stage `SpotLight3D`s whose night energies ride a
+scalar 132 BPM envelope (`stage_pulse()`), re-locked by `Arena3D.beat_pulse()`. The environment is
+now ACES tone-mapped with low additive glow; SSAO, SSIL, SDFGI and volumetric fog are explicitly
+off.
+
+| Preset | Sky top / mid / horizon | Key light | Rim | Sand albedo | Stage spots |
+| --- | --- | --- | --- | --- | --- |
+| Afternoon | `#1E6FD9` / `#6BAEF5` / `#FFE7B0` | `#FFD27A` @ 2.05, −52° | `#FFD98A` @ 0.85 | `#E0B875` | 0.20, resting |
+| Sunset | `#3B1D6E` / `#D6336C` / `#FF7A1A` | `#FF9A4D` @ 1.75, **−10°** (10° elevation) | `#FF5A36` @ 1.45 | `#F08F57` | 0.85, amber/violet |
+| Night | `#070B2E` / `#17134A` / `#2A1B5E` | `#6F8CFF` @ **0.16**, still shadowing | `#42EBFF` @ 1.60 | `#525275` | 2.60, cyan / magenta / amber / gold, ±45 % pulse |
+
+### Decisions worth keeping
+
+- **Per-instance uniforms carry emission only.** `instance_accent` is added to the rim band, never
+  multiplied into `ALBEDO`. Two reasons: the earlier playtest fix forbids dimming the delivered
+  texture, and Godot has a known WebGL2 defect where an overflowed instance-uniform buffer renders
+  affected instances black (`godotengine/godot#112674`). Under this design a dropped instance
+  buffer costs the accent, never the body.
+- **"Black" in the palette** is carried as a near-black ink accent over the gold pairing plus the
+  shader's existing ink outline; painting a body black would be a dimmer, which the crowd contract
+  forbids.
+- **Library limits.** The yard runs **7** lights (2 directional + 1 omni + 4 spots), inside
+  Compatibility's default `max_lights_per_object = 8`; `Arena3D.light_count()` and
+  `max_lights_per_object()` make that auditable rather than assumed.
+- **No programmer art.** No mesh, prop or character was added: `PropLoader` is still exactly five
+  empty slots (no `crowd_riser`), `legacy_mannequin_count()` stays 0, and the only new geometry is
+  the two lights themselves (no MeshInstance3D).
+
+### Tests and checks actually run (Godot 4.5.stable.official.876b29033, headless, Linux)
+
+- `headless_roster_check.gd` **425 → 442** checks, 0 FAIL: the new block asserts row Y strictly
+  rising with depth, every rig inside ±10 % of the fighter height, zero overlapping pairs, row
+  spacing ≥ 0.50 m, the green/gold/red/black + neon palette present, materials shared (10 < 22),
+  the skank locked to 132 BPM, 600 frames creating no nodes, every preset loading, sky/environment
+  resources present, the directional key still shadowing, 7 ≤ 8 lights, ACES + glow on with no
+  SSAO/SDFGI/volumetric fog, three distinct sand responses, four coloured night beams and a
+  beat-pulsed energy. The old "one material per character" assertion was replaced — not weakened —
+  by the stronger per-instance contract (every rig owns an accent; writing one rig's accent leaves
+  its neighbour and the shared material untouched).
+- `live_match_check.gd` **191**, `facing_audit.gd` **310**, `animation_feel_audit.gd` **335** — all
+  0 FAIL. Frustum and facing checks are unaffected.
+- Web export (4.5-stable headless, `Web` preset, GL Compatibility / no threads):
+  `godot --headless --path godot --export-release "Web" ../docs/index.html` — **no export errors**
+  (`docs/` 103 MB: `index.pck` 68.7 MB, `index.wasm` 38.1 MB plus companions).
+- Grep audit: no `CapsuleMesh` / `SphereMesh` / procedural character or prop builder anywhere under
+  `godot/scripts/`; the only `CylinderMesh` uses are the existing dubplate/dictionary projectile,
+  the vinyl parry and the sand mounds.
+
+### Unresolved / not verified
+
+- **Bug 2 (drawn-mesh knockdown tightening) stays deferred**, unchanged from PART A2: the knockdown
+  take on the two Tripo rigs topples head-first and the get-up still has 3–6 cm single-frame steps.
+- **Nothing was viewed.** There is no GPU or browser in this environment, so the palette, the
+  three skies, the haze, the glow/ACES response, the night beam colours and the skank feel are
+  **not visually verified**; the glow and tonemap are verified as *settings* only (they are
+  Compatibility-supported, and the export contains them without error).
+- The instance-uniform path is exercised on the desktop renderer in the headless audits; the Web
+  behaviour of the instance buffer is the exact case Godot's open issue describes, which is why the
+  accent is emission-only.

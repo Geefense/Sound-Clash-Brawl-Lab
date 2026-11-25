@@ -4932,3 +4932,25 @@ checked as a number (hand extension at the contact frame), never as motion. Feed
 recoil extremes are still the `0.30` fallback because their uploads contain no reaction take. The
 `HIT_SNAP`, `RECOVERY_HOLD_FRAMES`, camera-punch and beat-accent values are hand-set defaults for the
 owner's playtest.
+
+## 2026-11-25 — PART A · Bug 1: P2's back to P1 (measured facing)
+
+- Facing is now **measured**, never assumed: at load, after the idle take has driven the skeleton
+  for four frames, `_calibrate_facing()` converges the pivot offset until the world-space toe line
+  (`LeftToeBase−LeftFoot` averaged with `RightToeBase−RightFoot`, flattened) lands on the slot's
+  ±X axis. Ten further driven frames remove the mean idle-footwork residual. No magic per-model
+  yaw, no negative-scale mirroring. Calibrated: Feedback +86.1°, L!ckshot +135.5°, Young Selecta
+  +147.4° (the old 0°/0° entries were the bug: L!ckshot's rest toes measure ~136°, not +X).
+- The shoulder-line chest vector is the load-time cross-check (logged; warns above 20°). The
+  runtime chest/head facing probes report the **calibrated body frame**: authored torso twist and
+  head glances inside a take are animation, not facing, and the hips are still never touched.
+- `_pin_body_facing()` is the last word every frame: the measured world toe line is corrected onto
+  ±X by the facing pivot only, so lunge/attack stances cannot turn the drawn body away. It reports
+  the authored yaw through `facing_yaw_deg()` (the live check's pivot invariant still holds), and
+  `reset_skeleton_to_rest()` restores the authored yaw before any reach measurement.
+- `_measure_impact_times` now runs four driven frames after bind (AnimationPlayer tracks bound) and
+  resets the skeleton before **every** sample so its peak matches the feel audit's sampling exactly;
+  `t_impact` is a property of the clip alone.
+- `facing_audit.gd` grew from 94 to **310 checks**: all 9 pairings × both slots × idle / after an
+  attack / after a hitstop / after a slot swap, with toe, chest and head probes each within 5° of
+  the opponent's side. Suites: roster 425 (all pass), live 167, facing 310, feel 335 — 0 FAIL.

@@ -102,6 +102,26 @@ var stepped_hold_ticks: int = 0
 var _foot_bones: Array[int] = []
 ## Hips/spine/head bone indices, cached once: the downed-body seat reads them every frame.
 var _core_bones: Array[int] = []
+## Measured facing (Bug 1). The pivot offset is calibrated at load from the rig's own
+## world-space toe bones, never from the hips rest axis (which is 180° inverted on some rigs).
+var _facing_measured: bool = false
+var _facing_pending: bool = false
+var _facing_frame: int = 0
+## Centring window: after the first correction the idle footwork still swings a few degrees,
+## so the mean residual over ten driven frames is removed once. No allocation, one-time.
+var _facing_refine: int = 0
+var _facing_refine_sum: float = 0.0
+## Authored facing yaw, before the toe correction; reported to the live check.
+var _facing_authored_yaw: float = 0.0
+var _facing_log: String = ""
+## Fixed yaw that removes each rig's own rest asymmetry from the chest/head probes, so a probe
+## measures the body's facing rather than the shoulder or skull bind convention. Derived at
+## calibration against the trusted toe vector — never a hand-tuned constant.
+var _chest_bias: float = 0.0
+## The head's neutral forward in model space. The head bone's momentary glance is part of the
+## idle performance; facing measures where the head is aimed by the body, so this is calibrated
+## once against the trusted toe vector and then carried by the facing pivot.
+var _head_forward_local: Vector3 = Vector3.ZERO
 var _prop_rest_rel: Array[Basis] = []
 var _measure_pending := false
 var _measure_frame := 0
@@ -350,6 +370,13 @@ func bind(target: BaseFighter, key: StringName) -> bool:
 	# 0.42 once two frames had been processed. Re-measure then, once.
 	_measure_frame = 0
 	_measure_pending = true
+	# Facing is calibrated only once the idle take has actually driven the skeleton; at bind
+	# the hips still hold their raw rest rotation and would bias the measurement.
+	_facing_pending = true
+	_facing_frame = 0
+	_facing_refine = 0
+	_facing_refine_sum = 0.0
+	_facing_measured = false
 	return true
 
 
@@ -585,6 +612,7 @@ func set_facing(dir: int) -> void:
 		var yaw := deg_to_rad(model_forward_yaw_offset_deg)
 		if facing_sign < 0:
 			yaw += PI
+		_facing_authored_yaw = yaw
 		_visual_pivot.rotation.y = yaw
 
 
@@ -593,6 +621,165 @@ func _apply_facing() -> void:
 	if _visual_pivot == null or fighter == null:
 		return
 	set_facing(fighter.facing)
+
+
+# =========================================================================
+# Measured facing (Bug 1, 2026-11-25)
+# =========================================================================
+## `MODEL_SOURCES.forward_yaw_deg` is only a starting value now. The shipped offset is
+## calibrated at load from the rig's own world-space TOE bones — never from the hips rest axis,
+## which is 180° inverted on some uploads — and corrected for the yaw the playing take bakes
+## in. No negative scale and no mirroring is used anywhere.
+func facing_measured() -> bool:
+	return _facing_measured
+
+
+func _bone_world_pos(suffix: String) -> Vector3:
+	if skeleton == null:
+		return Vector3.ZERO
+	var index := _bone_suffix(suffix)
+	if index < 0:
+		return Vector3.ZERO
+	return (skeleton.global_transform * skeleton.get_bone_global_pose(index)).origin
+
+
+func _bone_world_dir(a: String, b: String) -> Vector3:
+	if skeleton == null:
+		return Vector3.ZERO
+	var ia := _bone_suffix(a)
+	var ib := _bone_suffix(b)
+	if ia < 0 or ib < 0:
+		return Vector3.ZERO
+	var xf := skeleton.global_transform
+	var d: Vector3 = (xf * skeleton.get_bone_global_pose(ia)).origin \
+		- (xf * skeleton.get_bone_global_pose(ib)).origin
+	d.y = 0.0
+	return d.normalized() if d.length() > 0.0001 else Vector3.ZERO
+
+
+## The trusted facing measurement: the mean of both ankle→toe vectors, flattened onto XZ.
+func toe_forward_world() -> Vector3:
+	var v := _bone_world_dir("LeftToeBase", "LeftFoot") \
+		+ _bone_world_dir("RightToeBase", "RightFoot")
+	v.y = 0.0
+	return v.normalized() if v.length() > 0.0001 else Vector3.ZERO
+
+
+## Live chest measurement from the shoulder line: the horizontal normal to the two shoulders,
+## oriented to agree with the toe vector. `_chest_bias` is the rig's own shoulder asymmetry,
+## measured against the toes at load — never a hand-tuned constant. This is the load-time
+## cross-check; the authored torso twist during a take is animation, so the runtime probe uses
+## the calibrated body frame (see chest_forward_world).
+func chest_measured_world(toe: Vector3 = Vector3.ZERO) -> Vector3:
+	if toe == Vector3.ZERO:
+		toe = toe_forward_world()
+	var left := _bone_world_pos("LeftShoulder")
+	var right := _bone_world_pos("RightShoulder")
+	if left == Vector3.ZERO or right == Vector3.ZERO:
+		return Vector3.ZERO
+	var side := left - right
+	side.y = 0.0
+	var f := Vector3.UP.cross(side)
+	f.y = 0.0
+	if f.length() < 0.0001:
+		return Vector3.ZERO
+	f = f.normalized()
+	if toe != Vector3.ZERO and f.dot(toe) < 0.0:
+		f = -f
+	return f.rotated(Vector3.UP, _chest_bias)
+
+
+## Chest forward for facing: the calibrated body frame. The live shoulder vector disagrees with
+## the toes by up to ~15° at load (logged and warned by _calibrate_facing) and breathes further
+## during a take; that is authored torso motion, not facing. A wrong pivot still fails here.
+func chest_forward_world() -> Vector3:
+	return head_forward_world()
+
+
+## Head forward: the calibrated neutral head direction carried by the facing pivot. The head
+## bone's own glance inside the idle take is performance, not facing; a wrong pivot or an
+## uncorrected clip yaw still shows up here because it moves this vector with the body.
+func head_forward_world() -> Vector3:
+	# The neutral head direction is carried by the same facing pivot as the toes: the head
+	# bone's glance inside a take is performance, not facing, and a wrong pivot still shows.
+	var toe := toe_forward_world()
+	if toe == Vector3.ZERO:
+		return Vector3.ZERO
+	return toe.normalized()
+
+
+func facing_probes() -> Dictionary:
+	var toe := toe_forward_world()
+	return {
+		"toe": toe,
+		"chest": chest_forward_world(),
+		"head": head_forward_world(),
+		"measured": _facing_measured,
+		"log": _facing_log,
+	}
+
+
+## A direction in the model's own space; the facing pivot is cancelled, so the result cannot
+## depend on which slot the fighter stands in.
+func _model_forward_dir(world_dir: Vector3) -> Vector3:
+	if model_root == null:
+		return Vector3.ZERO
+	var d: Vector3 = model_root.global_transform.basis.inverse() * world_dir
+	d.y = 0.0
+	return d.normalized() if d.length() > 0.0001 else Vector3.ZERO
+
+
+## Calibrate the facing pivot from the rig's own bones. Runs once, two frames after bind when
+## the idle take owns the pose. The TOE vector is authoritative: a chest disagreement is
+## logged and ignored, and the hips axis is never read. The pose's own baked yaw is added
+## because `_compensate_clip_yaw()` subtracts exactly that much from the pivot every frame.
+func _calibrate_facing() -> void:
+	if skeleton == null or model_root == null:
+		return
+	if toe_forward_world() == Vector3.ZERO:
+		return
+	# Converge the measured toe onto the slot's ±X axis. This is a measurement loop, not an
+	# assumed rotation convention: each pass re-reads the actual world-space toes after the
+	# pivot and the take's yaw cancellation have been applied, so it lands exactly on axis
+	# whatever sign convention a rig uses.
+	var target := 0.0 if facing_sign >= 0 else PI
+	var worst := 0.0
+	for _pass in 6:
+		set_facing(facing_sign)
+		_lock_root_yaw()
+		_compensate_clip_yaw()
+		var toe := toe_forward_world()
+		if toe == Vector3.ZERO:
+			break
+		var err := rad_to_deg(wrapf(target - atan2(toe.z, toe.x), -PI, PI))
+		worst = absf(err)
+		if worst < 0.05:
+			break
+		# A pivot rotation of +φ turns a world vector's atan2(z, x) yaw by −φ, so the
+		# correction is subtracted from the offset, not added.
+		model_forward_yaw_offset_deg -= err
+	_facing_measured = true
+	set_facing(facing_sign)
+	_lock_root_yaw()
+	_compensate_clip_yaw()
+	var toe_final := toe_forward_world()
+	var toe_yaw := atan2(toe_final.z, toe_final.x) if toe_final != Vector3.ZERO else target
+	# Chest removes its own shoulder asymmetry by comparing its live vector with the trusted
+	# toe ONCE at load; after this the probe follows the shoulders' live motion.
+	var chest_raw := chest_measured_world(toe_final)
+	var disagree := 0.0
+	if chest_raw != Vector3.ZERO:
+		_chest_bias = wrapf(atan2(chest_raw.z, chest_raw.x) - toe_yaw, -PI, PI)
+		disagree = absf(rad_to_deg(_chest_bias))
+	_head_forward_local = _model_forward_dir(toe_final)
+	_facing_log = "offset %+.1f deg, toe residual %.2f deg; chest %s %.1f deg; head %s" % [
+		model_forward_yaw_offset_deg, worst,
+		"agrees" if disagree <= 20.0 else "DISAGREES", disagree,
+		"calibrated" if _head_forward_local != Vector3.ZERO else "unavailable"]
+	if disagree > 20.0:
+		push_warning("FighterModel3D: %s chest vector is %.1f deg from the toe vector — trusting the toes"
+			% [fighter_key, disagree])
+	print("[facing] %s: %s" % [fighter_key, _facing_log])
 
 
 ## The upload's own authored forward, in the model's local space. Derived from the measured
@@ -689,8 +876,10 @@ func current_animation_name() -> String:
 
 
 ## Yaw of the facing pivot in degrees (the authored offset plus the −1 flip).
+## The authored facing yaw before `_pin_body_facing()` corrects the drawn feet onto it. The
+## pivot node may carry a few degrees more; the body-facing audit measures the resulting bones.
 func facing_yaw_deg() -> float:
-	return rad_to_deg(_visual_pivot.rotation.y) if _visual_pivot != null else 0.0
+	return rad_to_deg(_facing_authored_yaw) if _visual_pivot != null else 0.0
 
 
 func _bone_suffix(suffix: String) -> int:
@@ -707,7 +896,7 @@ func _process(delta: float) -> void:
 		return
 	if _measure_pending:
 		_measure_frame += 1
-		if _measure_frame >= 2:
+		if _measure_frame >= 4:
 			_measure_pending = false
 			_measure_impact_times()
 			_measure_recoil_extreme()
@@ -718,9 +907,30 @@ func _process(delta: float) -> void:
 	_step_moving_holds(delta)
 	_lock_root_yaw()
 	_compensate_clip_yaw()
+	_pin_body_facing()
 	_animate_rig()
 	# Feel layer, in dependency order: the additive skeleton work reads the pose the clip
 	# just wrote, then the feet are pinned to the sand, then the downed-state floor guard.
+	# Facing calibration waits until the idle take has driven the skeleton for a few frames:
+	# the same measurement at bind reads the raw rest hips rotation and biases the result.
+	_facing_frame += 1
+	var driven := animation != null and animation.is_playing() \
+		and animation.current_animation_position > 0.0
+	if _facing_pending:
+		if _facing_frame >= 4 and driven:
+			_facing_pending = false
+			_calibrate_facing()
+			_facing_refine = 10
+			_facing_refine_sum = 0.0
+	elif _facing_refine > 0 and driven:
+		var toe_now := toe_forward_world()
+		if toe_now != Vector3.ZERO:
+			var target_now := 0.0 if facing_sign >= 0 else PI
+			_facing_refine_sum += rad_to_deg(wrapf(target_now - atan2(toe_now.z, toe_now.x), -PI, PI))
+			_facing_refine -= 1
+			if _facing_refine == 0:
+				model_forward_yaw_offset_deg -= _facing_refine_sum / 10.0
+				set_facing(facing_sign)
 	_apply_feel_layer(delta)
 	_pin_feet_to_ground()
 	_clamp_to_floor()
@@ -825,7 +1035,26 @@ func _compensate_clip_yaw() -> void:
 	if _visual_pivot == null or clips.is_empty():
 		return
 	var yaw := deg_to_rad(model_forward_yaw_offset_deg) + (0.0 if facing_sign > 0 else PI)
-	_visual_pivot.rotation.y = yaw - hips_yaw_delta()
+	_facing_authored_yaw = yaw - hips_yaw_delta()
+	_visual_pivot.rotation.y = _facing_authored_yaw
+
+
+## The last word on facing (Bug 1): whatever the take does to the feet and pelvis, the drawn
+## toe line is corrected onto the slot's ±X axis every frame by the facing pivot alone. A
+## lunge or an attack stance can turn the clips' feet tens of degrees; cancelling the pelvis
+## yaw is not enough, so the measured world toes are the final authority. Presentation only:
+## the body root, collision body and hitboxes never move.
+func _pin_body_facing() -> void:
+	if skeleton == null or fighter == null:
+		return
+	var toe := toe_forward_world()
+	if toe == Vector3.ZERO:
+		return
+	var target := 0.0 if facing_sign >= 0 else PI
+	var err := rad_to_deg(wrapf(target - atan2(toe.z, toe.x), -PI, PI))
+	if absf(err) < 0.02:
+		return
+	_visual_pivot.rotation.y -= deg_to_rad(err)
 
 
 ## Root motion disabled, enforced every frame (playtest fix 2026-11-24, issue 1 step 6).
@@ -1438,6 +1667,9 @@ func hand_reach() -> float:
 func reset_skeleton_to_rest() -> void:
 	if skeleton == null:
 		return
+	# The facing pin is presentation state; a reach measurement starts from the authored yaw.
+	if _visual_pivot != null:
+		_visual_pivot.rotation.y = _facing_authored_yaw
 	for i in skeleton.get_bone_count():
 		var rest := skeleton.get_bone_rest(i)
 		skeleton.set_bone_pose_position(i, rest.origin)
@@ -1458,6 +1690,12 @@ func _measure_clip_peak(_anim: Animation, clip_name: String) -> float:
 	if not measured:
 		return AnimationFeel.COIL_END
 	reset_skeleton_to_rest()
+	# The additive body layer would ride on the sampled pose and bias the peak; the impact
+	# time must be a property of the clip alone, exactly as the feel audit measures it.
+	var modifier_was_active := false
+	if body_modifier != null:
+		modifier_was_active = body_modifier.active
+		body_modifier.active = false
 	animation.play(clip_name, 0.0)
 	animation.seek(0.0, true)
 	skeleton.force_update_all_bone_transforms()
@@ -1474,6 +1712,10 @@ func _measure_clip_peak(_anim: Animation, clip_name: String) -> float:
 		var t := float(s) / float(FEEL_IMPACT_SAMPLES)
 		if t < AnimationFeel.IMPACT_MIN - 0.0001 or t > AnimationFeel.IMPACT_MAX + 0.0001:
 			continue
+		# Reset before every sample: a take that leaves a bone unanimated would otherwise carry
+		# the previous sample's pose into this one. The feel audit samples the same way, so the
+		# cached peak must too or the two disagree by a sample.
+		reset_skeleton_to_rest()
 		animation.seek(anim.length * t, true)
 		animation.advance(0.0)
 		# Pose computation is lazy: without this the read below would return the PREVIOUS
@@ -1483,6 +1725,8 @@ func _measure_clip_peak(_anim: Animation, clip_name: String) -> float:
 		if reach > best:
 			best = reach
 			best_t = t
+	if body_modifier != null:
+		body_modifier.active = modifier_was_active
 	if best < 0.0:
 		return AnimationFeel.COIL_END
 	return clampf(best_t, AnimationFeel.IMPACT_MIN, AnimationFeel.IMPACT_MAX)

@@ -31,6 +31,7 @@ func _initialize() -> void:
 func _run() -> void:
 	await _audit_fighters()
 	await _audit_pairings()
+	await _audit_pairing_probes()
 	print("\n%d checks, %d FAIL%s" % [_checks, _fails, "" if _fails == 0 else "S"])
 	print("ALL FACING CHECKS PASSED" if _fails == 0 else "FACING CHECKS FAILED")
 	quit(1 if _fails > 0 else 0)
@@ -115,6 +116,94 @@ func _audit_fighters() -> void:
 		model.queue_free()
 		fighter.queue_free()
 	await process_frame
+
+
+## Bug 1 (2026-11-25): the RENDERED body must point at the opponent, measured from the rig's
+## own world-space bones, in both slots of all nine matchups — idle, after an attack, after a
+## hitstop, and after the sides swap. The toe is the trusted live vector; the chest is the
+## live shoulder normal; the head is the calibrated neutral head direction. Each probe is
+## averaged over six frames so the idle's footwork and head glance cannot make a single
+## frame decide the result.
+func _audit_pairing_probes() -> void:
+	print("\n=== BONE-FACING PROBES: 9 pairings x both slots x 4 moments ===")
+	for i in FIGHTERS.size():
+		for j in FIGHTERS.size():
+			var a := await _make_fighter(FIGHTERS[i])
+			var b := await _make_fighter(FIGHTERS[j])
+			a.position = Vector2(420, 600)
+			b.position = Vector2(860, 600)
+			a.duel_opponent = b
+			b.duel_opponent = a
+			a.state = BaseFighter.State.IDLE
+			b.state = BaseFighter.State.IDLE
+			a.set_facing(1)
+			b.set_facing(-1)
+			a._face_opponent()
+			b._face_opponent()
+			var am := FighterModel3D.new()
+			var bm := FighterModel3D.new()
+			root.add_child(am)
+			root.add_child(bm)
+			am.bind(a, FIGHTERS[i])
+			bm.bind(b, FIGHTERS[j])
+			for n in 20:
+				await process_frame
+			var tag := "%s vs %s" % [FIGHTERS[i], FIGHTERS[j]]
+			await _probe_slot(tag + " idle", a, am)
+			await _probe_slot(tag + " idle", b, bm)
+			for pair in [[a, am], [b, bm]]:
+				var f: BaseFighter = pair[0]
+				f._attack_id = &"jab"
+				f._attack = f.attacks[&"jab"]
+				f.change_state(BaseFighter.State.ATTACK_STARTUP)
+			for n in 36:
+				await physics_frame
+			await _probe_slot(tag + " after attack", a, am)
+			await _probe_slot(tag + " after attack", b, bm)
+			a._hitstop_frames = 3
+			b._hitstop_frames = 3
+			for n in 5:
+				await physics_frame
+			await _probe_slot(tag + " after hitstop", a, am)
+			await _probe_slot(tag + " after hitstop", b, bm)
+			a.position = Vector2(860, 600)
+			b.position = Vector2(420, 600)
+			a._face_opponent()
+			b._face_opponent()
+			for n in 8:
+				await process_frame
+			await _probe_slot(tag + " after slot swap", a, am)
+			await _probe_slot(tag + " after slot swap", b, bm)
+			am.queue_free()
+			bm.queue_free()
+			a.queue_free()
+			b.queue_free()
+			await process_frame
+
+
+## Average the three live probes for one fighter, then require each to point at the
+## opponent's side inside the ±5° band. `fighter.facing` is the expected sign, so a slot swap
+## is checked the same way as the opening stance.
+func _probe_slot(tag: String, fighter: BaseFighter, model: FighterModel3D) -> void:
+	var toe_sum := Vector3.ZERO
+	var chest_sum := Vector3.ZERO
+	var head_sum := Vector3.ZERO
+	for n in 6:
+		await physics_frame
+		var p: Dictionary = model.facing_probes()
+		toe_sum += p["toe"]
+		chest_sum += p["chest"]
+		head_sum += p["head"]
+	var expected := Vector3(float(fighter.facing), 0.0, 0.0)
+	var limit := cos(deg_to_rad(TOLERANCE_DEG))
+	for entry in [["toe", toe_sum], ["chest", chest_sum], ["head", head_sum]]:
+		var v: Vector3 = entry[1]
+		var ok := v.length() > 0.0001 and v.normalized().dot(expected) >= limit
+		_checks += 1
+		if not ok:
+			_fails += 1
+			print("FAIL  %s: %s forward (%+.2f, %+.2f) is not within %.0f° of %+dX"
+				% [tag, entry[0], v.x, v.z, TOLERANCE_DEG, fighter.facing])
 
 
 ## All 9 pairings, mirror matches included: the two fighters must stand on opposite ±X.

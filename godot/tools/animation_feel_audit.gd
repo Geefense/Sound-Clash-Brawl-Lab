@@ -283,7 +283,10 @@ func _audit_fighter(key: StringName) -> void:
 		_check(false, "%s: could not bind a 3D model" % key)
 		fighter.queue_free()
 		return
-	await process_frame
+	# The AnimationPlayer binds its tracks only after it has processed frames, and the model
+	# re-measures `t_impact` once that has happened; read the table after that, not before.
+	for i in 4:
+		await process_frame
 	model.set_stepped_arcade(true)
 	# Freeze the fighter's own tick for the whole audit: every measurement below sets an exact
 	# combat phase by hand, and a live physics tick would advance the attack behind it.

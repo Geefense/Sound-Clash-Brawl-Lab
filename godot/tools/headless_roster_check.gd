@@ -2446,6 +2446,49 @@ func _run() -> void:
 	_check(FileAccess.file_exists("res://assets/models/props/README.md"),
 		"the props folder documents the five expected files")
 
+	# ---- Commit 6: the per-slot seating maths, data only --------------------------------
+	# No mesh asset is added for this: a made-up AABB drives the same static functions the
+	# loader runs, so the scale and the ground offset are proved without a delivered model.
+	var speaker_box := AABB(Vector3(-0.5, -1.2, -0.4), Vector3(1.0, 2.4, 0.8))
+	var speaker_scale := PropLoader.seat_scale_for(speaker_box, 2.6)
+	_check(is_equal_approx(speaker_scale, 2.6 / 2.4),
+		"a 2.4 m speaker box scales to the 2.6 m target",
+		"x%.3f" % speaker_scale)
+	var speaker_bottom: float = speaker_box.position.y * speaker_scale \
+		+ PropLoader.seat_offset_y(speaker_box, speaker_scale)
+	_check(absf(speaker_bottom) < 0.0001,
+		"the seat offset puts the lowest vertex on Y = 0", "%.4f m" % speaker_bottom)
+	_check(absf(PropLoader.seat_scale_for(speaker_box, 0.0) - 1.0) < 0.0001,
+		"a 0.0 target keeps the delivered scale",
+		"x%.3f" % PropLoader.seat_scale_for(speaker_box, 0.0))
+	_check(absf(PropLoader.seat_scale_for(AABB(), 2.0) - 1.0) < 0.0001,
+		"a degenerate box is never scaled")
+	var table_ok := true
+	var prop_heights := {
+		"jamaican_speaker": 2.6, "rasta_speaker": 2.6, "dj_booth": 1.15,
+		"wireless_mic": 0.0, "mic_stand": 0.0,
+	}
+	for stem in prop_heights:
+		var path := "res://assets/models/props/%s.glb" % stem
+		if not is_equal_approx(PropLoader.target_height_for(path), float(prop_heights[stem])):
+			table_ok = false
+	_check(table_ok,
+		"every prop slot resolves its table height from the file stem",
+		"speakers 2.6, booth 1.15, mic and stand native")
+	var defaults_ok := true
+	for slot in prop_slots:
+		if not slot.auto_ground_y or not is_zero_approx(slot.target_height_m):
+			defaults_ok = false
+		if not is_equal_approx(slot.resolved_target_height(),
+				PropLoader.target_height_for(slot.model_path)):
+			defaults_ok = false
+	_check(defaults_ok, "the five slots ship with seating on and no override")
+	var empty_seating := true
+	for slot in prop_slots:
+		if not is_zero_approx(slot.seated_bottom()) or not is_zero_approx(slot.seated_height()):
+			empty_seating = false
+	_check(empty_seating, "an empty slot seats nothing", "no measured AABB")
+
 	# ---- Esc back to Character Select ------------------------------------
 	setup.escape_to_setup()
 	await process_frame

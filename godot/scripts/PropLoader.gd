@@ -24,8 +24,26 @@ const EXPECTED_MODELS := [
 	"res://assets/models/props/mic_stand.glb",
 ]
 
+## Per-slot target height in metres, keyed by the model's file stem (PART 2, commit 6).
+## `0.0` means "keep the delivered scale" — the mic and the stand are handheld props whose
+## real size the export already carries, so they are never rescaled.
+const TARGET_HEIGHT_M := {
+	"jamaican_speaker": 2.6,
+	"rasta_speaker": 2.6,
+	"dj_booth": 1.15,
+	"wireless_mic": 0.0,
+	"mic_stand": 0.0,
+}
+## Below this the measured AABB is treated as degenerate and no seating is attempted.
+const SEAT_EPSILON := 0.0005
+
 ## Where the model lives, e.g. `res://assets/models/props/jamaican_speaker.glb`.
 @export var model_path: String = ""
+## Seat the delivered model on the sand and scale it to its target height (commit 6). Off leaves
+## the export exactly as authored — position `place_transform`, delivered scale.
+@export var auto_ground_y: bool = true
+## Overrides the per-slot table for this slot when it is above 0.0. `0.0` uses the table.
+@export var target_height_m: float = 0.0
 ## Transform applied to the instanced model inside this slot. Leave it at identity and use
 ## the slot node's own `position` / `rotation_degrees` / `scale` for placement; use this when
 ## the model's own pivot needs an offset that the slot's placement should not carry.
@@ -37,6 +55,11 @@ const EXPECTED_MODELS := [
 
 ## The instanced model, or null while the file is missing.
 var model: Node3D = null
+## What the seating pass measured and applied, for the headless audit. `seat_scale` is 1.0 and
+## `seat_offset_y` is 0.0 on an empty slot or when `auto_ground_y` is off.
+var measured_aabb := AABB()
+var seat_scale_applied: float = 1.0
+var seat_offset_applied: float = 0.0
 
 
 func _ready() -> void:
@@ -68,6 +91,7 @@ func load_model() -> bool:
 	node.transform = place_transform
 	add_child(node)
 	model = node
+	_seat_model(node)
 	# Same cel/ink treatment the fighters and crowd wear, with a white tint and the shader's
 	# shadow bias off, so the delivered albedo renders at full brightness. `apply_cel` skips
 	# any surface the exporter left without a texture and warns about it; the model stays.
@@ -80,6 +104,80 @@ func load_model() -> bool:
 ## True while the slot is empty. Used by the headless check and the tree dump.
 func is_empty() -> bool:
 	return not is_instance_valid(model)
+
+
+## The target height this slot resolves to: the export override when above zero, else the
+## per-slot table entry, else 0.0 (keep the delivered scale).
+func resolved_target_height() -> float:
+	if target_height_m > 0.0:
+		return target_height_m
+	return target_height_for(model_path)
+
+
+## Table lookup by file stem, so a slot never has to repeat its height.
+static func target_height_for(path: String) -> float:
+	return float(TARGET_HEIGHT_M.get(path.get_file().get_basename(), 0.0))
+
+
+## Uniform scale that brings a model of `box.size.y` to `target_height`. Data only: no mesh,
+## no scene, no node. 1.0 when the height is 0 (keep native scale) or the box is degenerate.
+static func seat_scale_for(box: AABB, target_height: float) -> float:
+	if target_height <= 0.0 or box.size.y <= SEAT_EPSILON:
+		return 1.0
+	return target_height / box.size.y
+
+
+## The Y offset that puts the box's lowest vertex on the ground after a uniform scale about
+## the model's own origin. Meshy exports arrive with a centred origin, so `box.position.y` is
+## negative for a standing prop and this lifts it by exactly that much.
+static func seat_offset_y(box: AABB, uniform_scale: float) -> float:
+	return -box.position.y * uniform_scale
+
+
+## One measure-then-place pass at load: uniform scale to the target height, then the lowest
+## vertex flushed to Y = 0.0. The AABB is measured once, from the real meshes, in the slot's
+## local space; nothing here runs per frame.
+func _seat_model(node: Node3D) -> void:
+	measured_aabb = _local_mesh_bounds(node)
+	if measured_aabb.size == Vector3.ZERO:
+		return
+	var target := resolved_target_height()
+	var s := seat_scale_for(measured_aabb, target)
+	if not is_equal_approx(s, 1.0):
+		node.scale = node.scale * s
+	seat_scale_applied = s
+	if auto_ground_y:
+		var p := node.position
+		p.y += seat_offset_y(measured_aabb, s)
+		node.position = p
+		seat_offset_applied = seat_offset_y(measured_aabb, s)
+
+
+## Union of the model's mesh boxes in this slot's local space.
+func _local_mesh_bounds(node: Node3D) -> AABB:
+	var out := AABB()
+	var first := true
+	var to_local := node.global_transform.affine_inverse()
+	for child in node.find_children("*", "MeshInstance3D", true, false):
+		var mi := child as MeshInstance3D
+		if mi == null or mi.mesh == null:
+			continue
+		var box: AABB = (to_local * mi.global_transform) * mi.mesh.get_aabb()
+		out = box if first else out.merge(box)
+		first = false
+	return out
+
+
+## Lowest point of the seated model in slot space (0.0 when empty).
+func seated_bottom() -> float:
+	if measured_aabb.size == Vector3.ZERO:
+		return 0.0
+	return measured_aabb.position.y * seat_scale_applied + seat_offset_applied
+
+
+## Height the seated model ends up with, after the uniform scale.
+func seated_height() -> float:
+	return measured_aabb.size.y * seat_scale_applied
 
 
 func _missing(what: String) -> void:

@@ -4760,3 +4760,61 @@ nothing, and no damage/startup/active/recovery value moved.
 fighters. The check now measures that the layer **does not change** the hips scale.
 
 Suites: feel audit **172** (was 151), facing **94**, live match **167**, roster **425** — all 0 FAIL.
+
+### COMMIT 4 — Whole-body engagement: chest cheat, influence cap, ordering contract
+
+The counter-twist, the negative space and the explicit `SkeletonModifier3D` drive already existed;
+this commit adds the parts the spec was missing and makes the ordering a property of the scene rather
+than a comment.
+
+- **Camera-facing chest cheat.** `AnimationFeel.CHEST_CHEAT = 0.075` rad (**4.3°**, measured on all
+  three bodies) turns `Spine2` out of pure profile — full at the strike pose, a third of it in a
+  neutral stance — on top of the existing neck/head eye-line. It is an **absolute** yaw, never
+  facing-signed: the camera does not move when the fighter turns, so the chest always opens toward
+  it. This is what keeps the contact silhouette readable at phone size instead of collapsing to a
+  line.
+- **Total influence cap.** The layer is a garnish on a baked take, not a second animation, so it now
+  budgets its yaw. **`MAX_BONE_YAW = 0.30` rad per bone, cumulative across every system in the frame**
+  (two systems writing the same spine cannot add up past 17°), and **`INFLUENCE_CAP = 1.20` rad per
+  frame**. `_yaw_budget` is a `PackedFloat32Array` resized once at bind and refilled per frame — no
+  allocation, no dictionary. Measured: a deliberately absurd request (2.0 rad chest + 2.0 rad twist)
+  is clipped to **17.2°** on the spine and **0.60 rad** total; the *real* maximum strike stack — twist,
+  negative space, eye-line, chest, overshoot, arc, tension and a counter recoil all at once — spends
+  **0.94 rad**, so the cap never bites on legitimate work.
+- **Ordering is structural.** The modifier is a child of the fighter's `Skeleton3D` with
+  `active = false`, driven by `FighterModel3D._process` at priority 100 between `_drive_clip_time()`
+  (the curve) and `_pin_feet_to_ground()`. The audit asserts parent + `active` so a future change
+  cannot let the skeleton invoke it at an unknown point in the frame.
+- **Facing re-verified:** `facing_audit` **94/94**, plus the audit's own ±5° check with every system at
+  maximum influence.
+
+Suites: feel audit **190** (was 172), facing **94**, live match **167**, roster **425** — all 0 FAIL.
+Real `TestArena.tscn` booted 240 frames headless with no script error.
+
+### PART 1 summary
+
+| Commit | Hash | Content | Suites |
+| --- | --- | --- | --- |
+| 0 | `93cfc02` | Audit table + baselines (docs only) | 425 / 123 / 94 / 142 |
+| 1 | `65f514d` | Press-frame + live-arena presentation contract tests (123 → 167) | 425 / 167 / 94 / 142 |
+| 2 | `a2a8b1b` | `step_fps` export, 16 fps re-grid proven (142 → 151) | 425 / 167 / 94 / 151 |
+| 3 | `1b1ea3d` | Weight-scaled coil, arc enforcement, 1-frame limb smear (151 → 172) | 425 / 167 / 94 / 172 |
+| 4 | *(this)* | Chest cheat, influence cap, ordering contract (172 → 190) | 425 / 167 / 94 / 190 |
+
+**`/docs` rebuilt** with the pinned Godot 4.5 toolchain after commit 4, so the playable build is this
+source revision: `index.pck` **68,673,716 B**, `index.wasm` 38,057,390 B, `index.js` 305,185 B,
+`index.html` 5,449 B. The old `.pck` was deleted first because the 4.3 GB disk was at 98 %, and the
+engine download in `/tmp` was removed after the export.
+
+Everything above is **presentation only**. `BaseFighter.gd` (`d69c8d85…f675`) and `FighterRoster.gd`
+(`25b9d821…adb`) are byte-identical at every commit — `ANIM_OFFSET`, all frame data, hitboxes, the
+132 BPM beat clock, the Crowd Hype rules and the 31 Patois entries are untouched, and the feel audit
+re-hashes both files on every run. Zero programmer art was added; the five `PropLoader` slots are
+still empty and still warn.
+
+**Not verified:** no GPU, display or audio device in this environment, so nothing was **seen**: the
+stepped read, the whip/arc/smear as they feel, the deep coil on a heavy, the chest opening up, the
+crowd at 22 bodies and the three light rigs are all numbers, bone transforms and state assertions.
+60 FPS on a Chromebook / iPhone Safari is unmeasured (the additions are a handful of quaternion
+writes, two bone-scale writes on one frame and one `PackedFloat32Array.fill` per frame — no
+allocations, no lookups, no new geometry).

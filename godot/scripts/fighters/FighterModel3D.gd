@@ -1393,6 +1393,11 @@ func _configure_body_modifier(state: int) -> void:
 	# never merges into the ribcage and the silhouette keeps a readable gap.
 	body_modifier.negative_space = AnimationFeel.NEGATIVE_SPACE
 	body_modifier.eye_line_yaw = AnimationFeel.EYE_LINE * (1.0 if facing_sign >= 0 else -1.0)
+	# Camera-facing chest cheat: full at the strike pose, a third of it in a neutral stance so
+	# the chest never reads as a flat profile even between moves. Absolute yaw, never
+	# facing-signed — the camera is in the same place whoever is turned away.
+	var strike := state == BaseFighter.State.ATTACK_ACTIVE
+	body_modifier.chest_yaw = AnimationFeel.CHEST_CHEAT * (1.0 if strike else 0.33)
 	# 2. The +4° overshoot impulse on the first ACTIVE frames, settling to zero by frame 4.
 	var active := state == BaseFighter.State.ATTACK_ACTIVE
 	body_modifier.overshoot = AnimationFeel.overshoot_lean(fighter.state_frame) if active else 0.0

@@ -181,6 +181,19 @@ const NEGATIVE_SPACE := 0.12
 ## Head/eye-line awareness toward camera, radians (6°). Small on purpose: it must read as
 ## "aware of the crowd" without moving the hips or the fighting axis.
 const EYE_LINE := 0.105
+## Chest cheat toward camera at the strike pose, radians (4.3°). The whole chest turns a few
+## degrees out of pure profile so the contact silhouette opens up on a small screen instead
+## of reading as a line. Absolute (not facing-signed): it always faces the camera.
+const CHEST_CHEAT := 0.075
+## Ceiling on the additive yaw ONE bone may receive, radians (17°). The layer is a garnish on
+## top of a baked take, not a second animation, so a single system can never put a quarter turn
+## into a spine.
+const MAX_BONE_YAW := 0.30
+## Ceiling on the additive yaw the whole layer may spend on one frame, radians (69°). Every
+## system asking for its maximum at once fits inside it (measured 0.94 rad in the strike pose),
+## so the cap only ever bites on a runaway request, and the hips — the facing authority — are
+## never in the budget at all.
+const INFLUENCE_CAP := 1.20
 
 
 # =========================================================================

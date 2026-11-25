@@ -29,6 +29,8 @@ var engage_twist := 0.0
 var negative_space := 0.0
 ## Head / eye-line awareness toward camera, radians.
 var eye_line_yaw := 0.0
+## Chest cheat toward camera, radians (absolute, never facing-signed).
+var chest_yaw := 0.0
 ## Lateral arc bias of the swing, radians (signed toward the fighting side).
 var arc_bias := 0.0
 ## 0–1 one-frame limb smear amount (see `AnimationFeel.smear_amount`).
@@ -59,6 +61,10 @@ var _forearm_r := -1
 var _smeared_a := -1
 var _smeared_b := -1
 var _applied_frame := -1
+## Yaw spent this frame, so the layer can never exceed `AnimationFeel.INFLUENCE_CAP`.
+var _yaw_spent := 0.0
+## Per-bone yaw already written this frame, one slot per cached bone (allocated once).
+var _yaw_budget := PackedFloat32Array()
 var _cached := false
 ## `SkeletonModifier3D` exposes its skeleton through `get_skeleton()`, not a property.
 ## Cached once in `cache_bones()` so no per-frame scene-tree walk happens.
@@ -88,6 +94,8 @@ func cache_bones(skel: Skeleton3D) -> void:
 	_arm_r = _find(skel, "RightArm")
 	_forearm_l = _find(skel, "LeftForeArm")
 	_forearm_r = _find(skel, "RightForeArm")
+	_yaw_budget.resize(8)
+	_yaw_budget.fill(0.0)
 	_cached = true
 
 
@@ -130,6 +138,14 @@ func apply_now(force: bool = false) -> void:
 	_applied_frame = frame
 	var face := float(1 if facing >= 0 else -1)
 	var engage := clampf(engage_weight, 0.0, 1.0)
+	_yaw_spent = 0.0
+	_yaw_budget.fill(0.0)
+
+	# Camera-facing chest cheat: the chest opens a few degrees out of profile at the strike
+	# pose so the contact silhouette still reads on a phone. Absolute yaw — the camera does
+	# not move when the fighter turns around.
+	if not is_zero_approx(chest_yaw):
+		_add(_spine2, Vector3.UP, chest_yaw)
 
 	# --- 3. Move everything in the body -----------------------------------------------
 	# Shoulder / upper-spine counter-twist: the striking side turns through the torso while
@@ -227,8 +243,60 @@ func smeared_bones() -> Array:
 func _add(index: int, axis: Vector3, angle: float) -> void:
 	if index < 0 or is_zero_approx(angle):
 		return
+	# Influence cap: yaw is what could ever read as a turn, so it is what is budgeted — per bone
+	# cumulatively, then per frame. Two systems writing the same spine may not add up past
+	# `MAX_BONE_YAW` between them, and the frame may not spend more than `INFLUENCE_CAP`; past
+	# either the garnish is clipped or dropped rather than applied. The hips are not in the
+	# table at all, so they can never be a target.
+	if axis.is_equal_approx(Vector3.UP):
+		var slot := _yaw_slot(index)
+		if slot < 0:
+			return
+		var room := AnimationFeel.MAX_BONE_YAW - _yaw_budget[slot]
+		if room <= 0.00001:
+			return
+		angle = clampf(angle, -room, room)
+		var spend := absf(angle)
+		if _yaw_spent + spend > AnimationFeel.INFLUENCE_CAP:
+			return
+		_yaw_spent += spend
+		_yaw_budget[slot] += spend
 	var base: Quaternion = _skel.get_bone_pose_rotation(index)
 	_skel.set_bone_pose_rotation(index, base * Quaternion(axis, angle))
+
+
+## Yaw spent by the last applied frame, for the audit and the HUD debug readout.
+func yaw_spent() -> float:
+	return _yaw_spent
+
+
+## Yaw written to one cached bone this frame.
+func yaw_spent_on(name: String) -> float:
+	var slot := _yaw_slot(int(bone_indices().get(name, -1)))
+	return _yaw_budget[slot] if slot >= 0 else 0.0
+
+
+## Slot of a bone in `_yaw_budget`, or -1 when the bone is not one the layer may turn.
+func _yaw_slot(index: int) -> int:
+	if index < 0:
+		return -1
+	if index == _spine1:
+		return 0
+	if index == _spine2:
+		return 1
+	if index == _neck:
+		return 2
+	if index == _head:
+		return 3
+	if index == _shoulder_l:
+		return 4
+	if index == _shoulder_r:
+		return 5
+	if index == _arm_l:
+		return 6
+	if index == _arm_r:
+		return 7
+	return -1
 
 
 ## Reset every additive input so a new round or a new take starts from a clean pose.
@@ -238,6 +306,7 @@ func reset() -> void:
 	negative_space = 0.0
 	eye_line_yaw = 0.0
 	arc_bias = 0.0
+	chest_yaw = 0.0
 	smear = 0.0
 	if _skel != null:
 		_clear_smear()

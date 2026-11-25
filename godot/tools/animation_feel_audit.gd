@@ -19,6 +19,14 @@ extends SceneTree
 ##   6. Additive hit-react overlay — light < heavy < counter recoil, scaled bone deltas, and
 ##      per-frame ground pinning with the drawn sole within 1 cm of world y 0.
 ##
+## PART 1 commits 2–4 are covered too: the `step_fps` export re-grids a body onto 16 fps, the
+## coil depth scales with the move's weight, the swing arc rotates the striking shoulder/arm,
+## the one-frame limb smear is a volume-preserving bone stretch restored the next frame, the
+## chest turns toward camera at the strike pose, and the influence cap clips a runaway request
+## while the full strike stack still fits. The body layer is asserted to be a child of the
+## skeleton that the skeleton never invokes itself — the ordering "after the curve, before the
+## foot pin" is therefore structural.
+##
 ## It also re-hashes `scripts/BaseFighter.gd` and `scripts/FighterRoster.gd`, so a frame-data
 ## or Patois edit is caught here instead of surviving until the next playtest.
 ##
@@ -241,6 +249,9 @@ func _audit_fighter(key: StringName) -> void:
 	# --- 3/4/6. Skeleton layer --------------------------------------------------------
 	await _audit_body_layer(model, fighter, key)
 
+	# --- 4. Camera-facing chest cheat + the influence cap ------------------------------
+	await _audit_influence(model, fighter, key)
+
 	# --- 2/3. Weight-scaled coil, arc and smear on the live body ----------------------
 	await _audit_attack_curve(model, fighter, key)
 
@@ -450,6 +461,72 @@ func _audit_body_layer(model: FighterModel3D, fighter: BaseFighter, key: String)
 	_check(is_zero_approx(model.recoil_strength),
 		"%s ignores a strike that lands on the opponent" % key)
 	other.queue_free()
+	mod.reset()
+
+
+## Commit-4 refinements: the chest cheat really turns the chest, the influence cap clips a
+## pathological request instead of applying it, and the layer is driven at a known point in the
+## frame — a child of the skeleton that the skeleton never invokes itself — which is what makes
+## the order "after the curve, before the foot pin" a property instead of a hope.
+func _audit_influence(model: FighterModel3D, fighter: BaseFighter, key: String) -> void:
+	var mod := model.body_modifier
+	if mod == null or model.skeleton == null:
+		return
+	var parent := mod.get_parent()
+	_check(parent == model.skeleton and not mod.active,
+		"%s body layer is driven explicitly, never by the skeleton's own pass" % key,
+		"parent %s, active %s" % [parent.name if parent != null else "-", str(mod.active)])
+	var bones := mod.bone_indices()
+	var spine2 := int(bones["spine2"])
+	if spine2 < 0:
+		return
+
+	# Camera-facing chest cheat: the chest comes out of profile at the strike pose.
+	model.set_facing(1)
+	mod.reset()
+	var chest_before := model.skeleton.get_bone_pose_rotation(spine2)
+	mod.chest_yaw = AnimationFeel.CHEST_CHEAT
+	mod.apply_now(true)
+	var chest_delta := chest_before.angle_to(model.skeleton.get_bone_pose_rotation(spine2))
+	_check(chest_delta > 0.02,
+		"%s the chest turns toward camera at the strike pose" % key,
+		"%.1f deg" % rad_to_deg(chest_delta))
+
+	# A pathological request is clipped: one bone never takes more than `MAX_BONE_YAW`.
+	mod.reset()
+	var pre := model.skeleton.get_bone_pose_rotation(spine2)
+	mod.chest_yaw = 2.0
+	mod.engage_twist = 2.0
+	mod.apply_now(true)
+	var applied := pre.angle_to(model.skeleton.get_bone_pose_rotation(spine2))
+	_check(applied <= AnimationFeel.MAX_BONE_YAW + 0.02,
+		"%s one bone never takes more than the %.0f° ceiling" % [key,
+			rad_to_deg(AnimationFeel.MAX_BONE_YAW)], "%.1f deg" % rad_to_deg(applied))
+	_check(mod.yaw_spent() <= AnimationFeel.INFLUENCE_CAP + 0.0001,
+		"%s the influence cap bounds a runaway frame" % key,
+		"%.2f of %.2f rad" % [mod.yaw_spent(), AnimationFeel.INFLUENCE_CAP])
+
+	# Every system at its own maximum at once, as a real strike frame would ask: the budget holds
+	# and the ±X facing the audit depends on is untouched.
+	mod.reset()
+	mod.engage_weight = 1.0
+	mod.engage_twist = AnimationFeel.ENGAGE_TWIST
+	mod.negative_space = AnimationFeel.NEGATIVE_SPACE
+	mod.eye_line_yaw = AnimationFeel.EYE_LINE
+	mod.chest_yaw = AnimationFeel.CHEST_CHEAT
+	mod.overshoot = AnimationFeel.overshoot_lean(AnimationFeel.WHIP_FRAME)
+	mod.arc_bias = AnimationFeel.arc_bias(AnimationFeel.WHIP_FRAME, 1.0)
+	mod.tension = AnimationFeel.TENSION_PEAK
+	mod.recoil_strength = AnimationFeel.RECOIL_COUNTER
+	mod.recoil_curve = 1.0
+	mod.apply_now(true)
+	_check(mod.yaw_spent() <= AnimationFeel.INFLUENCE_CAP + 0.0001,
+		"%s the full strike stack fits inside the influence cap" % key,
+		"%.2f of %.2f rad" % [mod.yaw_spent(), AnimationFeel.INFLUENCE_CAP])
+	var fwd := model.world_forward()
+	var err := rad_to_deg(acos(clampf(absf(fwd.x), 0.0, 1.0)))
+	_check(err <= FACING_TOLERANCE_DEG,
+		"%s facing stays ±X under maximum influence" % key, "%.1f deg off" % err)
 	mod.reset()
 
 

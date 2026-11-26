@@ -5701,3 +5701,77 @@ No test was weakened and no count dropped.
 - **No iPhone, no Chromebook and no browser build was launched.** The ETC2/S3TC variants are present in
   the exported pack (confirmed from the export log), but playback on real hardware is unverified.
 - The rasta speaker, DJ booth, wireless mic and mic stand slots are still empty.
+
+## PART A (2026-11-26) — screenshot harness, knockdown verdict, speaker material
+
+### The harness: `tools/qa_match.gd`, `tools/capture_frames.gd`, `tools/dump_pose_csv.gd`
+
+`--headless` plus `--rendering-driver opengl3` renders **nothing**: with no window Godot falls back to
+the dummy renderer and every PNG is blank. Pixels need a real X display, so the harness runs under
+Xvfb with Mesa `llvmpipe` (`LIBGL_ALWAYS_SOFTWARE=1`, `GALLIUM_DRIVER=llvmpipe`). This workspace has no
+root, so the packages were downloaded and extracted user-side and Xvfb runs through `proot` to satisfy
+its hard-coded `/usr/bin/xkbcomp`. `qa/README.md` carries the exact commands.
+
+Rules that the tools encode, and that cost time to learn:
+
+- Every state is reached through a **real match**: boot normal, press real `InputMap` actions, start
+  shooting on the frame the fighter actually enters `KNOCKDOWN`/`KO`. Nothing is forced.
+- `Input.action_press` must be held across **two** physics frames — `BaseFighter._latch_local_presses()`
+  reads `is_action_just_pressed`, which a one-frame press never reaches.
+- The shipped input map binds only `p1_*`; the harness mirrors them to `p2_*` itself.
+- `QAMatch.set_3d_off()` (viewport `disable_3d`) while driving: 1500 ticks drop from 199 s to 17 s.
+- **Software-GL stills are geometry/orientation evidence only.** They say nothing about GPU cost.
+
+### Why `_check_downed_pose` reported `up·y 1.00`
+
+It sampled the frame on which `state == KO` first becomes true. At that frame `_fall = 0.0504` and the
+body is still vertical: `up·y = 0.9986`. At full fall the same measurement reads `up·y = −0.1444`. The
+audit was not wrong about the frame it measured; it measured the impact frame and never stepped to the
+pose the player sees. It also measures **bones**, while what hovers is **vertices**: the shipped seat
+lifts until the lowest bone clears the sand, which leaves the drawn mesh 0.24–0.30 m in the air
+(measured `drawn low 0.30` at `fall = 1.0`). The harness now reports both, at `fall > 0.95`.
+
+### Commit 2 (knockdowns): nothing shipped, and why
+
+Two candidate fixes were implemented, measured, and **reverted**; the runtime is byte-identical to
+`e2f3bc2`. Both failed the live contract, so neither was committed:
+
+1. **Orientation** (delta rotation on `VisualPivot`, blended by `_fall`, pinning hips→head along ±X and
+   the chest normal to +Y). It solved the owner's fighter: at KO+45, `up·y −0.010`, `chest n·y +0.993`,
+   `head−hips Δx +0.436`, drawn body seated at `0.080`. But L!ckshot came out `chest n·y −0.818` and
+   `up·y +0.446` under the same solve — its pelvis and spine axes disagree with the other two rigs, and
+   choosing the hemisphere from the measured spine normal did not flip it. With that change
+   `live_match_check` failed **2/422**: `lickshot` lowest `−0.470 m`, `young_selecta` `−0.067 m`.
+2. **Seating** (pin the drawn mesh to `knockdown_floor_y = 0.08` once `_fall > 0.95` and on the floor).
+   Alone it still failed **1/422**: `lickshot` lowest `−0.265 m`. The seat's own draw-bounds sampler and
+   the audit's disagree by ~0.34 m on that rig, so the seat drags the body under the sand by the
+   audit's own measurement.
+
+A knockdown cannot be committed red, so commit 2 is the **measurement and the harness**, not a fix.
+The remaining work is per-rig: the two samplers must agree before any seat can be trusted, and the
+L!ckshot rig needs its pelvis/spine relationship handled rather than assumed.
+
+### Commit 3 (speaker): the tower keeps its own material
+
+`PropLoader.native_material` renders the delivered glTF with one `StandardMaterial3D` per surface
+instead of `CharacterModelSlots.apply_cel`: albedo kept, `roughness = 1`, `metallic = 0`, specular
+disabled, `CULL_DISABLED` where the slot is double-sided, `TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC`
+and shadow casting off. The cel ramp was quantising a 2,048 px photographic albedo into flat green
+plates, which is what made the tower read as programmer art. `Arena3D._build_speakers()` sets the flag
+for both delivered towers.
+
+Two assertions were **replaced** (not deleted, not loosened, count held at 422 → 470 roster checks):
+*the 2,048 albedo is bound to the cel material* became *the 2,048 albedo is kept on a `StandardMaterial3D`
+with roughness 1, metallic 0, culling disabled and mipmaps+anisotropic*, and *the cel rim follows the
+phase* became *no cel material is left on the tower and its albedo survives all three presets*. Both
+encode behaviour the owner explicitly asked to change.
+
+Suites after commit 3: roster **ALL PASSED**, live **422 / 0 FAIL**, facing **310 / 0 FAIL**,
+feel **440 / 0 FAIL**.
+
+### Not verified
+
+- The speaker is 2 m of screen at 640×360 on a CPU rasteriser; its lit look on real GPU hardware, its
+  mip chain in a browser and its appearance at 12° framing are **unreviewed on device**.
+- No P1-slot knockout still exists: the shipped P2 opponent is the workshop dummy and never throws.
+- No `/docs` export was run for this work.

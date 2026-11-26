@@ -1,0 +1,308 @@
+extends RefCounted
+## Shared driver for the QA capture tools (2026-11-26, PART A step 1).
+##
+## Every scenario these helpers serve boots the REAL `TestArena.tscn` — round controller,
+## 3D yard, Mixamo bodies, hitboxes and all — and reaches its state by PLAYING A MATCH:
+## P1 is driven by real `InputMap` actions, or P2 is driven by the sparring controller the
+## game already ships. Nothing here assigns `state`, calls `change_state` or toggles a
+## private flag, so a still can never show a pose the game cannot actually produce.
+##
+## The only non-match camera move is `look_at_world()`, used for prop/crowd stills where the
+## subject is not the fight; it is restored by `restore_camera()` before the next capture.
+
+const PX_PER_M := 140.0
+const CENTER_PX := 640.0
+const FLOOR_PX := 600.0
+
+
+## Boot one arena. `ai_mode` is `MatchSetup.ai_mode` (0 dummy, 1 counter-puncher,
+## 2 riddim rusher, 3 spacing baiter); mode 2 makes P2 attack without any player input.
+static func boot(tree: SceneTree, a: StringName, b: StringName, ai_mode: int = 0,
+		rounds: bool = false) -> Node:
+	var setup = tree.root.get_node_or_null("MatchSetup")
+	if setup == null:
+		return null
+	setup.commit_match(a, b)
+	setup.ai_mode = ai_mode
+	var packed := load("res://scenes/TestArena.tscn") as PackedScene
+	var arena := packed.instantiate()
+	var rc := arena.get_node_or_null("RoundController")
+	if rc != null and not rounds:
+		rc.enabled = false
+	tree.root.add_child(arena)
+	await tree.process_frame
+	await tree.physics_frame
+	# Settle: the 3D layer builds in _ready and the animation player needs a frame to pose.
+	for i in 6:
+		await tree.physics_frame
+	arena.p1.input_locked = false
+	arena.p2.input_locked = false
+	return arena
+
+
+static func close(tree: SceneTree, arena) -> void:
+	if arena == null:
+		return
+	arena.queue_free()
+	await tree.process_frame
+	await tree.process_frame
+
+
+## Give P2 the same bindings P1 has. The shipped InputMap only registers `p1_*` actions
+## (`BaseFighter._ensure_default_actions` returns early for any other prefix), so a QA run
+## that wants to play P2 by hand has to register the mirror itself. This is exactly the
+## binding a second local player would get: same actions, same events, same code path.
+static func mirror_actions() -> int:
+	var added := 0
+	for action in InputMap.get_actions():
+		var name := String(action)
+		if not name.begins_with("p1_"):
+			continue
+		var mirrored := "p2_" + name.substr(3)
+		if InputMap.has_action(mirrored):
+			continue
+		InputMap.add_action(mirrored)
+		for event in InputMap.action_get_events(action):
+			InputMap.action_add_event(mirrored, event)
+		added += 1
+	return added
+
+
+## One human press: down, `hold` physics ticks, up, one settle tick.
+static func press(tree: SceneTree, action: String, hold: int = 1) -> void:
+	if not InputMap.has_action(action):
+		return
+	Input.action_press(action)
+	for i in hold:
+		await tree.physics_frame
+	Input.action_release(action)
+	await tree.physics_frame
+
+
+# =========================================================================
+# Capture
+# =========================================================================
+## llvmpipe spends nearly all of a match-driving tick rasterising the 3D yard. Toggling the
+## viewport's `disable_3d` while no still is being taken makes a 20-second approach cost two
+## seconds, without changing physics, input, combat or the skeleton pose (all CPU-side).
+static func set_3d_off(tree: SceneTree, off: bool) -> void:
+	tree.root.get_viewport().disable_3d = off
+
+
+## Save the whole window (the 3D yard composited under the 2D HUD).
+static func capture(tree: SceneTree, path: String) -> bool:
+	await RenderingServer.frame_post_draw
+	var tex := tree.root.get_texture()
+	if tex == null:
+		return false
+	var img := tex.get_image()
+	if img == null or img.is_empty():
+		return false
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	return img.save_png(path) == OK
+
+
+## Save a zoomed crop around a screen point, for close inspection of a hand or a prop.
+static func capture_crop(tree: SceneTree, path: String, centre_px: Vector2,
+		size_px: Vector2i, zoom: int = 2) -> bool:
+	await RenderingServer.frame_post_draw
+	var tex := tree.root.get_texture()
+	if tex == null:
+		return false
+	var img := tex.get_image()
+	if img == null or img.is_empty():
+		return false
+	var full := Rect2i(Vector2i.ZERO, img.get_size())
+	var rect := Rect2i(Vector2i(centre_px) - size_px / 2, size_px).intersection(full)
+	if rect.size.x < 8 or rect.size.y < 8:
+		return false
+	var sub := img.get_region(rect)
+	if zoom > 1:
+		sub.resize(rect.size.x * zoom, rect.size.y * zoom, Image.INTERPOLATE_BILINEAR)
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	return sub.save_png(path) == OK
+
+
+## Point the QA camera at a world position from `distance` metres away on +Z, remembering
+## the look the match was using so `restore_camera()` can put it back.
+static func look_at_world(arena3d, target: Vector3, distance: float = 4.0,
+		height: float = 1.2) -> Dictionary:
+	var cam: Camera3D = arena3d.camera
+	if cam == null:
+		return {}
+	var saved := {"xf": cam.global_transform, "fov": cam.fov, "current": cam.current}
+	cam.global_position = target + Vector3(0.0, height, distance)
+	cam.look_at(target, Vector3.UP)
+	return saved
+
+
+static func restore_camera(arena3d, saved: Dictionary) -> void:
+	if saved.is_empty() or arena3d == null or arena3d.camera == null:
+		return
+	arena3d.camera.global_transform = saved["xf"]
+	arena3d.camera.fov = float(saved["fov"])
+
+
+# =========================================================================
+# Measurement
+# =========================================================================
+static func skeleton_of(model: Node3D) -> Skeleton3D:
+	if model == null:
+		return null
+	return model.get("skeleton") as Skeleton3D
+
+
+static func bone_index(skel: Skeleton3D, suffix: String) -> int:
+	if skel == null:
+		return -1
+	for i in skel.get_bone_count():
+		if String(skel.get_bone_name(i)).ends_with(suffix):
+			return i
+	return -1
+
+
+static func bone_world(model: Node3D, suffix: String) -> Vector3:
+	var skel := skeleton_of(model)
+	var index := bone_index(skel, suffix)
+	if index < 0:
+		return Vector3.ZERO
+	return (skel.global_transform * skel.get_bone_global_pose(index)).origin
+
+
+static func bone_basis(model: Node3D, suffix: String) -> Basis:
+	var skel := skeleton_of(model)
+	var index := bone_index(skel, suffix)
+	if index < 0:
+		return Basis.IDENTITY
+	return (skel.global_transform * skel.get_bone_global_pose(index)).basis.orthonormalized()
+
+
+## Everything a downed-pose judgement needs, in world space, plus the presentation state
+## that produced it. `up` is hips→head; `chest_n` is the Spine2 bone's own up axis.
+static func pose_metrics(model: Node3D) -> Dictionary:
+	var skel := skeleton_of(model)
+	var out := {"ok": false}
+	if skel == null or model == null:
+		return out
+	var hips := bone_world(model, "Hips")
+	var head := bone_world(model, "Head")
+	var spine := bone_world(model, "Spine2")
+	var foot_l := bone_world(model, "LeftFoot")
+	var foot_r := bone_world(model, "RightFoot")
+	if foot_l == Vector3.ZERO:
+		foot_l = bone_world(model, "Foot.L")
+	if foot_r == Vector3.ZERO:
+		foot_r = bone_world(model, "Foot.R")
+	var up: Vector3 = (head - hips).normalized() if (head - hips).length() > 0.0001 else Vector3.UP
+	# The chest NORMAL is the spine's forward axis (its local +Z), not its along-bone axis:
+	# `Y` points up the spine toward the head and is horizontal on a lying body either way.
+	var chest_n: Vector3 = bone_basis(model, "Spine2").z.normalized()
+	var bounds := skinned_bounds(model)
+	out["ok"] = true
+	out["hips"] = hips
+	out["head"] = head
+	out["spine2"] = spine
+	out["foot_l"] = foot_l
+	out["foot_r"] = foot_r
+	out["up_y"] = up.y
+	out["chest_ny"] = chest_n.y
+	out["head_hips_dx"] = head.x - hips.x
+	out["head_feet_dy"] = head.y - minf(foot_l.y, foot_r.y)
+	out["low"] = bounds[0]
+	out["high"] = bounds[1]
+	out["drawn_low_y"] = bounds[0].y
+	# The same measurement through the OTHER bone order, so a report can name the error
+	# instead of inheriting it.
+	out["drawn_low_y_unmapped"] = skinned_bounds(model, false)[0].y
+	# Presentation state: the fall blend, the pose pivot's roll (the only fall rotation the
+	# runtime applies today) and the downed-seat offset, so a still can be tied to its cause.
+	out["fall"] = float(model.get("_fall"))
+	out["pivot_rz_deg"] = rad_to_deg(_rotation_z_of(model.get("_pivot")))
+	out["visual_yaw_deg"] = rad_to_deg(_rotation_y_of(model.get("_visual_pivot")))
+	out["visual_seat_y"] = _position_y_of(model.get("_visual_pivot"))
+	out["height"] = bounds[1].y - bounds[0].y if bounds[1].y > bounds[0].y else 0.0
+	return out
+
+
+static func _rotation_z_of(node) -> float:
+	return float(node.rotation.z) if node is Node3D else 0.0
+
+
+static func _rotation_y_of(node) -> float:
+	return float(node.rotation.y) if node is Node3D else 0.0
+
+
+static func _position_y_of(node) -> float:
+	return float(node.position.y) if node is Node3D else 0.0
+
+
+static func first_mesh(model: Node3D) -> MeshInstance3D:
+	if model == null:
+		return null
+	for child in model.find_children("*", "MeshInstance3D", true, false):
+		var mi := child as MeshInstance3D
+		if mi != null and mi.mesh != null and mi.mesh.get_surface_count() > 0 and mi.skin != null:
+			return mi
+	for child in model.find_children("*", "MeshInstance3D", true, false):
+		var mi2 := child as MeshInstance3D
+		if mi2 != null and mi2.mesh != null and mi2.mesh.get_surface_count() > 0:
+			return mi2
+	return null
+
+
+## Live skinned-mesh bounds in world space — what the renderer actually draws.
+##
+## `skin` indices are SKIN BIND indices, not skeleton bone indices (`FighterModel3D`
+## documents this: assuming the two orders match reports a body that never goes below its
+## own foot bones, which is how Feedback came out "floating 72 cm"). Both readings are
+## computed so a report can show the mapped one and the wrong one side by side.
+static func skinned_bounds(model: Node3D, mapped: bool = true) -> Array:
+	var mi := first_mesh(model)
+	var skel := skeleton_of(model)
+	if mi == null or skel == null or mi.mesh.get_surface_count() == 0:
+		return [Vector3.ZERO, Vector3.UP]
+	var arrays := mi.mesh.surface_get_arrays(0)
+	if arrays.is_empty():
+		return [Vector3.ZERO, Vector3.UP]
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var vbones = arrays[Mesh.ARRAY_BONES]
+	var weights = arrays[Mesh.ARRAY_WEIGHTS]
+	var skin: Skin = mi.skin
+	var bone_xf: Array[Transform3D] = []
+	if skin != null and mapped:
+		for b in skin.get_bind_count():
+			var bone := skin.get_bind_bone(b)
+			var xf: Transform3D = skel.global_transform * skel.get_bone_global_pose(bone if bone >= 0 else 0)
+			bone_xf.append(xf * skin.get_bind_pose(b))
+	else:
+		for i in skel.get_bone_count():
+			var xf: Transform3D = skel.global_transform * skel.get_bone_global_pose(i)
+			if skin != null and i < skin.get_bind_count():
+				xf = xf * skin.get_bind_pose(i)
+			bone_xf.append(xf)
+	var low := Vector3(INF, INF, INF)
+	var high := Vector3(-INF, -INF, -INF)
+	var step := maxi(1, int(float(verts.size()) / 6000.0))
+	var per := 0
+	if vbones != null and weights != null and verts.size() > 0:
+		per = int(vbones.size() / verts.size())
+	var i := 0
+	while i < verts.size():
+		var p := verts[i]
+		if per > 0:
+			var acc := Vector3.ZERO
+			var total := 0.0
+			for k in per:
+				var bi := int(vbones[i * per + k])
+				var w := float(weights[i * per + k])
+				if w <= 0.0 or bi < 0 or bi >= bone_xf.size():
+					continue
+				acc += (bone_xf[bi] * p) * w
+				total += w
+			p = acc / total if total > 0.0 else mi.global_transform * p
+		else:
+			p = mi.global_transform * p
+		low = Vector3(minf(low.x, p.x), minf(low.y, p.y), minf(low.z, p.z))
+		high = Vector3(maxf(high.x, p.x), maxf(high.y, p.y), maxf(high.z, p.z))
+		i += step
+	return [low, high]

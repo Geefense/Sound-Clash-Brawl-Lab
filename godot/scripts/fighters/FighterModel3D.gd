@@ -1534,94 +1534,14 @@ func _measure_sole_drop() -> void:
 		low_bone = minf(low_bone, (skel_xf * skeleton.get_bone_global_rest(i)).origin.y)
 	if low_bone == INF:
 		return
-	# The three uploads do not agree on how `ARRAY_BONES` indexes the skin: the Mixamo body
-	# needs the `Skin.get_bind_bone()` mapping, the two Tripo bodies already store skeleton
-	# bone indices. Both readings are measured once here and the one that puts the drawn sole
-	# within a plausible distance of the foot bones wins — a wrong mapping is off by 0.5 m or
-	# more on a 1.5 m body, so the choice is unambiguous and never left to a guess.
-	var best := INF
-	var best_mapped := true
-	for mapped in [true, false]:
-		var sole := _skinned_floor(true, mapped)
-		if sole == INF:
-			continue
-		var drop := low_bone - sole
-		if absf(drop) < absf(best):
-			best = drop
-			best_mapped = mapped
-	if best == INF:
+	# PART A3: the runtime and every audit now share ONE sampler. `DrawnBounds` reads every
+	# skinned mesh (an unskinned overlay is never the body) and resolves the skin's bind slots,
+	# so the sole the pin measures is the sole the renderer draws.
+	var sole := DrawnBounds.rest_lowest_y(self)
+	if sole == INF:
 		return
-	sole_bind_mapped = best_mapped
-	sole_drop = maxf(0.0, best)
-
-
-## Lowest drawn vertex in world space, from the real skin weights. `use_rest` measures the
-## bind pose (the calibration), false measures the live pose (what is on screen). Sampled
-## every ~3000th vertex: it runs once per fighter at bind, never per frame.
-func _skinned_floor(use_rest: bool, bind_mapped: bool = true) -> float:
-	var mi: MeshInstance3D = null
-	for m in meshes:
-		if m.mesh != null and m.mesh.get_surface_count() > 0:
-			mi = m
-			break
-	if mi == null or skeleton == null:
-		return INF
-	var arrays := mi.mesh.surface_get_arrays(0)
-	if arrays.is_empty():
-		return INF
-	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-	if verts.is_empty():
-		return INF
-	var vbones = arrays[Mesh.ARRAY_BONES]
-	var weights = arrays[Mesh.ARRAY_WEIGHTS]
-	var skin: Skin = mi.skin
-	var skel_xf := skeleton.global_transform
-	var mesh_xf := mi.global_transform
-	# A skinned mesh's ARRAY_BONES holds SKIN BIND indices, not skeleton bone indices, so the
-	# bind list must be indexed through `get_bind_bone()`. Assuming the two orders match (as
-	# the earlier bounds helper did) silently reports a mesh that never goes below its own
-	# foot bones — which is exactly why Feedback measured as floating 72 cm.
-	var bone_xf: Array[Transform3D] = []
-	if skin != null and bind_mapped:
-		for b in skin.get_bind_count():
-			var bone := skin.get_bind_bone(b)
-			if bone < 0 or bone >= skeleton.get_bone_count():
-				bone_xf.append(Transform3D.IDENTITY)
-				continue
-			var xf: Transform3D = skel_xf * (skeleton.get_bone_global_rest(bone) if use_rest \
-				else skeleton.get_bone_global_pose(bone))
-			bone_xf.append(xf * skin.get_bind_pose(b))
-	else:
-		for i in skeleton.get_bone_count():
-			var xf2: Transform3D = skel_xf * (skeleton.get_bone_global_rest(i) if use_rest \
-				else skeleton.get_bone_global_pose(i))
-			if skin != null and i < skin.get_bind_count():
-				xf2 = xf2 * skin.get_bind_pose(i)
-			bone_xf.append(xf2)
-	var per := 0
-	if vbones != null and weights != null and skin != null:
-		per = int(vbones.size() / verts.size())
-	var low := INF
-	var step := maxi(1, int(float(verts.size()) / 3000.0))
-	var i := 0
-	while i < verts.size():
-		var p := verts[i]
-		if per > 0:
-			var acc := Vector3.ZERO
-			var total := 0.0
-			for k in per:
-				var bi := int(vbones[i * per + k])
-				var w := float(weights[i * per + k])
-				if w <= 0.0 or bi < 0 or bi >= bone_xf.size():
-					continue
-				acc += (bone_xf[bi] * p) * w
-				total += w
-			p = acc / total if total > 0.0 else mesh_xf * p
-		else:
-			p = mesh_xf * p
-		low = minf(low, p.y)
-		i += step
-	return low
+	sole_bind_mapped = DrawnBounds.bind_convention(self)
+	sole_drop = maxf(0.0, low_bone - sole)
 
 
 func _cache_prop_scales() -> void:

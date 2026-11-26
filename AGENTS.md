@@ -6737,3 +6737,104 @@ every presentation change in this project; the finisher does not get an exemptio
 5. Which of the five PropLoader slots (if any) the speaker blowout is allowed to move, given
    the brief that all five slots stay untouched.
 6. Reduced-motion behaviour: static hold, no camera move at all, or the callout only?
+
+## PART F (2026-11-26) — A3 knockdowns: the sampler root cause, the 12-cell table, and what did not ship
+
+**What shipped.** One root-cause fix and one measurement tool. The orientation and seating
+commits (the brief's commits 4 and 5) are **not shipped**, because not one of the twelve cells
+passes; the numbers and the reason are below, per the brief's ship rule.
+
+### Root cause: every skin bind in this project is a NAMED bind
+
+`Skin.get_bind_bone(slot)` returns **-1** for every slot of every delivered body — 52/52 on
+Feedback, 65/65 on L!ckshot and Young Selecta. Each bind is a named bind, and
+`DrawnBounds.gd` used `get_bind_bone()` directly, so every unresolved slot fell back to
+`Transform3D.IDENTITY`. On Feedback that collapsed the whole drawn body into a **1.0 cm blob at
+the origin** (measured drawn box `0.007 × 0.010 × 0.002 m`, against a rest bone span of
+**1.542 m**), while the audits happily measured it. Every knockdown number in PART A and PART A2
+— including the "0.45–0.51 m hover" and the "0.070 m" Feedback seat — was that blob, not a body.
+
+The fix, in `godot/scripts/DrawnBounds.gd`:
+
+- `slot_bone()` resolves a named bind through `skeleton.find_bone(get_bind_name(slot))`, and
+  keeps `get_bind_bone()` when it is a real index.
+- The convention (`bind slots` vs `bone indices`) is now decided by the one measurement that
+  cannot be ambiguous: **the drawn REST height must match the skeleton's own rest bone span**.
+  The old rule ("drawn sole nearest the lower foot bone") was satisfied by the collapsed blob
+  sitting on y 0, which is how it stayed hidden for two passes.
+- `cloud()`, `rest_lowest_y()` and `bind_convention()` were added so the runtime and every audit
+  share one sampler.
+
+With it, the drawn bodies measure as bodies: Feedback `0.49 × 1.53 × 0.83 m` standing at
+`y +0.002`, L!ckshot `0.67 × 1.38 × 0.87 m`, Young Selecta inside the same band.
+
+`godot/scripts/fighters/FighterModel3D.gd` now measures its foot-pin sole through
+`DrawnBounds.rest_lowest_y(self)` and reports `DrawnBounds.bind_convention(self)`; the old
+private `_skinned_floor()` sampler (first mesh only, no overlay guard) is **deleted**, so the
+runtime and the audits can no longer disagree about where the boot is.
+
+`godot/tools/knockdown_table.gd` is rewritten: it prints each of the twelve cells as it lands,
+states the acceptance explicitly (`|up_y| <= 0.30`, `chest_ny >= 0.70`, head away from the
+opponent, lowest drawn vertex at `+0.015 ± 0.02 m`), and has a `-- --played` mode that drives a
+real match and prints forced-vs-played `d_up`/`d_low`/`d_deg` against the 1 cm / 3° agreement
+contract.
+
+### The twelve cells, measured on this build (`--headless`, forced path)
+
+| rig | slot | state | up_y | chest_ny | head away | low drawn | verdict |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| feedback | p1 | KNOCKDOWN | −0.093 | −0.975 | yes | +0.091 | FAIL |
+| feedback | p1 | KO | +0.941 | −0.369 | yes | +0.095 | FAIL |
+| feedback | p2 | KNOCKDOWN | +0.342 | +0.889 | no | +0.014 | FAIL |
+| feedback | p2 | KO | −0.181 | +0.722 | no | +0.063 | FAIL |
+| lickshot | p1 | KNOCKDOWN | −0.604 | +0.713 | yes | +0.081 | FAIL |
+| lickshot | p1 | KO | −0.991 | +0.020 | yes | +0.277 | FAIL |
+| lickshot | p2 | KNOCKDOWN | −0.591 | +0.747 | no | +0.057 | FAIL |
+| lickshot | p2 | KO | −0.993 | +0.015 | no | +0.259 | FAIL |
+| young_selecta | p1 | KNOCKDOWN | +0.256 | +0.849 | yes | −0.017 | FAIL |
+| young_selecta | p1 | KO | +0.830 | −0.536 | yes | +0.252 | FAIL |
+| young_selecta | p2 | KNOCKDOWN | +0.119 | +0.901 | no | −0.040 | FAIL |
+| young_selecta | p2 | KO | +0.832 | −0.402 | no | +0.260 | FAIL |
+
+**0 of 12 pass.** The shipped runtime is unchanged in this milestone: the fall is still the
+procedural `_pivot.rotation.z` roll plus each rig's own take, and the downed seat is still the
+bone-clearance lift. What changed is that the numbers now describe a real body.
+
+### Why commits 4 and 5 were built, measured and not shipped
+
+The attempt followed the brief exactly: at load, per rig × state × facing sign, drive the rig to
+the settled pose (same 85° roll, facing calibration applied, clip seeked), sample the drawn
+vertex cloud through `DrawnBounds`, take its principal axes (power iteration + deflation), sign
+the long axis with the Head bone's position, roll it so the `Spine2` chest normal the acceptance
+measures points up, and solve one constant world-space rotation plus one constant seat; then
+blend `slerp(identity, correction, fall_progress)` on the `VisualPivot` only, after the facing
+yaw and the fall roll, with the seat rate-limited to 2 cm a frame. It was measured, then
+reverted.
+
+It cannot satisfy the twelve cells, for three measured reasons:
+
+1. **A knockdown has no settled pose to calibrate.** `BaseFighter` returns the body to `IDLE`
+   after 36 ticks while `_fall` is still ~1, so at the max-fall frame the model is already
+   playing the **standing idle clip** rolled 83° — measured `clip=mixamo/idle`, position
+   0.58–1.86 s depending on the rig. A constant correction solved against the knockdown take
+   therefore describes a pose the game never shows.
+2. **Each take ends somewhere different.** Feedback's `knocked-out-1` ends flat, L!ckshot's
+   `falling-back-death` ends chest-down, Young Selecta's `stumble-backwards` **ends standing**,
+   so a per-rig calibration at the clip end is upright on one rig and flat on another. Holding
+   the take at the solved time during the downed window was tried as well; it fixed Feedback's
+   KO (`up_y +0.052`, `chest_ny +0.994`) but visibly snapped the clip mid-fall on the others.
+3. **The head sign is not stable per facing.** Half the cells (every `p1`) end with the head on
+   the opponent's side even when the target was built from `facing_sign`, because the pose at
+   the measured instant is not the pose at calibration.
+
+So the honest state is: the measurement is fixed, the twelve-cell contract is now stated and
+automated, and no orientation or seat code ships until the build has a pose worth calibrating
+against (a real downed hold, and a per-rig take that ends on the floor). That is the next
+feature pass, not a tolerance change: no assertion was loosened, no gate was added, and the
+four suites are green at **490 / 500 / 310 / 444, 0 FAIL**.
+
+### Not verified
+
+Nothing here was seen rendered: the twelve cells are bone/vertex measurements, not pixels. The
+forced path is what the table reports; the `--played` path is implemented but its twelve real
+matches are far slower than the headless budget and are reported separately.

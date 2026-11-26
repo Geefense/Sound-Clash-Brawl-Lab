@@ -77,35 +77,215 @@ static func lowest_y(model: Node3D) -> float:
 	return INF if b == AABB() else b.position.y
 
 
-## Which convention this upload uses. `true` = vertex bones are skin bind slots (read through
-## `Skin.get_bind_bone()`), `false` = they are skeleton bone indices already.
+## Lowest drawn vertex in the BIND/rest pose — the foot pin's calibration, measured through
+## the same skinned meshes (and the same per-mesh convention) as everything else.
+static func rest_lowest_y(model: Node3D) -> float:
+	var skel: Skeleton3D = model.get("skeleton") if model != null else null
+	if skel == null:
+		return INF
+	var low := INF
+	for mi in skinned_meshes(model):
+		low = minf(low, _lowest(mi, skel, true, uses_bind_slots(mi, skel)))
+	return low
+
+
+## Which convention this upload uses, as one flag for the audit readout: `true` when every
+## skinned mesh indexes skin bind slots, `false` when at least one stores bone indices.
+static func bind_convention(model: Node3D) -> bool:
+	var skel: Skeleton3D = model.get("skeleton") if model != null else null
+	if skel == null:
+		return true
+	for mi in skinned_meshes(model):
+		if not uses_bind_slots(mi, skel):
+			return false
+	return true
+
+
+## Every sampled drawn vertex in world space, `SAMPLE_BUDGET` per mesh. Used once at load by
+## the downed-pose calibration, never per frame.
+static func cloud(model: Node3D) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	var skel: Skeleton3D = model.get("skeleton") if model != null else null
+	if skel == null:
+		return out
+	for mi in skinned_meshes(model):
+		for p in _mesh_points(mi, skel, uses_bind_slots(mi, skel)):
+			out.append(p)
+	return out
+
+
+static func _mesh_points(mi: MeshInstance3D, skel: Skeleton3D, mapped: bool) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	var bone_xf := _bone_transforms(skel, mi.skin, false, mapped)
+	var arrays := mi.mesh.surface_get_arrays(0)
+	if arrays.is_empty():
+		return out
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var vbones = arrays[Mesh.ARRAY_BONES]
+	var weights = arrays[Mesh.ARRAY_WEIGHTS]
+	if verts.is_empty():
+		return out
+	var per := 0
+	if vbones != null and weights != null and vbones.size() >= verts.size() and not bone_xf.is_empty():
+		per = int(vbones.size() / verts.size())
+	var step := maxi(1, int(float(verts.size()) / float(SAMPLE_BUDGET)))
+	var i := 0
+	while i < verts.size():
+		var p := verts[i]
+		if per > 0:
+			var acc := Vector3.ZERO
+			var total := 0.0
+			for k in per:
+				var bi := int(vbones[i * per + k])
+				var w := float(weights[i * per + k])
+				if w <= 0.0 or bi < 0 or bi >= bone_xf.size():
+					continue
+				acc += (bone_xf[bi] * p) * w
+				total += w
+			p = acc / total if total > 0.0 else mi.global_transform * p
+		else:
+			p = mi.global_transform * p
+		out.append(p)
+		i += step
+	return out
+
+
+## Principal axes of a sampled point cloud, largest variance first: `{centroid, axes, values}`
+## with three orthonormal `Vector3` axes. Power iteration with deflation — the body's own
+## geometry decides its long axis, so no bone axis is ever trusted to name it.
+static func principal_axes(points: PackedVector3Array) -> Dictionary:
+	if points.size() < 32:
+		return {}
+	var centroid := Vector3.ZERO
+	for p in points:
+		centroid += p
+	centroid /= float(points.size())
+	var m := [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]        # xx xy xz yy yz zz
+	for p in points:
+		var d := p - centroid
+		m[0] += d.x * d.x
+		m[1] += d.x * d.y
+		m[2] += d.x * d.z
+		m[3] += d.y * d.y
+		m[4] += d.y * d.z
+		m[5] += d.z * d.z
+	var n := float(points.size())
+	for i in 6:
+		m[i] = float(m[i]) / n
+	var first := _leading_axis(m)
+	if first == Vector3.ZERO:
+		return {}
+	var l1 := _rayleigh(m, first)
+	var rest := m.duplicate()
+	_deflate(rest, first, l1)
+	var second := _leading_axis(rest)
+	if second == Vector3.ZERO:
+		return {}
+	var l2 := _rayleigh(m, second)
+	var third := first.cross(second).normalized()
+	if third == Vector3.ZERO:
+		return {}
+	var axes: Array[Vector3] = [first, third.cross(first).normalized(), third]
+	return {"centroid": centroid, "axes": axes, "values": [l1, l2, _rayleigh(m, third)]}
+
+
+static func _mat_vec(m: Array, v: Vector3) -> Vector3:
+	return Vector3(float(m[0]) * v.x + float(m[1]) * v.y + float(m[2]) * v.z,
+		float(m[1]) * v.x + float(m[3]) * v.y + float(m[4]) * v.z,
+		float(m[2]) * v.x + float(m[4]) * v.y + float(m[5]) * v.z)
+
+
+static func _rayleigh(m: Array, v: Vector3) -> float:
+	return _mat_vec(m, v).dot(v)
+
+
+## The dominant direction of a symmetric 3x3 matrix. Four seeds, longest run kept, so a start
+## vector that happens to be orthogonal to the answer cannot decide it.
+static func _leading_axis(m: Array) -> Vector3:
+	var best := Vector3.ZERO
+	var best_value := -INF
+	for seed in [Vector3.RIGHT, Vector3.UP, Vector3.BACK, Vector3(0.5774, 0.5774, 0.5774)]:
+		var v: Vector3 = seed
+		for step in 80:
+			var nv := _mat_vec(m, v)
+			if nv.length() < 1e-9:
+				break
+			v = nv.normalized()
+		var value := _rayleigh(m, v)
+		if value > best_value:
+			best_value = value
+			best = v
+	return best
+
+
+static func _deflate(m: Array, axis: Vector3, value: float) -> void:
+	m[0] = float(m[0]) - value * axis.x * axis.x
+	m[1] = float(m[1]) - value * axis.x * axis.y
+	m[2] = float(m[2]) - value * axis.x * axis.z
+	m[3] = float(m[3]) - value * axis.y * axis.y
+	m[4] = float(m[4]) - value * axis.y * axis.z
+	m[5] = float(m[5]) - value * axis.z * axis.z
+
+
+## The bone a skin slot drives. Godot stores either a bone INDEX (`get_bind_bone`) or a named
+## bind (`get_bind_name`, whose `get_bind_bone` is -1). **Every delivered upload here is named**:
+## 52/52 and 65/65 slots return -1, which is why reading `get_bind_bone()` directly collapsed
+## Feedback's whole body into a 1 cm blob at the origin — slot 0 was `mixamorig_RightHandThumb2`
+## and every unresolved slot fell back to IDENTITY. Resolving the name is the fix.
+static func slot_bone(skin: Skin, skel: Skeleton3D, slot: int) -> int:
+	if skin == null or skel == null:
+		return -1
+	var bone := skin.get_bind_bone(slot)
+	if bone >= 0:
+		return bone
+	var named := String(skin.get_bind_name(slot))
+	if named == "":
+		return -1
+	return skel.find_bone(named)
+
+
+## Which convention this upload uses. `true` = a vertex bone entry is a SKIN BIND slot (read
+## through `slot_bone()`), `false` = it is a skeleton bone index already.
+##
+## Decided per upload from the BIND POSE, by the one measurement that cannot be ambiguous: a
+## drawn body is as tall as its own skeleton. The wrong reading is either a collapsed blob
+## (~1 cm) or a body in the wrong units/place; the right one matches the rest bone span within
+## a few percent. This replaces the earlier "drawn sole nearest the foot bone" rule, which the
+## collapsed blob satisfied by sitting on the ground at y 0.
 static func uses_bind_slots(mi: MeshInstance3D, skel: Skeleton3D) -> bool:
 	if mi == null or mi.mesh == null:
 		return true
 	var key: int = mi.mesh.get_instance_id()
 	if _bind_choice.has(key):
 		return bool(_bind_choice[key])
+	var span := _bone_span(skel)
 	var mapped := true
-	var feet: Array[int] = []
-	for i in skel.get_bone_count():
-		var name := skel.get_bone_name(i)
-		if name.ends_with("Foot") or name.ends_with("ToeBase"):
-			feet.append(i)
-	if not feet.is_empty():
-		var bone_low := INF
-		for i in feet:
-			bone_low = minf(bone_low, (skel.global_transform * skel.get_bone_global_rest(i)).origin.y)
+	if span > 0.01:
 		var best := INF
 		for candidate in [true, false]:
-			var low := _lowest(mi, skel, true, candidate)
-			if low == INF:
+			var pair := _read_mesh(mi, skel, Vector3(INF, INF, INF), Vector3(-INF, -INF, -INF),
+				true, candidate)
+			if pair[0].x == INF:
 				continue
-			var err := absf(bone_low - low)
-			if err < absf(best):
+			var err := absf((pair[1].y - pair[0].y) - span) / span
+			if err < best:
 				best = err
 				mapped = candidate
 	_bind_choice[key] = mapped
 	return mapped
+
+
+## World-space extent of the skeleton's own rest bone origins.
+static func _bone_span(skel: Skeleton3D) -> float:
+	if skel == null or skel.get_bone_count() == 0:
+		return 0.0
+	var low := INF
+	var high := -INF
+	for i in skel.get_bone_count():
+		var y: float = (skel.global_transform * skel.get_bone_global_rest(i)).origin.y
+		low = minf(low, y)
+		high = maxf(high, y)
+	return high - low if high > low else 0.0
 
 
 ## Lowest drawn Y of one mesh, optionally in the bind/rest pose (used by the convention test).
@@ -161,7 +341,7 @@ static func _bone_transforms(skel: Skeleton3D, skin: Skin, use_rest: bool,
 	var out: Array[Transform3D] = []
 	if skin != null and mapped:
 		for slot in skin.get_bind_count():
-			var bone := skin.get_bind_bone(slot)
+			var bone := slot_bone(skin, skel, slot)
 			if bone < 0 or bone >= skel.get_bone_count():
 				out.append(Transform3D.IDENTITY)
 				continue

@@ -1,0 +1,132 @@
+# Sound Clash Brawl — build the Godot Web export and publish it to GitHub Pages.
+#
+# The committed docs/ folder is still served by the branch today; this workflow is the
+# replacement path and is NOT enabled until the owner switches Settings → Pages → Source
+# to "GitHub Actions". See AGENTS.md ("PART C · commit 9") for the owner steps.
+#
+# The Web preset is the single-threaded GL Compatibility export
+# (godot/export_presets.cfg → variant/thread_support=false), so the build needs no
+# COOP/COEP headers — which GitHub Pages cannot set. Godot documents that only a
+# thread-enabled Web export requires cross-origin isolation
+# (https://docs.godotengine.org/en/4.5/tutorials/export/exporting_for_web.html).
+#
+# The export is written to $RUNNER_TEMP/web, never into the repository, so a run cannot
+# dirty the checkout or commit a build.
+
+name: Deploy Web build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/3d-cel-shaded
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One Pages deployment at a time; never cancel a run that is already publishing.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  # Pinned engine. Both URLs are the official 4.5-stable release assets:
+  #   Godot_v4.5-stable_linux.x86_64.zip
+  #   Godot_v4.5-stable_export_templates.tpz
+  GODOT_VERSION: 4.5-stable
+  # Directory name Godot itself expects under ~/.local/share/godot/export_templates.
+  GODOT_TEMPLATE_DIR: 4.5.stable
+
+jobs:
+  build:
+    name: Export the Web preset
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the branch
+        uses: actions/checkout@v4
+
+      - name: Cache the Godot editor and export templates
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/godot
+          key: godot-${{ env.GODOT_VERSION }}-linux-templates
+
+      - name: Install Godot ${{ env.GODOT_VERSION }} with export templates
+        env:
+          VERSION: ${{ env.GODOT_VERSION }}
+          TEMPLATE_DIR: ${{ env.GODOT_TEMPLATE_DIR }}
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/godot"
+          mkdir -p "$root/templates"
+          editor="$root/Godot_v${VERSION}_linux.x86_64"
+
+          if [ ! -x "$editor" ]; then
+            curl -fsSL --retry 3 -o "$root/godot.zip" \
+              "https://github.com/godotengine/godot/releases/download/${VERSION}/Godot_v${VERSION}_linux.x86_64.zip"
+            unzip -q -o "$root/godot.zip" -d "$root"
+            chmod +x "$editor"
+          fi
+
+          # The tpz is a renamed zip holding templates/<platform>.zip for every platform.
+          if [ ! -f "$root/templates/web_nothreads_release.zip" ]; then
+            curl -fsSL --retry 3 -o "$root/templates.tpz" \
+              "https://github.com/godotengine/godot/releases/download/${VERSION}/Godot_v${VERSION}_export_templates.tpz"
+            unzip -q -o "$root/templates.tpz" -d "$root/tpz"
+            cp -R "$root/tpz/templates/." "$root/templates/"
+          fi
+
+          # Fail loudly if the download is not the pinned build or is missing the Web template.
+          reported="$("$editor" --version)"
+          echo "Godot reports: $reported"
+          case "$reported" in
+            "${TEMPLATE_DIR}.official."*) ;;
+            *)
+              echo "::error::Expected ${TEMPLATE_DIR}.official.*, downloaded '$reported'"
+              exit 1
+              ;;
+          esac
+          test -f "$root/templates/web_nothreads_release.zip"
+
+          ln -sfn "$editor" "$root/godot"
+          install -d "$HOME/.local/share/godot/export_templates"
+          ln -sfn "$root/templates" "$HOME/.local/share/godot/export_templates/${TEMPLATE_DIR}"
+          echo "$root" >> "$GITHUB_PATH"
+
+      - name: Import the project headlessly
+        run: godot --headless --path godot --import
+
+      - name: Export the Web preset
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/web"
+          rm -rf "$out"
+          mkdir -p "$out"
+          godot --headless --path godot --export-release "Web" "$out/index.html"
+          ls -l "$out"
+          test -s "$out/index.html"
+          test -s "$out/index.pck"
+          test -s "$out/index.wasm"
+          test -s "$out/index.js"
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload the Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ runner.temp }}/web
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy the uploaded artifact
+        id: deployment
+        uses: actions/deploy-pages@v4

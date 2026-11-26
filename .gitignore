@@ -63,3 +63,13 @@ __pycache__/
 # Decimation build scaffolding (python venv + extracted libOpenGL); not part of the game
 .venv/
 .local-libs/
+
+# Godot Web exports. docs/ is still committed today so the branch keeps serving the
+# playtest build from GitHub Pages. Once the Actions workflow in
+# .github/workflows/deploy-web.yml has been run and confirmed by the owner, stop
+# committing builds by uncommenting the two lines below and running
+#   git rm --cached docs/index.pck docs/index.wasm
+# (a .gitignore rule alone never untracks a file already in the index). Keep docs/index.html
+# and the small companions if the branch-served build is retired together with them.
+# docs/index.pck
+# docs/index.wasm

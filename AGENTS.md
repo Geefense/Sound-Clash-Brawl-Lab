@@ -6397,3 +6397,65 @@ mp3 6,054,777 (11.3%) · gdc 370,487 · fonts 355,053 · sample 178,867 · every
   neither the probe nor its 1.8 MB texture.
 - Pack booted from the exported bundle as described above (exit 0).
 - **No test assertion was changed, added, weakened or skipped in this commit.**
+
+## 2026-11-26 — PART C · Commit 9: deploys from Actions, not from committed blobs
+
+**Not tested from here.** This environment has no network path to GitHub's Actions runners and
+no browser, so the workflow is written, reviewed line by line and left unrun; nothing below
+claims a green run.
+
+`.github/workflows/deploy-web.yml` — `workflow_dispatch` + every push to
+`feature/3d-cel-shaded`:
+
+- `actions/checkout@v4`, then `actions/cache@v4` keyed on the pinned engine version, then an
+  install step that downloads the official release assets
+  `Godot_v4.5-stable_linux.x86_64.zip` and `Godot_v4.5-stable_export_templates.tpz` from
+  `github.com/godotengine/godot/releases/download/4.5-stable/`, unzips the `.tpz` (a renamed
+  zip of `templates/<platform>.zip`), and links it to
+  `~/.local/share/godot/export_templates/4.5.stable` — the path the engine looks in, and the
+  same layout this checkout uses locally. It then **verifies the download**: `--version` must
+  report `4.5.stable.official.*` and `templates/web_nothreads_release.zip` must exist, or the
+  job fails with `::error::`.
+- `godot --headless --path godot --import`, then
+  `godot --headless --path godot --export-release "Web" "$RUNNER_TEMP/web/index.html"`, then
+  asserts `index.html`, `index.js`, `index.pck` and `index.wasm` all exist and are non-empty.
+  The export goes to the runner's temp dir, **never into the checkout**, so a workflow run
+  cannot dirty or commit a build.
+- `actions/configure-pages@v5` → `actions/upload-pages-artifact@v3` → `actions/deploy-pages@v4`
+  in a `github-pages` environment job. Permissions are exactly `contents: read`,
+  `pages: write`, `id-token: write`; `concurrency: pages` with `cancel-in-progress: false` so a
+  publish is never interrupted.
+
+**Cross-origin isolation.** The preset has `variant/thread_support=false`, i.e. Godot's
+single-threaded Web export (the default since 4.3). Godot's *Exporting for the Web* page states
+that only a thread-enabled export "requires the use of cross-origin isolation headers", and
+that the single-threaded export exists precisely to avoid `SharedArrayBuffer`/COOP/COEP. So the
+build is expected to run on GitHub Pages, which cannot set those headers. What was verified
+here: the preset value, and that this export produced `web_nothreads_release.zip`-based output
+with no worker script in `docs/`. What was **not** verified: the deployed site itself.
+
+**Owner steps (once):** GitHub → Settings → Pages → *Build and deployment* → Source:
+**GitHub Actions**. Then Actions → *Deploy Web build* → *Run workflow* (or just push to
+`feature/3d-cel-shaded`). Verify: the run's `build` job lists the four output files with sizes;
+the `deploy` job prints the Pages URL; open it and check the title screen loads and a match
+starts. Until that is confirmed, the branch still serves the committed `docs/` build — nothing
+about the current Pages setup was removed or changed.
+
+**Switching back:** Settings → Pages → Source: *Deploy from a branch* → `feature/3d-cel-shaded`
+/ `/docs`. The committed `docs/` build stays in the repo for exactly that.
+
+**Then (and only then) stop committing builds.** `.gitignore` now carries the two rules,
+commented out, with the `git rm --cached docs/index.pck docs/index.wasm` step spelled out next
+to them: a `.gitignore` line cannot untrack a file that is already committed. No history was
+rewritten and no blob was removed.
+
+**Repository size, reported for the owner's decision (not changed here):**
+
+- `git count-objects -vH`: `count: 2768`, `size: 1.24 GiB`, `in-pack: 1043`,
+  `size-pack: 294.87 MiB`, `packs: 6`, `prune-packable: 74`, `garbage: 0`.
+- Working tree 870 MB, of which `godot/assets/models` 110 MB, `godot/assets/sprites` 25 MB,
+  `docs/` 88 MB (the export: 53.8 MB pck + 38.1 MB wasm + 0.3 MB js).
+- Every export ever committed is still in history. Pruning those blobs needs a history rewrite
+  (`git filter-repo`/BFG) plus a force-push: **not done, and not something to do casually** —
+  it would invalidate every existing clone. Decide after the Actions deploy is proven, and
+  back up the repository first.

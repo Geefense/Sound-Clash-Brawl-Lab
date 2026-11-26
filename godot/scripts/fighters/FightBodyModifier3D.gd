@@ -33,12 +33,12 @@ var eye_line_yaw := 0.0
 var chest_yaw := 0.0
 ## Lateral arc bias of the swing, radians (signed toward the fighting side).
 var arc_bias := 0.0
-## Visual reach extension of the striking fist along ±X, metres. Driven by
-## `AnimationFeel.reach_boost()` from the move's own measured contact reach on ACTIVE frames;
-## the hand is translated on top of the clip pose, so no hitbox, hurtbox or root ever moves.
+## Visual reach extension of the striking fist, metres, driven by `AnimationFeel.reach_boost()`
+## from the move's own measured contact reach on ACTIVE frames. Consumed ONLY as a
+## length-preserving rotation of the shoulder and upper arm (`AnimationFeel.reach_angle`): the
+## hand bone is never translated and no bone is ever scaled, so the glove keeps its authored
+## shape. No hitbox, hurtbox or root moves.
 var reach_boost := 0.0
-## 0–1 one-frame limb smear amount (see `AnimationFeel.smear_amount`).
-var smear := 0.0
 ## `ACTIVE` overshoot impulse on the upper spine, radians.
 var overshoot := 0.0
 ## 0–1.35 additive recoil whip strength (see `AnimationFeel.recoil_strength`).
@@ -63,11 +63,13 @@ var spine_lag := 1.0
 var anticipation := 0.0
 ## Non-linear recovery dip, radians (positive folds forward, negative is the overshoot back).
 var recovery_dip := 0.0
-## 0–1 camera-readable foreshortening of the striking hand on the contact frames.
-var foreshorten := 0.0
-## Hand bone currently carrying the foreshortening scale, or -1. Restored every frame, so the
-## limb can never keep a scale after the contact is over.
-var _foreshortened_hand := -1
+## Per-bone mask of the bones no layer may write (hands, fingers, feet, toes), built once in
+## `cache_bones()`. `_extremity_mask[id] != 0` means that bone is off limits — every write in
+## this modifier goes through `_add()`, which refuses it.
+var _extremity_mask := PackedByteArray()
+## Shoulder-to-hand distance of the striking arm at rest, metres. The reach rotation is solved
+## from it, so the extension is a real lever arc rather than a tuned angle.
+var _arm_length := 0.0
 ## Bound bone indices, resolved once. No per-frame `find_bone()` calls.
 var _spine1 := -1
 var _spine2 := -1
@@ -81,14 +83,6 @@ var _forearm_l := -1
 var _forearm_r := -1
 var _hand_l := -1
 var _hand_r := -1
-## Bones currently carrying the smear stretch, so exactly one frame is ever scaled and the
-## pose is restored the moment the smear ends (no drifting bone scale, no per-frame arrays).
-var _smeared_a := -1
-var _smeared_b := -1
-## The scale triple the last smear applied, or `Vector3.ONE`. The hand props ride bones
-## downstream of the arm, so they inherit this stretch; `FighterModel3D._isolate_props()`
-## divides it straight back out so a mic or a mic stand is never smeared with the limb.
-var last_smear_scale := Vector3.ONE
 var _applied_frame := -1
 ## Yaw spent this frame, so the layer can never exceed `AnimationFeel.INFLUENCE_CAP`.
 var _yaw_spent := 0.0
@@ -125,6 +119,25 @@ func cache_bones(skel: Skeleton3D) -> void:
 	_forearm_r = _find(skel, "RightForeArm")
 	_hand_l = _find(skel, "LeftHand")
 	_hand_r = _find(skel, "RightHand")
+	# Extremity mask: hands, fingers, feet and toes are read-only for this layer. Built once
+	# from the bone names, so no per-frame string work and no call site can forget it.
+	_extremity_mask.resize(skel.get_bone_count())
+	_extremity_mask.fill(0)
+	for i in skel.get_bone_count():
+		if AnimationFeel.is_extremity_bone(skel.get_bone_name(i)):
+			_extremity_mask[i] = 1
+	# Lever length: shoulder -> hand along the rest pose of the striking arm.
+	var shoulder := _shoulder_r if _shoulder_r >= 0 else _shoulder_l
+	var hand := _hand_r if _hand_r >= 0 else _hand_l
+	_arm_length = 0.0
+	if shoulder >= 0 and hand >= 0:
+		# Bone rest positions are in skeleton space, which the exporter scales (0.01 for the
+		# centimetre Mixamo uploads). The reach is authored in metres, so the lever is scaled
+		# into the same units before the arc is solved — otherwise a 7 cm reach on a
+		# centimetre rig is a tenth of a degree.
+		var chain := skel.global_transform.basis.get_scale().y
+		_arm_length = skel.get_bone_global_rest(shoulder).origin.distance_to(
+			skel.get_bone_global_rest(hand).origin) * chain
 	_yaw_budget.resize(8)
 	_yaw_budget.fill(0.0)
 	_cached = true
@@ -224,45 +237,15 @@ func apply_now(force: bool = false) -> void:
 		_add(lead_shoulder, Vector3.UP, arc_bias * face)
 		_add(lead_arm, Vector3.UP, arc_bias * 0.55 * face)
 		_add(lead_forearm, Vector3.BACK, arc_bias * 0.7)
-	# Strike silhouette: the striking hand travels a little further along the fighting axis
-	# than the clip's contact pose. This is a single hand-bone translation on top of the
-	# pose — the arm chain stays connected through the skin weights, and the hips, facing
-	# pivot, collision body and hitboxes are untouched.
+	# Strike silhouette (2026-11-26): the striking arm reaches a little further along the
+	# fighting axis, solved as a rotation of the shoulder and upper arm from the move's own
+	# measured reach. Nothing here translates or scales a bone — the earlier hand-bone
+	# translation stretched the glove's skin weights and is gone for good.
 	if not is_zero_approx(reach_boost):
-		var reach_hand := _hand_r if face > 0.0 else _hand_l
-		if reach_hand >= 0:
-			var reach_parent := _skel.get_bone_parent(reach_hand)
-			if reach_parent >= 0:
-				var parent_basis := (_skel.global_transform \
-					* _skel.get_bone_global_pose(reach_parent)).basis
-				var local_reach := parent_basis.inverse() * Vector3(face * reach_boost, 0.0, 0.0)
-				_skel.set_bone_pose_position(reach_hand,
-					_skel.get_bone_pose_position(reach_hand) + local_reach)
-	# One-frame limb smear: bone scale along the limb's own length, restored on the very
-	# next applied frame. Bone scale only — no extra geometry, no re-skin, no mesh rebuild.
-	_clear_smear()
-	if smear > 0.0:
-		var stretch := AnimationFeel.smear_scale(smear)
-		var smear_arm := _arm_r if face > 0.0 else _arm_l
-		var smear_forearm := _forearm_r if face > 0.0 else _forearm_l
-		if smear_arm >= 0:
-			_skel.set_bone_pose_scale(smear_arm, stretch)
-			_smeared_a = smear_arm
-		if smear_forearm >= 0:
-			_skel.set_bone_pose_scale(smear_forearm, stretch)
-			_smeared_b = smear_forearm
-		last_smear_scale = stretch
-	# Camera-readable foreshortening (commit 3): the striking hand gains a few percent of
-	# volume on the contact frames, so the limb nearest the lens reads at gameplay size. One
-	# shared clamp (`AnimationFeel.clamp_limb`) covers this and the smear, so the two can
-	# never stack past `SILHOUETTE_CLAMP`. The reach boost is a translation, not a scale, so
-	# it is not part of this product.
-	if foreshorten > 0.0:
-		var fore_hand := _hand_r if face > 0.0 else _hand_l
-		if fore_hand >= 0:
-			var fore_scale := AnimationFeel.clamp_limb(foreshorten, 0.0)
-			_skel.set_bone_pose_scale(fore_hand, Vector3.ONE * fore_scale)
-			_foreshortened_hand = fore_hand
+		var angle := AnimationFeel.reach_angle(reach_boost, _arm_length)
+		if angle > 0.0:
+			_add(_shoulder_r if face > 0.0 else _shoulder_l, Vector3.UP, angle * 0.45 * face)
+			_add(_arm_r if face > 0.0 else _arm_l, Vector3.UP, angle * 0.55 * face)
 
 	# --- 4. Alive hitstop -----------------------------------------------------------------
 	if not is_zero_approx(tension):
@@ -286,47 +269,34 @@ func apply_now(force: bool = false) -> void:
 		_add(_head, Vector3.UP, AnimationFeel.recoil_head_yaw(recoil_high) * whip * face)
 
 
-## Undo any stretch left by the previous frame's smear and any scale left by the previous
-## frame's foreshortening. Called at the top of every applied frame, so each is one contact
-## long by construction and a bone can never keep a scale.
-func _clear_smear() -> void:
-	if _smeared_a >= 0:
-		_skel.set_bone_pose_scale(_smeared_a, Vector3.ONE)
-	if _smeared_b >= 0:
-		_skel.set_bone_pose_scale(_smeared_b, Vector3.ONE)
-	if _foreshortened_hand >= 0:
-		_skel.set_bone_pose_scale(_foreshortened_hand, Vector3.ONE)
-	_smeared_a = -1
-	_smeared_b = -1
-	_foreshortened_hand = -1
-	last_smear_scale = Vector3.ONE
+## True when this bone index belongs to a hand, finger, foot or toe and must not be written.
+func is_extremity(index: int) -> bool:
+	return index >= 0 and index < _extremity_mask.size() and _extremity_mask[index] != 0
 
 
-## Bone carrying the current foreshortening scale, or -1.
-func foreshortened_hand() -> int:
-	return _foreshortened_hand
+## Measured shoulder-to-hand distance of the striking arm, metres.
+func arm_length() -> float:
+	return _arm_length
 
 
-## The scale the striking hand currently carries, for the audit.
-func hand_scale_now() -> Vector3:
-	if _foreshortened_hand >= 0:
-		return _skel.get_bone_pose_scale(_foreshortened_hand)
-	return Vector3.ONE
-
-
-## True while a smear stretch is applied, for the audit.
-func is_smeared() -> bool:
-	return _smeared_a >= 0 or _smeared_b >= 0
-
-
-func smeared_bones() -> Array:
-	return [_smeared_a, _smeared_b]
+## Number of bones this layer may never write, for the audit.
+func extremity_count() -> int:
+	var total := 0
+	for flag in _extremity_mask:
+		if flag != 0:
+			total += 1
+	return total
 
 
 ## Additive rotation on one cached bone. `index < 0` is a no-op, so a future upload that
 ## renames a bone loses the layer's nuance instead of erroring.
 func _add(index: int, axis: Vector3, angle: float) -> void:
 	if index < 0 or is_zero_approx(angle):
+		return
+	# Extremity exclusion (2026-11-26): hands, fingers, feet and toes are never written by any
+	# presentation layer. This guard is the single choke point, so a future system cannot
+	# reintroduce the hand translation or the 1.08× foreshortening that mutilated the glove.
+	if is_extremity(index):
 		return
 	# Influence cap: yaw is what could ever read as a turn, so it is what is budgeted — per bone
 	# cumulatively, then per frame. Two systems writing the same spine may not add up past
@@ -393,14 +363,10 @@ func reset() -> void:
 	arc_bias = 0.0
 	chest_yaw = 0.0
 	reach_boost = 0.0
-	smear = 0.0
-	foreshorten = 0.0
 	recovery_dip = 0.0
 	anticipation = 0.0
 	whip_step = -1
 	spine_lag = 1.0
-	if _skel != null:
-		_clear_smear()
 	overshoot = 0.0
 	recoil_strength = 0.0
 	recoil_curve = 0.0

@@ -137,11 +137,8 @@ const ARC_LATERAL_OVERSHOOT := 0.05
 const ARC_RAMP := [0.0, 1.0, 0.55, 0.20, 0.0]
 ## `ACTIVE` frame the whip is measured on (the first frame after the coil).
 const WHIP_FRAME := 1
-## Length of the cartoon limb smear, in frames. Exactly one: a smear that lasts is a bug.
-const SMEAR_FRAMES := 1
-## Peak stretch along the striking limb during that frame. Bone scale only, so the skin
-## follows the bone and nothing is re-exported, re-skinned or turned into extra geometry.
-const SMEAR_STRETCH := 0.14
+
+
 
 
 ## Signed lateral bias of the swing for an `ACTIVE` frame, radians. Multiply by the facing
@@ -156,18 +153,40 @@ static func arc_bias(frame: int, weight: float) -> float:
 	return (ARC_SWING * ramp + lateral * ramp) * clampf(weight, 0.0, 1.0)
 
 
-## 0–1 smear amount for an `ACTIVE` frame: full on the whip frame, zero everywhere else. The
-## smear is deliberately one frame — it is the arcade tell for the fastest pose change in the
-## move, not an effect that lingers over the contact.
-static func smear_amount(frame: int) -> float:
-	return 1.0 if frame == WHIP_FRAME else 0.0
+# --- Extremity exclusion -----------------------------------------------------------------
+## Suffixes of every bone a presentation layer may never write: hands, all four finger chains,
+## feet and toes. These bones carry the skin weights that fan a hand or a foot out into the
+## mesh, so a bone translation stretches the fingers apart and a bone scale swells the whole
+## glove — which is exactly how the owner's hand came back looking mutilated from a playtest.
+## `FightBodyModifier3D` caches this as a per-bone mask and refuses every write to a hit, so
+## the contract is structural rather than a promise held by each call site.
+const EXTREMITY_SUFFIXES: Array[String] = [
+	"Hand", "Thumb1", "Thumb2", "Thumb3", "Thumb4",
+	"Index1", "Index2", "Index3", "Index4",
+	"Middle1", "Middle2", "Middle3", "Middle4",
+	"Ring1", "Ring2", "Ring3", "Ring4",
+	"Pinky1", "Pinky2", "Pinky3", "Pinky4",
+	"Foot", "ToeBase", "ToeEnd",
+]
 
 
-## Volume-preserving stretch along the bone's own length for the smear.
-static func smear_scale(amount: float) -> Vector3:
-	var stretch := 1.0 + SMEAR_STRETCH * clampf(amount, 0.0, 1.0)
-	var thin := 1.0 / sqrt(stretch)
-	return Vector3(thin, stretch, thin)
+## True when this bone name is an extremity the layers must leave alone.
+static func is_extremity_bone(bone_name: String) -> bool:
+	for suffix in EXTREMITY_SUFFIXES:
+		if bone_name.ends_with(suffix):
+			return true
+	return false
+
+
+## Extra forward reach as a LENGTH-PRESERVING rotation of the striking arm, radians. `reach`
+## metres over the measured shoulder-to-hand distance; the rotation carries the fist forward
+## through the arc of the arm instead of sliding the hand bone away from the wrist, so the
+## skinned mesh keeps its authored shape. Clamped well short of 90° so the shoulder can never
+## fold the arm back on itself.
+static func reach_angle(reach: float, arm_length: float) -> float:
+	if arm_length <= 0.01:
+		return 0.0
+	return asin(clampf(absf(reach) / arm_length, 0.0, 0.55))
 
 
 ## `HITSTUN` / blockstun clip progress: the defender lands on the recoil extreme on the FIRST
@@ -247,6 +266,8 @@ const REACH_BOOST_MAX := 0.070
 
 
 ## Visual-only reach extension for a move whose measured contact reach is `reference_reach`.
+## A distance in metres; the modifier turns it into a rotation (see `reach_angle`) and never
+## translates the hand.
 static func reach_boost(reference_reach: float) -> float:
 	return clampf(maxf(reference_reach, 0.0) * REACH_BOOST_FRACTION,
 		REACH_BOOST_MIN, REACH_BOOST_MAX)
@@ -607,39 +628,6 @@ static func recovery_compress(p: float, degrees: float = RECOVERY_DIP_DEG) -> fl
 	return clampf(recovery_dip(p, degrees) / deg_to_rad(maxf(degrees, 0.001)),
 		-RECOVERY_DIP_OVERSHOOT, 1.0)
 
-
-# --- Commit 3: camera-readable foreshortening --------------------------------------------
-## Peak scale of the striking hand/foot bone on the contact frames. Small on purpose: it is a
-## few percent of extra volume on the limb that is nearest the lens, not a cartoon balloon.
-const FORESHORTEN_MAX := 1.08
-## ONE ceiling shared by every effect that makes a striking limb read bigger on the 2D plane
-## (the foreshortening scale, the one-frame smear and the reach extension), so three systems
-## authored separately can never stack past it.
-const SILHOUETTE_CLAMP := 1.08
-
-
-## Scale for a foreshortening `amount` (0–1). Exactly `SILHOUETTE_CLAMP` at 1.
-static func foreshorten_scale(amount: float) -> float:
-	return 1.0 + clampf(amount, 0.0, 1.0) * (FORESHORTEN_MAX - 1.0)
-
-
-## The shared clamp in action: the product of the foreshortening scale and the smear's own
-## stretch, capped at `SILHOUETTE_CLAMP`. The runtime uses it on the hand bone; the audit
-## proves a double-max request is trimmed instead of doubling the limb.
-static func clamp_limb(foreshorten: float, smear: float) -> float:
-	return minf(foreshorten_scale(foreshorten) * smear_scale(smear).y, SILHOUETTE_CLAMP)
-
-
-## 0–1 foreshortening for the strike. Full from the measured `t_impact` through the end of
-## ACTIVE, then a smooth release across RECOVERY (`recovery_p` 0 at the first recovery tick,
-## 1 at the last) so the limb is back to its authored scale before the fighter is idle again.
-static func foreshorten_amount(state: int, progress: float, t_impact: float,
-		recovery_p: float) -> float:
-	if state == BaseFighter.State.ATTACK_ACTIVE:
-		return 0.0 if progress < t_impact - 0.0001 else 1.0
-	if state == BaseFighter.State.ATTACK_RECOVERY:
-		return 1.0 - smoothstep(0.0, 1.0, clampf(recovery_p, 0.0, 1.0))
-	return 0.0
 
 
 # --- Cinematic camera accent -------------------------------------------------------------

@@ -5701,3 +5701,54 @@ No test was weakened and no count dropped.
 - **No iPhone, no Chromebook and no browser build was launched.** The ETC2/S3TC variants are present in
   the exported pack (confirmed from the export log), but playback on real hardware is unverified.
 - The rasta speaker, DJ booth, wireless mic and mic stand slots are still empty.
+
+### PART A commit 1 — the mutilated hand: every extremity write removed, November 26, 2026
+
+Owner's Chromebook playtest of `ba32a4f` reported Feedback's hand looking mutilated. Cause was
+diagnosed in code, not on screen: three presentation systems wrote the hand itself.
+
+1. `FightBodyModifier3D.foreshorten` put a **1.08× scale on the hand bone** on heavy contacts.
+2. `FightBodyModifier3D.smear` put a **volume-preserving stretch on the upper arm and forearm** for
+   one frame per whip.
+3. `FightBodyModifier3D.reach_boost` **translated the hand bone** away from the wrist by up to
+   7 cm — the translation is what stretches the skin weights that fan a palm into four fingers,
+   because a bone offset does not move the wrist with it.
+
+All three are deleted, and the exclusion is now structural rather than a promise at each call site.
+
+**Decisions (logged per the PART A brief).**
+
+- **Extremity exclusion is a cached mask, not a convention.** `AnimationFeel.EXTREMITY_SUFFIXES`
+  lists hand, all four finger chains, foot and toe suffixes; `FightBodyModifier3D.cache_bones()`
+  builds a `PackedByteArray` mask (one slot per bone) at bind, and `_add()` — the single choke point
+  every write goes through — refuses any hit. `is_extremity()` / `extremity_count()` expose it to
+  the audit. No per-frame allocation, no per-frame string work.
+- **Punch readability is kept, without touching extremities.** Reach is now a length-preserving
+  rotation of the striking shoulder (45 %) and upper arm (55 %), with the angle solved from the
+  move's own measured contact reach and the arm's measured shoulder-to-hand length
+  (`AnimationFeel.reach_angle`), clamped to 0.55 rad of arc. The existing torso lean, chest cheat,
+  arc bias and overshoot are unchanged. The arm lever is scaled into metres with the skeleton's
+  own unit scale, because the centimetre Mixamo uploads would otherwise solve a 7 cm reach as a
+  tenth of a degree.
+- **Intentional test replacements** (count went 428 → 440, no tolerance loosened):
+  removed — "the limb smear exists on exactly one frame", "the smear stretch preserves the limb's
+  volume", "the whip stretches the striking arm for one frame", "the smear is fully restored on the
+  next frame", "the smear never scales the hips", "foreshortening tops out on the shared silhouette
+  clamp", "the foreshorten + smear stack is trimmed to the one shared clamp", "foreshortening is
+  full at impact and releases through recovery", "the striking hand foreshortens inside the clamp",
+  "the hand returns to its authored scale after the contact". They assert features the owner asked
+  to remove.
+  added — the exclusion mask covers ≥40 extremity bones on every rig; the reach boost does not move
+  the hand bone but does rotate the upper arm; a direct `_add()` to hand, foot and toe bones is
+  refused; **for every fighter × both slots × STARTUP/ACTIVE/RECOVERY of all six attacks, every
+  hand/finger/foot/toe bone keeps the authored local transform within 1e-4 and carries no scale**;
+  the skinned-vertex sampler still finds real glove geometry; and a deliberate 1.08× hand write is
+  detected, so the replaced tests would have caught the owner's bug.
+- **Prop isolation simplified.** With the smear gone, `_isolate_props()` only compensates the
+  impact pop; `last_smear_scale` is deleted.
+
+**Measured (all four suites, 0 FAIL):** roster **470**, live **422**, facing **310**, feel
+**440**. `BaseFighter.gd`, the frame data, hitboxes, 132 BPM, Crowd Hype and the 31 Patois entries
+are untouched (the audit's hash checks still pass). `/docs` deliberately **not** exported in this
+part. Not seen on a screen — no GPU in this environment; the hand fix is proven by bone transforms
+and skinned-vertex sampling, not by pixels.

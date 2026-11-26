@@ -2069,9 +2069,9 @@ func _apply_feel_layer(delta: float) -> void:
 	if body_modifier != null:
 		_configure_body_modifier(state)
 		body_modifier.apply_now()
-		# AFTER the skeleton has written this frame's smear, never before: the prop
-		# compensation is the inverse of both the pop and whatever stretch the arm actually
-		# carries, so reading it a frame late would leave one frame of warp on the mic.
+		# AFTER the modifier has written this frame's pose, never before: the prop
+		# compensation is the inverse of the body's own pop, so reading it a frame late would
+		# leave one frame of warp on the mic.
 		_isolate_props()
 	_apply_hitstop_shake(state)
 
@@ -2140,12 +2140,12 @@ func _configure_body_modifier(state: int) -> void:
 	# An on-beat attack keeps a little more of the overshoot impulse (clamped, visual only).
 	body_modifier.overshoot = AnimationFeel.overshoot_lean_accented(
 		fighter.state_frame, last_beat_accent) * bias_overshoot if active else 0.0
-	# 2b. Arc enforcement and the one-frame limb smear, both keyed to the whip frame.
+	# 2b. Arc enforcement, keyed to the whip frame.
 	body_modifier.arc_bias = AnimationFeel.arc_bias(fighter.state_frame, last_attack_weight) \
 		if active else 0.0
-	body_modifier.smear = AnimationFeel.smear_amount(fighter.state_frame) if active else 0.0
-	# 2c. Strike silhouette: the fist reaches a fraction of the move's own measured contact
-	# reach further along ±X, riding the attack curve so ACTIVE never pops it on at the seam.
+	# 2c. Strike silhouette: the arm reaches a fraction of the move's own measured contact
+	# reach further along ±X as a length-preserving shoulder/upper-arm rotation, riding the
+	# attack curve so ACTIVE never pops it on at the seam. No hand translation, no bone scale.
 	var boost := 0.0
 	if active:
 		var clip_name := String(animation.current_animation) if animation != null else ""
@@ -2153,21 +2153,6 @@ func _configure_body_modifier(state: int) -> void:
 		var progress := AnimationFeel.active_progress(fighter.state_frame, t_impact)
 		boost = reach_boost * AnimationFeel.reach_boost_curve(progress)
 	body_modifier.reach_boost = boost
-	# Commit 3: camera-readable foreshortening of the striking hand, heavy/special contacts
-	# only. `AnimationFeel.foreshorten_amount` is full at the measured `t_impact` and releases
-	# smoothly across RECOVERY, so the limb returns to its authored scale on its own.
-	var fore := 0.0
-	var attack_id: StringName = fighter._attack_id
-	var heavy_or_special := attack_id in BaseFighter.HEAVY_ATTACK_IDS or attack_id == &"special"
-	if heavy_or_special and (active or state == BaseFighter.State.ATTACK_RECOVERY):
-		var clip := String(animation.current_animation) if animation != null else ""
-		var impact := float(impact_times.get(clip, AnimationFeel.COIL_END))
-		var recovery_ticks := maxi(1, int(fighter._attack.get("recovery", 1)))
-		var recovery_p := clampf(float(fighter.state_frame) / float(recovery_ticks), 0.0, 1.0)
-		var progress := AnimationFeel.active_progress(fighter.state_frame, impact) if active \
-			else AnimationFeel.recovery_progress(recovery_p, impact)
-		fore = AnimationFeel.foreshorten_amount(state, progress, impact, recovery_p)
-	body_modifier.foreshorten = fore
 	# 5. Non-linear hip dip and overshoot return in RECOVERY, from the fighter's own recovery
 	# progress. Zero in every other state, so a strike never inherits a settle.
 	var dip := 0.0

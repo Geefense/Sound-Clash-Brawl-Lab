@@ -209,15 +209,22 @@ func _audit_static_curves() -> void:
 	var arc_light := AnimationFeel.arc_bias(AnimationFeel.WHIP_FRAME, 0.35)
 	_check(arc_heavy > arc_light, "the arc carries the lateral overshoot and scales with weight",
 		"%.3f vs %.3f rad" % [arc_heavy, arc_light])
-	var smear_scale := AnimationFeel.smear_scale(1.0)
-	_check(AnimationFeel.smear_amount(0) == 0.0
-		and AnimationFeel.smear_amount(AnimationFeel.WHIP_FRAME) == 1.0
-		and AnimationFeel.smear_amount(AnimationFeel.WHIP_FRAME + 1) == 0.0,
-		"the limb smear exists on exactly one frame")
-	_check(absf(smear_scale.x * smear_scale.y * smear_scale.z - 1.0) < 0.001
-		and smear_scale.y > 1.0,
-		"the smear stretch preserves the limb's volume",
-		"(%.3f, %.3f, %.3f)" % [smear_scale.x, smear_scale.y, smear_scale.z])
+	# 3b. Extremity exclusion (commit 1, 2026-11-26): the reach extension is a rotation, never a
+	# hand translation or a limb scale, and every hand/finger/foot/toe bone is off limits.
+	_check(AnimationFeel.is_extremity_bone("mixamorig_LeftHand")
+			and AnimationFeel.is_extremity_bone("mixamorig_RightHandIndex3")
+			and AnimationFeel.is_extremity_bone("mixamorig_LeftFoot")
+			and AnimationFeel.is_extremity_bone("mixamorig_RightToeBase")
+			and not AnimationFeel.is_extremity_bone("mixamorig_LeftForeArm")
+			and not AnimationFeel.is_extremity_bone("mixamorig_Spine2"),
+		"the extremity contract covers hands, fingers, feet and toes only")
+	var short_reach := AnimationFeel.reach_angle(0.02, 0.55)
+	var long_reach := AnimationFeel.reach_angle(0.07, 0.55)
+	_check(short_reach > 0.0 and long_reach > short_reach
+			and long_reach < deg_to_rad(40.0)
+			and AnimationFeel.reach_angle(0.5, 0.55) <= deg_to_rad(34.0),
+		"reach is an arc of the arm, and the arc stays short of folding it",
+		"%.1f deg for 7 cm on a 55 cm arm" % rad_to_deg(long_reach))
 
 	# 6. Recoil strength ladder.
 	var light := AnimationFeel.recoil_strength(8, false, false)
@@ -661,36 +668,283 @@ func _audit_attack_curve(model: FighterModel3D, fighter: BaseFighter, key: Strin
 	_check(arc_moved >= 2, "%s the swing arc rotates the striking shoulder and arm" % key,
 		"%d bones" % arc_moved)
 
-	# --- one-frame smear -------------------------------------------------------------
+	# --- reach is a rotation, and it leaves the hand alone ---------------------------
 	mod.reset()
-	# The hips may legitimately carry a non-unit scale from the upload's own bind pose (the
-	# Tripo bodies ship a 0.01 unit scale), so the contract is "the layer does not change it",
-	# not "it is one".
-	var hips := model._bone_suffix("Hips")
-	var hips_before: Vector3 = model.skeleton.get_bone_pose_scale(hips) \
-		if hips >= 0 else Vector3.ONE
-	mod.smear = 1.0
+	var hand_index := int(bones["arm_r"])
+	var hand_bone := model._bone_suffix("RightHand")
+	var hand_before := model.skeleton.get_bone_pose_position(hand_bone) \
+		if hand_bone >= 0 else Vector3.ZERO
+	var arm_before: Quaternion = model.skeleton.get_bone_pose_rotation(hand_index) \
+		if hand_index >= 0 else Quaternion.IDENTITY
+	mod.reach_boost = AnimationFeel.REACH_BOOST_MAX
 	mod.facing = 1
 	mod.apply_now(true)
-	var arm_index := int(bones["arm_r"])
-	var scaled: Vector3 = model.skeleton.get_bone_pose_scale(arm_index) \
-		if arm_index >= 0 else Vector3.ONE
-	_check(mod.is_smeared() and scaled.y > 1.0,
-		"%s the whip stretches the striking arm for one frame" % key,
-		"scale (%.3f, %.3f, %.3f)" % [scaled.x, scaled.y, scaled.z])
-	mod.smear = 0.0
-	mod.apply_now(true)
-	var restored: Vector3 = model.skeleton.get_bone_pose_scale(arm_index) \
-		if arm_index >= 0 else Vector3.ONE
-	_check(not mod.is_smeared() and restored == Vector3.ONE,
-		"%s the smear is fully restored on the next frame" % key,
-		"scale (%.3f, %.3f, %.3f)" % [restored.x, restored.y, restored.z])
-	var hips_after: Vector3 = model.skeleton.get_bone_pose_scale(hips) \
-		if hips >= 0 else Vector3.ONE
-	_check(hips < 0 or hips_after.is_equal_approx(hips_before),
-		"%s the smear never scales the hips" % key,
-		"%.4f -> %.4f" % [hips_before.y, hips_after.y])
+	var hand_after := model.skeleton.get_bone_pose_position(hand_bone) \
+		if hand_bone >= 0 else Vector3.ZERO
+	var arm_after: Quaternion = model.skeleton.get_bone_pose_rotation(hand_index) \
+		if hand_index >= 0 else Quaternion.IDENTITY
+	_check(hand_bone < 0 or hand_before.is_equal_approx(hand_after),
+		"%s the reach boost never translates the hand bone" % key,
+		"delta %.5f m" % hand_before.distance_to(hand_after))
+	_check(hand_index < 0 or arm_before.angle_to(arm_after) > 0.002,
+		"%s the reach boost rotates the upper arm instead" % key,
+		"%.2f deg" % rad_to_deg(arm_before.angle_to(arm_after)))
+	_check(model.skeleton.get_bone_pose_scale(hand_bone).is_equal_approx(Vector3.ONE)
+			if hand_bone >= 0 else true,
+		"%s the hand bone keeps its authored scale through the reach" % key,
+		str(model.skeleton.get_bone_pose_scale(hand_bone) if hand_bone >= 0 else Vector3.ONE))
 	mod.reset()
+
+
+## Commit 1 (2026-11-26). The owner's playtest called the hand "mutilated": the presentation
+## layer was writing the hand bone itself — a 1.08× foreshortening scale on a heavy contact, a
+## one-frame limb smear scale on the arm chain, and a `reach_boost` TRANSLATION of the hand away
+## from the wrist, which stretches the skin weights that fan a hand into four fingers. All three
+## are removed; reach is now a rotation of the shoulder and upper arm.
+##
+## This is the replacement contract, measured against the authored pose on the real body: for
+## every fighter, BOTH slots, and STARTUP / ACTIVE / RECOVERY of every attack (J, K, U, I, L, S),
+## every hand, finger, foot and toe bone must report exactly the clip's own local transform, and
+## the drawn hand must keep its size under the skinned-vertex sampler.
+func _audit_extremities(model: FighterModel3D, fighter: BaseFighter, key: String) -> void:
+	var mod := model.body_modifier
+	var skel := model.skeleton
+	if mod == null or skel == null:
+		_check(true, "%s has no rig to police" % key)
+		return
+	var extremities: Array[int] = []
+	for i in skel.get_bone_count():
+		if AnimationFeel.is_extremity_bone(skel.get_bone_name(i)):
+			extremities.append(i)
+	var uncovered := 0
+	for i in extremities:
+		if not mod.is_extremity(i):
+			uncovered += 1
+	_check(extremities.size() >= 40 and uncovered == 0,
+		"%s the exclusion mask covers every extremity bone" % key,
+		"%d bones, %d uncovered, arm lever %.2f m" % [extremities.size(), uncovered,
+			mod.arm_length()])
+
+	var attacks: Array[StringName] = []
+	for id in [&"jab", &"strong", &"tump", &"upper_box", &"special", &"kick"]:
+		if fighter.attacks.has(id):
+			attacks.append(id)
+	var best := 0.0
+	var scaled_writes := 0
+	var phases := [BaseFighter.State.ATTACK_STARTUP, BaseFighter.State.ATTACK_ACTIVE,
+		BaseFighter.State.ATTACK_RECOVERY]
+	for slot in [1, -1]:
+		for id in attacks:
+			fighter._attack = fighter.attacks[id]
+			fighter._attack_id = id
+			for state in phases:
+				fighter.state = state
+				fighter.state_frame = 1
+				# The authored pose, with the layer switched off completely.
+				mod.enabled = false
+				mod.reset()
+				mod.facing = slot
+				model._configure_body_modifier(state)
+				var authored := _capture_extremities(skel, extremities)
+				# The same frame with the whole stack at its loudest.
+				mod.enabled = true
+				mod.reach_boost = AnimationFeel.REACH_BOOST_MAX
+				mod.arc_bias = AnimationFeel.arc_bias(AnimationFeel.WHIP_FRAME, 1.0)
+				mod.overshoot = AnimationFeel.overshoot_lean(AnimationFeel.WHIP_FRAME)
+				mod.engage_twist = AnimationFeel.ENGAGE_TWIST
+				mod.chest_yaw = AnimationFeel.CHEST_CHEAT
+				mod.apply_now(true)
+				var live := _capture_extremities(skel, extremities)
+				for i in authored.size():
+					best = maxf(best, absf(live[i] - authored[i]))
+				for i in extremities:
+					if not skel.get_bone_pose_scale(i).is_equal_approx(Vector3.ONE):
+						scaled_writes += 1
+	_check(best <= 0.0001,
+		"%s hand/finger/foot/toe bones keep the authored pose in every attack, phase and slot" % key,
+		"worst channel drift %.6f over %d attacks x 3 phases x 2 slots" % [best, attacks.size()])
+	_check(scaled_writes == 0,
+		"%s no extremity bone carries a scale" % key, "%d scaled reads" % scaled_writes)
+
+	# Drawn geometry, same clip frame both times: the hand's own size cannot change if nothing
+	# writes the hand. `rest` is the ACTIVE pose with the layer switched off.
+	mod.reset()
+	fighter.state = BaseFighter.State.ATTACK_ACTIVE
+	fighter._attack_id = &"strong"
+	fighter._attack = fighter.attacks[&"strong"]
+	fighter.state_frame = 3
+	mod.enabled = false
+	model._animate_pose(0.0)
+	var rest := _skinned_extremity_metrics(model)
+	mod.enabled = true
+	mod.facing = model.facing_sign
+	model._configure_body_modifier(BaseFighter.State.ATTACK_ACTIVE)
+	mod.reach_boost = AnimationFeel.REACH_BOOST_MAX
+	mod.arc_bias = AnimationFeel.arc_bias(AnimationFeel.WHIP_FRAME, 1.0)
+	mod.apply_now(true)
+	var live_metrics := _skinned_extremity_metrics(model)
+
+	# 1. The sampler finds real glove geometry (a rig that silently skipped the hand would
+	#    otherwise pass every check above without measuring anything).
+	_check(rest.x > 0.0 and rest.y > 0.0,
+		"%s the skinned sampler finds the drawn hand" % key,
+		"%.3f m fingertip radius over the hand-weighted vertices" % rest.x)
+	# 2. The sampler is sensitive: re-applying the removed 1.08x hand scale is detected. This
+	#    is the check that could not be written before the fix — it proves the hand bug would
+	#    have been caught, instead of merely asserting the hand is now untouched.
+	var wrist_bone := model._bone_suffix("RightHand")
+	var caught := 0.0
+	if wrist_bone >= 0:
+		var before_scale := skel.get_bone_pose_scale(wrist_bone)
+		var clean := _capture_extremities(skel, [wrist_bone])
+		skel.set_bone_pose_scale(wrist_bone, Vector3.ONE * 1.08)
+		var dirty := _capture_extremities(skel, [wrist_bone])
+		skel.set_bone_pose_scale(wrist_bone, before_scale)
+		for i in dirty.size():
+			caught = maxf(caught, absf(dirty[i] - clean[i]))
+	_check(caught >= 0.01,
+		"%s the pinch detector would catch a 1.08x glove scale" % key,
+		"%.3f channel change" % caught)
+
+	# 3. Write refusal, per bone kind: even a direct request cannot move a hand, foot or toe.
+	for probe in ["RightHand", "LeftHand", "RightFoot", "RightToeBase"]:
+		var idx := model._bone_suffix(probe)
+		if idx < 0:
+			continue
+		mod.reset()
+		mod.facing = 1
+		var before_rotation := skel.get_bone_pose_rotation(idx)
+		var before_position := skel.get_bone_pose_position(idx)
+		mod._add(idx, Vector3.UP, 0.6)
+		mod._add(idx, Vector3.RIGHT, 0.4)
+		_check(skel.get_bone_pose_rotation(idx).is_equal_approx(before_rotation)
+				and skel.get_bone_pose_position(idx).is_equal_approx(before_position),
+			"%s a direct write to %s is refused" % [key, probe])
+	mod.reset()
+	mod.enabled = true
+	fighter.state = BaseFighter.State.IDLE
+	fighter.state_frame = 0
+
+
+## Flattened local pose of every extremity bone: position, rotation, scale. Comparing two
+## captures is how the audit proves the additive layer wrote none of them.
+func _capture_extremities(skel: Skeleton3D, indices: Array[int]) -> Array[float]:
+	var out: Array[float] = []
+	for i in indices:
+		var p := skel.get_bone_pose_position(i)
+		var q := skel.get_bone_pose_rotation(i)
+		var s := skel.get_bone_pose_scale(i)
+		out.append(p.x)
+		out.append(p.y)
+		out.append(p.z)
+		out.append(q.x)
+		out.append(q.y)
+		out.append(q.z)
+		out.append(q.w)
+		out.append(s.x)
+		out.append(s.y)
+		out.append(s.z)
+	return out
+
+
+## Skinned-vertex metrics for the striking hand: `x` is the farthest fingertip radius from the
+## wrist bone, `y` the mean radius over the same hand-weighted vertices.
+func _skinned_extremity_metrics(model: FighterModel3D) -> Vector2:
+	var skel := model.skeleton
+	if skel == null:
+		return Vector2.ZERO
+	# Global poses are cached by the skeleton; in a headless run with no frame tick a bone the
+	# modifier just wrote would otherwise still report last frame's chain.
+	skel.force_update_all_bone_transforms()
+	var wrist := model._bone_suffix("RightHand")
+	if wrist < 0:
+		return Vector2.ZERO
+	# Radii from the wrist bone, not a world-space box: the arm swings through ACTIVE, so an
+	# axis-aligned box changes size just by rotating. A radius is rotation-invariant and scales
+	# exactly with the hand bone, so it catches the removed 1.08× hand scale and nothing else.
+	var wrist_origin: Vector3 = skel.get_bone_global_pose(wrist).origin
+	var far := 0.0
+	var total := 0.0
+	var count := 0
+	for node in model.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi == null or mi.mesh == null or mi.skin == null:
+			continue
+		var arrays := mi.mesh.surface_get_arrays(0)
+		if arrays.is_empty() or arrays[Mesh.ARRAY_BONES] == null:
+			continue
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+		var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+		if verts.is_empty() or bones.is_empty():
+			continue
+		var per := bones.size() / verts.size()
+		if per <= 0:
+			continue
+		var skin: Skin = mi.skin
+		# Decide the ARRAY_BONES convention by evidence on this mesh rather than by the model's
+		# sole flag: whichever mapping finds the hand/finger bones is the one that is correct.
+		var mapped := _hand_mapping(skel, skin, bones, per, verts.size())
+		for v in verts.size():
+			# Dominant-weight only: a vertex shared 50/50 with the forearm legitimately moves when
+			# the forearm rotates, so it says nothing about whether the hand itself was deformed.
+			var top := -1.0
+			var top_bone := -1
+			var top_entry := -1
+			for k in per:
+				if weights[v * per + k] > top:
+					top = weights[v * per + k]
+					top_entry = bones[v * per + k]
+					top_bone = _bind_bone(skin, top_entry, mapped)
+			if top_bone < 0 or top < 0.95 or not _is_hand_bone(skel.get_bone_name(top_bone)):
+				continue
+			# Dominant-bone skinning: the vertex rides the hand/finger bone it is bound to. A
+			# stray forearm weight would move the point whenever the arm rotates (which the reach
+			# boost does on purpose), and that is arm motion, not hand deformation.
+			var p := (skel.get_bone_global_pose(top_bone) * skin.get_bind_pose(top_entry)) * verts[v]
+			var radius := wrist_origin.distance_to(p)
+			far = maxf(far, radius)
+			total += radius
+			count += 1
+	if count == 0:
+		return Vector2.ZERO
+	return Vector2(far, total / float(count))
+
+
+## Which `ARRAY_BONES` convention this mesh uses, decided by counting how many sampled
+## vertices land on a hand/finger bone under each mapping.
+func _hand_mapping(skel: Skeleton3D, skin: Skin, bones: PackedInt32Array, per: int,
+		count: int) -> bool:
+	var direct_hits := 0
+	var mapped_hits := 0
+	var sample := mini(count, 400)
+	for v in sample:
+		var e := bones[v * per]
+		if e >= 0 and e < skel.get_bone_count() and _is_hand_bone(skel.get_bone_name(e)):
+			direct_hits += 1
+		var mapped := skin.get_bind_bone(e) if e >= 0 and e < skin.get_bind_count() else -1
+		if mapped >= 0 and _is_hand_bone(skel.get_bone_name(mapped)):
+			mapped_hits += 1
+	return mapped_hits > direct_hits
+
+
+## Hands and fingers only — feet and toes are extremities too, but a hand metric that also
+## spanned the feet would change size every time a fighter moved a leg.
+func _is_hand_bone(bone_name: String) -> bool:
+	return AnimationFeel.is_extremity_bone(bone_name) and not bone_name.ends_with("Foot") \
+		and not bone_name.ends_with("ToeBase") and not bone_name.ends_with("ToeEnd")
+
+
+## Bone id behind one `ARRAY_BONES` entry. Godot's skinned mesh may store either the skin's bind
+## index or the skeleton bone index, so both are tried rather than assuming one convention.
+func _bind_bone(skin: Skin, entry: int, mapped: bool) -> int:
+	if entry < 0:
+		return -1
+	# The three uploads disagree on how `ARRAY_BONES` indexes the skin; `FighterModel3D`
+	# decides the convention once at bind and the audit reads the same flag.
+	if mapped:
+		return skin.get_bind_bone(entry) if entry < skin.get_bind_count() else -1
+	return entry
 
 
 func _bone_rotations(skel: Skeleton3D, bones: Dictionary) -> Dictionary:
@@ -744,14 +998,10 @@ func _audit_squash(model: FighterModel3D, fighter: BaseFighter, key: String) -> 
 	if not model.hand_props.is_empty() and model.hand_props[0] != null:
 		model._squash_scale = Vector3.ONE
 		model.squash_pivot.scale = Vector3.ONE
-		if model.body_modifier != null:
-			model.body_modifier.last_smear_scale = Vector3.ONE
 		model._isolate_props()
 		var rest_basis: Basis = model.hand_props[0].global_transform.basis
 		model._squash_scale = Vector3(1.07, 1.04, 0.95)
 		model.squash_pivot.scale = model._squash_scale
-		if model.body_modifier != null:
-			model.body_modifier.last_smear_scale = AnimationFeel.smear_scale(1.0)
 		model._isolate_props()
 		var warped: Basis = model.hand_props[0].global_transform.basis
 		var worst_axis := 0.0
@@ -760,12 +1010,10 @@ func _audit_squash(model: FighterModel3D, fighter: BaseFighter, key: String) -> 
 			worst_axis = maxf(worst_axis, absf(warped[axis].length() - rest_basis[axis].length()))
 			worst_turn = maxf(worst_turn, warped[axis].angle_to(rest_basis[axis]))
 		_check(worst_axis <= 0.001 and worst_turn <= 0.001,
-			"%s hand prop keeps its rest world basis through pop + smear" % key,
+			"%s hand prop keeps its rest world basis through the pop" % key,
 			"worst axis %.4f m, %.3f deg" % [worst_axis, rad_to_deg(worst_turn)])
 		model._squash_scale = Vector3.ONE
 		model.squash_pivot.scale = Vector3.ONE
-		if model.body_modifier != null:
-			model.body_modifier.last_smear_scale = Vector3.ONE
 		model._isolate_props()
 
 	# Back to rest: the spring must land exactly on one, never drift.
@@ -1081,16 +1329,12 @@ func _audit_volume_and_props(model: FighterModel3D, fighter: BaseFighter, key: S
 	# back exactly where it was — same size, same shear, same orientation.
 	model._squash_scale = Vector3.ONE
 	model.squash_pivot.scale = Vector3.ONE
-	if model.body_modifier != null:
-		model.body_modifier.last_smear_scale = Vector3.ONE
 	model._isolate_props()
 	var bases: Array[Vector3] = []
 	for i in model.hand_props.size():
 		bases.append(model.prop_world_scale(i))
 	model._squash_scale = AnimationFeel.SQUASH_STRETCH
 	model.squash_pivot.scale = model._squash_scale
-	if model.body_modifier != null:
-		model.body_modifier.last_smear_scale = AnimationFeel.smear_scale(1.0)
 	model._isolate_props()
 	var worst_prop := 0.0
 	for i in model.hand_props.size():
@@ -1107,9 +1351,8 @@ func _audit_volume_and_props(model: FighterModel3D, fighter: BaseFighter, key: S
 	else:
 		_check(worst_prop <= 0.01,
 			"%s BoneAttachment3D hand props keep their world scale" % key,
-			"worst %.3f%% off bind, under %.2fx pop + %.0f%% smear" % [worst_prop * 100.0,
-				AnimationFeel.SQUASH_STRETCH.y, AnimationFeel.SMEAR_STRETCH * 100.0])
-	model.body_modifier.last_smear_scale = Vector3.ONE if model.body_modifier != null else Vector3.ONE
+			"worst %.3f%% off bind, under %.2fx pop" % [worst_prop * 100.0,
+				AnimationFeel.SQUASH_STRETCH.y])
 	model._squash_scale = Vector3.ONE
 	model.squash_pivot.scale = Vector3.ONE
 	model._isolate_props()
@@ -1576,38 +1819,10 @@ func _audit_zweifuss(model: FighterModel3D, fighter: BaseFighter, key: String) -
 	_check(is_zero_approx(model.body_modifier.recovery_dip),
 		"%s the dip is gone once the fighter is idle" % key)
 
-	# --- Commit 3: camera-readable foreshortening ---------------------------------------
-	_check(is_equal_approx(AnimationFeel.foreshorten_scale(1.0), AnimationFeel.SILHOUETTE_CLAMP),
-		"%s foreshortening tops out on the shared silhouette clamp" % key,
-		"%.3f×" % AnimationFeel.foreshorten_scale(1.0))
-	var stacked := AnimationFeel.foreshorten_scale(1.0) * AnimationFeel.smear_scale(1.0).y
-	_check(is_equal_approx(AnimationFeel.clamp_limb(1.0, 1.0), AnimationFeel.SILHOUETTE_CLAMP)
-			and AnimationFeel.clamp_limb(1.0, 1.0) < stacked,
-		"%s the foreshorten + smear stack is trimmed to the one shared clamp" % key,
-		"%.3f× requested → %.3f×" % [stacked, AnimationFeel.clamp_limb(1.0, 1.0)])
-	_check(AnimationFeel.foreshorten_amount(BaseFighter.State.ATTACK_ACTIVE, 0.9, 0.5, 0.0) == 1.0
-			and AnimationFeel.foreshorten_amount(BaseFighter.State.ATTACK_ACTIVE, 0.4, 0.5, 0.0) == 0.0
-			and is_zero_approx(AnimationFeel.foreshorten_amount(
-				BaseFighter.State.ATTACK_RECOVERY, 0.5, 0.5, 1.0))
-			and AnimationFeel.foreshorten_amount(BaseFighter.State.IDLE, 1.0, 0.5, 0.0) == 0.0,
-		"%s foreshortening is full at impact and releases through recovery" % key)
-	fighter.state = BaseFighter.State.ATTACK_ACTIVE
-	fighter._attack_id = &"strong"
-	fighter._attack = fighter.attacks[&"strong"]
-	fighter.state_frame = 3
-	await process_frame
-	await process_frame
-	var hand_scale: Vector3 = model.body_modifier.hand_scale_now()
-	var hand_peak := maxf(hand_scale.x, maxf(hand_scale.y, hand_scale.z))
-	_check(hand_peak > 1.0 and hand_peak <= AnimationFeel.SILHOUETTE_CLAMP + 0.0001,
-		"%s the striking hand foreshortens inside the clamp" % key, "%.3f×" % hand_peak)
-	fighter.state = BaseFighter.State.IDLE
-	fighter.state_frame = 0
-	await process_frame
-	await process_frame
-	_check(model.body_modifier.hand_scale_now().is_equal_approx(Vector3.ONE),
-		"%s the hand returns to its authored scale after the contact" % key,
-		str(model.body_modifier.hand_scale_now()))
+	# --- Commit 1 (2026-11-26): the extremities are no longer touched -------------------
+	# The 1.08× foreshortening scale, the limb smear and the hand-bone translation are gone.
+	# The replacement contract is measured on the real rig below.
+	_audit_extremities(model, fighter, key)
 
 	# --- Commit 3: the cel shader carries the preset rim --------------------------------
 	var cel_shader := load("res://assets/shaders/toon_cel.gdshader") as Shader

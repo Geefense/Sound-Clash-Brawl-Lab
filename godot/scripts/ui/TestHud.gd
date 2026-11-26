@@ -56,6 +56,10 @@ const RASTA_STRIP := [
 ]
 
 var subtitles_enabled: bool = true
+## Persistent corner chip for the presentation toggles (F6 look A/B, F7 render quality). Unlike
+## the M toast it never fades: the owner compares two looks on device and has to see which one
+## is live without pressing the key again.
+var debug_chip: String = ""
 
 var _sub: String = ""              # Patois shout
 var _sub_translation: String = ""  # deadpan English
@@ -172,6 +176,14 @@ func show_toast(text: String) -> void:
 	queue_redraw()
 
 
+## Set the persistent presentation chip (F6 look, F7 quality). Empty hides it.
+func set_debug_chip(text: String) -> void:
+	if text == debug_chip:
+		return
+	debug_chip = text
+	queue_redraw()
+
+
 func show_music_toast(text: String) -> void:
 	show_toast(text)
 
@@ -203,6 +215,7 @@ func _draw() -> void:
 	_round_banner(width)
 	_wisdom_banner(width)
 	_music_toast_label(width)
+	_debug_chip_label(width)
 	_subtitle_pill(width)
 
 
@@ -511,7 +524,22 @@ func _music_toast_label(width: float) -> void:
 		Color(1.0, 0.90, 0.48, fade), HORIZONTAL_ALIGNMENT_CENTER, box_w)
 
 
+## Persistent presentation chip, bottom-right above the key strip: which of the two lighting
+## looks is live and which render quality is selected.
+func _debug_chip_label(width: float) -> void:
+	if debug_chip == "":
+		return
+	var text_size := _fit_size(FONT_SUB, debug_chip, 14, 520.0)
+	var text_w := FONT_SUB.get_string_size(debug_chip, HORIZONTAL_ALIGNMENT_LEFT, -1, text_size).x
+	var box_w := clampf(text_w + 26.0, 210.0, 545.0)
+	var box := Rect2(Vector2(width - MARGIN - box_w, LEGEND_Y - 28.0), Vector2(box_w, 24.0))
+	draw_rect(box, Color(0.05, 0.04, 0.07, 0.72), true)
+	draw_rect(box, Color(GOLD.r, GOLD.g, GOLD.b, 0.70), false, 1.0)
+	_text(Vector2(box.position.x, box.position.y + 17.0), debug_chip, FONT_SUB, text_size,
+		Color(0.92, 0.96, 1.0), HORIZONTAL_ALIGNMENT_CENTER, box_w)
+
+
 func _legend(pos: Vector2) -> void:
-	var keys := "J jab · K box · L tump · I upper box · U grab/tech · T taunt · C crouch · Y AI mode · B bird · N time of day · V subtitles · F4 stepped step · R reset · G dummy guard · M mute/beats"
+	var keys := "J jab · K box · L tump · I upper box · U grab/tech · T taunt · C crouch · Y AI mode · B bird · N time of day · V subtitles · F4 stepped step · F6 look · F7 quality · R reset · G dummy guard · M mute/beats"
 	_text(pos, keys, FONT_SUB, _fit_size(FONT_SUB, keys, 14, size.x - 2.0 * MARGIN),
 		Color(0.82, 0.85, 0.92))

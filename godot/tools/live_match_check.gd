@@ -63,6 +63,7 @@ func _run() -> void:
 		for b in FIGHTERS:
 			await _check_pair(a, b)
 	await _check_knockdowns()
+	await _check_lighting_clarity()
 	await _check_camera_framing()
 	await _check_camera_stage_clearance()
 	await _check_strike_silhouette()
@@ -535,6 +536,106 @@ func _check_knockdowns() -> void:
 		_check(_no_root_motion_tracks(model),
 			"%s: no installed take animates Hips/Root position — every clip plays in place" % key)
 		await _free(arena)
+
+
+## PART B commit 4: lighting clarity. The washout was ACES + glow + depth fog stacked over the
+## same seven-light rig, so each preset now has to prove the three are gone, that the key still
+## beats the ambient by 2:1, that both fighters still cast their directional shadow, and that
+## F6 brings the old look back on the same shot without moving the lens or a facing.
+func _check_lighting_clarity() -> void:
+	print("\n-- LIGHTING: no fog / no glow / Linear, key:ambient >= 2:1, 7 lights, F6 A/B")
+	var arena = await _spawn(&"feedback", &"lickshot")
+	var a3d = arena.get("arena3d")
+	if a3d == null or a3d.world_env == null:
+		_check(false, "lighting: no Arena3D environment")
+		await _free(arena)
+		return
+	var env: Environment = a3d.world_env.environment
+	_check(a3d.tonemap_mode() != Environment.TONE_MAPPER_ACES and not a3d.fog_enabled() \
+			and not env.glow_enabled,
+		"the default look boots clean: Linear tonemap, no fog, no glow",
+		"tonemap %d / fog %.4f / glow %.2f" % [a3d.tonemap_mode(), a3d.fog_density(),
+			a3d.glow_intensity()])
+	for idx in [0, 1, 2]:
+		a3d.apply_phase(idx, 0.0)
+		await process_frame
+		var tag: String = a3d.phase_name()
+		_check(not a3d.fog_enabled() or a3d.fog_density() <= 0.002,
+			"%s: the sky gradient carries depth, not fog" % tag,
+			"%s %.4f" % ["fog on" if a3d.fog_enabled() else "fog off", a3d.fog_density()])
+		_check(not env.glow_enabled or a3d.glow_intensity() <= 0.2,
+			"%s: no bloom wash over the fighters" % tag, "glow %.2f" % a3d.glow_intensity())
+		_check(a3d.tonemap_mode() != Environment.TONE_MAPPER_ACES,
+			"%s: the tonemap is not ACES" % tag, "mode %d" % a3d.tonemap_mode())
+		_check(a3d.key_to_ambient_ratio() >= 2.0,
+			"%s: key:ambient stays at 2:1 or better" % tag,
+			"%.2f : 1 (key %.2f / ambient %.2f)" % [a3d.key_to_ambient_ratio(),
+				a3d.key_energy(), a3d.ambient_energy()])
+		_check(a3d.light_count() == 7, "%s: the seven-light rig is unchanged" % tag,
+			"%d lights" % a3d.light_count())
+		var casters := 0
+		for key in ["p1", "p2"]:
+			if _casts_directional_shadow(a3d.models.get(key)):
+				casters += 1
+		_check(casters == 2 and a3d.sun.shadow_enabled,
+			"%s: both fighters still cast the crisp directional shadow" % tag,
+			"%d/2 casters, sun shadow %s" % [casters, str(a3d.sun.shadow_enabled)])
+		if idx == 2:
+			# The night beams stay coloured but are held under the washout point now that glow
+			# and ACES are gone (they were 2.60 under the graded look).
+			_check(a3d._stage_energy_base <= 2.4 and a3d.spot_left.light_color.b > 0.8,
+				"night keeps its coloured beams under the washout point",
+				"base %.2f %s" % [a3d._stage_energy_base, str(a3d.spot_left.light_color)])
+	# F6: the previous look returns on the exact same shot, and the lens/facing do not move.
+	a3d.apply_phase(0, 0.0)
+	await process_frame
+	var cam_before: Transform3D = a3d.camera.global_transform
+	var fov_before: float = a3d.camera.fov
+	var facing_before: int = arena.p1.facing
+	arena._unhandled_input(_key_event(KEY_F6))
+	await process_frame
+	_check(a3d.look_label() == "LEGACY A/B" \
+			and a3d.tonemap_mode() == Environment.TONE_MAPPER_ACES \
+			and a3d.fog_enabled() and env.glow_enabled,
+		"F6 restores the previous graded look (ACES + glow + fog)")
+	_check(a3d.camera.global_transform.is_equal_approx(cam_before) \
+			and is_equal_approx(a3d.camera.fov, fov_before) \
+			and arena.p1.facing == facing_before,
+		"F6 changes the grade only: the frustum and the facing are untouched",
+		"fov %.2f, facing %+d" % [a3d.camera.fov, arena.p1.facing])
+	var hud = arena.get("hud")
+	_check(hud != null and String(hud.debug_chip).contains("LEGACY"),
+		"the HUD carries a live look label",
+		String(hud.debug_chip) if hud != null else "no HUD")
+	arena._unhandled_input(_key_event(KEY_F6))
+	await process_frame
+	_check(a3d.look_label() == "CLEAN" \
+			and a3d.tonemap_mode() == Environment.TONE_MAPPER_LINEAR,
+		"F6 returns to the clean look, which stays the default")
+	_check(hud != null and String(hud.debug_chip).contains("CLEAN"),
+		"the HUD label follows the look back",
+		String(hud.debug_chip) if hud != null else "no HUD")
+	await _free(arena)
+
+
+## True when this model still draws the sun's shadow: at least one of its body meshes casts.
+func _casts_directional_shadow(model) -> bool:
+	if model == null:
+		return false
+	for child in (model as Node).find_children("*", "MeshInstance3D", true, false):
+		var mi := child as MeshInstance3D
+		if mi != null and mi.mesh != null \
+				and mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+			return true
+	return false
+
+
+## A physical F-key press in the shape TestArena._unhandled_input reads.
+func _key_event(code: Key) -> InputEventKey:
+	var event := InputEventKey.new()
+	event.physical_keycode = code
+	event.pressed = true
+	return event
 
 
 ## Bug 3 (2026-11-25): the camera may lean a few degrees toward the exchange, but it may

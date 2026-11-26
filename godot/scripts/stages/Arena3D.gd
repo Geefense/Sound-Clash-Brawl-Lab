@@ -174,7 +174,10 @@ const PHASES := [
 		"stage_b": Color(1.0, 0.16, 0.72, 1.0),
 		"stage_c": Color(1.0, 0.62, 0.12, 1.0),
 		"stage_d": Color(1.0, 0.80, 0.28, 1.0),
-		"stage_energy": 2.60,
+		# PART B commit 4: 2.30 instead of 2.60. With ACES and glow gone the highlights clip
+		# earlier, so the four coloured beams sit just under the washout point while still
+		# carrying the night (they stay well above the 2.0 floor the rig test asserts).
+		"stage_energy": 2.30,
 		"stage_pulse": 0.45,
 		"pool": Color(0.42, 0.78, 1.0, 1.0),
 		"pool_alpha": 0.42,
@@ -912,7 +915,9 @@ func _push_palette(p: Dictionary) -> void:
 	env.ambient_light_color = p["ambient"]
 	env.ambient_light_energy = float(p["ambient_energy"])
 	env.fog_light_color = p["fog"]
-	env.fog_density = float(p["fog_density"])
+	# The clean look carries depth with its sky gradient, so the preset's haze depth is only
+	# written while the legacy A/B is on. It stays authored in the preset either way.
+	env.fog_density = float(p["fog_density"]) if look_legacy else 0.0
 	if sun != null:
 		sun.light_color = p["sun_colour"]
 		sun.light_energy = float(p["sun_energy"])
@@ -1012,13 +1017,30 @@ func cel_rim_strength() -> float:
 # =========================================================================
 # World construction
 # =========================================================================
-## Bug 5: the environment is a graded, tone-mapped scene rather than a linear flat wash.
+# =========================================================================
+# Look: clean (default) vs the previous graded look (F6 A/B, PART B commit 4)
+# =========================================================================
+## The washout was three stacked effects, never the light rig. ACES rolled the saturated sky
+## hexes toward white, glow bloomed every beam back over the bodies, and depth fog veiled a
+## fighter in its own haze a metre from the lens. The clean look removes all three; the seven
+## lights, the crisp directional shadow, the preset palettes and the cel materials are
+## untouched. The sky gradient carries depth on its own, the delivered albedo reads at face
+## value, and every preset keeps a key:ambient ratio of at least 2:1.
 ##
-## ACES keeps the afternoon highlights from clipping while leaving the sunset's crimson and
-## the night's cyan saturated. Glow is enabled at a low, additive setting for the sun disc,
-## the neon rim and the stage beams — Godot 4.3+ supports glow in the Compatibility renderer,
-## which is the renderer the Web export uses. Nothing here needs SSAO, SDFGI or volumetric
-## fog: all three stay off, so the WebGL2 path renders exactly this.
+## These are the previous values, kept only so F6 can A/B the old look against the same frame
+## on device. Nothing in the game reads them except `_apply_look()`.
+const CLEAN_TONEMAP := Environment.TONE_MAPPER_LINEAR
+const CLEAN_EXPOSURE := 1.12
+const CLEAN_WHITE := 1.0
+const LEGACY_TONEMAP := Environment.TONE_MAPPER_ACES
+const LEGACY_EXPOSURE := 1.0
+const LEGACY_WHITE := 6.0
+const LEGACY_GLOW_INTENSITY := 0.55
+const LEGACY_GLOW_HDR_THRESHOLD := 1.08
+## False is the new look and the default at boot; F6 flips it.
+var look_legacy: bool = false
+
+
 func _build_environment() -> void:
 	world_env = WorldEnvironment.new()
 	world_env.name = "WorldEnvironment"
@@ -1028,18 +1050,12 @@ func _build_environment() -> void:
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.55, 0.62, 0.78)
 	env.ambient_light_energy = 0.55
-	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_exposure = 1.0
-	env.tonemap_white = 6.0
-	env.glow_enabled = true
-	env.glow_intensity = 0.55
+	# Filled in by `_apply_look()` below: tonemap, exposure, glow and fog are one switch so the
+	# A/B can never leave the yard halfway between the two looks.
 	env.glow_strength = 1.0
 	env.glow_bloom = 0.04
-	env.glow_hdr_threshold = 1.08
 	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE
-	env.fog_enabled = true
 	env.fog_light_color = Color(0.80, 0.86, 0.94)
-	env.fog_density = 0.004
 	env.fog_sky_affect = 0.0
 	env.fog_aerial_perspective = 0.0
 	# Compatibility-safe: none of the screen-space effects the Web renderer cannot do.
@@ -1049,6 +1065,86 @@ func _build_environment() -> void:
 	env.volumetric_fog_enabled = false
 	world_env.environment = env
 	add_child(world_env)
+	_apply_look()
+
+
+## One switch for the whole look. Clean is the default the player sees; legacy is the exact
+## graded look the playtest called washed out, restored for the owner's on-device comparison.
+## The phase's own `fog_density` is still the value the A/B restores, so each preset keeps its
+## original haze depth when F6 is held on the old look.
+func _apply_look() -> void:
+	if world_env == null or world_env.environment == null:
+		return
+	var env := world_env.environment
+	if look_legacy:
+		env.tonemap_mode = LEGACY_TONEMAP
+		env.tonemap_exposure = LEGACY_EXPOSURE
+		env.tonemap_white = LEGACY_WHITE
+		env.glow_enabled = true
+		env.glow_intensity = LEGACY_GLOW_INTENSITY
+		env.glow_hdr_threshold = LEGACY_GLOW_HDR_THRESHOLD
+		env.fog_enabled = true
+		env.fog_density = float(_phase_now.get("fog_density", 0.0))
+	else:
+		env.tonemap_mode = CLEAN_TONEMAP
+		env.tonemap_exposure = CLEAN_EXPOSURE
+		env.tonemap_white = CLEAN_WHITE
+		env.glow_enabled = false
+		env.glow_intensity = 0.0
+		env.fog_enabled = false
+		env.fog_density = 0.0
+
+
+## F6. Returns the new state: true means the previous graded look is on screen.
+func set_legacy_look(on: bool) -> bool:
+	look_legacy = on
+	_apply_look()
+	return look_legacy
+
+
+func toggle_look() -> bool:
+	return set_legacy_look(not look_legacy)
+
+
+## HUD/debug label for whichever look is live.
+func look_label() -> String:
+	return "LEGACY A/B" if look_legacy else "CLEAN"
+
+
+func tonemap_mode() -> int:
+	return world_env.environment.tonemap_mode if world_env != null and world_env.environment != null else -1
+
+
+func fog_enabled() -> bool:
+	return world_env.environment.fog_enabled if world_env != null and world_env.environment != null else false
+
+
+func fog_density() -> float:
+	return world_env.environment.fog_density if world_env != null and world_env.environment != null else 0.0
+
+
+func glow_intensity() -> float:
+	return world_env.environment.glow_intensity if world_env != null and world_env.environment != null else 0.0
+
+
+func ambient_energy() -> float:
+	return world_env.environment.ambient_light_energy if world_env != null and world_env.environment != null else 0.0
+
+
+## The brightest light actually lighting the yard right now. In the afternoon and at dusk that
+## is the sun; at night the moonlight is deliberately low, so the coloured stage beams are the
+## key. Either way the key must beat the ambient by at least 2:1, or the fighters flatten.
+func key_energy() -> float:
+	var best := 0.0
+	for light in [sun, spot_left, spot_right, stage_spot_a, stage_spot_b]:
+		var l := light as Light3D
+		if l != null and l.visible:
+			best = maxf(best, l.light_energy)
+	return best
+
+
+func key_to_ambient_ratio() -> float:
+	return key_energy() / maxf(ambient_energy(), 0.0001)
 
 
 func _build_camera() -> void:

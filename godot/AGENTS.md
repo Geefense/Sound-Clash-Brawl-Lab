@@ -5936,3 +5936,44 @@ feel **440 / 0 FAIL**.
   mip chain in a browser and its appearance at 12° framing are **unreviewed on device**.
 - No P1-slot knockout still exists: the shipped P2 opponent is the workshop dummy and never throws.
 - No `/docs` export was run for this work.
+
+## PART B (2026-11-26) — lighting, rendering clarity, CPU AI, crowd
+
+### Commit 4 — lighting clarity: the washout was the grade, not the rig
+
+The four suites were green before this part and the rig is untouched: **seven lights** (sun +
+camera fill directionals, one omni rim, four stage spots), the sun's crisp 2-strip shadow, the
+three preset palettes, the sky gradient and every cel rim are exactly as they were. What changed
+is the *environment grade* the lights are rendered through:
+
+| | previous look | clean look (default) |
+| --- | --- | --- |
+| tonemap | ACES, exposure 1.0, white 6.0 | **Linear**, exposure 1.12, white 1.0 |
+| glow | on, intensity 0.55, HDR threshold 1.08, additive | **off** |
+| depth fog | on, density 0.0026 / 0.0115 / 0.019 per preset | **off** (the three-stop sky gradient carries depth) |
+| night stage beams | base 2.60 | **base 2.30**, still cyan / magenta / amber / gold |
+
+`Arena3D._apply_look()` is one switch for all three, so the yard can never sit halfway between
+the looks; `_push_palette()` only writes a preset's haze depth while the legacy look is on.
+`key:ambient` is measured against the **brightest light actually lit** (`key_energy()`, which is
+the sun by day and the stage beams at night) and is now ≥2:1 in all three presets — afternoon
+3.73, sunset 3.50, night 6.8 (`2.30 / 0.34`).
+
+**F6** A/Bs the previous graded look back in at runtime (`TestArena.toggle_lighting_look()`), and
+the persistent HUD chip (`TestHud.set_debug_chip()`) names the live look; clean is the boot
+default. The toggle writes only environment fields — the camera transform, the FOV and both
+fighters' facing are asserted unchanged across it.
+
+**Intentional test changes** (old assertions encoded the washout): the yard's "uses depth fog"
+check became "carries depth with its sky rather than fog"; "night … thickens the atmospheric
+depth" became "night darkens the sky under a clear, unfogged gradient"; and the Compatibility
+contract "ACES tonemap and glow enabled" became "no glow, no fog, Linear tonemap" (SSAO, SDFGI
+and volumetric fog stay off).
+
+New live checks: per preset (fog, glow, non-ACES tonemap, key:ambient ≥2, 7 lights, both
+fighters casting), the night-beam ceiling, and four F6 assertions. Suites: roster ALL PASSED,
+live **447 / 0 FAIL**, facing 310 / 0, feel 440 / 0.
+
+**Not visually verified.** This workspace renders only under Mesa `llvmpipe`, so the claim here
+is the *settings*, not that the frame looks clean on a Chromebook or an iPhone; that comparison
+is what F6 exists for. The Linear exposure (1.12) is a hand-set default awaiting that look.

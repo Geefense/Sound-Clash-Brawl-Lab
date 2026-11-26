@@ -1113,9 +1113,13 @@ func _run() -> void:
 				and stage3d.get_node_or_null("SpeakerStackLeft/AmpRack") == null
 				and stage3d.get_node_or_null("BarrierRail") != null,
 			"no procedural stack remains, while the stage barrier still stands")
+	# PART B commit 4 (intentional change): the graded look's depth fog was stripped with the
+	# washout — the three-stop sky gradient carries the depth instead, in every preset.
 	_check(stage3d != null and stage3d.world_env != null
-			and stage3d.world_env.environment.fog_enabled,
-		"the 3D yard uses depth fog for crowd atmosphere")
+			and (not stage3d.world_env.environment.fog_enabled
+				or stage3d.world_env.environment.fog_density <= 0.002),
+		"the 3D yard carries depth with its sky rather than fog",
+		"fog %.4f" % (stage3d.world_env.environment.fog_density if stage3d != null else -1.0))
 
 	# Lighting is real scene light, phase by phase.
 	if stage3d != null:
@@ -1125,8 +1129,8 @@ func _run() -> void:
 			"night is carried by the overhead SpotLight3D rig, not a screen tint",
 			"sun %.2f / spot %.2f" % [stage3d.sun.light_energy, stage3d.spot_left.light_energy])
 		var night_sky: Color = stage3d.sky_material.get_shader_parameter("top_colour")
-		_check(night_sky.b > night_sky.r and stage3d.world_env.environment.fog_density > 0.015,
-			"night darkens the 3D sky and thickens the atmospheric depth")
+		_check(night_sky.b > night_sky.r and not stage3d.world_env.environment.fog_enabled,
+			"night darkens the 3D sky under a clear, unfogged gradient")
 		stage3d.apply_phase(1, 0.0)
 		await process_frame
 		_check(stage3d.sun.light_color.r > stage3d.sun.light_color.b
@@ -2075,12 +2079,16 @@ func _run() -> void:
 	_check(shadow_ok, "the directional key light still shadows both fighters in every preset")
 	_check(lights_ok, "light counts stay inside Compatibility's per-object limit",
 		", ".join(rig_detail))
+	# PART B commit 4 (intentional change): ACES + glow were the washout. The Compatibility-safe
+	# contract is now the opposite — Linear tonemap, no glow, no fog — while SSAO/SDFGI/
+	# volumetric fog stay off so the WebGL2 path still renders exactly this.
 	var compat_ok: bool = not stage.world_env.environment.ssao_enabled \
 		and not stage.world_env.environment.sdfgi_enabled \
 		and not stage.world_env.environment.volumetric_fog_enabled \
-		and stage.world_env.environment.tonemap_mode == Environment.TONE_MAPPER_ACES \
-		and stage.world_env.environment.glow_enabled
-	_check(compat_ok, "no SSAO / SDFGI / volumetric fog, with ACES tonemap and glow enabled")
+		and not stage.world_env.environment.glow_enabled \
+		and not stage.world_env.environment.fog_enabled \
+		and stage.world_env.environment.tonemap_mode == Environment.TONE_MAPPER_LINEAR
+	_check(compat_ok, "no SSAO / SDFGI / volumetric fog / glow / fog, with the Linear tonemap")
 	_check(sand_colours.size() == 3, "sand and horizon albedo respond to each preset",
 		"%d distinct sand colours" % sand_colours.size())
 

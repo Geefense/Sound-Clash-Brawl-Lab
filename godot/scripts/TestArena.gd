@@ -482,6 +482,7 @@ func _ready() -> void:
 
 	# The phase palette must exist before the round controller applies round 1 lighting.
 	_init_visuals()
+	_refresh_debug_chip()
 	rounds.setup(p1, p2, self)
 	if not rounds.round_ended.is_connected(_on_round_ended):
 		rounds.round_ended.connect(_on_round_ended)
@@ -548,6 +549,38 @@ func print_facing_debug() -> void:
 				model.facing_yaw_deg(), fwd.x, fwd.z, err,
 				"OK" if err <= 5.0 else "WRONG", anim])
 	print("=== END FACING ===\n")
+
+
+## F6 (PART B commit 4): A/B the clean lighting look against the previous graded one. Clean is
+## the default at boot. Presentation only: no light is created, moved, re-parented or retimed,
+## and neither the camera nor a fighter's facing is touched, so the frame the owner compares is
+## exactly the same shot under two looks.
+func toggle_lighting_look() -> bool:
+	if arena3d == null:
+		return false
+	var legacy := arena3d.toggle_look()
+	_refresh_debug_chip()
+	if hud != null:
+		hud.show_toast("LOOK · %s · F6" % arena3d.look_label())
+	print("[look] %s (%s)" % [arena3d.look_label(),
+		"ACES + glow + fog" if legacy else "linear, no glow, no fog"])
+	return legacy
+
+
+## Which look is live, for the audits and the HUD chip.
+func look_label() -> String:
+	return arena3d.look_label() if arena3d != null else ""
+
+
+## One persistent chip carries every presentation toggle, so F4's toast and F6/F7's chip can
+## never fight over the same corner.
+func _refresh_debug_chip() -> void:
+	if hud == null:
+		return
+	var parts: Array[String] = []
+	if arena3d != null:
+		parts.append("LOOK %s · F6" % arena3d.look_label())
+	hud.set_debug_chip("   ·   ".join(parts))
 
 
 ## F4 live toggle for the stepped arcade pose quantization (Stefan Iverson system 1). Both
@@ -618,6 +651,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_F4:
 			# Stefan Iverson system 1: stepped arcade pose quantization, ON by default, live.
 			toggle_stepped_arcade()
+		KEY_F6:
+			# PART B commit 4: clean look vs the previous graded look, live on the same shot.
+			toggle_lighting_look()
 
 
 # =========================================================================

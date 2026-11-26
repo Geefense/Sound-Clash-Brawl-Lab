@@ -6034,3 +6034,61 @@ assertions. Suites: roster **483 / 0 FAIL** (was 470), live **447 / 0**, facing 
 **Not visually verified:** no GPU or device was available, so 2× MSAA, 8× anisotropy, the 55 %
 floor and the closer frame are verified as *settings and materials*, not as pixels. F6/F7 exist
 for the owner's on-device comparison.
+
+### Commit 6 — the CPU AI is gated, delayed and seeded
+
+`BaseFighter.gd` is **byte-identical**: no frame data, no hitbox, no damage and no Crowd Hype
+value changed. What changed is *when* the AI is allowed to press the same `Command` a human
+presses. The policy now lives above two new pieces:
+
+- **`scripts/ai/AIProfile.gd`** — an exported `Resource` carrying every knob, with three shared
+  presets (`easy`, `normal` (default), `hard`). Attached to `SparringController.profile` and fed
+  from `MatchSetup.ai_preset`; `set_preset()` swaps it with no new menu.
+- **`scripts/ai/AIBrain.gd`** — delayed perception (a 96-slot preallocated ring buffer read
+  `reaction_frames + seeded jitter` frames back), the single attack gate, the neutral windows and
+  the punish/guard rolls. All of it scalar state allocated at construction: nothing per frame.
+
+| knob | Easy | **Normal (default)** | Hard |
+| --- | --- | --- | --- |
+| `reaction_frames` (+ seeded `reaction_jitter`) | 26 (+8) | **18 (+6)** | 12 (+4) |
+| `attack_cooldown_frames` | 58 | **44** | 40 |
+| `max_consecutive_attacks` | 2 | **2** | 2 |
+| `breathing_min/max_frames` | 45–60 | **30–45** | 30–40 |
+| `round_start_neutral_frames` | 84 | **66** | 60 |
+| `getup_neutral_frames` | 54 | **42** | 30 |
+| `whiff_neutral_frames` | 46 | **34** | 24 |
+| `landed_neutral_frames` | 6 | **6** | 6 |
+| `punish_chance` | 0.30 | **0.55** | 0.80 |
+| `guard_delay_frames` (on top of the reaction delay) | 30 | **22** | 14 |
+
+Every mode (Counter-Puncher, Riddim Rusher, Spacing Baiter) now reads P1 only through
+`brain.seen_*` and throws only through `_try_attack() → brain.commit_attack()`, so the 40-frame
+cooldown, the two-attack ceiling, the breathing window and the mandatory neutral windows apply
+everywhere. Blocks and punishes are delayed reads too; a punish additionally waits the reaction
+delay again and then wins a `punish_chance` roll. The seeded RNG (`decision_seed`, default
+20261126) makes a seed reproduce its decisions exactly. **Grab breaks** use the same seeded RNG.
+
+Three real bugs were found by measuring rather than by reading:
+
+1. A **failed punish roll left the punish armed forever**, so the counter-puncher rolled roughly
+   once and then never attacked again. It now disarms on a miss.
+2. The **punish was consumed before the range check**, so every successful roll that happened
+   while P1's knockback had pushed the AI out of reach was wasted. The roll is now read only
+   inside strike range.
+3. **A decision was spent while the body could not act** (hitstun/knockdown/held), so the AI
+   burned its cooldown and neutral window on inputs the FSM dropped. `_try_attack()` now refuses
+   without spending anything.
+
+**Measured** (real `TestArena`, scripted player at 150 px jab spacing, five seeds): the player
+lands **3 jabs before the CPU's first attack in 5/5 seeds**, and that first attack arrives at
+frames **164 / 164 / 164 / 168 / 170** — never before the 60-frame opening gate.
+
+Tests added to `live_match_check`: the three presets and their invariants; a direct proof that an
+attack younger than the reaction delay is invisible and the same attack appears once it ages; 20
+seeds with the first attack never before frame 60 (earliest 65); the two-attack ceiling (worst
+run 2); same-seed determinism over 400 frames; and the five-seed live jab-string measurement
+above. Suites: roster 483 / 0 FAIL, live **454 / 0 FAIL**, facing 310 / 0, feel 440 / 0.
+
+**Scope note:** the jab test measures *landed* P1 strikes and the CPU's first `ATTACK_STARTUP`,
+not a full "interruption" judgement; the AI still has no difficulty UI (the export var and
+`MatchSetup.ai_preset` are the whole surface, per the brief).

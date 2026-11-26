@@ -24,6 +24,9 @@ var p1_fighter: StringName = DEFAULT_P1
 var p2_fighter: StringName = DEFAULT_P2
 ## SparringController.Mode index: 0 Dummy, 1 Counter-Puncher, 2 Riddim Rusher, 3 Baiter.
 var ai_mode: int = 1
+## PART B commit 6: which `AIProfile` preset the CPU wears. `normal` is the default and the
+## shipped difficulty; `easy` and `hard` are the other two loaded by `AIProfile.preset()`.
+var ai_preset: StringName = &"normal"
 var subtitles: bool = true
 ## Set by Esc in the arena: the title screen then skips the splash and reopens setup.
 var return_to_setup: bool = false

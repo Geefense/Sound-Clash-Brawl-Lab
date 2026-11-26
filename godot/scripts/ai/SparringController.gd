@@ -8,14 +8,23 @@ extends Node
 ## never skips frame data — every attack goes through the same startup/active/recovery path
 ## as a human input, including the input buffer and the beat judgement taken at input time.
 ##
+## **PART B commit 6 — the CPU no longer reacts frame-perfectly.** All four modes now read P1
+## through `AIBrain`'s delayed ring buffer (`reaction_frames` + seeded jitter), and every attack
+## they would like to throw passes the brain's one gate: a ≥40-frame cooldown between decisions,
+## at most two attacks in a row followed by a 30–45-frame breathing window of spacing and guard,
+## and mandatory neutral windows after the round opens, after the AI's own get-up, and after its
+## own whiffed or blocked attack. Punishes and blocks are delayed reads with a probability roll.
+## All randomness is one seeded RNG (`decision_seed`), so a seed reproduces the same decisions.
+##
 ## Modes (cycle with **Y** in TestArena):
 ##   0 Workshop Dummy   — stands still, or holds guard while G is toggled (the old behaviour).
-##   1 Counter-Puncher  — mic-defence when P1 is inside strike range, punish the whiff/recovery.
+##   1 Counter-Puncher  — mic-defence when the delayed snapshot shows a threat, punish a seen recovery.
 ##   2 Riddim Rusher    — steps on the 132 BPM beat and throws on-beat Jab → Kick / BOX strings.
 ##   3 Spacing Baiter   — footsies through mid-range, skank taunts when far, BOX on the dash-in.
 ##
 ## G is a manual guard override in every mode: the controller ORs it into every command.
-## [TODO] Every range, cooldown and pattern below is a hand-set lab default awaiting a playtest.
+## [TODO] Every range, cooldown and pattern below is a hand-set lab default awaiting a playtest;
+## the difficulty knobs themselves live in `AIProfile` and are documented in AGENTS.md.
 
 enum Mode { DUMMY, COUNTER_PUNCHER, RIDDIM_RUSHER, SPACING_BAITER }
 
@@ -43,26 +52,32 @@ const THREAT_RANGE := 190.0        # P1's jab can reach us from about here
 const MID_RANGE := 240.0
 const FAR_RANGE := 330.0
 const FALLBACK_BEAT_STEP_TICKS := 26   # 132 BPM = 27.3 ticks per beat
-const PUNISH_TICKS := 16           # reaction window after P1 enters recovery
 const TAUNT_COOLDOWN_TICKS := 70
 const DASH_SPEED := 150.0          # |velocity.x| that counts as a P1 dash-in
 # Grab / throw-break behaviour (§9 item 18). The AI uses the same Command as a human.
 const GRAB_RANGE := 92.0           # just inside BaseFighter.GRAB_RANGE
 const GRAB_COOLDOWN_TICKS := 110
-const TECH_CHANCE := 0.55          # how often the AI presses Grab inside the break window
 
 ## One action per beat, two bars at 132 BPM: a Jab-led string into the Sparta Kick (L)
 ## and a BOX (K) accent on the 6th beat, with beat-steps in between to close distance.
 const RUSH_PATTERN := [&"step", &"light", &"tump", &"step", &"light", &"heavy", &"", &"step"]
+
+## The difficulty profile, as data. `AIProfile.preset(&"normal")` is the default and is
+## noticeably gentler than the frame-perfect partner this file used to be.
+@export var profile: AIProfile
+## Seeded so a replay, a test or a rematch reproduces the same decisions. Change it for a
+## different-feeling partner at the same difficulty.
+@export var decision_seed: int = 20261126
 
 var p1: BaseFighter
 var p2: BaseFighter
 var beat: BeatService
 var manual_guard: bool = false    # G toggle from TestArena; ORed into every command
 var mode: Mode = Mode.DUMMY
+## The decision core: delayed perception, cooldown, breathing and neutral windows. Read-only for
+## the audits (`brain.attack_ready()`, `brain.reaction_frames()`), never written by them.
+var brain := AIBrain.new()
 
-var _p1_state: int = BaseFighter.State.IDLE
-var _punish_ticks: int = 0
 var _pending: StringName = &""
 var _step_ticks: int = 0
 var _footsie_advance: bool = true
@@ -70,23 +85,46 @@ var _taunt_cooldown: int = 0
 var _grab_cooldown: int = 0
 var _tech_armed: bool = false
 var _tech_delay: int = 0
+## Its own last state, so the controller can see its attack end and its get-up finish.
+var _last_own_state: int = BaseFighter.State.IDLE
+var _own_hit_landed: bool = false
 
 
 func _ready() -> void:
 	# Run before the fighters so the command is fresh when BaseFighter ticks.
 	process_physics_priority = -1
+	if profile == null:
+		profile = AIProfile.preset(&"normal")
 
 
 ## TestArena owns the wiring; everything else stays inside this node.
 func setup(one: BaseFighter, two: BaseFighter, service: BeatService) -> void:
+	if profile == null:
+		profile = AIProfile.preset(&"normal")
 	p1 = one
 	p2 = two
 	beat = service
 	if beat != null and not beat.beat.is_connected(_on_beat):
 		beat.beat.connect(_on_beat)
-	if p1 != null:
-		_p1_state = p1.state
+	if p2 != null and not p2.strike_resolved.is_connected(_on_strike_resolved):
+		p2.strike_resolved.connect(_on_strike_resolved)
+	brain.setup(profile, decision_seed)
+	brain.reset_for_round()
+	if p1 != null and p2 != null:
+		_last_own_state = p2.state
 	_reset_mode_state()
+
+
+## Swap difficulty without a menu: the presets are `easy`, `normal` and `hard`.
+func set_preset(name: StringName) -> AIProfile:
+	profile = AIProfile.preset(name)
+	brain.setup(profile, decision_seed)
+	brain.reset_for_round()
+	return profile
+
+
+func profile_id() -> StringName:
+	return profile.id if profile != null else &""
 
 
 # =========================================================================
@@ -118,7 +156,6 @@ func mode_index() -> int:
 func _reset_mode_state() -> void:
 	_pending = &""
 	_step_ticks = 0
-	_punish_ticks = 0
 	_taunt_cooldown = 0
 	_grab_cooldown = 0
 	_tech_armed = false
@@ -127,13 +164,20 @@ func _reset_mode_state() -> void:
 
 
 # =========================================================================
-# Tick — build one Command, then let BaseFighter run its own FSM on it
+# Tick — perceive (late), then build one Command for BaseFighter to run
 # =========================================================================
 func _physics_process(_delta: float) -> void:
 	if p1 == null or p2 == null:
 		return
-	_read_p1()
-	_tick_timers()
+	if profile == null:
+		profile = AIProfile.preset(&"normal")
+	# PERCEPTION IS DELAYED: P1 is only ever read through the ring buffer, and `perceive()`
+	# hands the policy a snapshot `reaction_frames + jitter` old — never this frame's input.
+	brain.observe(p1.state, p1.global_position.x, p1.velocity.x, p1.guarding,
+		_p1_attacking())
+	brain.tick()
+	brain.perceive()
+	_track_own_state()
 
 	var c := BaseFighter.Command.new()
 	match mode:
@@ -150,19 +194,42 @@ func _physics_process(_delta: float) -> void:
 	p2.command = c
 
 
-func _read_p1() -> void:
-	var s: int = p1.state
-	if s == _p1_state:
+func _p1_attacking() -> bool:
+	return p1.state == BaseFighter.State.ATTACK_STARTUP \
+		or p1.state == BaseFighter.State.ATTACK_ACTIVE
+
+
+## Its own attack ending is the whiff/blocked cue; its own get-up is the recovery cue. Both open
+## a mandatory neutral window, so the CPU cannot stand straight into another swing.
+func _track_own_state() -> void:
+	var was_attacking: bool = _last_own_state in [
+		BaseFighter.State.ATTACK_STARTUP, BaseFighter.State.ATTACK_ACTIVE,
+		BaseFighter.State.ATTACK_RECOVERY]
+	var is_attacking: bool = p2.state in [
+		BaseFighter.State.ATTACK_STARTUP, BaseFighter.State.ATTACK_ACTIVE,
+		BaseFighter.State.ATTACK_RECOVERY]
+	if is_attacking and not was_attacking:
+		_own_hit_landed = false
+	elif was_attacking and not is_attacking:
+		brain.on_own_attack_ended(_own_hit_landed)
+		_own_hit_landed = false
+	if _last_own_state == BaseFighter.State.KNOCKDOWN \
+			and p2.state != BaseFighter.State.KNOCKDOWN:
+		brain.on_getup()
+	_last_own_state = p2.state
+
+
+## A landed strike on P1. Blocked or parried contacts count as a whiff for the neutral window.
+func _on_strike_resolved(attacker: BaseFighter, _target: BaseFighter, result: Dictionary) -> void:
+	if attacker != p2:
 		return
-	# Whiffed or blocked attacks both end in P1's own recovery — that is the punish cue.
-	if _p1_state in [BaseFighter.State.ATTACK_STARTUP, BaseFighter.State.ATTACK_ACTIVE] \
-			and s == BaseFighter.State.ATTACK_RECOVERY:
-		_punish_ticks = PUNISH_TICKS
-	_p1_state = s
+	if bool(result.get("ignored", false)) or bool(result.get("blocked", false)) \
+			or bool(result.get("parried", false)):
+		return
+	_own_hit_landed = true
 
 
 func _tick_timers() -> void:
-	_punish_ticks = maxi(0, _punish_ticks - 1)
 	_step_ticks = maxi(0, _step_ticks - 1)
 	_taunt_cooldown = maxi(0, _taunt_cooldown - 1)
 	_grab_cooldown = maxi(0, _grab_cooldown - 1)
@@ -175,21 +242,22 @@ func _tick_grab(c: BaseFighter.Command) -> void:
 		return
 	if not _tech_armed:
 		_tech_armed = true
-		_tech_delay = randi_range(1, 6)
-		if randf() > TECH_CHANCE:
+		_tech_delay = brain.rng.randi_range(1, 6)
+		if brain.rng.randf() > 0.55:
 			_tech_delay = 99          # this grab goes through
 	_tech_delay -= 1
 	if _tech_delay <= 0:
 		c.grab = true
 
 
-## True when a grab is worth throwing at a turtling P1 (or a crouching one).
+## True when a grab is worth throwing at a turtling P1 (or a crouching one). Reads the delayed
+## snapshot, like every other decision.
 func _wants_grab() -> bool:
 	if _grab_cooldown > 0 or not _can_act():
 		return false
-	if _distance() > GRAB_RANGE:
+	if _seen_distance() > GRAB_RANGE:
 		return false
-	return p1.guarding or p1.state == BaseFighter.State.CROUCH
+	return brain.seen_guarding or brain.seen_state == BaseFighter.State.CROUCH
 
 
 func _on_beat(beat_index: int) -> void:
@@ -205,7 +273,8 @@ func _on_beat(beat_index: int) -> void:
 # Mode 1 — Counter-Puncher ("Bait & Punish")
 # =========================================================================
 func _drive_counter(c: BaseFighter.Command) -> void:
-	var d := _distance()
+	_tick_timers()
+	var d := _seen_distance()
 	p2.face_toward(p1.global_position.x)
 
 	# Turtling P1: a grab beats the held guard, so take it instead of swinging.
@@ -214,20 +283,31 @@ func _drive_counter(c: BaseFighter.Command) -> void:
 		_grab_cooldown = GRAB_COOLDOWN_TICKS
 		return
 
-	if _punish_ticks > 0 and _can_act():
-		if d <= JAB_RANGE:
-			c.light = true                # fast punish on the recovery
-			_punish_ticks = 0
+	# A seen recovery arms a punish — it still waits for the delay and a probability roll.
+	if brain.seen_state in [BaseFighter.State.ATTACK_RECOVERY, BaseFighter.State.HITSTUN,
+			BaseFighter.State.THROWN]:
+		brain.arm_punish()
+	# Read the punish only when the strike can actually reach: `punish_ready()` is one-shot, and
+	# the old order burned a successful roll every time P1's own knockback had pushed us out of
+	# range, which is what made a jabbed counter-puncher look switched off.
+	if brain.attack_ready() and d <= KICK_RANGE and brain.punish_ready():
+		if d <= JAB_RANGE and _try_attack(c, &"light"):
 			return
-		if d <= KICK_RANGE:
-			c.tump = true                 # Sparta Kick when the jab would fall short
-			_punish_ticks = 0
+		if _try_attack(c, &"tump"):
 			return
-		c.move_x = _toward_p1()           # close while the opening is still live
+
+	# Breathing window: make space, then come back in. No attack is allowed here.
+	if brain.breathing_frames() > 0:
+		c.move_x = _away_from_p1() if d < MID_RANGE else _toward_p1()
+		c.guard = d <= THREAT_RANGE and brain.guard_pressure(true)
 		return
 
+	if brain.guard_pressure(d <= THREAT_RANGE):
+		c.guard = true                    # Mic Defence, one delay late
+		return
 	if d <= THREAT_RANGE:
-		c.guard = true                    # Mic Defence held inside strike range
+		# Holding the threat range without attacking: drift, do not turtle permanently.
+		c.move_x = _away_from_p1() if d < JAB_RANGE * 0.8 else 0.0
 		return
 	c.move_x = _toward_p1()               # walk into bait range and wait
 
@@ -236,6 +316,7 @@ func _drive_counter(c: BaseFighter.Command) -> void:
 # Mode 2 — Riddim Rusher ("On-Beat Pressure")
 # =========================================================================
 func _drive_rusher(c: BaseFighter.Command) -> void:
+	_tick_timers()
 	p2.face_toward(p1.global_position.x)
 
 	# Mix a grab into the on-beat pressure when P1 is holding guard.
@@ -244,36 +325,41 @@ func _drive_rusher(c: BaseFighter.Command) -> void:
 		_grab_cooldown = GRAB_COOLDOWN_TICKS
 		return
 
+	# The breathing window is the spacing lesson: step out of range, then re-enter on the beat.
+	if brain.breathing_frames() > 0:
+		if _seen_distance() < MID_RANGE:
+			c.move_x = _away_from_p1()
+		elif _seen_distance() > JAB_RANGE:
+			c.move_x = _toward_p1()
+		return
+
 	if _pending != &"":
 		var action := _pending
 		_pending = &""
 		if _play_rush_action(action, c):
 			return
 
-	if _step_ticks > 0 and _distance() > JAB_RANGE * 0.85:
+	if _step_ticks > 0 and _seen_distance() > JAB_RANGE * 0.85:
 		c.move_x = _toward_p1()           # the beat-step is still carrying us in
 
 
 ## Returns true when the action was turned into an attack this tick.
 func _play_rush_action(action: StringName, c: BaseFighter.Command) -> bool:
-	var d := _distance()
+	var d := _seen_distance()
 	match action:
 		&"light":
-			if d <= JAB_RANGE:
-				c.light = true
+			if d <= JAB_RANGE and _try_attack(c, &"light"):
 				return true
 		&"tump":
-			if d <= KICK_RANGE:
-				c.tump = true
+			if d <= KICK_RANGE and _try_attack(c, &"tump"):
 				return true
 		&"heavy":
-			if d <= BOX_RANGE:
-				c.heavy = true
+			if d <= BOX_RANGE and _try_attack(c, &"heavy"):
 				return true
 		&"step":
 			_step_ticks = _beat_step_ticks()
 			return false
-	# Out of reach: keep the beat by stepping in instead of swinging at air.
+	# Out of reach — or the gate refused the attack — keep the beat by stepping instead.
 	_step_ticks = _beat_step_ticks()
 	return false
 
@@ -289,19 +375,21 @@ func _beat_step_ticks() -> int:
 # Mode 3 — Spacing & Skank Baiter ("Footsies & Skank Bait")
 # =========================================================================
 func _drive_baiter(c: BaseFighter.Command) -> void:
-	var d := _distance()
-	var closing := (p1.global_position.x - p2.global_position.x) * p1.velocity.x < 0.0
-	var dashing := closing and absf(p1.velocity.x) > DASH_SPEED
+	_tick_timers()
+	var d := _seen_distance()
+	var closing := (brain.seen_x - p2.global_position.x) * brain.seen_vx < 0.0
+	var dashing := closing and absf(brain.seen_vx) > DASH_SPEED
 	p2.face_toward(p1.global_position.x)
 
-	# Catch the dash-in with the heavy BOX.
-	if dashing and d <= BOX_RANGE + 24.0 and _can_act():
-		c.heavy = true
+	# Catch the dash-in with the heavy BOX (still through the one gate).
+	if dashing and d <= BOX_RANGE + 24.0 and _try_attack(c, &"heavy"):
 		_taunt_cooldown = TAUNT_COOLDOWN_TICKS
 		return
 
-	# Risky skank taunt: only far away and only while P1 is not swinging.
-	if d > FAR_RANGE and _taunt_cooldown == 0 and _can_act() and not _p1_attacking():
+	# Risky skank taunt: only far away, only outside the neutral window, and only while the
+	# delayed snapshot does not show a swing.
+	if d > FAR_RANGE and _taunt_cooldown == 0 and _can_act() \
+			and brain.neutral_frames() == 0 and not brain.seen_attacking:
 		c.taunt = true
 		_taunt_cooldown = TAUNT_COOLDOWN_TICKS
 		return
@@ -319,12 +407,33 @@ func _drive_baiter(c: BaseFighter.Command) -> void:
 # =========================================================================
 # Helpers
 # =========================================================================
-func _distance() -> float:
-	return absf(p1.global_position.x - p2.global_position.x)
+## Every attack in every mode funnels through here. `commit_attack()` is the only gate.
+## A body that cannot act (hitstun, knockdown, held, thrown) never spends a decision: the old
+## controller burned its cooldown and neutral window on inputs the FSM dropped, which is why a
+## jabbed CPU looked inert instead of merely late.
+func _try_attack(c: BaseFighter.Command, kind: StringName) -> bool:
+	if p2.state in [BaseFighter.State.HITSTUN, BaseFighter.State.KNOCKDOWN,
+			BaseFighter.State.KO, BaseFighter.State.GRABBED, BaseFighter.State.THROWN]:
+		return false
+	if not brain.commit_attack():
+		return false
+	match kind:
+		&"tump":
+			c.tump = true
+		&"heavy":
+			c.heavy = true
+		_:
+			c.light = true
+	return true
+
+
+## Fiction to the delayed snapshot, not to P1's live position: that is the whole point.
+func _seen_distance() -> float:
+	return absf(brain.seen_x - p2.global_position.x)
 
 
 func _toward_p1() -> float:
-	return signf(p1.global_position.x - p2.global_position.x)
+	return signf(brain.seen_x - p2.global_position.x)
 
 
 func _away_from_p1() -> float:
@@ -335,7 +444,3 @@ func _away_from_p1() -> float:
 ## rusher does not need this check for its strings.
 func _can_act() -> bool:
 	return p2.state == BaseFighter.State.IDLE or p2.state == BaseFighter.State.WALK
-
-
-func _p1_attacking() -> bool:
-	return _p1_state in [BaseFighter.State.ATTACK_STARTUP, BaseFighter.State.ATTACK_ACTIVE]

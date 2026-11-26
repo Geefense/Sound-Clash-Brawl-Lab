@@ -64,6 +64,7 @@ func _run() -> void:
 			await _check_pair(a, b)
 	await _check_knockdowns()
 	await _check_lighting_clarity()
+	await _check_ai_profile()
 	await _check_camera_framing()
 	await _check_camera_stage_clearance()
 	await _check_strike_silhouette()
@@ -547,6 +548,153 @@ func _check_knockdowns() -> void:
 		_check(_no_root_motion_tracks(model),
 			"%s: no installed take animates Hips/Root position — every clip plays in place" % key)
 		await _free(arena)
+
+
+const AI_SEEDS := [11, 4242, 777, 20261126, 90210]
+
+
+## PART B commit 6 — the CPU is no longer frame-perfect. Two layers of proof: the decision core
+## on its own (delayed perception, 20 seeds of first-attack timing, the two-attack ceiling, and
+## same-seed determinism), and the real arena, where a scripted player's jab string must land
+## three times before the CPU's first attack in a majority of seeds.
+func _check_ai_profile() -> void:
+	print("\n-- AI: delayed perception, seeded decisions, two-attack ceiling")
+	var easy := AIProfile.preset(&"easy")
+	var normal := AIProfile.preset(&"normal")
+	var hard := AIProfile.preset(&"hard")
+	_check(normal != null and normal.id == &"normal" and easy.reaction_frames > normal.reaction_frames
+			and hard.reaction_frames < normal.reaction_frames
+			and normal.attack_cooldown_frames >= 40 and easy.attack_cooldown_frames >= 40
+			and hard.attack_cooldown_frames >= 40,
+		"Easy / Normal / Hard load; Normal reads P1 18+ frames late and every preset cools down 40+",
+		"reaction %d/%d/%d, cooldown %d/%d/%d" % [easy.reaction_frames, normal.reaction_frames,
+			hard.reaction_frames, easy.attack_cooldown_frames, normal.attack_cooldown_frames,
+			hard.attack_cooldown_frames])
+
+	# (1) Perception is a ring buffer read `delay` frames back. An attack younger than that must
+	# be invisible, and the same attack must appear once the delay has passed.
+	var probe := AIBrain.new()
+	probe.setup(normal, 4242)
+	var delay: int = probe.reaction_frames()
+	for i in 120:
+		probe.observe(BaseFighter.State.IDLE, 900.0, 0.0, false, false)
+		probe.tick()
+	for i in maxi(0, delay - 2):
+		probe.observe(BaseFighter.State.ATTACK_ACTIVE, 700.0, -120.0, false, true)
+		probe.tick()
+	probe.perceive()
+	var too_young: bool = probe.seen_attacking
+	for i in normal.reaction_jitter + 3:
+		probe.observe(BaseFighter.State.ATTACK_ACTIVE, 700.0, -120.0, false, true)
+		probe.tick()
+	probe.perceive()
+	_check(not too_young and probe.seen_attacking and delay >= normal.reaction_frames,
+		"the AI cannot see an attack younger than its reaction delay",
+		"invisible at %d frames, visible by %d" % [delay - 2, delay + normal.reaction_jitter + 3])
+
+	# (2) 20 seeds, decision level: the first attack is never before frame 60, and no seed ever
+	# chains more than two attacks before the breathing window opens.
+	var earliest := 9999
+	var worst_run := 0
+	for s in 20:
+		var brain := AIBrain.new()
+		brain.setup(normal, 500 + s)
+		brain.reset_for_round()
+		var first := -1
+		var run := 0
+		for f in 240:
+			brain.tick()
+			brain.perceive()
+			if brain.commit_attack():
+				if first < 0:
+					first = f
+				run += 1
+				worst_run = maxi(worst_run, run)
+			elif brain.breathing_frames() > 0:
+				run = 0
+		if first >= 0 and first < earliest:
+			earliest = first
+	_check(earliest >= 60,
+		"across 20 seeds the CPU's first attack is never before frame 60",
+		"earliest frame %d" % earliest)
+	_check(worst_run <= 2, "the CPU never chains more than two attacks before breathing",
+		"worst run %d" % worst_run)
+	# Same seed, same decisions: two independent brains must press on identical frames.
+	var run_a: Array[int] = []
+	var run_b: Array[int] = []
+	for pass_index in 2:
+		var brain := AIBrain.new()
+		brain.setup(normal, 31337)
+		brain.reset_for_round()
+		for f in 400:
+			brain.tick()
+			brain.perceive()
+			if brain.commit_attack():
+				if pass_index == 0:
+					run_a.append(f)
+				else:
+					run_b.append(f)
+	_check(run_a.size() > 0 and run_a == run_b,
+		"one seed replays the same attack frames", "%d attacks, identical: %s" %
+		[run_a.size(), str(run_a == run_b)])
+
+	# (3) The real arena: a scripted jab string at 150 px (jab spacing) against the shipped
+	# Normal profile. The player has to land three jabs before the CPU's first attack.
+	var majority := 0
+	var earliest_attack := 9999
+	var detail: Array[String] = []
+	for seed_value in AI_SEEDS:
+		var arena = await _spawn(&"feedback", &"lickshot")
+		var sparring = arena.get("sparring")
+		sparring.set_mode(1)
+		sparring.set_preset(&"normal")
+		sparring.decision_seed = seed_value
+		sparring.brain.seed_decisions(seed_value)
+		sparring.brain.reset_for_round()
+		var p1: BaseFighter = arena.p1
+		var p2: BaseFighter = arena.p2
+		p1.use_local_input = false
+		p1.global_position = Vector2(565.0, 600.0)
+		p2.global_position = Vector2(715.0, 600.0)
+		var landed := [0]
+		var count_jab := func(attacker: BaseFighter, _target: BaseFighter, result: Dictionary) -> void:
+			if attacker == p1 and not bool(result.get("blocked", false)) \
+					and not bool(result.get("parried", false)) \
+					and not bool(result.get("ignored", false)):
+				landed[0] += 1
+		p1.strike_resolved.connect(count_jab)
+		var first_ai := -1
+		var landed_at_first := 0
+		var cmd := BaseFighter.Command.new()
+		var prev_p2: int = p2.state
+		for f in 240:
+			# A jab string at neutral spacing: step back into range between jabs (a player
+			# holding forward), and press on a 20-frame cadence.
+			var gap: float = p2.global_position.x - p1.global_position.x
+			cmd.move_x = signf(gap) if absf(gap) > 135.0 else 0.0
+			cmd.light = f >= 8 and (f - 8) % 20 == 0
+			p1.command = cmd
+			await physics_frame
+			if first_ai < 0 and p2.state == BaseFighter.State.ATTACK_STARTUP \
+					and prev_p2 != BaseFighter.State.ATTACK_STARTUP:
+				first_ai = f
+				landed_at_first = landed[0]
+			prev_p2 = p2.state
+		if first_ai < 0:
+			landed_at_first = landed[0]
+		else:
+			earliest_attack = mini(earliest_attack, first_ai)
+		if landed_at_first >= 3:
+			majority += 1
+		detail.append("%d:%d jabs/%s" % [seed_value, landed_at_first,
+			str(first_ai) if first_ai >= 0 else "no attack"])
+		await _free(arena)
+	_check(majority * 2 > AI_SEEDS.size(),
+		"a jab string lands three times before the CPU's first attack in most seeds",
+		", ".join(detail))
+	_check(earliest_attack >= 60,
+		"in the live arena the CPU's first attack also waits for frame 60",
+		"earliest %d" % earliest_attack)
 
 
 ## PART B commit 4: lighting clarity. The washout was ACES + glow + depth fog stacked over the

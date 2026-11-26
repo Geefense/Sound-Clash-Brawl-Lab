@@ -432,6 +432,8 @@ func _ready() -> void:
 	p2.use_local_input = false          # P2 is driven by the sparring controller only
 	p2.input_prefix = "p2_"
 	sparring.setup(p1, p2, beat)
+	# PART B commit 6: difficulty is data (`AIProfile`), carried from the setup payload.
+	sparring.set_preset(MatchSetup.ai_preset)
 	sparring.set_mode(MatchSetup.ai_mode)
 	sparring.manual_guard = _dummy_guard
 	hud.set("subtitles_enabled", MatchSetup.subtitles)

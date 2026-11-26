@@ -351,6 +351,12 @@ change the renderer, not the animation data.
 
 ## 8. Brawlhalla
 
+> **Notice — not legal or financial advice; verify with a qualified professional.** Every borrowing,
+> trademark, licensing and collaboration point in this section is a research note. Analysing public
+> information grants no rights: Brawlhalla's name, its Legends, its crossover partners' characters and
+> its marketing language belong to their owners, and any collaboration, reference or re-dress must be
+> cleared in writing. Verify with a qualified IP lawyer before acting on any of it.
+
 ### (1) Confirmed Technical Findings
 
 Only what a reached source states. Anything else is labelled **unverified, general knowledge**.

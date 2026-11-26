@@ -6459,3 +6459,19 @@ rewritten and no blob was removed.
   (`git filter-repo`/BFG) plus a force-push: **not done, and not something to do casually** —
   it would invalidate every existing clone. Decide after the Actions deploy is proven, and
   back up the repository first.
+
+## 2026-11-26 — PART C · Commit 10: final verification of this pass
+
+- Four suites, after the last change to the project (identical counts to the PART A3 baseline,
+  0 FAIL): roster **490 PASS**, live **454 checks**, facing **310**, feel **440**. No new test
+  file was added in commits 8–10; the "new tests" of this pass are the four suites as they
+  already stood, plus the pack-boot check described above.
+- One Web export, `docs/index.pck` **53,811,184 B** (−20,668,972 B from 74,480,156 B, −27.8%),
+  `docs/index.wasm` 38,057,390 B (unchanged), `docs/index.js` 305,185 B.
+- `sha256`: recorded in the commit report; `git count-objects -vH` and the sizes above are the
+  numbers the owner needs for the history decision.
+- `/tmp` scratch files from this pass deleted; `df -h .` recorded in the commit report.
+- Not visually verified this pass (no GPU/Xvfb/browser): the pack slimming's only visual claim
+  is "nothing drawn changed", evidenced by the reference probe and the pack boot, not by pixels.
+  The F6 look toggle and F7 quality cycle documented above are still settings-and-materials
+  verified only; `scripts/ai/AIProfile.gd` knobs are unchanged in this pass.

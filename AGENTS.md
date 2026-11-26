@@ -5752,3 +5752,47 @@ All three are deleted, and the exclusion is now structural rather than a promise
 are untouched (the audit's hash checks still pass). `/docs` deliberately **not** exported in this
 part. Not seen on a screen — no GPU in this environment; the hand fix is proven by bone transforms
 and skinned-vertex sampling, not by pixels.
+
+### PART A commit 2 — knockdown orientation: diagnosed, attempted, reverted (November 26, 2026)
+
+Owner saw the KO body **hovering with the head toward the ground and the feet in the air**. The
+diagnosis was done with measurements, then the attempted fix was **reverted** because it could not
+be made green: the brief's rule is never commit red, so `1289343` stays the branch tip and this
+section records the evidence instead of shipping a regression.
+
+**What was measured** (headless `live_match_check`, 3 fighters × both slots, at the flat phase —
+26 ticks into `KNOCKDOWN`, 40 into `KO`, world-space bones plus the drawn skinned mesh):
+
+| fighter / slot | up·y (hips→head) | chest n·y | head−hips Δx | head−feet Δy | lowest drawn vertex |
+| --- | --- | --- | --- | --- | --- |
+| feedback p1 KD | 1.00 | −0.07 | 0.00 | 1.23 m | 0.769 m |
+| feedback p2 KD | 1.00 | −0.09 | −0.01 | 1.23 m | 0.765 m |
+| lickshot p1 KD | 0.97 | −0.40 | +0.09 | 1.14 m | — |
+| lickshot p2 KD | 0.69 | −1.00 | — | — | — |
+| young_selecta p1 KD | 0.36 | 0.12 | — | — | — |
+
+Read: the body is still **upright** (`up·y ≈ 1`) or on its side (`chest n·y < 0`), never supine, and
+its lowest drawn vertex sits **0.49–0.77 m above the sand** — that is the hover. Cause: the fall is
+driven by a single roll term (`_pivot.rotation.z = −_fall·face·π/2·0.94`) that tips the body about
+the depth axis. A roll cannot put the chest to the sky (only a pitch can), and on the two Tripo rigs
+its sign lays the head toward the opponent; the previous `_seat_downed_core` also lifted until EVERY
+bone cleared the sand, which over-lifted the drawn body by up to 0.29 m.
+
+**What was tried, in the brief's order.** (1) A deterministic two-vector target on the pose pivot —
+`hips→head` onto `−face·X`, anatomical chest normal onto `+Y`, blended by `_fall` — plus
+`@export var knockdown_floor_y`. (2) Foot pin already off in `KNOCKDOWN`/`KO`/`JUMP`
+(`_pin_feet_to_ground` returns early; verified). (3) Toe-line facing pin suspended when the
+hips→head vector tilts more than 30° off vertical (`DOWNED_TILT_COS`). (4) Core-only seating with a
+one-time drawn-vertex calibration. (5) 54 new checks in `live_match_check.gd`.
+
+**Why it was reverted.** The orientation reached the target on some rig/slot combinations but the
+same code sank others 2–52 cm **below** the sand, and the get-up still stepped 6–25 cm in one frame.
+Those are worse failures than the ones being fixed, and a partially seated body is not shippable.
+
+**Remaining work, with the next steps spelled out.** Solve orientation and seating as SEPARATE
+commits, orientation first: build the target basis from the *pivot's authored* basis rather than the
+animated bone pose (the clip's own fall already contains a lying-down rotation, so correcting the
+measured pose double-counts it); then seat with a per-rig calibration captured once on the first
+downed frame and eased out over ≥0.3 s. The test hooks are written and were proven to run (500
+checks, 0 parse errors) — `_check_downed_pose()` in `live_match_check.gd` — but were reverted with
+the runtime change to keep the branch green.

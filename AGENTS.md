@@ -6833,8 +6833,26 @@ against (a real downed hold, and a per-rig take that ends on the floor). That is
 feature pass, not a tolerance change: no assertion was loosened, no gate was added, and the
 four suites are green at **490 / 500 / 310 / 444, 0 FAIL**.
 
+### Forced path vs played path
+
+`-- --played` drives twelve scripted matches and compares each reached state with its forced
+counterpart (599 s wall clock). Nine of the twelve played cells **never reached the state at
+all** in a scripted match (the scripted inputs do not produce a knockdown on that side), so there
+is nothing to agree with. The three that were reached disagree on the 1 cm / 3° contract:
+
+| rig | slot | state | d_up | d_low | d_deg | verdict |
+| --- | --- | --- | --- | --- | --- | --- |
+| feedback | p2 | KO | 0.010 | 0.001 | 25.3 | DISAGREE |
+| lickshot | p2 | KO | 0.023 | 0.099 | 1.6 | DISAGREE |
+| young_selecta | p2 | KO | 0.015 | 0.007 | 3.7 | DISAGREE |
+
+The orientation spread (25.3° on Feedback) is the same defect the twelve-cell table reports: the
+pose the audit forces and the pose a match produces are not the same pose, and no constant
+correction can be right for both. The seat agrees to 1 cm on two of the three.
+
 ### Not verified
 
-Nothing here was seen rendered: the twelve cells are bone/vertex measurements, not pixels. The
-forced path is what the table reports; the `--played` path is implemented but its twelve real
-matches are far slower than the headless budget and are reported separately.
+Nothing here was seen rendered: the twelve cells are bone/vertex measurements, not pixels, and no
+screenshot or GPU frame was produced. The forced table is not perfectly repeatable frame-to-frame
+(Young Selecta's p1 knockdown measured `up_y +0.256` in the run recorded above and `+0.159` in
+the played run, both with `chest_ny +0.85`), because it samples the max-fall frame.

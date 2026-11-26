@@ -1,6 +1,6 @@
 # Sound Clash Brawl — Master Blueprint
 
-Last updated: 2026-11-19. Owner and final creative approver: Garfield Connell.
+Last updated: 2026-11-25. Owner and final creative approver: Garfield Connell.
 
 This is the project instruction and handoff document for all agents. It records verified repository work, recovered design decisions, and the owner's Godot migration direction. **Implemented**, **asset available**, **planned**, and **[TODO]** are different statuses. Never present a concept, imported illustration, successful upload, or old test report as a working or approved feature.
 
@@ -16,10 +16,18 @@ Working repository for this blueprint: `Geefense/Sound-Clash-Brawl-Lab`, root `A
   Created 2026-11-25; see the PART 1 section at the end of this file for what was implemented
   from it.
 - `CONSOLE_READINESS.md` — the Web/Compatibility baseline, the measured budgets, the console
-  tier plan and the platform gates that are still **[TODO]**. It cross-references this file
-  and `INDUSTRY_REFERENCE_ANALYSIS.md`.
+  tier plan and the platform gates that are still **[TODO]**; Part 2 records the ten long-term
+  technical preparation areas and the "Guardrails now" list. It cross-references this file and
+  `INDUSTRY_REFERENCE_ANALYSIS.md`.
+- `BUSINESS_AND_RETENTION_STRATEGY.md` — the evolving-game vision (Brawlhalla benchmark), the
+  cultural event calendar with the **Carnival Clash** flagship, the twelve research-only revenue
+  streams (all **NOT APPROVED FEATURES**), six monetization principles, thirteen KPIs, cultural
+  identity and IP protection, co-director proposals and the open legal questions.
+- `ASSET_LICENSES.md` — the per-asset licence ledger. It records only what the repository proves;
+  every other cell is **OWNER TO FILL**, and it flags that the Web build ships an extractable pack.
 
-Both are documentation only. Neither approves an asset, a console port or a purchase.
+These four documents are documentation only. None of them approves an asset, a console port, a
+purchase, a revenue stream or a monetization feature.
 
 ## 1. Project Overview & Creative Vision
 
@@ -5121,7 +5129,7 @@ surviving.
 
 ### Commit 1 — documentation
 
-- **`INDUSTRY_REFERENCE_ANALYSIS.md`** (new, root). Seven sections — Dragon Ball FighterZ,
+- **`INDUSTRY_REFERENCE_ANALYSIS.md`** (new, root). Seven sections initially (Brawlhalla was added as §8 the same day — see the documentation milestone at the end of this file) — Dragon Ball FighterZ,
   Guilty Gear -Strive-, Tekken 8, Street Fighter 6, Fatal Fury: City of the Wolves, the Zweifuss
   3rd Strike animation archive, the Stefan Iverson Makoto breakdown — each with exactly three
   subsections: confirmed findings with a named, reached source; **OWNER TO FILL** footage prompts;
@@ -5487,3 +5495,105 @@ seating.
 - The PropLoader seating maths is proved on a synthetic AABB; no `.glb` has been seated, scaled or
   seen standing on the sand.
 - The Web export builds and packages; it has not been loaded in a browser or on a Chromebook.
+
+## 2026-11-25 — Documentation milestone: business/retention, asset licences, Brawlhalla reference, long-term preparation
+
+**Documentation only.** No gameplay, combat, animation, asset or export file changed:
+`BaseFighter.gd`, `FighterRoster.gd`, `FighterModel3D.gd`, every `.tscn`, every asset under
+`godot/assets/` and the whole `/docs` export are untouched, and `git status` on the commit lists
+Markdown files only. `/docs` was deliberately **not** re-exported (the existing 103 MB build is from
+`84e6e4b`). Nothing here is an approved feature, and no store, payment flow, account system, ad unit
+or monetization UI was created or authorized.
+
+### Documents added or updated
+
+| File | Status | Content |
+| --- | --- | --- |
+| `BUSINESS_AND_RETENTION_STRATEGY.md` | **New** | 5–10+ year evolving-game vision; cultural event calendar with the **Carnival Clash** flagship plus three lighter anchors, designed as data; twelve research-only revenue streams; six monetization principles; thirteen KPIs with an opt-in, no-personal-data instrumentation policy; cultural identity and IP protection; co-director recommendations (a–f); open questions for the owner and a lawyer |
+| `ASSET_LICENSES.md` | **New** | Per-asset ledger — fighters, Mixamo takes/crowd/DJ, fonts, audio, 2D/stage art, the five absent prop slots, project code and the engine. Repo-proven facts filled; everything else **OWNER TO FILL**; notes that the Web pack is extractable |
+| `INDUSTRY_REFERENCE_ANALYSIS.md` | **Updated** | New §8 **Brawlhalla** with (1) sourced confirmed findings, (2) **OWNER TO FILL** observation prompts, (3) proposed Godot 4.5 architectural preparation; source rows S12–S18 added; the synthesis renumbered to §9 |
+| `CONSOLE_READINESS.md` | **Updated** | New Part 2: the ten long-term technical preparation areas, the eight "Guardrails now" items, and what must not be done next |
+| `AGENTS.md` + `godot/AGENTS.md` | **Updated** | This section and the companion-document index; the two files are byte-identical (`cmp`) |
+
+### The four suites, before and after (unchanged)
+
+Godot **4.5.stable.official (876b29033)**, headless, `--import` first, no GPU/display/audio device,
+measured on `84e6e4b` before the documentation edit and again after it:
+
+| Suite | Before | After | Result |
+| --- | --- | --- | --- |
+| `tools/headless_roster_check.gd` | 453 checks | **453 checks** | 0 FAIL, `ALL CHECKS PASSED` |
+| `tools/live_match_check.gd` | 377 checks | **377 checks** | 0 FAIL, `ALL LIVE MATCH CHECKS PASSED` |
+| `tools/facing_audit.gd` | 310 checks | **310 checks** | 0 FAIL, `ALL FACING CHECKS PASSED` |
+| `tools/animation_feel_audit.gd` | 428 checks | **428 checks** | 0 FAIL, `ALL ANIMATION FEEL CHECKS PASSED` |
+
+Counts did not drop and every exit status was 0. The documented exit-time
+`ObjectDB instances leaked` / `resources still in use` notices are the known environment warnings from
+earlier runs, not new failures.
+
+### Ten preparation areas (documented, not built)
+
+Full detail in `CONSOLE_READINESS.md` Part 2. In short: **(1)** persistent player profiles; **(2)**
+cross-platform progression; **(3)** secure player inventories; **(4)** cosmetic ownership and
+entitlements; **(5)** modular character/stage content (`.tres` now, `.pck` packs later); **(6)**
+privacy-conscious analytics; **(7)** content updates without full rebuilds; **(8)** secure payment
+integration hooks; **(9)** strict separation of gameplay logic from monetization; **(10)** browser,
+mobile, desktop and console distribution requirements. **None of these exists today**: no `user://`
+usage, no `ConfigFile`, no save, no inventory, no entitlement, no analytics call, no content pack, no
+mobile/desktop/console export preset and no store code anywhere in the repository.
+
+### Guardrails now (binding on future work — not implemented here)
+
+1. **Fighter/stage/outfit rosters belong in data resources with stable string IDs.**
+   `FighterModel3D.MODEL_SOURCES`, `FighterRoster.FIGHTERS` and `MixamoClips.ROLE_FILES` currently
+   hardcode some of this in GDScript. **The refactor is logged as future work and was NOT done now** —
+   it must be its own reviewed change with the four suites re-run.
+2. **Saves store IDs, never paths or enum ints, with a versioned schema.**
+3. **A `ProfileStore` interface (local first, cloud later).** Do not rely on browser storage alone —
+   Safari may purge site storage after about **7 days of inactivity**.
+4. **Outfits via a shared skeleton contract and a `CosmeticLoadout` resource read by
+   `FighterModel3D`.**
+5. **DLC packs namespaced under `res://content/<pack_id>/`:** no scripts in packs, version-checked, and
+   loaded on web by downloading to `user://` then `load_resource_pack`.
+6. **`BaseFighter` never reads inventory or entitlements;** entitlement checks live only at the
+   selector UI.
+7. **Keep combat fixed-step and deterministic, with seeded randomness,** so a future online mode or
+   replay validation stays possible.
+8. **Analytics is opt-in, with no personal data and no third-party trackers at launch.**
+
+### Naming and honesty rules recorded for future agents
+
+- The flagship early-August event is **"Carnival Clash"**, tied to Emancipation Day, Jamaican
+  Independence and the early-August Carnival long weekend, described **only** with generic cultural
+  terms (Carnival, Big Truck, Road March, best-dressed fits), plus Toronto-area reggae and sound-clash
+  celebrations as a generic category. **No real festival organiser, parade, band, committee or
+  trademarked event brand may be named** in any document, code comment, store listing or product-facing
+  text; using a real-world festival's name or branding requires **the organisers' written permission
+  first**, recorded in `ASSET_LICENSES.md`.
+- Every revenue stream in `BUSINESS_AND_RETENTION_STRATEGY.md` §3 is marked **NOT APPROVED FEATURES**
+  and is a research subject only. The preferred research direction is free-to-play with optional
+  purchases.
+- No statistic, quote, revenue figure, date or company fact may be invented. The Brawlhalla items in
+  `INDUSTRY_REFERENCE_ANALYSIS.md` §8 are either cited to a public source (S12–S18) or labelled
+  **unverified, general knowledge**; its observations are left **OWNER TO FILL**.
+- Every legal, IP, privacy and licensing item carries a **"not legal or financial advice; verify with a
+  qualified professional"** notice.
+- `ASSET_LICENSES.md` records only what the repository proves; all else is **OWNER TO FILL**. The Web
+  build ships an **extractable** `.pck`, so every licence must permit redistribution in that form.
+- `INDUSTRY_REFERENCE_ANALYSIS.md` §8 does not authorize borrowing Brawlhalla's terminology, look or
+  marketing language; it analyses public information only.
+
+### Not verified
+
+- **No GPU, display or audio device**, so nothing was watched; the suite numbers are assertions and
+  bone transforms, not looks. No suite behaviour changed, because no code changed.
+- **No store, console, mobile or desktop build was produced, signed, submitted or certified.** Platform
+  requirements in `CONSOLE_READINESS.md` are preparation notes, not compliance claims.
+- **Brawlhalla internals** (netcode, revenue, retention, live-ops budget, current player counts) are
+  unverified and are deliberately not asserted anywhere; the 100-million figure is Ubisoft's own 2023
+  lifetime-player statement, not a live metric.
+- **Every `OWNER TO FILL` row in `ASSET_LICENSES.md` remains open** — notably the Tripo/Mixamo plan
+  tiers, the Beat 1–3 written grants, the `BungeeInline-Regular.ttf` licence text, the artist/tool
+  provenance of the 2D art, the absent prop models, and the missing repository `LICENSE` file.
+- **The event calendar, KPIs, revenue streams and monetization principles are unbuilt proposals.** No
+  data resource, KPI counter, calendar fetch or store exists.

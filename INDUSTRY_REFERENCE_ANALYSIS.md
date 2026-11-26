@@ -9,7 +9,8 @@ for every claim it makes, and so the parts nobody has watched yet are clearly ma
 
 ## How to read this document
 
-Each of the seven sections below has **exactly three subsections**:
+Each of the eight sections below has **exactly three subsections** (the Brawlhalla section's third
+subsection is architectural preparation rather than a visual technique):
 
 1. **Confirmed Technical Findings** — only what can be cited to a source that was actually
    reached on 2026-11-25, with the source named inline. Where no source was found, the item
@@ -43,6 +44,14 @@ Console-specific budgets live in `CONSOLE_READINESS.md`.
 | S9 | PlayStation.Blog, *Fatal Fury: City of the Wolves* interview with the SNK director, 2024-09-10 (`blog.playstation.com/2024/09/10/...`) | CotW's art style deliberately mixes American comic art with Japanese anime so characters "pop". |
 | S10 | PCMag, *City of the Wolves* Q+A with SNK, 2025-08-04 (`pcmag.com/news/city-of-the-wolves-q-plusa-...`) | Comic-book inspiration is a stated, long-running influence on the series. |
 | S11 | Mariel Cartwright, *Making Fluid and Powerful Animations for Skullgirls*, GDC 2014 Animation Bootcamp (talk referenced in third-party notes) | Strong key frames, anticipation and timing; the practical constraint of "only six frames to deliver a punch". |
+
+| S12 | Official product site, `https://www.brawlhalla.com/` | Brawlhalla: free 2D platform fighter, up to 8 local/online players, full cross-play platform list, "frequent updates", 50+/60+ Legends badge |
+| S13 | Ubisoft product page, `https://www.ubisoft.com/en-us/games/brawlhalla` | Release date 17 October 2017, platform list (PC, PS5, PS4, Xbox Series X\|S, Xbox One, Switch, iOS, Android), "Free to play", "Over sixty Legends" |
+| S14 | Steam store page, `https://store.steampowered.com/app/291550/Brawlhalla` | Developer Blue Mammoth Games, publisher Ubisoft, release date Oct 17 2017 |
+| S15 | Ubisoft newsroom, *Blue Mammoth Games Joins Ubisoft*, 1 March 2018 (`news.ubisoft.com/en-us/article/4xuBkncNEEFHXpWzpDPK19/blue-mammoth-games-joins-ubisoft`) | The studio (21 people, near Atlanta) joined Ubisoft; the game had been grown over three years |
+| S16 | Ubisoft newsroom, *Brawlhalla Celebrates 100 Million Lifetime Players With In-Game Event*, 17 May 2023 (`news.ubisoft.com/en-us/article/MvVxfuQT6SZ5XnlJY8Pgp`) | 100 million lifetime players; the celebration's shape (all Legends free for the first week, daily rotating modes, daily store sales, login rewards) |
+| S17 | Official community wiki, `https://brawlhalla.wiki.gg/wiki/Skins` and `.../wiki/Crossover_Skins` | Per-Legend skins bought with a premium currency; Epic/Mythic crossover skins that re-dress an existing Legend as another franchise's character; crossover Legends — community-maintained, not an official statement |
+| S18 | Wikipedia, `https://en.wikipedia.org/wiki/Brawlhalla` | **Tertiary.** Reports the engine as Adobe AIR (not corroborated), counts 70 playable characters, and lists release dates per platform |
 
 **Not reached:** any *Dragon Ball FighterZ*-specific developer talk, any *Guilty Gear Strive*
 animation talk, the **Zweifuss 3rd Strike animation archive**, and the **Stefan Iverson
@@ -340,7 +349,125 @@ change the renderer, not the animation data.
 
 ---
 
-## 8. What this means for Sound Clash Brawl (synthesis)
+## 8. Brawlhalla
+
+### (1) Confirmed Technical Findings
+
+Only what a reached source states. Anything else is labelled **unverified, general knowledge**.
+
+- **It is a free-to-play 2D platform fighter for up to 8 players, local or online, with full
+  cross-play** across PC, PlayStation 5/4, Xbox Series X|S/Xbox One, Nintendo Switch, iOS and
+  Android (S12, S13). The store page confirms **Blue Mammoth Games** as developer and **Ubisoft** as
+  publisher (S14).
+- **Release date: 17 October 2017** on PC, macOS and PlayStation 4, with the other platforms added
+  later (S13, S14, S18).
+- **Studio scale and ownership:** Ubisoft announced in March 2018 that Blue Mammoth Games — described
+  as **21 people** near Atlanta — had joined Ubisoft, after growing the game for about three years
+  (S15). This is the single most important fact for Sound Clash Brawl: the benchmark runs on a
+  publisher-backed studio, not a solo developer.
+- **Longevity:** Ubisoft reported **100 million lifetime players** in May 2023 (S16). That is a
+  lifetime account count from the publisher, **not** a live concurrent figure, revenue figure or
+  retention rate — do not restate it as any of those.
+- **The event shape that accompanied it:** for the first week all Legends were free in the rotation,
+  the weekly queue rotated daily modes, the in-game store ran daily themed sales, and login rewards
+  were added (S16). That is a "come back this week" pattern built from *availability*, not new
+  mechanics.
+- **Cosmetics are the monetization surface:** per-Legend **skins** bought with a premium currency,
+  plus Epic/Mythic **crossover skins** that re-dress an existing Legend as a character from another
+  franchise, and crossover Legends built on external franchises (S17, community wiki). Skins are
+  equipped at character select.
+- **Update cadence:** the official pages state the game receives "frequent updates" and ships 60+
+  Legends (S12, S13); Wikipedia counts 70 (S18, tertiary).
+- **Engine:** Wikipedia lists **Adobe AIR** (S18). **Not corroborated by a primary source** — treat
+  as unverified.
+
+**Unverified, general knowledge — do not assert:** Brawlhalla's netcode and rollback implementation;
+its revenue, ARPU, conversion or live-ops budget; its retention curve; its team size after 2018; its
+free-Legend rotation cadence today; current active-player counts; and whether any specific event
+produced a measurable reactivation lift. None of these was sourced on 2026-11-25.
+
+### (2) Observations from Gameplay Footage — OWNER TO FILL
+
+The agent writing this cannot watch gameplay or the store. Each row is a prompt with a time box, not
+an observation.
+
+| # | Watch for | Where | Time / note | Observation (OWNER TO FILL) |
+| --- | --- | --- | --- | --- |
+| B1 | How the free rotation is surfaced at character select (is "free this week" legible before a purchase prompt?) | character select | `__:__` | OWNER TO FILL |
+| B2 | Whether cosmetics change silhouette/readability or only colour and trim | any match | `__:__` | OWNER TO FILL |
+| B3 | How a crossover skin is presented (does it read as its own character or a costume?) | store / select | `__:__` | OWNER TO FILL |
+| B4 | What a returning player sees after a long absence (event banner, free items, login rewards) | first session | `__:__` | OWNER TO FILL |
+| B5 | How the event calendar communicates dates and end times | menus | `__:__` | OWNER TO FILL |
+| B6 | Anything in the cross-play/account flow a one-person Godot project could not support | platform linking | `__:__` | OWNER TO FILL |
+| B7 | What would feel wrong if copied wholesale (scale, cadence, content volume, tone) | whole product | `__:__` | OWNER TO FILL |
+| B8 | What this game does **not** serve for a Jamaican/diaspora audience | whole product | `__:__` | OWNER TO FILL |
+
+### (3) Proposed Godot 4.5 Architectural Preparation
+
+**Proposals only — nothing here is built, scheduled or approved.** They are shaped to this repository
+as it exists today: three playable fighters, one shared `BaseFighter.gd`, a roster whose model paths
+and stats are hardcoded in `FighterModel3D.MODEL_SOURCES` / `FighterRoster.FIGHTERS`, a ~103 MB Web
+build, and **no persistence layer at all** (no `user://` use, no `ConfigFile`, no save).
+
+The point is not to imitate Brawlhalla. It is to make **independent growth** possible for a
+one-person team: add content, sell cosmetics optionally, and welcome back lapsed players without a
+sequel or a live-ops staff.
+
+**Independent growth (content as data, not code)**
+
+| Proposal | Why it matters here | First concrete step (not started) |
+| --- | --- | --- |
+| Move the roster, moves and outfits into `.tres` data resources with **stable string IDs** | A fighter or outfit becomes content, not a code change | `FighterDef`, `MoveDef`, `OutfitDef` resources; the current hardcoded tables are logged as future work in `CONSOLE_READINESS.md` guardrail 1 |
+| Version every save and every content pack | A year of additions must not break a returning player's profile | `schema_version` in the profile, `pack_version` in each pack manifest |
+| Keep presentation unable to write combat | Cosmetics can be added forever without re-validating frame data | Already true: the feel layer reads combat state and writes nothing; the feel audit re-hashes `BaseFighter.gd`/`FighterRoster.gd` |
+
+**Cross-platform accessibility**
+
+| Proposal | Why | Constraint in this repo |
+| --- | --- | --- |
+| One build that degrades, not per-platform forks | A solo team cannot maintain branches | `project.godot` already pins `gl_compatibility` for Web and disables VRAM compression |
+| First-load budget plus **on-demand packs** | ~103 MB is too much for a prepaid phone; fighters + one stage must fit a small first download | Packs under `res://content/<pack_id>/`, downloaded to `user://` then `load_resource_pack` |
+| Browser-first community entry (QR at events, optional PWA) | Cheapest acquisition for a diaspora audience; no install | A threaded Web export needs COOP/COEP headers GitHub Pages cannot set |
+| Local 2P as a first-class shared-phone mode | Strongest real-world use case; no server | Touch controls exist only in the web prototype today |
+| Input parity across keyboard, touch and gamepad | A returning player on another device must not lose the feel | Re-verify the 132 BPM clock and input buffer per input source, never assume |
+
+**Modular cosmetic and collaboration model**
+
+1. **Skeleton contract** — every outfit is authored against the shared 65-bone `mixamorig` contract, so
+   an outfit is a mesh/material swap on a known rig, never a second animation set.
+2. **`CosmeticLoadout` resource** — one resource per slot naming `outfit_id`, `colour_id`,
+   `entrance_id`, `stage_variant_id`; `FighterModel3D` reads it and nothing else does.
+3. **Entitlements outside gameplay** — ownership is a list of stable IDs checked **only** at the
+   selector UI; `BaseFighter.gd` must never read inventory or entitlements.
+4. **Collaboration seam** — a licensed guest character is a new `FighterDef` plus a content pack plus a
+   row in `ASSET_LICENSES.md`, not a code fork; its removal at licence expiry must be a data change.
+   A crossover-style **re-dress** (`OutfitDef` on an existing fighter) is the cheaper collaboration
+   shape and the one to prototype first, mirroring how Brawlhalla's crossover skins re-dress existing
+   Legends (S17).
+5. **Testable boundary** — a headless check should eventually prove an unowned cosmetic can be listed
+   but not equipped, and that combat output is byte-identical with and without it.
+
+**Long-term reactivation**
+
+| Proposal | Mechanism | Guardrail |
+| --- | --- | --- |
+| Event calendar as data | Dates plus a free rotating outfit/stage/selector, read at boot, no code release | Offline/Web falls back to a built-in default calendar |
+| Returning-player surface | First session after a long absence shows what is new and the last-used fighter | No loss-framed messaging, no purchasable "catch-up" |
+| Profile that survives absence | Local-first, versioned schema, stable IDs; cloud later behind a `ProfileStore` | Do not rely on browser storage alone — Safari may purge it after about 7 days of inactivity |
+| Crews and dubplates | Social loop plus cosmetic self-expression in the game's own idiom | Proposals only — no backend exists (`BUSINESS_AND_RETENTION_STRATEGY.md` §7c) |
+| Deterministic combat | Fixed-step simulation with seeded randomness for a possible future online/replay mode | Must not be broken by cosmetics or analytics |
+
+The reactivation calendar itself (the **Carnival Clash** flagship and three lighter anchors) is
+specified in `BUSINESS_AND_RETENTION_STRATEGY.md` §2.
+
+**What this preparation deliberately does not include:** no store, payment flow, account system, ad
+unit or monetization UI; no change to `BaseFighter.gd`, combat, animation, frame data, the beat clock
+or the Patois lexicon; no refactor of `MODEL_SOURCES`/`FighterRoster` in this milestone; no re-export
+of `/docs`.
+
+---
+
+## 9. What this means for Sound Clash Brawl (synthesis)
 
 - The **two things every reached source agrees on** are: (a) the silhouette is the product,
   and (b) lighting is what makes the silhouette read. Both are already the build's
@@ -349,7 +476,10 @@ change the renderer, not the animation data.
   do.** Every technique in §6 and §7 is a skeleton transform, a pivot offset or a uniform
   write.
 - **The honest gap:** no footage has been watched by the agent that wrote this, and four of
-  the seven references could not be reached. The "OWNER TO FILL" prompts are the shortest
+  the seven visual references could not be reached. Brawlhalla (§8) adds a *business* reference
+  rather than a visual one: its structure (one evolving free-to-play game, cosmetic-only
+  monetization, cross-play, event availability) is worth borrowing; its scale is not, because it
+  is publisher-backed (§8, S15). The "OWNER TO FILL" prompts are the shortest
   path to closing that gap; a filled prompt list is worth more than another citation.
 - **Console** is a scaling exercise, not a redesign: the same data, higher tiers. See
   `CONSOLE_READINESS.md`.

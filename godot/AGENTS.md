@@ -6167,3 +6167,65 @@ loosened anywhere):
 
 Suites after the change: roster **490 PASS / 0 FAIL**, live **454 / 0**, facing **310 / 0**,
 feel **440 / 0** — counts unchanged, nothing loosened.
+
+### PART A3 commits 2 & 3 — NOT SHIPPED (measured blockers, with the table)
+
+Commit 1 shipped. The load-time lying-pose calibration (orientation) and the load-time floor
+offset (seating) are **not implemented**. The table below is the acceptance row they have to
+meet; it says **0 of 12 cells pass**, so no partially proven rotation or offset was committed.
+No tolerance was loosened; the suites are green and unchanged.
+
+`tools/knockdown_table.gd` is the evidence harness (new, not wired into any suite):
+`godot --headless --path godot --script res://tools/knockdown_table.gd [-- --played]`. It
+samples **every tick** of the fall window and reports the frame of maximum fall — sampling a
+fixed number of ticks later measures a standing body, which is how a first version of this
+table wrongly reported `fall 0.00`.
+
+Forced-state matrix (all three fighters x both slots, settled frame, drawn bounds from the
+corrected sampler):
+
+| fighter | slot | state | up_y (abs<=0.3) | chest_ny (>=0.7) | head away | low drawn ([−0.02,+0.03]) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Feedback | p1 | KNOCKDOWN | −0.097 ok | **−0.974 fail** | ok | −0.005 ok |
+| Feedback | p1 | KO | **+0.936 fail** | **−0.377 fail** | ok | −0.005 ok |
+| Feedback | p2 | KNOCKDOWN | **+0.336 fail** | +0.892 ok | **fail** | −0.005 ok |
+| Feedback | p2 | KO | −0.240 ok | +0.746 ok | **fail** | −0.005 ok |
+| L!ckshot | p1 | KNOCKDOWN | **−0.596 fail** | +0.736 ok | ok | **+0.066 fail** |
+| L!ckshot | p1 | KO | **−0.992 fail** | **+0.018 fail** | ok | **+0.262 fail** |
+| L!ckshot | p2 | KNOCKDOWN | **−0.577 fail** | **+0.693 fail** | **fail** | **+0.098 fail** |
+| L!ckshot | p2 | KO | **−0.992 fail** | **+0.019 fail** | **fail** | **+0.263 fail** |
+| Young Selecta | p1 | KNOCKDOWN | +0.136 ok | +0.893 ok | ok | **−0.025 fail** |
+| Young Selecta | p1 | KO | **+0.834 fail** | **−0.321 fail** | ok | **+0.204 fail** |
+| Young Selecta | p2 | KNOCKDOWN | +0.246 ok | **+0.660 fail** | **fail** | +0.007 ok |
+| Young Selecta | p2 | KO | **+0.831 fail** | **−0.511 fail** | **fail** | **+0.252 fail** |
+
+**0 of 12 cells pass all four columns.** One cell (Young Selecta / p1 / KNOCKDOWN) passes the
+three orientation columns and fails seating (−0.025 m). L!ckshot floats on all four of its rows
+(−0.013…+0.263 m) and both Tripo KOs float (+0.204 / +0.252 m); every Tripo KO row also lies on
+its side (chest_ny −0.511…+0.019).
+
+What the table establishes for the next attempt:
+
+1. **The correction must be per facing, not per rig/state.** The same fighter/state differs by
+   slot (Feedback KO: up_y −0.240 on p2 vs +0.936 on p1), because the procedural fall roll is
+   signed by `facing_sign`. A single constant `R_cal` per rig/state cannot cover both slots.
+2. **Head-away is inverted on p2 for every fighter**, while p1 is correct in every row: the
+   roll takes the head toward the opponent on one side. Any solver must target head-away in
+   *world* terms and therefore be keyed on `facing_sign` too.
+3. **Chest normal is the hard column** (0.660–0.892 on some rows, −0.974…−0.511 on others): the
+   roll solves the long axis but nothing yet rolls the body about it, which is what the
+   vertex-cloud PCA's thinnest axis is for.
+4. **Seating is a separate defect**: L!ckshot/Young Selecta KOs float 0.20–0.26 m while their
+   knockdowns read +0.07…+0.10, so a single per-state `y_cal` (commit 3) is the right shape,
+   measured with `R_cal` applied.
+
+The played-vs-forced contract (1 cm / 3°) was **not** verified this pass: a single heavy strike
+does not put a body down (the three-piece finisher does), so the harness's played path is
+opt-in (`--played`) and unproven; one earlier KO sample showed forced −0.074 vs played +0.169
+(14.5° apart), i.e. the two paths already disagree by more than the contract — measured *before*
+any calibration existed, so it is a runtime difference to explain, not a calibration artifact.
+
+Contact sheet: **not refreshed** in this pass (no still was captured; `qa/contact_sheet.png`
+and its pre-existing untracked `.import` file are untouched).
+
+Suites: roster **490 PASS / 0 FAIL**, live **454 / 0**, facing **310 / 0**, feel **440 / 0**.

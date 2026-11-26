@@ -40,6 +40,15 @@ uniform vec4 flash_colour : source_color = vec4(1.0, 0.93, 0.72, 1.0);
 // known instance-uniform overflow on WebGL2) the body still renders its own albedo.
 uniform float accent_strength : hint_range(0.0, 2.0) = 0.0;
 instance uniform vec4 instance_accent : source_color = vec4(0.0, 0.0, 0.0, 1.0);
+// PART B commit 7 — the crowd's dancehall palette, worn without muddying the delivered
+// character. The old multiplicative per-instance tint darkened and desaturated whatever it
+// touched. This is a LUMINANCE-PRESERVING mix instead: the palette colour is rescaled to the
+// texel's own luma before the mix, so mixing cannot change how bright the body is, only its
+// hue. Strength is capped at 0.25 (the crowd ships 0.22) and the fighters leave it at 0.
+uniform float crowd_tint_strength : hint_range(0.0, 0.3) = 0.0;
+instance uniform vec4 instance_tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
+
+const vec3 LUMA_WEIGHTS = vec3(0.2126, 0.7152, 0.0722);
 
 vec3 rotate_hue(vec3 colour, float shift) {
 	float angle = shift * 6.28318530718;
@@ -56,6 +65,14 @@ void fragment() {
 	// Cool shadow bias keeps the inked look without a second light pass. The delivered
 	// character and crowd materials leave it at 0.0: the floor below is the shadow treatment.
 	base = mix(base, base * shadow_tint.rgb, shadow_tint_amount);
+	if (crowd_tint_strength > 0.0) {
+		// Palette at the texel's own luma: the mix keeps detail and brightness, only the hue
+		// moves toward the dancer's colour.
+		float luma = dot(base, LUMA_WEIGHTS);
+		float tint_luma = max(dot(instance_tint.rgb, LUMA_WEIGHTS), 0.001);
+		vec3 palette = instance_tint.rgb * (luma / tint_luma);
+		base = mix(base, palette, crowd_tint_strength);
+	}
 	vec3 face = mix(base, flash_colour.rgb, flash_amount);
 	// Lit share of the material, then the unlit floor. The two always sum to `face`, so a fully
 	// shadowed surface renders at exactly albedo_floor of the texture and a lit one never loses

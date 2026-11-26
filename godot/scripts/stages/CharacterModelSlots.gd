@@ -39,6 +39,12 @@ const OUTLINE_SHADER := preload("res://assets/shaders/toon_outline.gdshader")
 ## the roster check straight off the materials.
 const SHADING_FLOOR := 0.55
 const BAND_SOFTNESS := 0.86
+## Cel accent defaults shared by every slot user. `CROWD_TINT` is the luma-preserving palette
+## mix the crowd wears (fighters leave the shader's crowd tint at 0).
+const RIM_STRENGTH := 0.52
+const ACCENT_STRENGTH := 0.9
+const CROWD_TINT := 0.22
+const CROWD_TINT_MAX := 0.25
 
 ## Acting clips. Every Mixamo upload is one take on the same 68-bone `mixamorig` skeleton,
 ## and every imported scene uses identical node paths (`Armature/Skeleton3D:mixamorig_*`),
@@ -383,7 +389,8 @@ static func apply_cel(node: Node3D, tint: Color, rim: Color, variant: int = 0,
 ## this rig's own palette accent. Only emission is per-instance — ALBEDO stays the delivered
 ## texture at full brightness, so a Web build that drops the instance buffer cannot black a body.
 static func apply_cel_shared(node: Node3D, source_path: String, rim: Color, accent: Color,
-		rim_strength: float = 0.52, accent_strength: float = 0.9) -> int:
+		rim_strength: float = RIM_STRENGTH, accent_strength: float = ACCENT_STRENGTH,
+		tint_strength: float = CROWD_TINT) -> int:
 	var applied := 0
 	var fallback := delivered_atlas(source_path)
 	for child in node.find_children("*", "MeshInstance3D", true, false):
@@ -416,6 +423,9 @@ static func apply_cel_shared(node: Node3D, source_path: String, rim: Color, acce
 				# Same floor as the fighters: a crowd body never falls below 55 % of its atlas.
 				material.set_shader_parameter("albedo_floor", SHADING_FLOOR)
 				material.set_shader_parameter("band_softness", BAND_SOFTNESS)
+				# PART B commit 7: a luma-preserving palette mix, never a multiplicative tint.
+				material.set_shader_parameter("crowd_tint_strength",
+					clampf(tint_strength, 0.0, CROWD_TINT_MAX))
 				var ink := ShaderMaterial.new()
 				ink.shader = OUTLINE_SHADER
 				ink.set_shader_parameter("ink_width", 0.0026)
@@ -423,6 +433,7 @@ static func apply_cel_shared(node: Node3D, source_path: String, rim: Color, acce
 				_shared_cel[key] = material
 			mi.set_surface_override_material(surface, material)
 			mi.set_instance_shader_parameter("instance_accent", accent)
+			mi.set_instance_shader_parameter("instance_tint", accent)
 			applied += 1
 	return applied
 

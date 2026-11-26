@@ -2112,6 +2112,60 @@ func _run() -> void:
 	_check(crowd3d.min_row_spacing() >= CrowdController3D.MIN_SPACING - 0.001,
 		"each row holds its minimum spacing",
 		"%.3f m (min %.2f)" % [crowd3d.min_row_spacing(), CrowdController3D.MIN_SPACING])
+
+	# ---- PART B commit 7: one cohesive cluster, one gentle palette ------------------------
+	# The banks used to be three loose lines (the back row stepped 0.91 m between shoulders).
+	# They now hold one shoulder-width step per row, each row half a step across from the one
+	# behind it, and the palette is a luminance-preserving mix rather than a multiplicative
+	# tint, so the delivered albedo keeps its detail and its brightness.
+	var mean_width: float = crowd3d.mean_rig_width()
+	var widest_gap: float = crowd3d.max_row_gap()
+	# Two measures, because the measured AABB is the arm span (≈1.45 m) and the brief's 1.25×
+	# rule would let a loose line through. The shoulder box is the one neighbours actually
+	# touch in, so the same check is also run against 1.25× that.
+	_check(mean_width > 0.0 and widest_gap <= mean_width * 1.25
+			and widest_gap <= CrowdController3D.BODY_HALF_WIDTH * 2.0 * 1.25,
+		"no row opens a gap wider than 1.25× the mean rig width, or past a shoulder step",
+		"widest %.3f m step vs %.3f m mean width (shoulder box %.2f m, cap %.3f)" % [widest_gap,
+			mean_width, CrowdController3D.BODY_HALF_WIDTH * 2.0, CrowdController3D.BODY_HALF_WIDTH * 2.5])
+	var stagger_a := absf(crowd3d.row_first_center(0) - crowd3d.row_first_center(1))
+	var stagger_b := absf(crowd3d.row_first_center(1) - crowd3d.row_first_center(2))
+	_check(stagger_a >= 0.2 and stagger_b >= 0.2,
+		"each row is staggered by half a step instead of stacking in columns",
+		"%.2f / %.2f m offsets" % [stagger_a, stagger_b])
+	_check(crowd3d.tint_strength() > 0.0 and crowd3d.tint_strength() <= 0.25,
+		"the dancehall palette rides a gentle luma-preserving mix",
+		"strength %.2f (cap 0.25)" % crowd3d.tint_strength())
+	_check(crowd3d.palette_luma_error() <= 0.10,
+		"the tint holds the delivered albedo's luminance within 10 %",
+		"%.4f worst error" % crowd3d.palette_luma_error())
+	# The whole cluster has to sit inside the backdrop and inside the stage camera's frame.
+	var backdrop_half: Vector2 = atmosphere.backdrop_half_extent()
+	var cluster_edge: float = crowd3d.max_abs_x() + CrowdController3D.BODY_HALF_WIDTH
+	var cluster_top: float = CrowdController3D.ROW_Y[2] + CrowdController3D.HEIGHT_MAX \
+		* CrowdController3D.FIGHTER_HEIGHT
+	_check(cluster_edge <= backdrop_half.x and cluster_top <= atmosphere.backdrop_centre().y
+			+ backdrop_half.y,
+		"the cluster sits inside the backdrop",
+		"edge %.2f m of %.2f, top %.2f m" % [cluster_edge, backdrop_half.x, cluster_top])
+	var view_size: Vector2 = atmosphere.get_viewport().get_visible_rect().size
+	var off_frame := 0
+	var offenders := ""
+	for i in crowd3d.count():
+		var p: Vector3 = crowd3d.member_position(i)
+		# The body box, not the bind-pose arm span: the extremes of the AABB are empty air where
+		# a hand would be if the model were still in T-pose.
+		var half := CrowdController3D.BODY_HALF_WIDTH
+		for offset in [-half, 0.0, half]:
+			var screen: Vector2 = atmosphere.camera.unproject_position(p + Vector3(offset, 0.0, 0.0))
+			if screen.x < 0.0 or screen.y < 0.0 or screen.x > view_size.x or screen.y > view_size.y:
+				off_frame += 1
+				if offenders.length() < 80:
+					offenders += " #%d x%.2f z%.2f -> %s" % [i, p.x, p.z, screen]
+	_check(off_frame == 0,
+		"every rig in the cluster stays inside the stage camera's frame",
+		"%d of %d sample(s) off frame at %s%s" % [off_frame, crowd3d.count() * 3, view_size,
+			offenders])
 	var accents := {}
 	for i in crowd3d.count():
 		accents[crowd3d.palette_name_of(i)] = true
@@ -2136,6 +2190,11 @@ func _run() -> void:
 			and crowd3d.model_slots().size() == models_before,
 		"600 frames of crowd motion create no nodes and no objects",
 		"%d nodes, %d models" % [crowd3d.node_count(), crowd3d.model_slots().size()])
+	_check(crowd3d.tint_strength() <= 0.25 and crowd3d.count() == 22
+			and crowd3d.model_names().size() == 7,
+		"600 frames later the cluster still holds 22 rigs across all 7 models",
+		"%d rigs, %d models, tint %.2f" % [crowd3d.count(), crowd3d.model_names().size(),
+			crowd3d.tint_strength()])
 	crowd3d.settle()
 
 	# ---- Bug 5 (2026-11-25): Afternoon / Sunset / Night rigs ----------------------------

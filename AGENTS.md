@@ -6092,3 +6092,42 @@ above. Suites: roster 483 / 0 FAIL, live **454 / 0 FAIL**, facing 310 / 0, feel 
 **Scope note:** the jab test measures *landed* P1 strikes and the CPU's first `ATTACK_STARTUP`,
 not a full "interruption" judgement; the AI still has no difficulty UI (the export var and
 `MatchSetup.ai_preset` are the whole surface, per the brief).
+
+### Commit 7 — the crowd reads as one cluster, and its palette stops muddying it
+
+**Formation.** The banks were three loose lines: row steps of 0.565 / 0.655 / **0.913 m**, so the
+back row had a hole almost twice a shoulder wide in it. Every row now holds one **0.56 m** step
+(about shoulder width), each row is **shifted half a step (0.28 m)** across from the row in front,
+and the seeded lateral jitter is a flat **±0.02 m** instead of a value derived from the row's own
+spacing. Tiers, depth rows (z −4.15 / −5.05 / −5.95), the 4 + 4 + 3 bodies a side, all 22 rigs and
+all seven delivered characters are unchanged.
+
+```
+row 0 (z -4.15): 1.74 / 2.30 / 2.86 / 3.42
+row 1 (z -5.05): 2.02 / 2.58 / 3.14 / 3.70   (half a step across)
+row 2 (z -5.95): 2.30 / 2.86 / 3.42          (half a step across again)
+```
+
+The bands were also pulled inside the commit-5 camera: the frame is 3.93 m half-wide at the
+ringside depth, and the outermost ringside **body** edge is 3.67 m.
+
+**Tint.** There was no albedo tint left to remove (the palette only rode rim/emission), so the
+dancehall colour now arrives as a **luminance-preserving mix**: the shader rescales the palette
+colour to the texel's own luma and mixes it in at `crowd_tint_strength = 0.22` (capped at 0.25 in
+both the shader and `apply_cel_shared`). A multiplicative tint could only darken and desaturate;
+this one can only move hue, so clothing and skin detail survive at the same brightness. It runs
+through the same shared cel material and the same `SHADING_FLOOR` / `BAND_SOFTNESS` as the
+fighters, and the fighters leave `crowd_tint_strength` at 0.0. Crowd textures keep the commit-5
+mipmaps and 8× anisotropic filtering.
+
+**Measured** (headless roster): widest gap **0.592 m** against a 0.625 m shoulder cap (and 1.25×
+the 1.452 m arm-span AABB, the brief's own rule); stagger **0.27 / 0.28 m**; 0 overlapping pairs;
+tint strength **0.22**; worst luminance error over the palette and six delivered albedo tones
+**0.0000** (the mix is luma-exact by construction); **0/66** body-edge samples off frame at
+1280×720; 600 frames of motion with no new nodes; 22 rigs and 7 models still standing.
+
+**Note on the frame audit:** the measured rig width is the arm-span AABB (1.45 m), whose lateral
+extremes are empty air in bind pose. The camera check therefore samples the 0.50 m body box — the
+same box `overlap_count()` uses — not the arms.
+
+Suites: roster **490 / 0 FAIL**, live 454 / 0, facing 310 / 0, feel 440 / 0.

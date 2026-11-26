@@ -50,10 +50,24 @@ const ROW_COUNTS := [4, 4, 3]              # per zone, per row
 const ROW_Y := [0.0, 0.20, 0.40]
 ## Row base delay plus a per-metre stagger: ringside answers first, the back row last.
 const ROW_DELAY := [0.0, 0.11, 0.22]
-## Half-width bands (mirrored by the zone sign), wide enough to read as a packed crowd and
-## tight enough that the whole bank stays inside the 30° stage camera. Bug 4b widened the
-## ringside band by 8 cm a side so four bodies can hold `MIN_SPACING` with room to jitter.
-const ROW_BANK_X := [Vector2(1.46, 3.72), Vector2(1.40, 4.02), Vector2(1.62, 4.36)]
+## Half-width bands (mirrored by the zone sign). PART B commit 7: every row now holds the same
+## 0.56 m shoulder step and each row's band is shifted by half a step relative to the one
+## behind it, so the banks read as one natural cluster instead of three loose lines with a
+## 0.91 m hole in the back row. The bands are also pulled inside the tighter stage camera: at
+## the commit-5 distance the frame's half-width is 3.93 m at the ringside depth, and the
+## outermost ringside body edge here is 3.67 m.
+##
+##   row 0 (z -4.15): centres 1.74 / 2.30 / 2.86 / 3.42
+##   row 1 (z -5.05): centres 2.02 / 2.58 / 3.14 / 3.70   (half a step across)
+##   row 2 (z -5.95): centres 2.30 / 2.86 / 3.42          (half a step across again)
+const ROW_BANK_X := [Vector2(1.46, 3.70), Vector2(1.74, 3.98), Vector2(2.02, 3.70)]
+## Seeded lateral jitter, a few centimetres: enough to break the grid, far too little to open a
+## gap or close two shoulders. (Worst case: 0.56 - 0.04 = 0.52 m apart, still clear of the
+## 0.50 m body box; widest gap 0.56 + 0.04 = 0.60 m.)
+const ROW_JITTER := 0.02
+## Strength of the luminance-preserving palette mix the bank wears. Capped at 0.25 by the
+## brief, and by `apply_cel_shared()` too; the fighters never set it (0.0).
+const CROWD_TINT := 0.22
 
 ## Staggering. A body's reaction delay is how far out along the bank it stands plus a small
 ## seeded jitter, so no two people ever land on the same tick.
@@ -171,16 +185,12 @@ func build() -> void:
 		for row in ROW_COUNTS.size():
 			var count: int = ROW_COUNTS[row]
 			for i in count:
-				# Even spread across the row's band with a seeded stride, so the bank reads as
-				# a packed yard rather than a grid. Left and right mirror each other. Bug 4b:
-				# the jitter is capped by the row's own spacing, so two neighbours can never
-				# close under MIN_SPACING and clip through each other's shoulders.
+				# Even spread across the row's band at the row's own step, so the bank reads
+				# as a packed yard rather than a grid. Left and right mirror each other.
 				var t := (float(i) + 0.5) / float(count)
 				var band: Vector2 = ROW_BANK_X[row]
 				var side := -1.0 if zone == ZONE_LEFT else 1.0
-				var spacing := (band.y - band.x) / float(count)
-				var jitter_limit := maxf(0.0, (spacing - MIN_SPACING) * 0.5)
-				var x := lerpf(band.x, band.y, t) * side + _rng.randf_range(-jitter_limit, jitter_limit)
+				var x := lerpf(band.x, band.y, t) * side + _rng.randf_range(-ROW_JITTER, ROW_JITTER)
 				_members.append(_make_member(index, zone, row, x))
 				index += 1
 	_load_models()
@@ -244,8 +254,10 @@ func _load_models() -> void:
 		m.model_path = path.get_file()
 		# Bug 4c: the bank SHARES one cel material per delivered atlas and takes its own
 		# palette from the per-instance accent uniform — no new material per rig.
+		# PART B commit 7: the palette is a luminance-preserving mix (`CROWD_TINT`), applied
+		# on top of the delivered albedo rather than multiplied into it.
 		var applied := CharacterModelSlots.apply_cel_shared(model, path, MODEL_RIMS[m.zone],
-			m.accent)
+			m.accent, CharacterModelSlots.RIM_STRENGTH, 0.9, CROWD_TINT)
 		if applied == 0:
 			push_warning("CrowdController3D: %s has no textured surface — empty slot"
 				% m.node.name)
@@ -672,6 +684,112 @@ func world_height(index: int) -> float:
 func height_ratio(index: int) -> float:
 	var h := world_height(index)
 	return h / FIGHTER_HEIGHT if h > 0.0 else 0.0
+
+
+## PART B commit 7 — measured rig width in world space, ignoring yaw: the shoulder line the
+## spacing audit is written against.
+func world_width(index: int) -> float:
+	if index < 0 or index >= _members.size():
+		return 0.0
+	var model: Node3D = _members[index].model
+	if model == null:
+		return 0.0
+	var to_local := model.global_transform.affine_inverse()
+	var merged := AABB()
+	var first := true
+	for node in model.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi == null or mi.mesh == null:
+			continue
+		var box: AABB = to_local * mi.global_transform * mi.get_aabb()
+		merged = box if first else merged.merge(box)
+		first = false
+	if first:
+		return 0.0
+	return merged.size.x * absf(model.scale.x)
+
+
+func mean_rig_width() -> float:
+	var total := 0.0
+	var counted := 0
+	for i in _members.size():
+		var w := world_width(i)
+		if w > 0.0:
+			total += w
+			counted += 1
+	return total / float(counted) if counted > 0 else 0.0
+
+
+## Widest anchor-to-anchor gap inside any one row and bank. The cluster contract is that this
+## never exceeds 1.25× the mean rig width, i.e. neighbours always read as one group.
+func max_row_gap() -> float:
+	var widest := 0.0
+	for row in ROW_COUNTS.size():
+		for zone in [ZONE_LEFT, ZONE_RIGHT]:
+			var xs: Array[float] = []
+			for m in _members:
+				if m.row == row and m.zone == zone:
+					xs.append(m.x)
+			xs.sort()
+			for i in range(1, xs.size()):
+				widest = maxf(widest, xs[i] - xs[i - 1])
+	return widest
+
+
+## Innermost anchor of a row on the left bank, used to prove the half-step stagger.
+func row_first_center(row: int) -> float:
+	var best := INF
+	for m in _members:
+		if m.row == row and m.zone == ZONE_LEFT:
+			best = minf(best, absf(m.x))
+	return 0.0 if best == INF else best
+
+
+func member_position(index: int) -> Vector3:
+	if index < 0 or index >= _members.size():
+		return Vector3.ZERO
+	return _members[index].node.global_position
+
+
+## Farthest rig anchor from the yard centre line.
+func max_abs_x() -> float:
+	var widest := 0.0
+	for m in _members:
+		widest = maxf(widest, absf(m.x))
+	return widest
+
+
+## The palette mix the bank wears, read back from the shared cel material.
+func tint_strength() -> float:
+	if _cel_materials.is_empty():
+		return 0.0
+	return float(_cel_materials[0].get_shader_parameter("crowd_tint_strength"))
+
+
+## Worst luminance change the tint can make, measured over a sweep of delivered albedo tones.
+## The shader rescales the palette to the texel's own luma before mixing, so this must stay at
+## float noise — anything above 10 % would mean the tint is dimming textures again.
+func palette_luma_error() -> float:
+	var strength := tint_strength()
+	if strength <= 0.0:
+		return 0.0
+	var weights := Vector3(0.2126, 0.7152, 0.0722)
+	var samples := [Color(0.10, 0.10, 0.10), Color(0.35, 0.30, 0.26), Color(0.55, 0.42, 0.32),
+		Color(0.80, 0.78, 0.74), Color(0.95, 0.93, 0.90), Color(0.20, 0.45, 0.30)]
+	var worst := 0.0
+	for entry in PALETTE:
+		var accent: Color = entry["accent"]
+		for base in samples:
+			var luma: float = base.r * weights.x + base.g * weights.y + base.b * weights.z
+			var tint_luma: float = maxf(accent.r * weights.x + accent.g * weights.y
+				+ accent.b * weights.z, 0.001)
+			var scale := luma / tint_luma
+			var palette := Vector3(accent.r, accent.g, accent.b) * scale
+			var mixed := Vector3(base.r, base.g, base.b).lerp(palette, strength)
+			var mixed_luma: float = mixed.x * weights.x + mixed.y * weights.y + mixed.z * weights.z
+			if luma > 0.01:
+				worst = maxf(worst, absf(mixed_luma - luma) / luma)
+	return worst
 
 
 ## Smallest anchor-to-anchor distance inside any one row and bank.

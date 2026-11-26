@@ -631,6 +631,12 @@ func _apply_materials(src: Dictionary) -> void:
 		mat.set_shader_parameter("hue_shift", float(src["hue_shift"]))
 		mat.set_shader_parameter("rim_colour", src["rim"])
 		mat.set_shader_parameter("flash_amount", 0.0)
+		# PART B commit 5: the same 55 % unlit floor and smoothstep band width the crowd and
+		# DJ materials carry, so a Night shadow band cannot crush the jacket, the trousers or
+		# the Clarks into flat black. Presentation only — no combat value moves.
+		mat.set_shader_parameter("albedo_floor", CharacterModelSlots.SHADING_FLOOR)
+		mat.set_shader_parameter("band_softness", CharacterModelSlots.BAND_SOFTNESS)
+		mat.set_shader_parameter("shadow_tint_amount", 0.0)
 		var ink := ShaderMaterial.new()
 		ink.shader = OUTLINE_SHADER
 		ink.set_shader_parameter("ink_colour", src["ink"])

@@ -16,7 +16,8 @@ shader_type spatial;
 // accent to carry.
 render_mode diffuse_toon, specular_toon, depth_draw_opaque, cull_disabled;
 
-uniform sampler2D albedo_texture : source_color, filter_linear_mipmap, repeat_enable;
+// PART B commit 5: mipmap + 8× anisotropic sampling, same as the fighter material.
+uniform sampler2D albedo_texture : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec4 tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 uniform vec4 rim_colour : source_color = vec4(1.0, 0.88, 0.62, 1.0);
 uniform float rim_strength : hint_range(0.0, 2.5) = 0.55;

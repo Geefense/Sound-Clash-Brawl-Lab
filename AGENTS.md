@@ -5977,3 +5977,60 @@ live **447 / 0 FAIL**, facing 310 / 0, feel 440 / 0.
 **Not visually verified.** This workspace renders only under Mesa `llvmpipe`, so the claim here
 is the *settings*, not that the frame looks clean on a Chromebook or an iPhone; that comparison
 is what F6 exists for. The Linear exposure (1.12) is a hand-set default awaiting that look.
+
+### Commit 5 — crisp rendering and texture readability
+
+**Settings** (`project.godot`), with the API facts checked against the Godot 4.5 docs rather than
+assumed: `window/dpi/allow_hidpi=true` (it was already the engine default; now explicit), the
+existing `canvas_items` + `keep` stretch confirmed, `anti_aliasing/quality/msaa_3d=1` (**2×**),
+`textures/default_filters/anisotropic_filtering_level=3` (**8×**, was 4×) and
+`scaling_3d/mode=0` (bilinear). The 4.5 renderer overview lists **MSAA 3D as supported in
+Compatibility**, and the GLES3 3D-MSAA + bilinear-scaling work landed in 4.3 — so both are real
+on the WebGL2 target, not a Forward+-only illusion. MSAA 2D is *not* supported in Compatibility;
+that costs nothing because the HUD is drawn geometry and text.
+
+**AdaptiveQuality** (`scripts/AdaptiveQuality.gd`) is the resolution guard, since GPU time cannot
+be measured from the game. It caches one 3D scale at boot from window × device pixel ratio,
+capping the buffer at **2.2 Mpx** (720p/1080p at 1× → 1.00; 1440p → 0.773; a retina 1080p phone
+→ the **0.67** floor), then runs a hysteresis governor: **2 s** under 55 fps → one −0.06 step,
+never more than one step per **3 s**, never below 0.67; **10 s** of stable frames → one step back
+toward the cap. Scalar state only, no allocation, and the viewport is written only when the value
+changes. `TestArena` applies it through `Viewport.scaling_3d_scale`, which is a 3D-only downscale
+(4.3+ Compatibility), so the HUD keeps canvas resolution. **F7** cycles Fast / **Crisp (2×,
+default)** / Max (4×) and the same persistent HUD chip names it.
+
+**Shading.** The engine's own `DIFFUSE_TOON` BRDF (verified by reading the shipped 4.5 binary's
+shader source) is `smoothstep(-roughness, max(roughness, 0.01), NdotL)`, so the band already *is*
+a smoothstep and `ROUGHNESS` is its width — exposed as `band_softness = 0.86` instead of a magic
+number in the fragment. The crush came from multiplying the delivered albedo by the light alone,
+so the material now **splits**: `ALBEDO = face × (1 − albedo_floor)` and
+`EMISSION += face × albedo_floor`, `albedo_floor = 0.55`. A fully shadowed surface therefore
+renders at exactly 55 % of its texture and a lit one loses no brightness; the delivered albedo is
+never dark-tinted (`shadow_tint_amount = 0`). The rim stays additive, the inverted-hull ink and
+the directional darkness are untouched, and fighters, DJs, crowd and cel props all take the same
+floor. Both cel samplers are now `filter_linear_mipmap_anisotropic`; the character, crowd and prop
+albedos already import with mipmaps, which the checks read off the materials and the settings.
+
+**Camera.** `CAMERA_DISTANCE` 4.58 → **4.10 m** and the framing pad 0.55 → **0.36 m**. The pad
+mattered: at neutral spacing (440 px) the dolly's `needed` held the old camera at 4.45 m, so
+lowering the floor alone changed nothing. Measured result: **4.45 m → 4.10 m in play (8.0 %
+closer)**, fighters at **70.5 %** of frame height instead of ~63 %, and the roster band moved
+**55–65 % → 66–74 %** deliberately (labelled "was 55–65 %" in the check). The dolly still opens
+with spacing, and every 12 px / stacked-clearance case in the live suite still passes at max
+spread for all nine pairings.
+
+**One test correction.** The "opponent renders inside the camera view" check tested the *AABB
+corner* `(x_max, z_max)`, which is empty space: at 4.10 m that corner (x 1.77, z 0.62) sits
+outside a 1.66 m half-width while the vertex holding x 1.77 is near z 0 and still projects 60 px
+inside the frame. It now tests the body's vertical extremes **at the body's own depth**. The
+invisible-opponent case it was written for (a body pitched 76 m into the air) is still caught;
+the failure detail now prints the measured low/high corners.
+
+New checks: 6 project-settings/API assertions, the pure scale function (4 cases), five governor
+hysteresis cases (wait, 3 s lockout, floor, 10 s climb), the framing band and three shading-floor
+assertions. Suites: roster **483 / 0 FAIL** (was 470), live **447 / 0**, facing 310 / 0, feel
+440 / 0.
+
+**Not visually verified:** no GPU or device was available, so 2× MSAA, 8× anisotropy, the 55 %
+floor and the closer frame are verified as *settings and materials*, not as pixels. F6/F7 exist
+for the owner's on-device comparison.

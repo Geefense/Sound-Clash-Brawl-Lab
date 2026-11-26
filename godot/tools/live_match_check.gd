@@ -145,11 +145,22 @@ func _check_pair(a: StringName, b: StringName) -> void:
 		var high: Vector3 = bounds[1]
 		var low_screen := cam.unproject_position(low)
 		var high_screen := cam.unproject_position(high)
-		var in_frustum := cam.is_position_in_frustum(low) and cam.is_position_in_frustum(high)
+		# PART B commit 5: the axis-aligned box's x extreme at its z extreme is empty space,
+		# and the 4.10 m steady camera makes that corner the first thing to leave the frustum
+		# while every drawn pixel stays framed (measured: the box corner at x 1.77, z 0.62 is
+		# outside a 1.66 m half-width at that depth, but the vertex holding x 1.77 sits near
+		# z 0 and still projects 60 px inside the frame). Test the body's own vertical
+		# extremes AT ITS OWN DEPTH instead, so the check still catches a body thrown out of
+		# frame (the 76 m bug it was written for) without failing on an empty box corner.
+		var z_mid: float = (low.z + high.z) * 0.5
+		var low_at := Vector3(low.x, low.y, z_mid)
+		var high_at := Vector3(high.x, high.y, z_mid)
+		var in_frustum := cam.is_position_in_frustum(low_at) and cam.is_position_in_frustum(high_at)
 		var on_screen := _rect_overlap(low_screen, high_screen, rect)
 		_check(in_frustum and on_screen,
 			"%s: %s renders inside the camera view (frustum=%s screen=%s)" %
-			[tag, side.to_upper(), str(in_frustum), str(on_screen)])
+			[tag, side.to_upper(), str(in_frustum), str(on_screen)],
+			"%s .. %s" % [str(low), str(high)])
 		_check(low.y >= FLOOR_TOLERANCE,
 			"%s: %s stands on the sand (lowest drawn y %+.3f)" % [tag, side.to_upper(), low.y])
 		# The pivot must carry exactly the facing, and the playing take must not add a turn of

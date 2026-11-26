@@ -32,6 +32,13 @@ const TOON_SHADER := preload("res://assets/shaders/toon_cel.gdshader")
 ## `doubleSided: true` and whose mesh is an open shell must keep its imported culling.
 const TOON_SHADER_DOUBLE_SIDED := preload("res://assets/shaders/toon_cel_double_sided.gdshader")
 const OUTLINE_SHADER := preload("res://assets/shaders/toon_outline.gdshader")
+## PART B commit 5 — the shared shading contract, applied to every cel material this file builds
+## (fighters, DJs, crowd and cel props alike). `SHADING_FLOOR` is the unlit share of the delivered
+## albedo, so nothing ever draws below 55 % of its texture in a shadow band; `BAND_SOFTNESS` is
+## the width the engine's `diffuse_toon` smoothstep runs over (band = 2 × this). Both are read by
+## the roster check straight off the materials.
+const SHADING_FLOOR := 0.55
+const BAND_SOFTNESS := 0.86
 
 ## Acting clips. Every Mixamo upload is one take on the same 68-bone `mixamorig` skeleton,
 ## and every imported scene uses identical node paths (`Armature/Skeleton3D:mixamorig_*`),
@@ -355,6 +362,9 @@ static func apply_cel(node: Node3D, tint: Color, rim: Color, variant: int = 0,
 				# No global darkening: the shadow band is the albedo's own colour at full
 				# brightness, so a crowd body shows exactly the texture it was delivered with.
 				material.set_shader_parameter("shadow_tint_amount", 0.0)
+				# PART B commit 5: 55 % unlit floor and the engine's smoothstep toon band.
+				material.set_shader_parameter("albedo_floor", SHADING_FLOOR)
+				material.set_shader_parameter("band_softness", BAND_SOFTNESS)
 				var ink := ShaderMaterial.new()
 				ink.shader = OUTLINE_SHADER
 				ink.set_shader_parameter("ink_width", 0.0026)
@@ -403,6 +413,9 @@ static func apply_cel_shared(node: Node3D, source_path: String, rim: Color, acce
 				material.set_shader_parameter("rim_strength", rim_strength)
 				material.set_shader_parameter("accent_strength", accent_strength)
 				material.set_shader_parameter("shadow_tint_amount", 0.0)
+				# Same floor as the fighters: a crowd body never falls below 55 % of its atlas.
+				material.set_shader_parameter("albedo_floor", SHADING_FLOOR)
+				material.set_shader_parameter("band_softness", BAND_SOFTNESS)
 				var ink := ShaderMaterial.new()
 				ink.shader = OUTLINE_SHADER
 				ink.set_shader_parameter("ink_width", 0.0026)

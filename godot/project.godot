@@ -27,8 +27,13 @@ MusicBed="*res://scripts/audio/MusicBed.gd"
 
 window/size/viewport_width=1280
 window/size/viewport_height=720
+; PART B commit 5: the 1280×720 canvas is stretched with `canvas_items`/`keep`, so the HUD and the
+; 2D layers stay sharp at any window size, and HiDPI is allowed so a retina phone renders at its
+; own pixel density instead of a 1× blur. The 3D buffer is independently capped by
+; `AdaptiveQuality` (2.2 Mpx) and by the F7 render-quality key.
 window/stretch/mode="canvas_items"
 window/stretch/aspect="keep"
+window/dpi/allow_hidpi=true
 
 [audio]
 
@@ -53,3 +58,18 @@ common/physics_ticks_per_second=60
 ; setting changes nothing about them.
 renderer/rendering_method.web="gl_compatibility"
 textures/vram_compression/import_etc2_astc=true
+
+; PART B commit 5 — crisp rendering.
+;
+; MSAA 3D is supported in the Compatibility renderer (Godot 4.5 renderer overview: "MSAA 3D
+; ✔ Supported" for Compatibility, and the 3D-antialiasing page says it is available in all
+; renderers), so 2× is the project default here and 4× is one F7 press away. 2D MSAA is *not*
+; supported in Compatibility, which costs nothing: the HUD is drawn geometry and text.
+anti_aliasing/quality/msaa_3d=1
+; 8× anisotropic filtering (0 = off, 1 = 2×, 2 = 4×, 3 = 8×, 4 = 16×); the delivered
+; character, crowd and prop albedos all import with mipmaps, and the cel samplers ask for
+; linear-mipmap-anisotropic, so the sand and the barrier converge instead of shimmering.
+textures/default_filters/anisotropic_filtering_level=3
+; Bilinear 3D scaling (FSR 2.2 is Forward+ only). AdaptiveQuality writes the scale at boot and
+; under load; the HUD stays at canvas resolution because only 3D is downscaled.
+scaling_3d/mode=0

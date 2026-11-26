@@ -23,9 +23,17 @@ const STAGE_LEFT_PX := 70.0
 const STAGE_RIGHT_PX := 1210.0
 
 const CAMERA_FOV := 30.0
-## Bug 3 (2026-11-25): 5% tighter than the old 4.80 m so the fighters read larger on a phone,
-## chosen to keep the roster's 55–65 % screen-height framing check inside its band.
-const CAMERA_DISTANCE := 4.58
+## PART B commit 5: 4.10 m, 10.5 % tighter than the 4.58 m Bug 3 shipped (and 18 % tighter than
+## the original 4.80 m). The fighters now fill ~70 % of the frame height at neutral spacing
+## instead of ~63 %, which is the owner's "frame them closer" without cropping a hat or a boot:
+## the roster framing band moved 55–65 % → 66–74 % for this value, deliberately.
+const CAMERA_DISTANCE := 4.10
+## Horizontal padding the framing dolly keeps outside the two bodies, metres. 0.36 m (≈107 px at
+## the steady distance) replaced 0.55 m in PART B commit 5: the old pad was what pinned the
+## neutral camera at 4.45 m even after CAMERA_DISTANCE came down, so the fighters never actually
+## got closer. 0.36 m still leaves a fist and a hat in frame at max spacing — the 12 px stacked
+## clearance audit is unchanged and still runs at every pairing.
+const CAMERA_FRAME_PADDING := 0.36
 ## Framing dolly ceiling: when the fighters spread to the stage bounds the lens eases back
 ## just enough to keep both bodies (head, hips, feet) inside the frame. Neutral spacing never
 ## leaves `CAMERA_DISTANCE`, so the tighter default is what the player sees in a normal
@@ -775,7 +783,8 @@ func _update_camera(delta: float) -> void:
 	var half_span := 0.0
 	half_span = maxf(half_span, absf(px_to_world_x(p1.global_position.x) - _camera_x))
 	half_span = maxf(half_span, absf(px_to_world_x(p2.global_position.x) - _camera_x))
-	var needed := (half_span + 0.55 + absf(sin(_camera_yaw + accent_yaw)) * 2.0
+	var needed := (half_span + CAMERA_FRAME_PADDING
+		+ absf(sin(_camera_yaw + accent_yaw)) * 2.0
 		+ accent * AnimationFeel.CAMERA_ACCENT_DOLLY) / (tan(deg_to_rad(CAMERA_FOV * 0.5)) * aspect)
 	var dist_target := clampf(maxf(CAMERA_DISTANCE, needed), CAMERA_DISTANCE, CAMERA_MAX_DISTANCE)
 	_camera_distance = lerpf(_camera_distance, dist_target,

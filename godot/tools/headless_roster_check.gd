@@ -974,9 +974,12 @@ func _run() -> void:
 	_check(stage3d != null and is_equal_approx(stage3d.camera_distance(), Arena3D.CAMERA_DISTANCE),
 		"the camera holds its steady side-view distance",
 		"%.2f m" % (stage3d.camera_distance() if stage3d != null else -1.0))
+	# PART B commit 5 (deliberate band change): CAMERA_DISTANCE 4.58 → 4.10 and the framing pad
+	# 0.55 → 0.36 m bring the steady shot 8 % closer (4.45 m → 4.10 m in play), so the band moved
+	# 55–65 % → 66–74 % of screen height. The old band was calibrated to the old framing.
 	var frame_fraction: float = stage3d.screen_fraction() if stage3d != null else 0.0
-	_check(frame_fraction >= 0.55 and frame_fraction <= 0.65,
-		"neutral play frames the fighters at 55–65 % of screen height",
+	_check(frame_fraction >= 0.66 and frame_fraction <= 0.74,
+		"neutral play frames the fighters at 66–74 % of screen height (was 55–65 %)",
 		"%.1f %%" % (frame_fraction * 100.0))
 	_check(not arena.get_node("Stage").visible and not p1.sprite.visible and not p2.sprite.visible,
 		"the 2D stage art and fighter sprites are hidden under the 3D layer")
@@ -1076,6 +1079,70 @@ func _run() -> void:
 	arena._clear_projectiles()
 	await process_frame
 
+	# ---- PART B commit 5: crisp rendering, texture readability, resolution guard -------------
+	# The project settings are the shipped contract for the Web build, so they are asserted as
+	# settings: this workspace renders only through Mesa llvmpipe and cannot judge pixels.
+	_check(bool(ProjectSettings.get_setting("display/window/dpi/allow_hidpi", false)),
+		"HiDPI is allowed, so a retina phone renders at its own pixel density")
+	_check(String(ProjectSettings.get_setting("display/window/stretch/mode", "")) == "canvas_items"
+			and String(ProjectSettings.get_setting("display/window/stretch/aspect", "")) == "keep",
+		"the UI stretches as canvas_items with aspect keep",
+		"%s / %s" % [ProjectSettings.get_setting("display/window/stretch/mode", ""),
+			ProjectSettings.get_setting("display/window/stretch/aspect", "")])
+	# MSAA 3D is supported by the Compatibility renderer (Godot 4.5 renderer overview), which is
+	# the renderer the Web export runs; 2× is the default and 4× is one F7 press away.
+	_check(int(ProjectSettings.get_setting("rendering/anti_aliasing/quality/msaa_3d", -1)) == 1,
+		"2× MSAA is the 3D default under Compatibility",
+		"msaa_3d %d" % int(ProjectSettings.get_setting("rendering/anti_aliasing/quality/msaa_3d", -1)))
+	var aniso := int(ProjectSettings.get_setting(
+		"rendering/textures/default_filters/anisotropic_filtering_level", -1))
+	_check(aniso == 3, "anisotropic filtering is 8× (was 4×)", "level %d" % aniso)
+	# The startup 3D scale: 720p/1080p at 1× needs no reduction; a retina 1080p phone clamps to
+	# the floor; a 1440p desktop lands in between. Pure function, no viewport involved.
+	_check(is_equal_approx(AdaptiveQuality.render_scale_for(Vector2(1280, 720), 1.0), 1.0) \
+			and is_equal_approx(AdaptiveQuality.render_scale_for(Vector2(1920, 1080), 1.0), 1.0),
+		"a 720p or 1080p window at 1× renders 3D at full scale")
+	var retina: float = AdaptiveQuality.render_scale_for(Vector2(1920, 1080), 2.0)
+	var desktop: float = AdaptiveQuality.render_scale_for(Vector2(2560, 1440), 1.0)
+	_check(is_equal_approx(retina, AdaptiveQuality.SCALE_FLOOR) \
+			and desktop > 0.75 and desktop < 0.79,
+		"the 2.2 Mpx cap holds: retina clamps to the 0.67 floor, 1440p lands near 0.77",
+		"retina %.2f / 1440p %.3f" % [retina, desktop])
+	# Governor hysteresis: one step after ~2 s slow, no second inside the 3 s lockout, the floor
+	# holds, and the climb back needs ~10 s of stable frames.
+	var gov := AdaptiveQuality.new()
+	gov.configure(Vector2(2560, 1440), 1.0)
+	var start_scale: float = gov.scale
+	for i in 114:                      # 1.9 s at 60 Hz, 50 fps
+		gov.step(1.0 / 60.0, 50.0)
+	var before: float = gov.scale
+	for i in 12:                       # 2.1 s total
+		gov.step(1.0 / 60.0, 50.0)
+	var stepped: float = gov.scale
+	_check(is_equal_approx(before, start_scale) and stepped < before,
+		"the governor waits ~2 s under 55 fps, then steps down once",
+		"%.3f held at 1.9 s → %.3f at 2.1 s" % [before, stepped])
+	for i in 150:                      # 2.5 s more: still inside the 3 s lockout
+		gov.step(1.0 / 60.0, 50.0)
+	var held: float = gov.scale
+	for i in 40:                       # past the lockout
+		gov.step(1.0 / 60.0, 50.0)
+	_check(is_equal_approx(held, stepped) and gov.scale < held,
+		"a second down step needs the 3 s lockout to elapse",
+		"%.3f held, then %.3f" % [held, gov.scale])
+	for i in 4000:                     # 66 s of 40 fps: the floor is the floor
+		gov.step(1.0 / 60.0, 40.0)
+	_check(gov.at_floor() and is_equal_approx(gov.scale, AdaptiveQuality.SCALE_FLOOR),
+		"the governor never goes below the 0.67 floor", "%.2f" % gov.scale)
+	for i in 570:                      # 9.5 s stable at 60 fps
+		gov.step(1.0 / 60.0, 60.0)
+	var stable: float = gov.scale
+	for i in 60:                       # past 10 s
+		gov.step(1.0 / 60.0, 60.0)
+	_check(is_equal_approx(stable, AdaptiveQuality.SCALE_FLOOR) and gov.scale > stable,
+		"the climb back waits ~10 s of stable frames",
+		"%.2f held at 9.5 s, then %.2f" % [stable, gov.scale])
+
 	# Shader compile checks: `get_shader_uniform_list()` is empty for a shader that failed to
 	# parse, so this is a real GLSL parse check in a headless run.
 	var toon_shader := load("res://assets/shaders/toon_cel.gdshader") as Shader
@@ -1094,6 +1161,32 @@ func _run() -> void:
 			banned_3d.append(token)
 	_check(banned_3d.is_empty(), "the 3D toon/ink shaders are WebGL2-safe (no screen/depth reads)",
 		"found %s" % [banned_3d] if not banned_3d.is_empty() else "single pass, no screen reads")
+	# PART B commit 5 — the shading floor, read off the live materials the fighters wear. The
+	# toon band itself is the engine's `diffuse_toon` smoothstep (band width = 2 × roughness), so
+	# the fragment only has to carry the floor: ALBEDO keeps (1 − floor) of the lit response and
+	# the floor is added unlit, which is what stops a Night shadow band crushing a jacket.
+	var cel_materials: Array[ShaderMaterial] = []
+	for fighter_model in [fb3d, lick3d]:
+		if fighter_model != null:
+			CharacterModelSlots.collect_cel_materials(fighter_model, cel_materials)
+	var floor_ok := not cel_materials.is_empty()
+	var band_ok := true
+	var tint_ok := true
+	var lowest_floor := 1.0
+	for material in cel_materials:
+		var floor_value: float = float(material.get_shader_parameter("albedo_floor"))
+		var band_value: float = float(material.get_shader_parameter("band_softness"))
+		lowest_floor = minf(lowest_floor, floor_value)
+		floor_ok = floor_ok and floor_value >= CharacterModelSlots.SHADING_FLOOR - 0.0001
+		band_ok = band_ok and band_value > 0.5
+		tint_ok = tint_ok and is_zero_approx(
+			float(material.get_shader_parameter("shadow_tint_amount")))
+	_check(floor_ok, "every fighter cel material floors the albedo at 55 %",
+		"%d materials, lowest floor %.2f" % [cel_materials.size(), lowest_floor])
+	_check(band_ok and tint_ok,
+		"the toon band stays soft and the delivered albedo is never tint-darkened")
+	_check(toon_code.contains("albedo_floor") and toon_code.contains("EMISSION"),
+		"the floor is the shader's own split, not a light or an ambient bump")
 
 	# The towers are `.glb` slots: two of them, and PART 3 commit 8 delivered the left one.
 	# No procedural cabinet, cone, bracket or VU LED exists anywhere in the scene.

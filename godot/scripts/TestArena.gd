@@ -337,6 +337,17 @@ const NO_SEPARATION_STATES := [
 ## 3D presentation toggle (AGENTS.md §9 item 43). Presentation only.
 @export var presentation_3d: bool = true
 var arena3d: Arena3D = null
+## PART B commit 5 — render quality (F7) and the resolution guard. Fast is MSAA off, Crisp is 2×
+## (the project default), Max is 4×. Compatibility supports MSAA 3D (Godot 4.5 renderer
+## overview) and has no 2D MSAA at all, so this only ever touches the 3D buffer: the HUD stays
+## exactly as sharp at every setting.
+const QUALITY_MODES := [
+	{"name": "Fast", "msaa": Viewport.MSAA_DISABLED},
+	{"name": "Crisp", "msaa": Viewport.MSAA_2X},
+	{"name": "Max", "msaa": Viewport.MSAA_4X},
+]
+var quality_index: int = 1
+var adaptive_quality := AdaptiveQuality.new()
 ## Retro arcade FX layer (PART 2 commit 4). Its own CanvasLayer below the HUD, built once in
 ## `_setup_3d_presentation()`; with no sheets delivered it draws nothing and costs nothing.
 var arcade_vfx: ArcadeVFX2D = null
@@ -416,6 +427,7 @@ func _ready() -> void:
 	# 3D presentation is installed before the round controller applies round 1 lighting, so
 	# the first announce already has an arena to light.
 	_setup_3d_presentation()
+	_setup_render_quality()
 
 	p2.use_local_input = false          # P2 is driven by the sparring controller only
 	p2.input_prefix = "p2_"
@@ -504,6 +516,7 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	_govern_quality(delta)
 	_thump = maxf(0.0, _thump - delta * THUMP_DECAY)
 	_follow_action(delta)
 	_update_shake(delta)
@@ -572,6 +585,50 @@ func look_label() -> String:
 	return arena3d.look_label() if arena3d != null else ""
 
 
+## F7: Fast (MSAA off) → Crisp (2×, default) → Max (4×).
+func cycle_render_quality() -> void:
+	apply_render_quality((quality_index + 1) % QUALITY_MODES.size())
+
+
+func apply_render_quality(index: int) -> void:
+	quality_index = clampi(index, 0, QUALITY_MODES.size() - 1)
+	if is_inside_tree():
+		get_viewport().msaa_3d = int(QUALITY_MODES[quality_index]["msaa"])
+	_refresh_debug_chip()
+	if hud != null:
+		hud.show_toast("QUALITY · %s · F7" % render_quality_label())
+	print("[quality] %s (MSAA index %d, 3D scale %.2f)" % [render_quality_label(),
+		int(QUALITY_MODES[quality_index]["msaa"]), adaptive_quality.scale])
+
+
+func render_quality_label() -> String:
+	return String(QUALITY_MODES[quality_index]["name"])
+
+
+## Boot: cache the pixel-capped 3D scale, write it once, and select the default quality. The
+## governor in `_process` only ever adjusts from this value.
+func _setup_render_quality() -> void:
+	var dpr := 1.0
+	if is_inside_tree():
+		dpr = float(DisplayServer.screen_get_scale(DisplayServer.window_get_current_screen()))
+		if dpr <= 0.0:
+			dpr = 1.0
+		adaptive_quality.configure(Vector2(get_window().size), dpr)
+		get_viewport().scaling_3d_scale = adaptive_quality.scale
+	apply_render_quality(1)
+	print("[quality] startup 3D scale %.2f (cap %.2f, window %s, dpr %.2f)" % [
+		adaptive_quality.scale, adaptive_quality.cap_scale, str(get_window().size), dpr])
+
+
+## Frame-time governor. Scalar math only, and the viewport is written only when the requested
+## scale actually changed, so a steady frame costs one comparison.
+func _govern_quality(delta: float) -> void:
+	var want: float = adaptive_quality.step(delta, Engine.get_frames_per_second())
+	var viewport := get_viewport()
+	if viewport != null and not is_equal_approx(viewport.scaling_3d_scale, want):
+		viewport.scaling_3d_scale = want
+
+
 ## One persistent chip carries every presentation toggle, so F4's toast and F6/F7's chip can
 ## never fight over the same corner.
 func _refresh_debug_chip() -> void:
@@ -580,6 +637,7 @@ func _refresh_debug_chip() -> void:
 	var parts: Array[String] = []
 	if arena3d != null:
 		parts.append("LOOK %s · F6" % arena3d.look_label())
+	parts.append("QUALITY %s · F7" % render_quality_label())
 	hud.set_debug_chip("   ·   ".join(parts))
 
 
@@ -654,6 +712,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_F6:
 			# PART B commit 4: clean look vs the previous graded look, live on the same shot.
 			toggle_lighting_look()
+		KEY_F7:
+			# PART B commit 5: Fast / Crisp / Max MSAA on the 3D buffer.
+			cycle_render_quality()
 
 
 # =========================================================================

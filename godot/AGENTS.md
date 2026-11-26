@@ -6676,3 +6676,64 @@ three new gold/green/red/white mixes, `PLUCK!` vs `CHOOPS!` legibility over the 
 `BUGUYAGA!` box inside the safe rectangle at the real camera extremes in a live window, and the
 block callout's read against the existing `BIM!`/`BLAPS!` rhythm. The audits are geometric and
 structural, not pixel evidence.
+
+## Signature Ultimate: SPEAKER BOX! (design note only, not built, not approved for implementation until the owner says so)
+
+The owner's concept, recorded verbatim in intent and **not implemented in any file of this
+repository**. Nothing below is wired, exported, tested or visible in a build; the only change in
+this milestone is this document.
+
+**The concept.** A full-Hype / round-winning K.O. finisher called **SPEAKER BOX!**:
+
+1. **Cinematic K.O. camera punch-in** — the lens drives into the contact and the downed body
+   instead of holding the normal yard framing.
+2. **`jamaican_speaker.glb` blowout** — the delivered tower's cones blow out and the cabinet
+   rattles, as a real object in the yard rather than a screen effect.
+3. **2D dub-bass shockwave** — a `bass_shockwave` burst on the existing `ArcadeVFX2D` layer
+   plus one comic callout (`BRAGADAPS!` or `BLAM!` from the 22-string table).
+4. **22-rig crowd eruption** — the whole crowd bank erupts, not a single reaction row.
+
+**Hard constraints carried into the next feature pass.** These are the rules that already bind
+every presentation change in this project; the finisher does not get an exemption.
+
+- **Visual-only and read-only with respect to combat.** No change to `BaseFighter.gd`, to frame
+  data, hitboxes, hitstop or the Crowd Hype rules. The trigger may READ the 100 % hype surge,
+  the K.O. and the round result; it may not write a state, extend a freeze, add damage or award
+  hype. 132 BPM and the Patois dictionary stay untouched.
+- **The camera punch-in must stay inside the existing audits.** The frustum / backdrop-corner
+  check, the `camera_obstacles()` clearance check against all 22 crowd rigs, the barrier, the
+  prop slots and the booth, the speaker-tower ray check, and the fighter framing margin all run
+  at the stacked accent + lean + punch maximum in `live_match_check`. A finisher punch-in is a
+  new maximum, so it needs its own pinned case in that same stacked sweep, not a bypass.
+- **The speaker blowout needs its own, larger clamp and its own tests.** The shipped beat pulse
+  (`Arena3D.pulse_speakers`) is capped at **1.5 %**; a blowout is far beyond that, so it cannot
+  reuse the cap. It needs a separate ceiling, a per-frame change limit so the cabinet cannot
+  pop, a restore path to exactly the authored scale, and a proof that the tower's AABB used by
+  the camera clearance check is measured at its authored scale (or that the camera check uses
+  the inflated one).
+- **The 2D shockwave needs the owner's art.** `bass_shockwave_sheet.png` is referenced by
+  `ArcadeVFX2D.KINDS` but is **not delivered**; the layer draws nothing until that sheet exists
+  on disk. The finisher must not draw programmer art, a primitive mesh or a stand-in. If the
+  sheet is still missing, the beat still lands and the 2D stage is skipped (the same rule the
+  four arcade sheets already follow).
+- **Performance budget.** Chromebook and iPhone Safari are the delivery targets. The budget is
+  the existing one: preallocated nodes only, no per-frame allocation, no new material instance
+  per frame, one sheet's worth of sprites, and the crowd era already capped by the 22 rigs.
+  A full-screen shockwave plus a punch-in on a software rasteriser is not evidence of GPU cost.
+- **Reduced motion.** `ComicCallout2D.reduced_motion` already removes the pop and the tilt; the
+  finisher's camera punch-in and cabinet rattle must consult the same flag (and the existing
+  camera-pressure path) and degrade to a static hold rather than a moving camera.
+
+**Open questions for the owner — do not guess these.**
+
+1. Which exact Crowd Hype threshold triggers it: at 100 % (the surge), on the round-winning K.O.
+   only, or on any K.O. while hype is at 100 %? Is it once per match or once per round?
+2. Does the punch-in own the camera for the whole K.O. announcement (~1.2 s), or only for the
+   impact frame before the existing announcement framing resumes?
+3. `BRAGADAPS!` or `BLAM!` — one fixed line, or a deterministic two-line sequence? It must not
+   collide with the shipped `ko_callout` sprite, the K.O. banner or the Patois K.O. subtitle.
+4. Is `bass_shockwave_sheet.png` coming, and at what frame count/size? Until it lands, the 2D
+   stage of the finisher has nothing to draw.
+5. Which of the five PropLoader slots (if any) the speaker blowout is allowed to move, given
+   the brief that all five slots stay untouched.
+6. Reduced-motion behaviour: static hold, no camera move at all, or the callout only?

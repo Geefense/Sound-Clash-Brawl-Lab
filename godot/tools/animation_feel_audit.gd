@@ -1054,63 +1054,12 @@ func _audit_pinning(model: FighterModel3D, fighter: BaseFighter, key: String) ->
 
 
 ## Lowest drawn point of the live skinned mesh, in world space.
+##
+## PART A3 commit 1: the same one-sampler rule as every other audit and the runtime. The old
+## body measured the FIRST mesh and, on a rig whose bind order differs from its bone order,
+## fell back to indexing the skin with the bone index — a body nobody draws.
 func _skinned_lowest(model: FighterModel3D) -> float:
-	var mi: MeshInstance3D = null
-	for m in model.meshes:
-		if m.mesh != null and m.mesh.get_surface_count() > 0:
-			mi = m
-			break
-	var skel := model.skeleton
-	if mi == null or skel == null:
-		return INF
-	var arrays := mi.mesh.surface_get_arrays(0)
-	if arrays.is_empty():
-		return INF
-	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-	var vbones = arrays[Mesh.ARRAY_BONES]
-	var weights = arrays[Mesh.ARRAY_WEIGHTS]
-	var skin: Skin = mi.skin
-	# Measure the drawn sole the same way the game does: the three uploads disagree on how
-	# `ARRAY_BONES` indexes the skin, and the model decides that once at bind.
-	var mapped: bool = bool(model.sole_bind_mapped)
-	var bone_xf: Array[Transform3D] = []
-	if skin != null and mapped:
-		for b in skin.get_bind_count():
-			var bone := skin.get_bind_bone(b)
-			if bone < 0 or bone >= skel.get_bone_count():
-				bone_xf.append(Transform3D.IDENTITY)
-				continue
-			bone_xf.append(skel.global_transform * skel.get_bone_global_pose(bone)
-				* skin.get_bind_pose(b))
-	else:
-		for i in skel.get_bone_count():
-			var xf: Transform3D = skel.global_transform * skel.get_bone_global_pose(i)
-			if skin != null and i < skin.get_bind_count():
-				xf = xf * skin.get_bind_pose(i)
-			bone_xf.append(xf)
-	var per := 0
-	if vbones != null and weights != null and verts.size() > 0:
-		per = int(vbones.size() / verts.size())
-	var low := INF
-	var step := maxi(1, int(float(verts.size()) / 3000.0))
-	var i := 0
-	while i < verts.size():
-		var p := verts[i]
-		if per > 0:
-			var acc := Vector3.ZERO
-			var total := 0.0
-			for k in per:
-				var bi := int(vbones[i * per + k])
-				var w := float(weights[i * per + k])
-				if w <= 0.0 or bi < 0 or bi >= bone_xf.size():
-					continue
-				acc += (bone_xf[bi] * p) * w
-				total += w
-			if total > 0.0:
-				p = acc / total
-		low = minf(low, p.y)
-		i += step
-	return low
+	return DrawnBounds.lowest_y(model)
 
 
 # =========================================================================

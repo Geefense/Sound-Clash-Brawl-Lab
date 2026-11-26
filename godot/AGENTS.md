@@ -6131,3 +6131,39 @@ extremes are empty air in bind pose. The camera check therefore samples the 0.50
 same box `overlap_count()` uses — not the arms.
 
 Suites: roster **490 / 0 FAIL**, live 454 / 0, facing 310 / 0, feel 440 / 0.
+
+### PART A3 commit 1 — one sampler for the drawn body (measurement bug, corrected)
+
+The A2 numbers were measured with a tool that walked the bones itself and indexed the skin
+with the **bone** index (`skin.get_bind_pose(i)` for bone `i`). A vertex bone entry is a skin
+bind slot, and on the two Tripo uploads the bind order is not the bone order, so the live audit
+was measuring a body nobody draws. `scripts/DrawnBounds.gd` is now the only sampler.
+
+**Root cause, measured per rig** (rest pose, world Y of the lowest drawn vertex):
+`FighterModel3D._measure_sole_drop()` already decided per upload whether `ARRAY_BONES` holds
+bind slots or bone indices, and `DrawnBounds` always assumed bind slots:
+
+| rig | runtime decides | lowest, bind-slots reading | lowest, bone-index reading | before | after |
+| --- | --- | --- | --- | --- | --- |
+| Feedback | bind slots | −0.005 | +0.795 | −0.005 | −0.005 |
+| L!ckshot | bone indices | −499.738 | −0.014 | −0.006 | −0.006 |
+| Young Selecta | bone indices | −0.500 | +0.002 | **+0.512** | +0.002 |
+
+`DrawnBounds` now decides the convention **per mesh from the rest pose**, by the same rule the
+runtime uses (whichever reading puts the drawn sole closest to the lowest foot/toe bone),
+caches it per upload, and samples every skinned mesh while skipping unskinned overlays. The
+0.51 m float A2 attributed to Young Selecta was this, not the seat.
+
+**Changed assertions** (each one an intentional correction of a measurement bug, no tolerance
+loosened anywhere):
+
+- `live_match_check._skinned_bounds()` no longer walks bones; it delegates to `DrawnBounds`.
+  The knockdown floor readings move to the drawn truth: Feedback **+0.068 → −0.005**,
+  L!ckshot **+0.320 → −0.013**, Young Selecta **+0.002 → −0.033**.
+- `animation_feel_audit._skinned_lowest()` likewise delegates. The sole check had been passing
+  by 0.70 m on Feedback (it measured the first mesh, which on these rigs is the unskinned
+  overlay standing at model space); it now reads the drawn body at ≈0.
+- `live_match_check._first_mesh()` deleted: it existed only to feed the wrong walk.
+
+Suites after the change: roster **490 PASS / 0 FAIL**, live **454 / 0**, facing **310 / 0**,
+feel **440 / 0** — counts unchanged, nothing loosened.

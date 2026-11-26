@@ -1133,52 +1133,16 @@ func _rect_overlap(low: Vector2, high: Vector2, rect: Rect2) -> bool:
 	return right > 0.0 and left < rect.size.x and bottom > 0.0 and top < rect.size.y
 
 
-## Live skinned-mesh bounds in world space, evaluated from the animated skeleton pose and the
-## mesh skin weights. This is what the renderer draws.
+## Live skinned-mesh bounds in world space — what the renderer draws.
+##
+## PART A3 commit 1: this used to walk the bones itself, indexing the skin with the BONE index
+## (`skin.get_bind_pose(i)` for bone `i`). On the two Tripo rigs the bind order is not the bone
+## order, so the audit measured a body nobody was drawing and every knockdown number in this
+## file disagreed with the played path by up to 0.34 m. `DrawnBounds` is the single sampler the
+## runtime also seats with: every skinned mesh, unskinned overlays skipped, binds read through
+## `skin.get_bind_bone(slot)`.
 func _skinned_bounds(model: Node3D) -> Array:
-	var mi := _first_mesh(model)
-	var skel: Skeleton3D = model.get("skeleton")
-	if mi == null or skel == null or mi.mesh.get_surface_count() == 0:
-		return [Vector3.ZERO, Vector3.UP]
-	var arrays := mi.mesh.surface_get_arrays(0)
-	if arrays.is_empty():
-		return [Vector3.ZERO, Vector3.UP]
-	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-	var vbones = arrays[Mesh.ARRAY_BONES]
-	var weights = arrays[Mesh.ARRAY_WEIGHTS]
-	var skin: Skin = mi.skin
-	var bone_xf: Array[Transform3D] = []
-	for i in skel.get_bone_count():
-		var xf: Transform3D = skel.global_transform * skel.get_bone_global_pose(i)
-		if skin != null and i < skin.get_bind_count():
-			xf = xf * skin.get_bind_pose(i)
-		bone_xf.append(xf)
-	var low := Vector3(INF, INF, INF)
-	var high := Vector3(-INF, -INF, -INF)
-	var step := maxi(1, int(float(verts.size()) / 4000.0))
-	var per := 0
-	if vbones != null and weights != null and verts.size() > 0:
-		per = int(vbones.size() / verts.size())
-	var i := 0
-	while i < verts.size():
-		var p := verts[i]
-		if per > 0:
-			var acc := Vector3.ZERO
-			var total := 0.0
-			for k in per:
-				var bi := int(vbones[i * per + k])
-				var w := float(weights[i * per + k])
-				if w <= 0.0 or bi < 0 or bi >= bone_xf.size():
-					continue
-				acc += (bone_xf[bi] * p) * w
-				total += w
-			p = acc / total if total > 0.0 else mi.global_transform * p
-		else:
-			p = mi.global_transform * p
-		low = Vector3(minf(low.x, p.x), minf(low.y, p.y), minf(low.z, p.z))
-		high = Vector3(maxf(high.x, p.x), maxf(high.y, p.y), maxf(high.z, p.z))
-		i += step
-	return [low, high]
+	return DrawnBounds.bounds(model)
 
 
 ## Forward the body is drawn facing: the authored forward turned by the pivot that shipped,
@@ -1219,9 +1183,4 @@ func _bone(skel: Skeleton3D, suffix: String) -> int:
 	return -1
 
 
-func _first_mesh(model: Node3D) -> MeshInstance3D:
-	for node in model.find_children("*", "MeshInstance3D", true, false):
-		var mi := node as MeshInstance3D
-		if mi != null and mi.mesh != null:
-			return mi
-	return null
+

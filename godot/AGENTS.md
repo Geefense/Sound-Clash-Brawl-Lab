@@ -5702,6 +5702,167 @@ No test was weakened and no count dropped.
   the exported pack (confirmed from the export log), but playback on real hardware is unverified.
 - The rasta speaker, DJ booth, wireless mic and mic stand slots are still empty.
 
+### PART A commit 1 — the mutilated hand: every extremity write removed, November 26, 2026
+
+Owner's Chromebook playtest of `ba32a4f` reported Feedback's hand looking mutilated. Cause was
+diagnosed in code, not on screen: three presentation systems wrote the hand itself.
+
+1. `FightBodyModifier3D.foreshorten` put a **1.08× scale on the hand bone** on heavy contacts.
+2. `FightBodyModifier3D.smear` put a **volume-preserving stretch on the upper arm and forearm** for
+   one frame per whip.
+3. `FightBodyModifier3D.reach_boost` **translated the hand bone** away from the wrist by up to
+   7 cm — the translation is what stretches the skin weights that fan a palm into four fingers,
+   because a bone offset does not move the wrist with it.
+
+All three are deleted, and the exclusion is now structural rather than a promise at each call site.
+
+**Decisions (logged per the PART A brief).**
+
+- **Extremity exclusion is a cached mask, not a convention.** `AnimationFeel.EXTREMITY_SUFFIXES`
+  lists hand, all four finger chains, foot and toe suffixes; `FightBodyModifier3D.cache_bones()`
+  builds a `PackedByteArray` mask (one slot per bone) at bind, and `_add()` — the single choke point
+  every write goes through — refuses any hit. `is_extremity()` / `extremity_count()` expose it to
+  the audit. No per-frame allocation, no per-frame string work.
+- **Punch readability is kept, without touching extremities.** Reach is now a length-preserving
+  rotation of the striking shoulder (45 %) and upper arm (55 %), with the angle solved from the
+  move's own measured contact reach and the arm's measured shoulder-to-hand length
+  (`AnimationFeel.reach_angle`), clamped to 0.55 rad of arc. The existing torso lean, chest cheat,
+  arc bias and overshoot are unchanged. The arm lever is scaled into metres with the skeleton's
+  own unit scale, because the centimetre Mixamo uploads would otherwise solve a 7 cm reach as a
+  tenth of a degree.
+- **Intentional test replacements** (count went 428 → 440, no tolerance loosened):
+  removed — "the limb smear exists on exactly one frame", "the smear stretch preserves the limb's
+  volume", "the whip stretches the striking arm for one frame", "the smear is fully restored on the
+  next frame", "the smear never scales the hips", "foreshortening tops out on the shared silhouette
+  clamp", "the foreshorten + smear stack is trimmed to the one shared clamp", "foreshortening is
+  full at impact and releases through recovery", "the striking hand foreshortens inside the clamp",
+  "the hand returns to its authored scale after the contact". They assert features the owner asked
+  to remove.
+  added — the exclusion mask covers ≥40 extremity bones on every rig; the reach boost does not move
+  the hand bone but does rotate the upper arm; a direct `_add()` to hand, foot and toe bones is
+  refused; **for every fighter × both slots × STARTUP/ACTIVE/RECOVERY of all six attacks, every
+  hand/finger/foot/toe bone keeps the authored local transform within 1e-4 and carries no scale**;
+  the skinned-vertex sampler still finds real glove geometry; and a deliberate 1.08× hand write is
+  detected, so the replaced tests would have caught the owner's bug.
+- **Prop isolation simplified.** With the smear gone, `_isolate_props()` only compensates the
+  impact pop; `last_smear_scale` is deleted.
+
+**Measured (all four suites, 0 FAIL):** roster **470**, live **422**, facing **310**, feel
+**440**. `BaseFighter.gd`, the frame data, hitboxes, 132 BPM, Crowd Hype and the 31 Patois entries
+are untouched (the audit's hash checks still pass). `/docs` deliberately **not** exported in this
+part. Not seen on a screen — no GPU in this environment; the hand fix is proven by bone transforms
+and skinned-vertex sampling, not by pixels.
+
+### PART A commit 2 — knockdown orientation: diagnosed, attempted, reverted (November 26, 2026)
+
+Owner saw the KO body **hovering with the head toward the ground and the feet in the air**. The
+diagnosis was done with measurements, then the attempted fix was **reverted** because it could not
+be made green: the brief's rule is never commit red, so `1289343` stays the branch tip and this
+section records the evidence instead of shipping a regression.
+
+**What was measured** (headless `live_match_check`, 3 fighters × both slots, at the flat phase —
+26 ticks into `KNOCKDOWN`, 40 into `KO`, world-space bones plus the drawn skinned mesh):
+
+| fighter / slot | up·y (hips→head) | chest n·y | head−hips Δx | head−feet Δy | lowest drawn vertex |
+| --- | --- | --- | --- | --- | --- |
+| feedback p1 KD | 1.00 | −0.07 | 0.00 | 1.23 m | 0.769 m |
+| feedback p2 KD | 1.00 | −0.09 | −0.01 | 1.23 m | 0.765 m |
+| lickshot p1 KD | 0.97 | −0.40 | +0.09 | 1.14 m | — |
+| lickshot p2 KD | 0.69 | −1.00 | — | — | — |
+| young_selecta p1 KD | 0.36 | 0.12 | — | — | — |
+
+Read: the body is still **upright** (`up·y ≈ 1`) or on its side (`chest n·y < 0`), never supine, and
+its lowest drawn vertex sits **0.49–0.77 m above the sand** — that is the hover. Cause: the fall is
+driven by a single roll term (`_pivot.rotation.z = −_fall·face·π/2·0.94`) that tips the body about
+the depth axis. A roll cannot put the chest to the sky (only a pitch can), and on the two Tripo rigs
+its sign lays the head toward the opponent; the previous `_seat_downed_core` also lifted until EVERY
+bone cleared the sand, which over-lifted the drawn body by up to 0.29 m.
+
+**What was tried, in the brief's order.** (1) A deterministic two-vector target on the pose pivot —
+`hips→head` onto `−face·X`, anatomical chest normal onto `+Y`, blended by `_fall` — plus
+`@export var knockdown_floor_y`. (2) Foot pin already off in `KNOCKDOWN`/`KO`/`JUMP`
+(`_pin_feet_to_ground` returns early; verified). (3) Toe-line facing pin suspended when the
+hips→head vector tilts more than 30° off vertical (`DOWNED_TILT_COS`). (4) Core-only seating with a
+one-time drawn-vertex calibration. (5) 54 new checks in `live_match_check.gd`.
+
+**Why it was reverted.** The orientation reached the target on some rig/slot combinations but the
+same code sank others 2–52 cm **below** the sand, and the get-up still stepped 6–25 cm in one frame.
+Those are worse failures than the ones being fixed, and a partially seated body is not shippable.
+
+**Remaining work, with the next steps spelled out.** Solve orientation and seating as SEPARATE
+commits, orientation first: build the target basis from the *pivot's authored* basis rather than the
+animated bone pose (the clip's own fall already contains a lying-down rotation, so correcting the
+measured pose double-counts it); then seat with a per-rig calibration captured once on the first
+downed frame and eased out over ≥0.3 s. The test hooks are written and were proven to run (500
+checks, 0 parse errors) — `_check_downed_pose()` in `live_match_check.gd` — but were reverted with
+the runtime change to keep the branch green.
+
+## PART A2 (2026-11-26) — knockdown retry: the samplers, the evidence, and what would not hold
+
+Time-boxed retry. The runtime did **not** change: `FighterModel3D.gd` is byte-identical to
+`a3e2fa3`. Two fixes were built, measured and reverted, because neither passed every fighter in
+every slot; the shipped tree stays green and the measurements below are the handover.
+
+### The real cause of the 0.34 m disagreement: two samplers, two bind mappings
+
+`FighterModel3D` measured the drawn body with `skin.get_bind_bone(slot)` — the renderer's own
+mapping, a vertex bone index is a SKIN BIND slot — while `live_match_check._skinned_bounds()` and
+`qa_match` used the bone index with `get_bind_pose(i)`. On the two Tripo rigs the bind order is
+not the bone order, so the two disagreed by up to 0.34 m on Lickshot. `scripts/DrawnBounds.gd`
+is now the single sampler (skinned meshes only, unskinned overlays skipped, the renderer's bind
+mapping, 4 000 samples per mesh); `qa_match.skinned_bounds()` delegates to it. The audits still
+carry their old walk — unifying them is the first step of the next attempt, because until they
+share one function the seat and the check can always disagree.
+
+### The drawing, measured through the real K.O. path (all three rigs, P2 slot, flat phase)
+
+| Fighter | up·y | chest n·y | head−hips Δx | drawn low (shipped) | drawn low (with drawn seat) |
+| --- | --- | --- | --- | --- | --- |
+| Feedback | +0.337 | +0.887 | −0.411 | **+0.070 m** | **+0.015 m** |
+| Lickshot | −0.212 | +0.884 | −0.360 | **+0.450 m** | **+0.015 m** |
+| Young Selecta | +0.183 | **−0.105** | −0.297 | **+0.514 m** | **+0.015 m** |
+
+So the shipped body does not hover by 0.24–0.30 m as previously recorded — it hovers by 0.45–0.51 m
+on the two Tripo rigs, and the drawn seat lands all three at exactly 0.015 m in a real match. The
+seat is still **not shipped** because the forced-knockdown audit path (`change_state(KNOCKDOWN)`)
+never converges: it stops at +0.110…+0.149 m on Lickshot and moves up to 0.096 m in a single frame
+there, while the same code settles perfectly in the played path. The gate (`_fall > 0.95`, with and
+without `is_on_floor()` and a velocity test) behaves differently in the two paths, and the
+`VisualPivot` write does not survive whatever the legacy path does afterwards. That is the next
+thing to instrument, not a seat to ship.
+
+### Orientation: both hypotheses tested, neither holds
+
+- **H3 (sign)** — a supine fall needs the roll in the opposite direction from the shipped
+  `−_fall·face·π/2·0.94`. The shipped sign already gives chest-up on Feedback (+0.887) and
+  Lickshot (+0.884); flipping it to `+85°` turns the chest toward the sand on the rig that
+  currently passes, so the sign is not the bug and was reverted.
+- **H1 (per-rig axis)** — the roll is `_pivot.rotation.z`, which is the model's own Z: world Z for
+  every rig, not a per-rig axis. The calibrated yaw offsets live on the child `VisualPivot`, which
+  cannot change the parent's roll axis. The per-rig difference comes from the clips, not the axis.
+- **Angle** — the three rigs sit 70°, 102° and 79° off vertical under one 85° roll, so no single
+  angle flattens all three: raising it to 105° fixes Feedback's +0.337 and breaks Lickshot's
+  −0.212. Young Selecta is chest-down (−0.105) while its neighbours are chest-up, which is a rig
+  difference (its chest normal opposes the toe line the facing pin aligns), not a global sign.
+
+Nothing in the acceptance set (`|up·y| ≤ 0.3`, `chest n·y ≥ 0.7`) is satisfied by all six
+fighter × slot combinations, so no orientation code ships. The failing rigs are **Young Selecta**
+(chest −0.105) and **Feedback** (up·y +0.337, 0.037 over the limit).
+
+### Harness: why the P1 slot still has no knockout still
+
+The shipped P2 opponent is `SparringController` in mode 0 (`Workshop Dummy`), which stands and
+holds guard but never throws, so a real match cannot put the P1 fighter on the floor. `QAMatch.boot()`
+already takes `ai_mode`, and mode 2 (`Riddim Rusher`) does attack on its own — that is the path to
+P1 knockouts, and it is wired but not yet exercised through `capture_frames.gd`.
+
+### State
+
+Suites at this commit: roster **ALL PASSED**, live **422 / 0 FAIL**, facing **310 / 0 FAIL**,
+feel **440 / 0 FAIL**. `BaseFighter.gd` untouched, facing pin and 5° contract intact, no `/docs`
+export. The contact sheet committed in PART A still describes this build (the speaker is the only
+runtime change since), so it was not regenerated.
+
 ## PART A (2026-11-26) — screenshot harness, knockdown verdict, speaker material
 
 ### The harness: `tools/qa_match.gd`, `tools/capture_frames.gd`, `tools/dump_pose_csv.gd`

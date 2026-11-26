@@ -256,53 +256,6 @@ static func first_mesh(model: Node3D) -> MeshInstance3D:
 ## documents this: assuming the two orders match reports a body that never goes below its
 ## own foot bones, which is how Feedback came out "floating 72 cm"). Both readings are
 ## computed so a report can show the mapped one and the wrong one side by side.
-static func skinned_bounds(model: Node3D, mapped: bool = true) -> Array:
-	var mi := first_mesh(model)
-	var skel := skeleton_of(model)
-	if mi == null or skel == null or mi.mesh.get_surface_count() == 0:
-		return [Vector3.ZERO, Vector3.UP]
-	var arrays := mi.mesh.surface_get_arrays(0)
-	if arrays.is_empty():
-		return [Vector3.ZERO, Vector3.UP]
-	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-	var vbones = arrays[Mesh.ARRAY_BONES]
-	var weights = arrays[Mesh.ARRAY_WEIGHTS]
-	var skin: Skin = mi.skin
-	var bone_xf: Array[Transform3D] = []
-	if skin != null and mapped:
-		for b in skin.get_bind_count():
-			var bone := skin.get_bind_bone(b)
-			var xf: Transform3D = skel.global_transform * skel.get_bone_global_pose(bone if bone >= 0 else 0)
-			bone_xf.append(xf * skin.get_bind_pose(b))
-	else:
-		for i in skel.get_bone_count():
-			var xf: Transform3D = skel.global_transform * skel.get_bone_global_pose(i)
-			if skin != null and i < skin.get_bind_count():
-				xf = xf * skin.get_bind_pose(i)
-			bone_xf.append(xf)
-	var low := Vector3(INF, INF, INF)
-	var high := Vector3(-INF, -INF, -INF)
-	var step := maxi(1, int(float(verts.size()) / 6000.0))
-	var per := 0
-	if vbones != null and weights != null and verts.size() > 0:
-		per = int(vbones.size() / verts.size())
-	var i := 0
-	while i < verts.size():
-		var p := verts[i]
-		if per > 0:
-			var acc := Vector3.ZERO
-			var total := 0.0
-			for k in per:
-				var bi := int(vbones[i * per + k])
-				var w := float(weights[i * per + k])
-				if w <= 0.0 or bi < 0 or bi >= bone_xf.size():
-					continue
-				acc += (bone_xf[bi] * p) * w
-				total += w
-			p = acc / total if total > 0.0 else mi.global_transform * p
-		else:
-			p = mi.global_transform * p
-		low = Vector3(minf(low.x, p.x), minf(low.y, p.y), minf(low.z, p.z))
-		high = Vector3(maxf(high.x, p.x), maxf(high.y, p.y), maxf(high.z, p.z))
-		i += step
-	return [low, high]
+static func skinned_bounds(model: Node3D, _mapped: bool = true) -> Array:
+	# PART A2: one sampler for the runtime, the capture tools and every audit.
+	return DrawnBounds.bounds(model)

@@ -10,7 +10,7 @@ prove is marked **OWNER TO FILL** and must be settled before any commercial rele
 | Branch described | `feature/3d-cel-shaded` |
 | Owner / final approver | Garfield Connell |
 | Related documents | `AGENTS.md` §9, `BUSINESS_AND_RETENTION_STRATEGY.md` §6, `CONSOLE_READINESS.md`, `INDUSTRY_REFERENCE_ANALYSIS.md` |
-| Code changes in this milestone | **None** (documentation only) |
+| Code changes in this milestone | The PART 3 placement commit (prop loading, placement yaw, cel material, tests). This ledger records its asset as well |
 
 > **Notice — not legal or financial advice; verify with a qualified professional.** Every row below
 > is a research record. Licence scope, ownership, provenance and redistribution rights must be
@@ -29,16 +29,19 @@ prove is marked **OWNER TO FILL** and must be settled before any commercial rele
 
 ### The extractable-pack problem (applies to every row)
 
-The repository ships a **web build in `/docs`**: `index.pck` (about 68.7 MB), `index.wasm`
-(about 38 MB), `index.js` and `index.html`. A Godot Web export is **downloadable and extractable**:
+The repository ships a **web build in `/docs`**: `index.pck` (74,480,156 bytes after the PART 3
+export on 2026-11-26, up from 68,773,156), `index.wasm` (about 38 MB), `index.js` and
+`index.html`. A Godot Web export is **downloadable and extractable**:
 anyone can fetch the `.pck` and unpack the models, textures, fonts and audio inside it. Therefore:
 
 1. **Every licence must explicitly allow redistribution inside an extractable, downloadable game
    build** (not merely "use in an application" or "personal use").
 2. **Every asset inside the pack is effectively published**, even if it is only visible in-game.
-3. **`/docs` is not re-exported by this documentation change** — the pack that exists today was built
-   from an earlier source revision and contains whatever that revision contained. When it is next
-   re-exported, the ledger must already be complete, because the export publishes every row at once.
+3. **`/docs` WAS re-exported in PART 3 (2026-11-26)** — the pack now contains the delivered
+   `jamaican_speaker.glb` mesh and its 2,048² albedo (S3TC and ETC2 variants). That makes the
+   speaker row a **live** publication, not a future one: its source and plan cells are still
+   **OWNER TO FILL**, so the asset is published before its rights are evidenced. Every other row
+   must be complete before the next export, because each export publishes all of them at once.
 4. If a licence forbids that, the asset must be excluded from the pack (or replaced) before the next
    export. That decision is the owner's, recorded here.
 
@@ -173,15 +176,16 @@ The game files are the rigged bodies; the static uploads stay as provenance.
 > **Notice — not legal or financial advice.** Image provenance, model releases (if any real person's
 > likeness informed a character) and tool terms must be confirmed with a qualified professional.
 
-## 6. Prop model slots — expected but **absent**
+## 6. Prop model slots — one delivered, four still **absent**
 
-`godot/assets/models/props/` contains **only a README**. `PropLoader` names five files it will load
-when they exist; **none is present in this revision**, and no `.glb` file exists anywhere in the
+`godot/assets/models/props/` now holds the delivered **`jamaican_speaker.glb`** plus the albedo
+Godot extracts beside it (`jamaican_speaker_0.png`). `PropLoader` names five files it will load when
+they exist; **four are still absent in this revision**. The delivered tower is the only `.glb` in the
 repository.
 
 | Asset | Source / tool | Plan or licence under which obtained | Date | Attribution required | Redistribution notes | Repo evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| `jamaican_speaker.glb` (left speaker stack) | **Not in the repository.** No file, no licence, no provenance note | **OWNER TO FILL** | **OWNER TO FILL** | **OWNER TO FILL** | Would ship in the extractable pack — the licence must allow that **before** it is added | `props/README.md`; `PropLoader` slot name |
+| `jamaican_speaker.glb` (left speaker stack) — **PRESENT** | **Meshy** (owner's delivery note). File contents confirm a single 2,618-triangle static mesh, one material, one embedded 2,048² PNG albedo, no skeleton and no animation. Delivered art is unchanged | **OWNER TO FILL** (Meshy plan/tier and its redistribution terms) | Uploaded 2026-11-26 (commit `dd222c4`, "Add files via upload") | **OWNER TO FILL** | **Ships in the extractable pack now** — 3,296,372 bytes of `.glb` plus a 2,048² albedo (S3TC + ETC2 variants) inside `docs/index.pck`. The licence must allow redistribution in a downloadable build; not yet evidenced | `godot/assets/models/props/jamaican_speaker.glb` (SHA-256 `3f4edcbfda3babb8b70daa25a3a14e8d53d72bd40c2400bca471a031cf8f8efc`), `jamaican_speaker_0.png`, `PropLoader` + `Arena3D._build_speakers` |
 | `rasta_speaker.glb` (right speaker stack) | As above | **OWNER TO FILL** | **OWNER TO FILL** | **OWNER TO FILL** | As above | as above |
 | `dj_booth.glb` (booth prop) | As above | **OWNER TO FILL** | **OWNER TO FILL** | **OWNER TO FILL** | As above | as above |
 | `wireless_mic.glb` (per adult fighter) | As above | **OWNER TO FILL** | **OWNER TO FILL** | **OWNER TO FILL** | As above | as above |
@@ -189,10 +193,12 @@ repository.
 
 **Notes**
 
-- The repository is explicit that these slots stay **empty** and that no procedural stand-in is drawn
-  (`props/README.md`; the live-match suite asserts every slot has zero child meshes). If any of these
-  models is delivered later — including a speaker `.glb` — **a complete row here is a precondition**,
-  not a follow-up.
+- The delivered tower is loaded by `PropLoader`, seated to 2.6 m with its lowest vertex on Y = 0,
+  yawed 12° into the yard and dressed in the project's double-sided cel material. Nothing about that
+  placement changes the licence question.
+- The four empty slots stay **empty** and draw nothing (the live-match and roster suites assert the
+  delivered tower is the only prop mesh, and no slot draws a procedural stand-in). If any of the other
+  four models is delivered later, **a complete row here is a precondition**, not a follow-up.
 - A delivered asset's *approval* status (owner's eye) and its *licence* status are separate checks;
   both are required.
 
@@ -206,7 +212,7 @@ repository.
 | --- | --- | --- | --- | --- | --- | --- |
 | `godot/scripts/**`, `godot/scenes/**`, `godot/project.godot`, `godot/export_presets.cfg` | Project-authored | **No `LICENSE` file exists in this repository** — **OWNER TO FILL** | 2026-11 | **OWNER TO FILL** | Absent a licence, default copyright applies (all rights reserved) | `ls LICENSE*` returns nothing |
 | Godot Engine **4.5.stable** (`876b29033`) | Godot Engine, MIT licence | **MIT** (engine licence, not a file in this repo) | Pinned in `AGENTS.md` | Yes — include the engine's MIT licence and copyright notice in release documentation | The web build's `docs/index.wasm` **is the engine**, so the notice must ship with the distribution | `AGENTS.md` §5; `docs/index.wasm` |
-| `docs/` web export (`index.pck`, `index.wasm`, `index.js`, `index.html`, icons) | Godot 4.5 Web export of this project | Combines all rows above | Last export before 2026-11-25 | Engine notice applies | **Not re-exported by this documentation change.** The pack is public and extractable; its contents must be licence-clean at the next export | `docs/` present, unchanged by this commit |
+| `docs/` web export (`index.pck`, `index.wasm`, `index.js`, `index.html`, icons) | Godot 4.5 Web export of this project | Combines all rows above | Re-exported 2026-11-26; `index.pck` 74,480,156 bytes | Engine notice applies | The pack is public and extractable and now contains the delivered tower. Its other contents must be licence-clean at the next export | `docs/` present; `docs/index.pck` |
 
 **Notes**
 
@@ -235,8 +241,9 @@ Every item below is **OWNER TO FILL** and blocks a clean commercial release:
    fourth upload.
 5. **2D and stage art** — artist/tool, tier and grant for every sprite pack, the stage background and
    the crates; model releases if a real person informed a design.
-6. **Props** — none present; source, licence and trade-dress clearance required before the first
-   speaker/booth/mic model is added.
+6. **Props** — `jamaican_speaker.glb` is **delivered and already shipping in the pack**; its Meshy
+   plan/terms, redistribution grant and trade-dress clearance are still **OWNER TO FILL**. The booth,
+   rasta speaker and both hand props remain absent, with the same clearance requirement.
 7. **Repository licence** — no `LICENSE` file; decide and add one.
 8. **Engine attribution** — ship Godot's MIT notice with the build.
 9. **Approval vs licence** — record both per asset; today many assets carry an approval status but no

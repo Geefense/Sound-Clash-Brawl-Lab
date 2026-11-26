@@ -237,6 +237,26 @@ func _press_key(node: Node, code: Key) -> void:
 	node._unhandled_input(_key_event(code, false))
 
 
+## World-space union of every mesh under a node (the delivered tower, a crowd rig, a rail).
+func _prop_world_bounds(root: Node) -> AABB:
+	var out := AABB()
+	var first := true
+	if root == null:
+		return out
+	var meshes: Array[Node] = []
+	if root is MeshInstance3D:
+		meshes.append(root)
+	meshes.append_array(root.find_children("*", "MeshInstance3D", true, false))
+	for node in meshes:
+		var mi := node as MeshInstance3D
+		if mi == null or mi.mesh == null:
+			continue
+		var box: AABB = mi.global_transform * mi.mesh.get_aabb()
+		out = box if first else out.merge(box)
+		first = false
+	return out
+
+
 func _run() -> void:
 	var setup := root.get_node_or_null("MatchSetup")
 	var music_bed := root.get_node_or_null("MusicBed")
@@ -1075,11 +1095,11 @@ func _run() -> void:
 	_check(banned_3d.is_empty(), "the 3D toon/ink shaders are WebGL2-safe (no screen/depth reads)",
 		"found %s" % [banned_3d] if not banned_3d.is_empty() else "single pass, no screen reads")
 
-	# The towers are `.glb` slots now: two of them, both empty until the art is delivered,
-	# and no procedural cabinet, cone, bracket or VU LED anywhere in the scene.
+	# The towers are `.glb` slots: two of them, and PART 3 commit 8 delivered the left one.
+	# No procedural cabinet, cone, bracket or VU LED exists anywhere in the scene.
 	_check(stage3d != null and stage3d.speaker_stack_count() == 2
-			and stage3d.speaker_model_count() == 0,
-		"the two speaker towers are empty model slots, not procedural geometry",
+			and stage3d.speaker_model_count() == 1,
+		"one delivered tower and one empty slot — not procedural geometry",
 		"%d slot(s) / %d loaded" % [stage3d.speaker_stack_count() if stage3d != null else -1,
 			stage3d.speaker_model_count() if stage3d != null else -1])
 	if stage3d != null:
@@ -2137,17 +2157,23 @@ func _run() -> void:
 
 	# ---- Sound-system slots, not procedural towers (playtest 2026-11-24) ---------------
 	_check(atmosphere.speaker_stack_count() == 2
-			and atmosphere.speaker_model_count() == 0,
-		"two empty speaker slots stand either side of the yard",
+			and atmosphere.speaker_model_count() == 1,
+		"the delivered tower stands on the left and the rasta slot stays empty",
 		"%d slot(s) / %d loaded" % [atmosphere.speaker_stack_count(),
 			atmosphere.speaker_model_count()])
 	var stack_nodes := atmosphere.find_children("SpeakerStack*", "Node3D", true, false)
 	var stack_meshes := 0
+	var stack_primitives := 0
 	for node in stack_nodes:
-		stack_meshes += node.find_children("*", "MeshInstance3D", true, false).size()
-	_check(stack_nodes.size() == 2 and stack_meshes == 0,
-		"the speaker slots contain no meshes at all",
-		"%d node(s) / %d mesh(es)" % [stack_nodes.size(), stack_meshes])
+		for child in node.find_children("*", "MeshInstance3D", true, false):
+			stack_meshes += 1
+			var part := child as MeshInstance3D
+			if part == null or part.mesh == null or part.mesh is PrimitiveMesh:
+				stack_primitives += 1
+	_check(stack_nodes.size() == 2 and stack_meshes == 1 and stack_primitives == 0,
+		"the slots hold exactly the one imported mesh and no primitive at all",
+		"%d node(s) / %d mesh(es) / %d primitive(s)" % [stack_nodes.size(), stack_meshes,
+			stack_primitives])
 	atmosphere._pulse = 2.0
 	atmosphere._update_speakers(0.0)
 	atmosphere._pulse = 0.0
@@ -2427,22 +2453,29 @@ func _run() -> void:
 		"%d slot(s)" % prop_slots.size())
 	var wanted := ["jamaican_speaker.glb", "rasta_speaker.glb", "dj_booth.glb",
 		"wireless_mic.glb", "mic_stand.glb"]
+	var delivered_prop := "jamaican_speaker.glb"
 	for name in wanted:
 		var matched := ""
-		var empty := false
+		var loaded := false
 		for slot in prop_slots:
 			if String(slot.model_path).ends_with(name):
 				matched = slot.model_path
-				empty = slot.is_empty()
-		_check(matched != "" and empty,
-			"the %s slot exists and draws nothing while the file is missing" % name,
-			"%s empty=%s" % [matched, str(empty)])
+				loaded = not slot.is_empty()
+		var want_loaded: bool = String(name) == delivered_prop
+		_check(matched != "" and loaded == want_loaded,
+			"the %s slot %s" % [name, "loads the delivered .glb" if want_loaded else "stays empty"],
+			"%s loaded=%s" % [matched, str(loaded)])
 	var slot_meshes := 0
+	var primitive_meshes := 0
 	for slot in prop_slots:
-		slot_meshes += slot.find_children("*", "MeshInstance3D", true, false).size()
-	_check(slot_meshes == 0,
-		"no prop slot substitutes a fallback mesh for a missing model",
-		"%d mesh(es) inside the slots" % slot_meshes)
+		for node in slot.find_children("*", "MeshInstance3D", true, false):
+			var mi := node as MeshInstance3D
+			slot_meshes += 1
+			if mi == null or mi.mesh == null or mi.mesh is PrimitiveMesh:
+				primitive_meshes += 1
+	_check(slot_meshes == 1 and primitive_meshes == 0,
+		"the delivered tower is the only prop mesh, and it is imported — not a primitive",
+		"%d mesh(es), %d primitive(s)" % [slot_meshes, primitive_meshes])
 	_check(FileAccess.file_exists("res://assets/models/props/README.md"),
 		"the props folder documents the five expected files")
 
@@ -2485,9 +2518,168 @@ func _run() -> void:
 	_check(defaults_ok, "the five slots ship with seating on and no override")
 	var empty_seating := true
 	for slot in prop_slots:
-		if not is_zero_approx(slot.seated_bottom()) or not is_zero_approx(slot.seated_height()):
+		if slot.is_empty() and (not is_zero_approx(slot.seated_bottom())
+				or not is_zero_approx(slot.seated_height())):
 			empty_seating = false
-	_check(empty_seating, "an empty slot seats nothing", "no measured AABB")
+	_check(empty_seating, "the empty slots seat nothing", "no measured AABB")
+
+	# ---- PART 3 commit 8: the delivered tower's placement contract --------------------
+	# The auto-seat from c01cc4a owns the scale and the ground flush; this block proves the
+	# result on the delivered mesh instead of re-implementing the maths. Every number below is
+	# measured from the scene, not copied from the asset brief.
+	var speaker: PropLoader = null
+	for slot in prop_slots:
+		if not slot.is_empty() and String(slot.model_path).ends_with(delivered_prop):
+			speaker = slot
+	var prop_yard = arena2.get("arena3d")
+	_check(speaker != null and speaker.model != null,
+		"the jamaican tower instantiates as a real model in the fight scene",
+		"model %s" % str(speaker.model) if speaker != null else "no slot")
+	if speaker != null and speaker.model != null and prop_yard != null:
+		var spk_box := _prop_world_bounds(speaker.model)
+		_check(absf(spk_box.position.y) <= 0.01,
+			"the tower's lowest vertex sits on the sand within 1 cm",
+			"y %+.4f m" % spk_box.position.y)
+		_check(absf(spk_box.size.y - 2.6) / 2.6 <= 0.02,
+			"the tower stands 2.6 m tall within 2 %", "%.3f m" % spk_box.size.y)
+		var spk_tris := 0
+		for node in speaker.model.find_children("*", "MeshInstance3D", true, false):
+			var spk_mi := node as MeshInstance3D
+			if spk_mi != null and spk_mi.mesh != null:
+				spk_tris += int(spk_mi.mesh.get_faces().size() / 3)
+		_check(spk_tris == 2618,
+			"the delivered mesh is used unchanged", "%d triangles" % spk_tris)
+		var spk_fwd: Vector3 = speaker.model.global_transform.basis.z.normalized()
+		var spk_to_cam := Vector3(prop_yard.camera.global_position.x - speaker.global_position.x, 0.0,
+			prop_yard.camera.global_position.z - speaker.global_position.z).normalized()
+		var spk_to_centre := Vector3(-speaker.global_position.x, 0.0, -speaker.global_position.z).normalized()
+		_check(spk_fwd.z > 0.9 and spk_fwd.x > 0.1 and spk_fwd.dot(spk_to_cam) > 0.0 and spk_fwd.dot(spk_to_centre) > 0.4,
+			"the painted +Z wall faces the camera side and yaws into the yard",
+			"forward (%+.2f, %+.2f, %+.2f), camera dot %.2f, centre dot %.2f" % [
+				spk_fwd.x, spk_fwd.y, spk_fwd.z, spk_fwd.dot(spk_to_cam), spk_fwd.dot(spk_to_centre)])
+		_check(is_equal_approx(speaker.yaw_degrees, 12.0) and not prop_yard.mirror_into_empty_rasta_slot,
+			"the inward yaw is the 12° default and the rasta slot stays empty",
+			"yaw %.1f°, mirror %s" % [speaker.yaw_degrees, str(prop_yard.mirror_into_empty_rasta_slot)])
+		# Crowd spk_rigs, the barrier and the fighting spk_lane are all separate volumes the tower may
+		# not enter. The play spk_lane is the plane the fighters actually occupy: stage bounds in x,
+		# ±0.5 m of z around the fighting plane.
+		var spk_crowd_clear := true
+		var spk_nearest := ""
+		var spk_rigs: Array = prop_yard.crowd3d.model_slots() if prop_yard.crowd3d != null else []
+		for model in spk_rigs:
+			if spk_box.intersects(_prop_world_bounds(model)):
+				spk_crowd_clear = false
+				spk_nearest = String(model.name)
+		_check(spk_crowd_clear, "the tower overlaps no crowd rig",
+			spk_nearest if not spk_crowd_clear else "%d spk_rigs clear" % spk_rigs.size())
+		var spk_rail: Node3D = prop_yard.get_node_or_null("BarrierRail")
+		var spk_rail_box := _prop_world_bounds(spk_rail)
+		_check(spk_rail != null and not spk_box.intersects(spk_rail_box) and spk_box.position.z > spk_rail_box.end.z,
+			"the tower stands in front of the barrier without touching it",
+			"tower z %.2f..%.2f, spk_rail z %.2f..%.2f" % [spk_box.position.z, spk_box.end.z,
+				spk_rail_box.position.z, spk_rail_box.end.z])
+		var spk_lane_left := (BaseFighter.STAGE_LEFT - 640.0) / 140.0
+		var spk_lane_right := (BaseFighter.STAGE_RIGHT - 640.0) / 140.0
+		var spk_lane := AABB(Vector3(spk_lane_left, 0.0, -0.5), Vector3(spk_lane_right - spk_lane_left, 2.2, 1.0))
+		_check(not spk_box.intersects(spk_lane),
+			"the tower sits outside the fighters' play volume",
+			"tower z %.2f..%.2f vs spk_lane -0.50..0.50" % [spk_box.position.z, spk_box.end.z])
+		var spk_scenes: Array[String] = []
+		if DirAccess.dir_exists_absolute("res://scenes"):
+			for spk_file in DirAccess.get_files_at("res://scenes"):
+				var spk_file_name := String(spk_file)
+				if spk_file_name.ends_with(".tscn") and FileAccess.get_file_as_string(
+						"res://scenes/" + spk_file_name).contains("PropLoader"):
+					spk_scenes.append(spk_file_name)
+		_check(not spk_scenes.has("TitleScreen.tscn"),
+			"Character Select instances no prop slot, so the tower cannot block it",
+			", ".join(spk_scenes))
+		# 600 presented frames: the pulse, the beat clock and the phase tween must not create a
+		# node inside a prop slot, respawn the tower, or add a light. The yard's note bursts are
+		# capped and transient, so the venue's own static budget is what is measured here.
+		var spk_nodes_before := 0
+		for slot in prop_slots:
+			spk_nodes_before += slot.find_children("*", "Node", true, false).size()
+		var spk_model_id := speaker.model.get_instance_id()
+		var spk_lights: int = prop_yard.light_count()
+		for i in 600:
+			await process_frame
+		var spk_nodes_after := 0
+		for slot in prop_slots:
+			spk_nodes_after += slot.find_children("*", "Node", true, false).size()
+		_check(spk_nodes_before == spk_nodes_after and is_instance_valid(speaker.model) \
+				and speaker.model.get_instance_id() == spk_model_id \
+				and prop_yard.light_count() == spk_lights,
+			"600 frames add no prop node, no light and never respawn the tower",
+			"%d → %d prop node(s), %d light(s)" % [spk_nodes_before, spk_nodes_after,
+				prop_yard.light_count()])
+		# The pulse multiplies the seat scale, never replaces it, and is capped at 1.5 %.
+		var spk_base: float = speaker.seat_scale_applied
+		prop_yard._pulse = 2.0
+		prop_yard._update_speakers(0.0)
+		var spk_peak: Vector3 = speaker.model.scale
+		prop_yard._pulse = 0.0
+		prop_yard._update_speakers(0.0)
+		var spk_settled: Vector3 = speaker.model.scale
+		_check(spk_peak.x <= spk_base * 1.0151 and spk_peak.y <= spk_base * 1.0151 \
+				and spk_peak.z <= spk_base * 1.0151 and spk_peak.x > spk_base * 0.9999 \
+				and is_equal_approx(spk_settled.x, spk_base),
+			"the 132 BPM pulse peaks at 1.5 % about the seated base and settles back",
+			"%.4f → %.4f (base %.4f)" % [spk_base, spk_peak.y, spk_base])
+		prop_yard.speaker_pulse = false
+		prop_yard._pulse = 2.0
+		prop_yard._update_speakers(0.0)
+		var spk_muted: Vector3 = speaker.model.scale
+		prop_yard.speaker_pulse = true
+		prop_yard._pulse = 0.0
+		prop_yard._update_speakers(0.0)
+		_check(is_equal_approx(spk_muted.x, spk_base),
+			"speaker_pulse off leaves the tower at its seated scale", "%.4f" % spk_muted.x)
+		# The delivered albedo is bound to the cel material, and that material's rim follows
+		# the preset so Afternoon, Sunset and Night all keep the tower readable.
+		var spk_material_ok := false
+		var spk_materials: Array[ShaderMaterial] = []
+		CharacterModelSlots.collect_cel_materials(speaker.model, spk_materials)
+		for material in spk_materials:
+			var spk_tex = material.get_shader_parameter("albedo_texture")
+			if spk_tex is Texture2D and (spk_tex as Texture2D).get_width() == 2048:
+				spk_material_ok = true
+		_check(spk_material_ok,
+			"the delivered 2048 albedo is bound to the cel material, not replaced",
+			"%d material(s)" % spk_materials.size())
+		var spk_rim: Array[float] = []
+		var spk_rim_ok := true
+		for spk_phase in [0, 1, 2]:
+			prop_yard.apply_phase(spk_phase, 0.0)
+			await process_frame
+			var spk_phase_materials: Array[ShaderMaterial] = []
+			CharacterModelSlots.collect_cel_materials(speaker.model, spk_phase_materials)
+			var spk_strength := -1.0
+			for material in spk_phase_materials:
+				if material.get_shader_parameter("albedo_texture") != null:
+					spk_strength = maxf(spk_strength, float(material.get_shader_parameter("rim_strength")))
+			if spk_strength <= 0.0:
+				spk_rim_ok = false
+			spk_rim.append(spk_strength)
+		prop_yard.apply_phase(0, 0.0)
+		await process_frame
+		_check(spk_rim_ok and spk_rim[0] > 0.0 and spk_rim[1] > spk_rim[0] \
+				and spk_rim[2] > spk_rim[1],
+			"the tower's cel rim follows the phase and cannot go black at Night",
+			"%.2f / %.2f / %.2f" % [spk_rim[0], spk_rim[1], spk_rim[2]])
+		# Lighting and shadows: no light is added, the fighter shadow rig is the same seven
+		# lights, and the imported tower casts no shadow of its own to disturb it.
+		_check(prop_yard.light_count() == 7 and prop_yard.sun.shadow_enabled and prop_yard.sun.light_angular_distance < 0.001,
+			"the tower adds no light and leaves the crisp fighter shadow rig alone",
+			"%d light(s)" % prop_yard.light_count())
+		var spk_tower_shadows := 0
+		for node in speaker.model.find_children("*", "MeshInstance3D", true, false):
+			var spk_mi := node as MeshInstance3D
+			if spk_mi != null and spk_mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+				spk_tower_shadows += 1
+		_check(spk_tower_shadows == 0,
+			"the imported tower writes no shadow, so the fighter shadow map is untouched",
+			"%d casting mesh(es)" % spk_tower_shadows)
 
 	# ---- Esc back to Character Select ------------------------------------
 	setup.escape_to_setup()

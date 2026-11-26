@@ -52,6 +52,17 @@ const SEAT_EPSILON := 0.0005
 ## nothing about loading — a required prop that is missing still draws nothing — it only makes
 ## the intent explicit for whoever drops the art in.
 @export var required: bool = false
+## Yaw about the model's own Y axis, in degrees (PART 3 commit 8). Positive turns the delivered
+## +Z front toward +X. The left speaker slot runs +12° so its painted wall angles into the
+## yard; the right slot would run −12°. Rotation only: a prop is never negative-scaled to
+## mirror it, because that flips its winding and its normals.
+@export var yaw_degrees: float = 0.0
+## Keep the model's imported two-sided culling (PART 3 commit 8). The delivered
+## `jamaican_speaker.glb` is an open shell — 2 626 of 5 240 edges are boundary edges and its
+## glTF material is `doubleSided: true` — so it must not be forced onto the fighters'
+## `cull_back` cel material. Off uses the standard toon material; on uses the `cull_disabled`
+## variant of the same family.
+@export var double_sided: bool = false
 
 ## The instanced model, or null while the file is missing.
 var model: Node3D = null
@@ -92,10 +103,17 @@ func load_model() -> bool:
 	add_child(node)
 	model = node
 	_seat_model(node)
+	# Placement yaw (PART 3 commit 8): an aim, not a mirror. The seat pass above measured the
+	# unturned box, and a Y rotation cannot change the model's height or its lowest vertex, so
+	# the tower stays seated on Y = 0 at any yaw.
+	if not is_zero_approx(yaw_degrees):
+		var turned := node.rotation_degrees
+		node.rotation_degrees = Vector3(turned.x, turned.y + yaw_degrees, turned.z)
 	# Same cel/ink treatment the fighters and crowd wear, with a white tint and the shader's
 	# shadow bias off, so the delivered albedo renders at full brightness. `apply_cel` skips
 	# any surface the exporter left without a texture and warns about it; the model stays.
-	var textured := CharacterModelSlots.apply_cel(node, Color.WHITE, Color.WHITE, 900)
+	var textured := CharacterModelSlots.apply_cel(node, Color.WHITE, Color.WHITE, 900, 0.0, "",
+		double_sided)
 	if textured == 0:
 		push_warning("PropLoader: %s has no textured surface — left as imported" % model_path)
 	return true

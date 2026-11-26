@@ -28,6 +28,9 @@ const HEIGHT_RANGE := Vector2(0.3, 6.0)
 ## inverted-hull ink `next_pass` the fighters use, so a real Mixamo model reads as part of
 ## the same inked world instead of a stock asset.
 const TOON_SHADER := preload("res://assets/shaders/toon_cel.gdshader")
+## Same look, `cull_disabled` (PART 3 commit 8). A delivered prop whose glTF material is
+## `doubleSided: true` and whose mesh is an open shell must keep its imported culling.
+const TOON_SHADER_DOUBLE_SIDED := preload("res://assets/shaders/toon_cel_double_sided.gdshader")
 const OUTLINE_SHADER := preload("res://assets/shaders/toon_outline.gdshader")
 
 ## Acting clips. Every Mixamo upload is one take on the same 68-bone `mixamorig` skeleton,
@@ -307,8 +310,10 @@ static func play_act(node: Node3D, acts: Dictionary, act: StringName,
 
 ## Convert every surface to the cel shader + ink outline, keeping the upload's own albedo.
 ## `variant` keeps a cached material per look (warm left bank, cool right bank, gold booth).
+## `double_sided` swaps in the `cull_disabled` variant for an open-shell prop: the imported
+## culling is only overridden when the caller has verified the mesh is a closed solid.
 static func apply_cel(node: Node3D, tint: Color, rim: Color, variant: int = 0,
-		hue_shift: float = 0.0, source_path: String = "") -> int:
+		hue_shift: float = 0.0, source_path: String = "", double_sided: bool = false) -> int:
 	var applied := 0
 	var fallback := delivered_atlas(source_path)
 	for child in node.find_children("*", "MeshInstance3D", true, false):
@@ -337,11 +342,11 @@ static func apply_cel(node: Node3D, tint: Color, rim: Color, variant: int = 0,
 			# characters can ever share (and therefore tint, dim or recolour) a material.
 			# Every surface of one upload draws from the same atlas, which also keeps the draw
 			# state cheap on a Chromebook.
-			var key := "%s_%d" % [node.get_instance_id(), variant]
+			var key := "%s_%d%s" % [node.get_instance_id(), variant, "_ds" if double_sided else ""]
 			var material: ShaderMaterial = _cel_materials.get(key)
 			if material == null:
 				material = ShaderMaterial.new()
-				material.shader = TOON_SHADER
+				material.shader = TOON_SHADER_DOUBLE_SIDED if double_sided else TOON_SHADER
 				material.set_shader_parameter("albedo_texture", texture)
 				material.set_shader_parameter("tint", tint)
 				material.set_shader_parameter("hue_shift", hue_shift)

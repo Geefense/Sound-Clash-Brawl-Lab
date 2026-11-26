@@ -5597,3 +5597,107 @@ mobile/desktop/console export preset and no store code anywhere in the repositor
   provenance of the 2D art, the absent prop models, and the missing repository `LICENSE` file.
 - **The event calendar, KPIs, revenue streams and monetization principles are unbuilt proposals.** No
   data resource, KPI counter, calendar fetch or store exists.
+
+## 2026-11-26 — PART 3 · The delivered sound-system tower (placement, import, export)
+
+The owner uploaded `godot/assets/models/props/jamaican_speaker.glb` (commit `dd222c4`, "Add files via
+upload"). This milestone places it in the existing `PropLoader` slot, dresses it in the project's cel
+material, proves the placement in the four suites and re-exports the Web build. **No gameplay file was
+touched:** `BaseFighter.gd`, combat, animation, the 132 BPM clock, Crowd Hype and the 31 Patois entries
+are byte-identical.
+
+### What the delivered file is (measured, not assumed)
+
+- 3,296,372 bytes: one `ArrayMesh`, **2,618 triangles**, 3,043 vertices, one `StandardMaterial3D`, one
+  embedded **2,048² PNG albedo**, no skeleton and no animation, SHA-256
+  `3f4edcbfda3babb8b70daa25a3a14e8d53d72bd40c2400bca471a031cf8f8efc`.
+- Bounds in Godot: **1.6818 W × 1.8985 H × 0.5746 D**, origin centred, lowest vertex Y −0.9488.
+- The glTF material is `doubleSided: true` and the mesh is an **open shell** — 2,626 of 5,240 edges are
+  boundary edges and none is non-manifold. The imported culling was therefore **kept**, never
+  overridden: the tower wears `toon_cel_double_sided.gdshader` (`cull_disabled`), the double-sided
+  member of the `toon_cel.gdshader` family, instead of the fighters' `cull_back` material.
+
+### Placement decisions (commit 8)
+
+- The existing left slot (`Arena3D/SpeakerStackLeft`, x −2.55, z −1.45) and the `c01cc4a` auto-seat do
+  the work: uniform scale to the `TARGET_HEIGHT_M` entry (**2.6 m**, ×1.3695), then the lowest vertex
+  flushed to Y 0. No seating maths was re-implemented. Measured live: bottom **+0.0000 m**, height
+  **2.600 m**.
+- `PropLoader.yaw_degrees` is new. `Arena3D.speaker_inward_yaw_degrees` (default **12**) yaws the left
+  slot **+12°** so the painted +Z wall angles into the yard. **Rotation only** — the tower is never
+  negative-scaled, which would flip its winding and normals.
+- `Arena3D.mirror_into_empty_rasta_slot` defaults **false**: only the jamaican slot is filled. Turning
+  it on would place the same delivered tower in the right slot, yawed −12°.
+- `PropLoader` stays at **five slots**. The other four are still **EMPTY**: `rasta_speaker.glb`,
+  `dj_booth.glb`, `wireless_mic.glb`, `mic_stand.glb`. Each logs one warning per arena and draws
+  nothing; there is no stand-in of any kind.
+- The delivered albedo is bound **unchanged**; the shader's shadow bias is off and the tint is white,
+  so the texture renders at full brightness. The cel rim follows the phase at 55 % of the fighter
+  strength (0.30 / 0.58 / 0.72 across Afternoon / Sunset / Night), so the tower cannot go black at
+  Night. **No light was added** — the yard is still seven lights, inside the Compatibility cap of 8.
+- The tower keeps `cast_shadow = OFF` (the cel treatment sets it), so the fighter shadow map and its
+  crisp directional shadow are untouched. It therefore casts no shadow of its own; the brief allows
+  that, and not writing the shadow map is the safer choice.
+- `Arena3D.speaker_pulse` (default **ON**) replaces the old hard-coded pop with a scalar multiplier
+  about the seat scale, capped at **1.5 %**, driven by the same 132 BPM beat, cached node, no per-frame
+  allocation. Off holds the seated scale. The old code wrote the pulse as the model's **absolute**
+  scale, which would have snapped a delivered tower back to its authored 1.9 m on the first beat; the
+  seat scale is now preserved.
+- Clearances measured on the live scene: no crowd rig overlap (22 rigs), 0.42 m clear of the barrier
+  rail without touching it, and the tower's near face stays 0.83 m behind the fighters' plane, so it is
+  outside the play volume and cannot come between the lens and a body.
+
+### Import settings
+
+- `jamaican_speaker_0.png` (Godot's extraction of the embedded albedo, the same pattern every crowd and
+  fighter `_0.png` follows) is imported **VRAM Compressed** (`compress/mode=2`) **with mipmaps**.
+- `project.godot` turns `textures/vram_compression/import_etc2_astc` **on**, and the Web preset enables
+  VRAM compression for **desktop (S3TC)** and **mobile (ETC2)**. Both are required: with the flags off
+  the exporter silently omitted the tower's texture from the pack entirely (verified — the build stored
+  no `.ctex` for it), because a VRAM-compressed import has no lossless fallback. Desktop Chrome,
+  including Intel Chromebooks, takes the S3TC variant; iPhone Safari's WebGL2 takes ETC2 (iOS A9+).
+- **The delivered art is unchanged**: the source `.glb` is committed byte-for-byte and nothing was
+  downscaled. The export delta was under the brief's "large" threshold, so the 2,048² texture was kept.
+
+### Tests — counts only went up, 0 FAIL in all four
+
+| Suite | Before | After |
+| --- | --- | --- |
+| `headless_roster_check.gd` | 453 | **470** |
+| `live_match_check.gd` | 377 | **422** |
+| `facing_audit.gd` | 310 | **310** |
+| `tools/animation_feel_audit.gd` | 428 | **428** |
+
+New assertions: the slot loads while the other four stay empty; lowest vertex within 1 cm of Y 0;
+height within 2 % of 2.6 m; 2,618 triangles unchanged; +Z faces the camera side and yaws inward;
+overlap tests against every crowd rig, the barrier rail and the fighting lane; Character Select
+instantiates no prop slot; 600 frames add no prop node and no light; the pulse peaks at 1.5 % about the
+seated base and the toggle holds it; the 2,048 albedo is bound to the cel material and the rim climbs
+through the three phases; seven lights and zero tower shadow writers. In the live suite,
+**camera-to-fighter rays clear the tower's AABB in all 9 pairings at the stacked accent/lean/punch
+maximum**, and the HUD's `CanvasLayer` placement is asserted. `_check_camera_stage_clearance` already
+iterates `camera_obstacles()`, which includes every filled prop slot, so the lens-body clearance now
+covers the tower as well.
+
+Three assertions that encoded "every prop slot is empty" were updated to the new truth — one delivered
+tower, four empty slots, exactly one imported prop mesh and no primitive — not deleted or loosened.
+No test was weakened and no count dropped.
+
+### Web export and licence
+
+- Re-exported with Godot 4.5-stable headless to `docs/index.html`; no export errors.
+  `docs/index.pck` is **74,480,156 bytes**, **+5,707,000** over the previous 68,773,156. The delta is
+  the delivered mesh plus the S3TC and ETC2 albedo variants (2,796,268 bytes each).
+- `ASSET_LICENSES.md` §6 marks the speaker row **PRESENT** with source **Meshy**; the plan/tier,
+  redistribution grant and trade-dress clearance remain **OWNER TO FILL**, and the row now records that
+  the asset **already ships** inside the extractable pack.
+
+### Not verified
+
+- **No display or GPU**, so the tower was never watched. The placement, bounds, material binding and
+  ray clearances are numeric assertions, not a visual review: its lit look in Afternoon, Sunset and
+  Night, the 12° framing at the left edge and the double-sided shell's appearance in a browser are
+  **unverified on screen**.
+- **No iPhone, no Chromebook and no browser build was launched.** The ETC2/S3TC variants are present in
+  the exported pack (confirmed from the export log), but playback on real hardware is unverified.
+- The rasta speaker, DJ booth, wireless mic and mic stand slots are still empty.

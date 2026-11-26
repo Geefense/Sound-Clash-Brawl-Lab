@@ -22,10 +22,13 @@ extends SceneTree
 ## PART 1 commit 1 adds two more contracts, measured on the same live arena:
 ##   (d) every attack/guard action answers on the PRESS FRAME (one physics tick with the press
 ##       already visible), not merely "within a few frames" as the polling check above allows.
-##   (e) the presentation contract: all five PropLoader slots stay empty and draw no
-##       procedural stand-in, the yard keeps 18–24 spectators drawn from all seven delivered
-##       Mixamo crowd models, and Afternoon/Sunset/Night are three distinct rigs that each keep
-##       a crisp directional fighter shadow.
+##   (e) the presentation contract: only the delivered `jamaican_speaker.glb` fills a
+##       PropLoader slot — the other four stay empty and no slot draws a procedural stand-in —
+##       the yard keeps 18–24 spectators drawn from all seven delivered Mixamo crowd models,
+##       and Afternoon/Sunset/Night are three distinct rigs that each keep a crisp directional
+##       fighter shadow. From PART 3 commit 8 the camera audit also fires rays from the lens to
+##       both fighters against the delivered tower's AABB at the stacked accent/lean/punch
+##       maximum, and asserts the HUD is a CanvasLayer above the 3D yard.
 ##
 ## Exit code is non-zero when any assertion fails.
 
@@ -377,6 +380,7 @@ func _check_arena_integrity() -> void:
 	_check(slots.size() == 5, "the arena carries the five PropLoader slots (%d)" % slots.size())
 	var empty := 0
 	var stray_meshes := 0
+	var primitive_meshes := 0
 	var paths: Array[String] = []
 	for node in slots:
 		var slot := node as PropLoader
@@ -387,10 +391,14 @@ func _check_arena_integrity() -> void:
 			var mi := child as MeshInstance3D
 			if mi != null and mi.mesh != null:
 				stray_meshes += 1
-	_check(empty == slots.size(), "every prop slot is empty while no .glb is delivered",
+				if mi.mesh is PrimitiveMesh:
+					primitive_meshes += 1
+	_check(empty == slots.size() - 1,
+		"four of the five prop slots stay empty; only the delivered tower is filled",
 		"%d of %d" % [empty, slots.size()])
-	_check(stray_meshes == 0, "no prop slot draws a procedural stand-in mesh",
-		"%d stray meshes" % stray_meshes)
+	_check(stray_meshes == 1 and primitive_meshes == 0,
+		"the one prop mesh is the delivered tower — no slot draws a procedural stand-in",
+		"%d mesh(es), %d primitive(s)" % [stray_meshes, primitive_meshes])
 	var wanted := ["jamaican_speaker.glb", "rasta_speaker.glb", "dj_booth.glb"]
 	var stage_slots := 0
 	for file in wanted:
@@ -452,8 +460,9 @@ func _check_arena_integrity() -> void:
 	_check(moore_paths.has("mic_stand.glb"),
 		"L!kkle Moore's mic-stand slot is present and empty",
 		", ".join(moore_paths))
-	_check(moore_empty == moore_paths.size() and moore_stray == 0,
-		"his mic stand and dictionary draw nothing without a .glb")
+	_check(moore_empty == moore_paths.size() - 1 and moore_stray == 1,
+		"his mic stand and dictionary draw nothing, while the delivered tower does",
+		"%d empty, %d mesh(es)" % [moore_empty, moore_stray])
 	await _free(moore)
 
 
@@ -665,10 +674,30 @@ func _check_camera_stage_clearance() -> void:
 					_check(bool(framed[0]),
 						"%s: both fighters framed with %.0f px margin" % [label, YARD_MARGIN_PX],
 						String(framed[1]))
+					# (4) PART 3 commit 8: the delivered speaker tower must never sit between the
+					# lens and a body. Same rays the player's eye takes — camera to three heights on
+					# each fighter — tested against the tower's own world AABB, at the stacked max.
+					var tower := _speaker_bounds(arena3d)
+					var blocked := ""
+					for fighter in [arena.p1, arena.p2]:
+						var at_x: float = arena3d.px_to_world_x(fighter.global_position.x)
+						for h in [0.35, 1.0, 1.65]:
+							if _ray_hits_box(cam.global_position, Vector3(at_x, h, 0.0), tower):
+								blocked = "%s at y %.2f" % [fighter.fighter_key, h]
+					_check(tower.size != Vector3.ZERO and blocked == "",
+						"%s: camera-to-fighter rays clear the speaker tower" % label,
+						blocked if blocked != "" else "6 rays, tower z %.2f..%.2f" % [
+							tower.position.z, tower.end.z])
 			# The stack is real: lean + accent yaw must actually reach the lens ceiling, and the
 		# punch must still be pinned there, or the three checks above prove nothing.
 			_check(absf(stacked_angle) > 5.0 and stacked_punch > 1.55,
 				"%s vs %s: the max stack reaches the lens (%.2f°, punch %.2f)" % [a, b, stacked_angle, stacked_punch])
+			# (5) The delivery's other half: the HUD is a CanvasLayer composited above the whole 3D
+			# viewport, so no prop depth can ever paint over a health bar. Asserted, not assumed.
+			var hud := arena.get_node_or_null("HUD")
+			_check(hud is CanvasLayer and (hud as CanvasLayer).layer > 0,
+				"%s vs %s: the HUD is a CanvasLayer above the 3D yard" % [a, b],
+				"layer %d" % ((hud as CanvasLayer).layer if hud is CanvasLayer else -1))
 			await _free(arena)
 
 
@@ -740,6 +769,56 @@ func _fist_extent(arena3d, model: Node3D) -> float:
 	var hips := _bone_world(model, "Hips")
 	var view := _view_size()
 	return absf(cam.unproject_position(hand).x - cam.unproject_position(hips).x) / maxf(view.x, 1.0)
+
+
+## World-space AABB of the delivered speaker tower, or an empty box while it is missing.
+## Audit only: this allocates nothing per frame and nothing in the game path.
+func _speaker_bounds(arena3d) -> AABB:
+	var out := AABB()
+	if arena3d == null:
+		return out
+	for node in arena3d.find_children("*", "PropLoader", true, false):
+		var slot := node as PropLoader
+		if slot == null or slot.model == null or slot.is_empty():
+			continue
+		if not String(slot.model_path).ends_with("jamaican_speaker.glb"):
+			continue
+		var first := true
+		for child in slot.model.find_children("*", "MeshInstance3D", true, false):
+			var mi := child as MeshInstance3D
+			if mi == null or mi.mesh == null:
+				continue
+			var box: AABB = mi.global_transform * mi.mesh.get_aabb()
+			out = box if first else out.merge(box)
+			first = false
+	return out
+
+
+## True when the segment `from`→`to` enters `box` (slab test, t clamped to the segment).
+func _ray_hits_box(from: Vector3, to: Vector3, box: AABB) -> bool:
+	if box.size == Vector3.ZERO:
+		return false
+	var dir := to - from
+	var t0 := 0.0
+	var t1 := 1.0
+	for axis in 3:
+		var d: float = dir[axis]
+		var o: float = from[axis]
+		if absf(d) < 0.000001:
+			if o < box.position[axis] or o > box.end[axis]:
+				return false
+			continue
+		var a: float = (box.position[axis] - o) / d
+		var b: float = (box.end[axis] - o) / d
+		if a > b:
+			var swap := a
+			a = b
+			b = swap
+		t0 = maxf(t0, a)
+		t1 = minf(t1, b)
+		if t0 > t1:
+			return false
+	return true
 
 
 func _view_size() -> Vector2:

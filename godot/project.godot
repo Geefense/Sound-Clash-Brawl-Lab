@@ -42,8 +42,14 @@ common/physics_ticks_per_second=60
 [rendering]
 
 ; The Web export must run on WebGL2 (GL Compatibility). The desktop renderer is
-; unchanged: only the `web` feature override is set. VRAM compression stays off
-; for both the importer and the exporter so the Web build never needs ETC2/ASTC
-; extension support on Chromebook Intel GPUs.
+; unchanged: only the `web` feature override is set.
+;
+; PART 3 commit 8 turns ETC2/ASTC import ON. Only textures imported as
+; VRAM-compressed are affected, and the only one is the delivered
+; jamaican_speaker.glb albedo: it is 2048 px, mipmapped and VRAM-compressed, so the
+; Web export needs a compressed variant for the device actually playing. Desktop
+; Chrome (including Intel Chromebooks) takes the S3TC variant; iPhone Safari's
+; WebGL2 takes the ETC2 one. Every fighter and crowd albedo stays Lossless, so this
+; setting changes nothing about them.
 renderer/rendering_method.web="gl_compatibility"
-textures/vram_compression/import_etc2_astc=false
+textures/vram_compression/import_etc2_astc=true

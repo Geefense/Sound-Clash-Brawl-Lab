@@ -210,6 +210,10 @@ var mound_material: StandardMaterial3D
 var horizon_material: StandardMaterial3D
 ## 132 BPM, the same clock the fighters and the crowd skank on.
 const BPM := 132.0
+## A delivered tower's beat pulse, relative to its SEATED scale. 1.5 % is the ceiling the
+## placement brief allows; the pulse multiplies the seat pass's scale instead of replacing it,
+## so the tower never snaps back to its authored 1.9 m on the first beat.
+const SPEAKER_PULSE := 0.015
 var _stage_energy_base: float = 0.0
 var _stage_pulse_amount: float = 0.0
 var _beat_phase: float = 0.0
@@ -229,6 +233,16 @@ var shadows: Dictionary = {}           # "p1"/"p2" -> MeshInstance3D
 ## issue 3). The procedural cabinets, baffles, 18" cones, corner brackets, Rasta trim,
 ## amp/EQ rack and VU LEDs are all deleted — no part of a tower is built in code any more.
 var _sound_stacks: Array[PropLoader] = []
+## Part 3 commit 8 exports. Inward yaw for the stage-side slots; the mirror flag is off, so the
+## delivered tower fills only the jamaican slot and `rasta_speaker.glb` stays empty; and the
+## 1.5 %-capped 132 BPM pulse, which is presentation only.
+@export var speaker_inward_yaw_degrees: float = 12.0
+@export var mirror_into_empty_rasta_slot: bool = false
+@export var speaker_pulse: bool = true
+## Cel materials worn by the delivered towers, collected once when the slots load.
+## `_push_cel_rim` runs on every step of a phase blend, so it reads this cache instead of
+## building a fresh array per call.
+var _prop_cel_materials: Array[ShaderMaterial] = []
 ## 3D atmosphere (owner request, 2026-11-22): the DJ booth behind the decks and the
 ## staggered silhouette crowd. Both are presentation only and are ticked from `_process`.
 var crowd3d: CrowdController3D = null
@@ -284,6 +298,7 @@ func _ready() -> void:
 	_build_camera()
 	_build_yard()
 	_build_speakers()
+	_cache_prop_cel()
 	_build_truss_and_lights()
 	_build_dj_booth()
 	_build_crowd()
@@ -830,14 +845,17 @@ func _update_fighters() -> void:
 
 
 func _update_speakers(_delta: float = 0.0) -> void:
-	# A delivered tower pops a couple of centimetres on the same beat the 2D speaker rings
-	# run. Nothing is animated inside the model: the tower is one imported object now.
-	var punch := _pulse * _pulse
+	# A delivered tower breathes on the same beat the 2D speaker rings run. Nothing is
+	# animated inside the model: the tower is one imported object now. The pulse is a scalar
+	# multiplier about the slot's SEATED scale — `seat_scale_applied` comes from the one
+	# measure-then-place pass at load — so it is bounded to SPEAKER_PULSE (1.5 %) and can
+	# never undo the 2.6 m seat or allocate per frame. `speaker_pulse` off holds the seat.
+	var punch := clampf(_pulse * _pulse, 0.0, 1.0) * SPEAKER_PULSE if speaker_pulse else 0.0
 	for slot in _sound_stacks:
 		if slot == null or slot.model == null:
 			continue
-		var pop := 1.0 + punch * 0.012
-		slot.model.scale = Vector3(pop, 1.0 + punch * 0.02, pop)
+		var s: float = slot.seat_scale_applied * (1.0 + punch)
+		slot.model.scale = Vector3(s, s, s)
 
 
 func _update_crowd(delta: float) -> void:
@@ -959,13 +977,27 @@ func _push_palette(p: Dictionary) -> void:
 	_push_cel_rim()
 
 
-## Push the preset rim onto both fighter models. Presentation only; a null model (the
-## billboard fallback) is simply skipped.
+## Push the preset rim onto both fighter models and any delivered prop that wears the cel
+## material. Presentation only; a null model (the billboard fallback) or an empty slot is
+## simply skipped. Runs on a phase change, never per frame.
 func _push_cel_rim() -> void:
 	for key in models:
 		var model := models[key] as FighterModel3D
 		if model != null and is_instance_valid(model):
 			model.set_cel_rim(_cel_rim, _cel_rim_strength)
+	for material in _prop_cel_materials:
+		material.set_shader_parameter("rim_colour", _cel_rim)
+		# Scenery carries half a fighter's rim: enough that Night cannot crush the tower to
+		# black, not enough to read as a third character beside the two bodies.
+		material.set_shader_parameter("rim_strength", _cel_rim_strength * 0.55)
+
+
+## One collection pass over the delivered towers' cel materials. Build time only.
+func _cache_prop_cel() -> void:
+	_prop_cel_materials.clear()
+	for slot in _sound_stacks:
+		if slot != null and slot.model != null:
+			CharacterModelSlots.collect_cel_materials(slot.model, _prop_cel_materials)
 
 
 ## The cel rim the current preset owns, for the per-preset audit.
@@ -1126,14 +1158,22 @@ const SPEAKER_MODELS := [
 ]
 
 
-## Two empty speaker slots, one per side of the fighting lane.
+## Two speaker slots, one per side of the fighting lane. The left slot is filled by the
+## delivered `jamaican_speaker.glb`; the right slot stays empty unless the owner turns the
+## mirror flag on (PART 3 commit 8).
 func _build_speakers() -> void:
 	for i in SPEAKER_MODELS.size():
 		var side := -1.0 if i == 0 else 1.0
 		var slot := PropLoader.new()
 		slot.name = "SpeakerStackLeft" if i == 0 else "SpeakerStackRight"
 		slot.model_path = SPEAKER_MODELS[i]
+		if i == 1 and mirror_into_empty_rasta_slot:
+			# The delivered tower in the right slot too, turned the other way. A rotation, never
+			# a negative scale: a mirror would flip the flag wall's winding and normals.
+			slot.model_path = SPEAKER_MODELS[0]
 		slot.required = true
+		slot.double_sided = true
+		slot.yaw_degrees = -side * speaker_inward_yaw_degrees
 		slot.position = Vector3(side * 2.55, 0.0, -1.45)
 		add_child(slot)
 		_sound_stacks.append(slot)

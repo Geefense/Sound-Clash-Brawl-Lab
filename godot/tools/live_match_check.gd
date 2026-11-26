@@ -72,6 +72,7 @@ func _run() -> void:
 		await _check_presses(a)
 	await _check_press_frame()
 	await _check_arcade_vfx()
+	await _check_comic_callouts()
 	await _check_crowd_eruption()
 	await _check_arena_integrity()
 	print("\n%d checks, %d FAIL%s" % [_checks, _fails, "" if _fails == 0 else "S"])
@@ -307,6 +308,273 @@ func _check_arcade_vfx() -> void:
 	_check(vfx.warning_count() == 4,
 		"600 frames add no further warning", "%d" % vfx.warning_count())
 	_check(vfx.playing_count() == 0, "still nothing playing after 600 frames")
+	await _free(arena)
+
+
+## PART D: twelve pre-pooled comic SFX labels on the existing VFX layer. Everything is
+## measured on the real arena: the exact table, the glyph coverage, one trigger per category,
+## the round-robin, all three caps, the lifetime, the two options and the mouse filter. No
+## callout may create a node, take input or touch a combat value.
+func _check_comic_callouts() -> void:
+	print("\n-- COMIC CALLOUTS: table, pool, categories, caps, toggles")
+	var arena = await _spawn(&"feedback", &"lickshot")
+	var comic: ComicCallout2D = arena.get("comic_callouts")
+	var layer: CanvasLayer = arena.get("vfx_layer")
+	var vfx: ArcadeVFX2D = arena.get("arcade_vfx")
+	_check(comic != null and layer != null and comic.get_parent() == layer,
+		"the comic callouts sit on the existing VFX CanvasLayer")
+	_check(vfx != null and vfx.get_child_count() == 0,
+		"the sprite FX layer keeps no callout child",
+		"vfx children %d" % (vfx.get_child_count() if vfx != null else -1))
+	if comic == null or layer == null:
+		await _free(arena)
+		return
+
+	# --- the pool is built once, stays hidden and never takes the mouse -----------------
+	var labels: Array = comic.labels()
+	var mouse_ok := true
+	var font_ok := true
+	var outline_ok := true
+	var hidden_ok := true
+	for entry in labels:
+		var label := entry as Label
+		if label == null:
+			continue
+		if label.mouse_filter != Control.MOUSE_FILTER_IGNORE:
+			mouse_ok = false
+		if label.get_theme_font("font") != ComicCallout2D.FONT:
+			font_ok = false
+		if label.get_theme_constant("outline_size") < 4:
+			outline_ok = false
+		if label.visible:
+			hidden_ok = false
+	_check(comic.pool_size() == 6 and labels.size() == 6,
+		"the pool is six labels, built once", "%d labels" % labels.size())
+	_check(mouse_ok, "no pooled label can take the mouse")
+	_check(font_ok, "every pooled label uses the existing bold HUD font")
+	_check(outline_ok, "every pooled label carries a thick dark outline")
+	_check(hidden_ok, "every pooled label starts hidden until a trigger")
+
+	# --- the exact 12-string table -------------------------------------------------------
+	var expected := {
+		&"light": ["PLIM!", "BAP!"],
+		&"whiff": ["BOOPS!", "ZOOPS!", "SWOOPS!"],
+		&"medium": ["BLAPS!", "BIM!"],
+		&"heavy": ["BRAGADAPS!", "PLAX!", "BUDUM!"],
+		&"beat": ["BRRRRAP!", "PYAW! PYAW!"],
+	}
+	var table_ok := ComicCallout2D.PHRASES.size() == expected.size()
+	var seen := {}
+	var total := 0
+	for category in expected:
+		var want: Array = expected[category]
+		var got: Array = ComicCallout2D.PHRASES.get(category, [])
+		if got.size() != want.size():
+			table_ok = false
+			continue
+		for i in want.size():
+			if String(got[i]) != String(want[i]):
+				table_ok = false
+			seen[String(got[i])] = true
+			total += 1
+	_check(table_ok, "the table holds exactly the approved strings in their categories",
+		"%d categories, %d strings" % [expected.size(), total])
+	_check(total == 12 and seen.size() == 12,
+		"all twelve strings are distinct", "%d unique" % seen.size())
+
+	# --- glyph coverage, measured on the font itself -------------------------------------
+	var missing := comic.missing_glyphs()
+	var glyph_ok := true
+	for category in expected:
+		for phrase in expected[category]:
+			var text := String(phrase)
+			for i in text.length():
+				if not ComicCallout2D.FONT.has_char(text.unicode_at(i)):
+					glyph_ok = false
+	_check(glyph_ok and missing.is_empty(),
+		"every character in all twelve strings has a glyph in the HUD font")
+
+	# --- one trigger per category, on the real fighters ----------------------------------
+	var p1: BaseFighter = arena.p1
+	var p2: BaseFighter = arena.p2
+	var arena3d = arena.get("arena3d")
+	var world: Vector3 = arena3d.world_point_of(Vector2(500.0, 470.0))
+	_check(comic.register_hit(p1, &"jab", false, false, world)
+			and comic.last_category() == &"light",
+		"a jab lands as a light callout", "%s" % comic.last_phrase())
+	comic.debug_advance(0.15)
+	_check(comic.register_hit(p2, &"strong", false, false, world)
+			and comic.last_category() == &"medium",
+		"Lickshot's 10-damage box lands as a medium callout", "%s" % comic.last_phrase())
+	comic.debug_advance(0.15)
+	_check(comic.register_hit(p1, &"strong", false, false, world)
+			and comic.last_category() == &"heavy",
+		"Feedback's 15-damage box lands as a heavy callout", "%s" % comic.last_phrase())
+	comic.debug_advance(0.15)
+	_check(comic.register_hit(p1, &"jab", true, false, world)
+			and comic.last_category() == &"heavy",
+		"a counter-hit upgrades a light strike to the heavy/counter callout",
+		"%s" % comic.last_phrase())
+	comic.debug_advance(0.15)
+	_check(comic.register_hit(p1, &"strong", false, true, world)
+			and comic.last_category() == &"beat",
+		"an on-beat heavy strike takes the 132 BPM callout", "%s" % comic.last_phrase())
+	comic.debug_advance(0.15)
+	_check(comic.register_hype(p2, world) and comic.last_category() == &"beat",
+		"a hype surge takes the 132 BPM callout", "%s" % comic.last_phrase())
+	comic.debug_advance(0.15)
+	comic.note_attack_active(p1, &"jab")
+	comic.note_attack_ended(p1, world)
+	_check(comic.last_category() == &"whiff",
+		"an ACTIVE window that ends without contact is a whiff", "%s" % comic.last_phrase())
+
+	# --- deterministic round-robin, no immediate repeat ----------------------------------
+	comic.debug_advance(1.2)
+	var repeats := 0
+	var previous := ""
+	var phrases := {}
+	for i in 3:
+		var fighter: BaseFighter = p1 if i % 2 == 0 else p2
+		if comic.register_hit(fighter, &"jab", false, false, world):
+			if comic.last_phrase() == previous:
+				repeats += 1
+			previous = comic.last_phrase()
+			phrases[previous] = true
+		comic.debug_advance(0.75)
+	_check(repeats == 0 and phrases.size() == 2,
+		"the light category round-robins both phrases with no back-to-back repeat",
+		"%d phrases, %d repeats" % [phrases.size(), repeats])
+
+	# --- per-fighter rate cap ------------------------------------------------------------
+	comic.debug_advance(1.2)
+	var first := comic.register_hit(p1, &"jab", false, false, world)
+	var second := comic.register_hit(p1, &"jab", false, false, world)
+	_check(first and not second, "one fighter cannot shout twice inside 120 ms")
+
+	# --- per-category simultaneity cap ---------------------------------------------------
+	comic.debug_advance(1.2)
+	var heavy_a := comic.register_hit(p1, &"strong", false, false, world)
+	comic.debug_advance(0.15)
+	var heavy_b := comic.register_hit(p2, &"upper_box", false, false, world)
+	comic.debug_advance(0.15)
+	var heavy_c := comic.register_hit(p1, &"strong", false, false, world)
+	_check(heavy_a and heavy_b and not heavy_c,
+		"at most two callouts of one category play at once")
+
+	# --- pool exhaustion skips, never allocates ------------------------------------------
+	comic.debug_advance(1.2)
+	comic.register_hit(p1, &"jab", false, false, world)
+	comic.register_hit(p2, &"jab", false, false, world)
+	comic.debug_advance(0.15)
+	comic.register_hit(p1, &"strong", false, false, world)
+	comic.register_hit(p2, &"upper_box", false, false, world)
+	comic.debug_advance(0.15)
+	comic.register_hit(p1, &"strong", false, true, world)
+	comic.register_hype(p2, world)
+	comic.debug_advance(0.15)
+	var full_before := comic.active_count()
+	var nodes_before := arena.find_children("*", "Node", true, false).size()
+	var overflow := comic.register_hit(p1, &"jab", false, false, world)
+	var nodes_after := arena.find_children("*", "Node", true, false).size()
+	_check(full_before == 6 and not overflow and nodes_after == nodes_before
+			and comic.label_count() == 6,
+		"an exhausted pool skips the callout and creates no node",
+		"%d active, %d → %d nodes" % [full_before, nodes_before, nodes_after])
+
+	# --- the tight pool keeps its last slot for a beat / heavy moment ---------------------
+	comic.debug_advance(1.2)
+	comic.register_hit(p1, &"jab", false, false, world)
+	comic.register_hit(p2, &"jab", false, false, world)
+	comic.debug_advance(0.15)
+	comic.register_hit(p1, &"strong", false, false, world)
+	comic.register_hit(p2, &"strong", false, false, world)
+	comic.debug_advance(0.15)
+	comic.register_hit(p1, &"strong", false, true, world)
+	comic.debug_advance(0.15)
+	var light_skipped := not comic.register_hit(p2, &"jab", false, false, world)
+	var beat_played := comic.register_hit(p1, &"strong", false, true, world)
+	_check(light_skipped and beat_played,
+		"with one label left, a light hit yields to an on-beat callout")
+
+	# --- lifetimes end, labels hide and stay reusable ------------------------------------
+	comic.debug_advance(1.2)
+	var all_hidden := true
+	for entry in comic.labels():
+		if (entry as Label).visible:
+			all_hidden = false
+	_check(comic.active_count() == 0 and all_hidden,
+		"every callout ends its life hidden and reusable")
+	_check(comic.register_hit(p1, &"jab", false, false, world),
+		"a recycled label takes the next callout")
+
+	# --- the two options on the existing debug path ---------------------------------------
+	comic.set_enabled(false)
+	_check(not comic.register_hit(p1, &"jab", false, false, world),
+		"callout_enabled = false silences the layer")
+	comic.set_enabled(true)
+	comic.debug_advance(1.2)
+	var reenabled := comic.register_hit(p1, &"jab", false, false, world)
+	_check(reenabled, "callout_enabled = true restores it")
+
+	comic.debug_advance(1.2)
+	comic.reduced_motion = true
+	comic.register_hit(p1, &"jab", false, false, world)
+	var still := true
+	for entry in comic.labels():
+		var label := entry as Label
+		if label.visible and (label.scale != Vector2.ONE or not is_zero_approx(label.rotation)):
+			still = false
+	_check(still, "reduced_motion removes the pop and the tilt")
+	comic.reduced_motion = false
+
+	comic.debug_advance(1.2)
+	comic.callout_scale = 0.5
+	comic.register_hit(p2, &"jab", false, false, world)
+	var scaled_px := 0
+	for entry in comic.labels():
+		var label := entry as Label
+		if label.visible:
+			scaled_px = label.get_theme_font_size("font_size")
+	_check(scaled_px > 0 and scaled_px < ComicCallout2D.BASE_FONT_PX,
+		"callout_scale shrinks the pooled label", "%d px" % scaled_px)
+	comic.callout_scale = 1.0
+
+	# --- the real arena wiring: a landed hit and a whiff through the live signals --------
+	# The checks above call the layer directly; these two press a real jab on the real
+	# InputMap and let `strike_resolved` / `state_changed` do the classifying.
+	comic.debug_advance(1.2)
+	p1.global_position = Vector2(480.0, 600.0)
+	p2.global_position = Vector2(556.0, 600.0)
+	p1.face_toward(p2.global_position.x)
+	for i in 6:
+		await physics_frame
+	var light_before := comic.fire_count(&"light")
+	Input.action_press("p1_light")
+	for i in 14:
+		await physics_frame
+	Input.action_release("p1_light")
+	_check(comic.fire_count(&"light") > light_before,
+		"a real jab landing through strike_resolved fires the light callout",
+		"%d -> %d" % [light_before, comic.fire_count(&"light")])
+
+	comic.debug_advance(1.2)
+	for i in 40:
+		if p1.state == BaseFighter.State.IDLE:
+			break
+		await physics_frame
+	p1.global_position = Vector2(320.0, 600.0)
+	p2.global_position = Vector2(900.0, 600.0)
+	p1.face_toward(p2.global_position.x)
+	for i in 6:
+		await physics_frame
+	var whiff_before := comic.fire_count(&"whiff")
+	Input.action_press("p1_light")
+	for i in 18:
+		await physics_frame
+	Input.action_release("p1_light")
+	_check(comic.fire_count(&"whiff") > whiff_before,
+		"a real jab that ends its ACTIVE window untouched fires the whiff callout",
+		"%d -> %d" % [whiff_before, comic.fire_count(&"whiff")])
 	await _free(arena)
 
 
@@ -900,6 +1168,21 @@ func _check_camera_stage_clearance() -> void:
 			var obstacles: Array = arena3d.camera_obstacles()
 			var sky_centre: Vector3 = arena3d.backdrop_centre()
 			var sky_half: Vector2 = arena3d.backdrop_half_extent()
+			# PART D: every phrase, at the impact points and at far off-screen points, through
+			# the live lens at this stacked extreme. Counted here and asserted once per pairing.
+			var callout: ComicCallout2D = arena.get("comic_callouts")
+			var callout_escapes := 0
+			var callout_cases := 0
+			var callout_safe: Rect2 = callout.safe_rect() if callout != null else Rect2()
+			var callout_points: Array = []
+			if callout != null:
+				for fighter in [arena.p1, arena.p2]:
+					callout_points.append(arena3d.world_point_of(
+						fighter.global_position + Vector2(0.0, -110.0)))
+				callout_points.append(arena3d.world_point_of(Vector2(-520.0, 980.0)))
+				callout_points.append(arena3d.world_point_of(Vector2(1820.0, -320.0)))
+				callout_points.append(Vector3(0.0, 0.02, 0.0))
+				callout_points.append(Vector3(0.0, 3.4, 0.0))
 			var stacked_angle := 0.0
 			var stacked_punch := 0.0
 			for yaw in [-4.0, 4.0]:
@@ -948,10 +1231,25 @@ func _check_camera_stage_clearance() -> void:
 						"%s: camera-to-fighter rays clear the speaker tower" % label,
 						blocked if blocked != "" else "6 rays, tower z %.2f..%.2f" % [
 							tower.position.z, tower.end.z])
+					# (5) PART D: the comic callout clamp holds at THIS stacked extreme. Every
+					# phrase, at both impact points and at three points outside the stage, must
+					# land inside the safe play rectangle.
+					if callout != null:
+						for category in ComicCallout2D.PHRASES:
+							for phrase in ComicCallout2D.PHRASES[category]:
+								for point in callout_points:
+									callout_cases += 1
+									if not callout_safe.encloses(callout.rect_for_phrase(
+											String(phrase), point)):
+										callout_escapes += 1
 			# The stack is real: lean + accent yaw must actually reach the lens ceiling, and the
 		# punch must still be pinned there, or the three checks above prove nothing.
 			_check(absf(stacked_angle) > 5.0 and stacked_punch > 1.55,
 				"%s vs %s: the max stack reaches the lens (%.2f°, punch %.2f)" % [a, b, stacked_angle, stacked_punch])
+			_check(callout != null and callout_escapes == 0,
+				"%s vs %s: every comic callout box stays inside the safe play rectangle at the stacked extremes"
+					% [a, b],
+				"%d of %d boxes escaped" % [callout_escapes, callout_cases])
 			# (5) The delivery's other half: the HUD is a CanvasLayer composited above the whole 3D
 			# viewport, so no prop depth can ever paint over a health bar. Asserted, not assumed.
 			var hud := arena.get_node_or_null("HUD")

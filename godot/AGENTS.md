@@ -6475,3 +6475,135 @@ rewritten and no blob was removed.
   is "nothing drawn changed", evidenced by the reference probe and the pack boot, not by pixels.
   The F6 look toggle and F7 quality cycle documented above are still settings-and-materials
   verified only; `scripts/ai/AIProfile.gd` knobs are unchanged in this pass.
+
+## 2026-11-26 — PART D: pre-pooled comic callouts on the VFX layer
+
+**What shipped.** `godot/scripts/stages/ComicCallout2D.gd` (new, `class_name ComicCallout2D`)
+puts twelve comic-book SFX strings on the existing `VFX` CanvasLayer, beside `ArcadeVFX2D`'s
+hit sparks and `NoteTrail`s. They are **SFX text, not Patois dictionary entries**: they do not
+touch `TestArena.CALLOUTS`, `CALLOUT_GLOSSES`, `PATWA_COLLECTION`, the HUD subtitle pill or
+the 31-entry collection. `TestArena` creates the layer in `_setup_arcade_vfx()` (in `_ready`),
+wires four read-only event hooks and adds F8; nothing in combat, frame data, hitstop, input or
+Crowd Hype reads back out of it.
+
+**The twelve strings, exactly (no others).** The table lives in `ComicCallout2D.PHRASES`:
+
+| Category | Colour | Strings |
+| --- | --- | --- |
+| `light` | white | `PLIM!`, `BAP!` |
+| `whiff` | green | `BOOPS!`, `ZOOPS!`, `SWOOPS!` |
+| `medium` | gold | `BLAPS!`, `BIM!` |
+| `heavy` / counter | red | `BRAGADAPS!`, `PLAX!`, `BUDUM!` |
+| `beat` (132 BPM on-beat heavy / hype surge) | bright gold | `BRRRRAP!`, `PYAW! PYAW!` |
+
+**Strength classification is read from shipped data, never invented.** A contact is chosen in
+this order: `counter` flag → `heavy`; `on_beat` and the move id is in
+`BaseFighter.HEAVY_ATTACK_IDS` (the same list the bass shockwave uses) → `beat`; otherwise the
+move's own `attacks[].damage` decides — `<= 8` light (the jabs: 7–8), `<= 14` medium
+(L!ckshot's 10-damage box, his 14 tump, L!kkle Moore's 11–12), `15+` heavy (Feedback's 15 box
+and every 18-damage upper box). `[TODO]` the thresholds are the shipped numbers, not a new
+balance decision; if a move's damage is retuned, its callout tier follows it.
+
+**Hooks reused (read-only).**
+
+- `BaseFighter.strike_resolved` → contact callouts. `blocked` and `parried` contacts do not
+  shout: the guard has its own knock, and a static parry already owns a sprite and a Patois
+  line. `TestArena._on_strike_resolved` notes the contact first, so a blocked/parried strike
+  can never also be reported as a whiff.
+- `BaseFighter.attack_became_active` + `state_changed` → **whiff**: an ACTIVE window that ends
+  into `ATTACK_RECOVERY` with no contact. Leaving ACTIVE into HITSTUN/KNOCKDOWN/KO is an
+  interruption, not a whiff. A projectile move is never a whiff (its wave is the contact).
+- `BaseFighter.hype_surge_started` → the `beat` callout. A second listener is bound per fighter
+  (`_on_comic_hype_surge`) so the per-fighter cap knows whose surge it is; the existing
+  `_on_hype_surge` handler and its signature are untouched.
+- **Skipped, and why** (no gameplay was modified to create an event):
+  - **Clash / static parry**: already owns the `clash_callout` arcade sprite and the
+    `WHOLE-AWN-DEH!` parry line; the twelve-string table allocates no clash phrase, and adding
+    one would break "no others".
+  - **K.O.**: already owns the `ko_callout` arcade sprite, the HUD K.O. banner and the
+    knockdown `TEK WEH HIM MIC!` line.
+  - **Slip / dodge**: this build emits no slip or dodge event for a fighter, so that half of
+    the whiff category is unused. `BOOPS!`/`ZOOPS!`/`SWOOPS!` rotate on whiffs only.
+  - **Blocked contacts**: see above — a guarded hit knocks, it does not shout.
+
+**Pool and cost.** Six `Label`s, one font (`assets/fonts/Bungee-Regular.ttf`, the existing bold
+HUD face), one palette, built once in `_ready()`. Every phrase is assigned to a hidden label
+once at startup and its measured box cached, so the first on-screen use pays no shaping cost
+(iPhone Safari / Chromebook). A trigger picks a free label, assigns a preallocated string,
+places it and starts its clock; `_process` does scalar transform/modulate math only. The pool
+is exhausted → the callout is skipped, never allocated. Outlines are `max(4, 0.20 × font px)`
+in dark ink, so they scale with the viewport and stay legible on Afternoon, Sunset and Night.
+Missing glyphs are checked with `Font.has_char` for every character of every phrase; an unsafe
+phrase is logged once and skipped, never drawn as tofu (all twelve are safe in Bungee).
+
+**Caps (all exported-var-free constants, deterministic, no gameplay RNG).**
+
+- ≥ 120 ms between callouts **per fighter** (`MIN_INTERVAL_MS`).
+- ≤ 2 simultaneous callouts of one category (`MAX_PER_CATEGORY`).
+- Deterministic round-robin per category, so a phrase never repeats back-to-back.
+- With one label left, the slot is reserved for heavy/beat: a light or whiff callout yields.
+- Tilt is a fixed ±8…14° cycle by trigger order (`TILTS`), never random.
+
+**Animation and placement.** Pop 0 → 1.25 → 1.0 over 0.16 s, then a 0.45 s fade; heavy
+callouts draw at 52 px instead of 40 px and live 0.82 s instead of 0.62 s. Placement projects
+the impact world point through the live `Camera3D` (the same `Arena3D.world_point_of` →
+`unproject_position` path the hit spark uses), offsets it 46 px up and 54 px toward the
+fighter's own side of the frame, then clamps the rotated box (at the 1.25 pop peak and the
+widest 14° tilt) inside the safe play rectangle with a 0.5 px inset. The safe rectangle is
+x 24…1256, y 132…620 in 1280×720 units, scaled by viewport height: below the health/hype bars
+and the debug chip, above the subtitle pill and key strip. The clamp has one implementation
+(`_centre_for`) shared by the callout and the audits.
+
+**Options, through the existing debug path (no new menu).** Exported vars `callout_enabled`
+(default `true`), `callout_scale` (default `1.0`), `reduced_motion` (default `false`: no pop,
+no tilt, fade only). F8 toggles `callout_enabled` with a toast, and the persistent debug chip
+now carries `CALLOUTS ON/OFF · F8` next to `LOOK · F6` and `QUALITY · F7`.
+
+**Tests (counts only went up; 0 FAIL on all four).**
+
+- Roster **490 PASS**, live **493 checks** (baseline 454, +39), facing **310** (unchanged),
+  feel **444** (baseline 440, +4).
+- `live_match_check.gd` adds 30 callout checks: the layer and the untouched sprite layer; six
+  labels; mouse-ignore, font identity, outline and start-hidden on every label; the exact
+  twelve-string table and its distinctness; glyph coverage measured with `has_char`; one
+  trigger per category (light, medium, heavy, counter, on-beat, hype, whiff); round-robin with
+  no repeat; the 120 ms cap; the two-per-category cap; pool exhaustion with node count
+  unchanged; last-slot priority; lifetimes ending hidden and reusable; both toggles; scale;
+  and two end-to-end presses (a real jab landing through `strike_resolved`, and a real jab
+  ending ACTIVE untouched through `state_changed`). It also adds 9 placement checks: every
+  phrase, at both impact points and three off-stage points, through the live lens at the
+  stacked accent + lean + punch maximum for all 9 pairings.
+- `animation_feel_audit.gd` adds 4 checks: the 31-entry collection is still 31 entries and
+  byte-for-byte unchanged (canonical hash `883141ae…386ce6` over `CALLOUTS`,
+  `CALLOUT_GLOSSES` and `PATWA_COLLECTION`); 200 callout triggers in one burst create no node,
+  object or resource (objects 2805 → 2805, nodes 499, resources 353); 600 frames of live
+  callouts add no scene node or resource (159 fired). The object count is asserted on the
+  burst rather than the frame loop because the arena itself lazily allocates ~6–10 objects in
+  its first 600 idle frames; the burst isolates the callout layer exactly.
+- `BaseFighter.gd` and `FighterRoster.gd` are still byte-identical to their baked hashes, so
+  `ANIM_OFFSET`, frame data, hitboxes, 132 BPM, Crowd Hype rules and the 31 Patois entries are
+  untouched. Facing, frustum, camera clearance and combat suites pass unchanged.
+
+**Delivery.** `AGENTS.md` does **not** yet record a confirmed GitHub Actions Pages run (the
+owner still has to switch Pages → Source to GitHub Actions and run *Deploy Web build*), so per
+the brief this pass exported Web **once** with Godot 4.5-stable headless:
+`docs/index.pck` **53,826,476 B** — **+15,292 B** over the PART C export (53,811,184) and
+**−20,653,680 B (−27.7%)** from the original 74,480,156 B. `docs/index.wasm` 38,057,390 B
+(unchanged), `docs/index.js` 305,185 B, `docs/index.html` 5,449 B.
+`sha256` — pck `cad4d591e868c42d2b8c745d1e9e17e12e9c556ab7950a09cec7b41aa11a60a4`, wasm
+`1cee4c470d1fea06f7f3fbd22a563ffd0f1a55b54596b33cb9b695021ae476b0`, js
+`8a7c7d57f7da69bb71da9de302480b87e4c7ecb467ce643665b4a288683cd18f`, html
+`dc9222ed88c2f4214014359d1c912ae20ef4895cf224c08e075133f4eef6f0ef`. Each committed export
+adds ~92 MB (pck + wasm) to git history; this is the last one this pass ran.
+The exported pack boots headless (`--main-pack docs/index.pck res://scenes/TestArena.tscn
+--quit-after 400`, exit 0, **0 script errors**, crowd and DJ built), with only the pre-existing
+warnings for the three undelivered props.
+
+**Not visually verified (no GPU, no Xvfb, no browser in this environment).** Nothing here was
+seen rendered: the pop/tilt/fade curves, the 1.25 overshoot, the 52 px heavy size, the dark
+outline's thickness against each of the three lighting presets, gold/green/red/white legibility
+over the crowd and the speaker stack, the 46/54 px offset clearing the hit flash, the clamp at
+the real camera extremes, the F8 toggle and chip in a live window, and the absence of a
+shaping hitch on iPhone Safari or a Chromebook. The audits are geometric and structural
+(projection math, safe-rect containment, fonts and glyphs, pool and allocation counts), not
+pixel evidence. `qa/contact_sheet.png` was not refreshed.

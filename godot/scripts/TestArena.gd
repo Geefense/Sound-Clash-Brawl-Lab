@@ -351,6 +351,9 @@ var adaptive_quality := AdaptiveQuality.new()
 ## Retro arcade FX layer (PART 2 commit 4). Its own CanvasLayer below the HUD, built once in
 ## `_setup_3d_presentation()`; with no sheets delivered it draws nothing and costs nothing.
 var arcade_vfx: ArcadeVFX2D = null
+## Pre-pooled comic callouts (PART D). Same layer, same camera, same read-only contract:
+## twelve SFX strings over the impact point, never a gameplay value.
+var comic_callouts: ComicCallout2D = null
 var vfx_layer: CanvasLayer = null
 
 @onready var p1: BaseFighter = $P1
@@ -469,6 +472,10 @@ func _ready() -> void:
 	beat.beat.connect(_on_beat)
 	p1.hype_surge_started.connect(_on_hype_surge)
 	p2.hype_surge_started.connect(_on_hype_surge)
+	# PART D: the hype callout needs to know whose surge it is for its per-fighter rate cap.
+	# The existing handler keeps its one-argument signature; this is a second listener.
+	p1.hype_surge_started.connect(_on_comic_hype_surge.bind(p1))
+	p2.hype_surge_started.connect(_on_comic_hype_surge.bind(p2))
 	p1.hype_milestone_reached.connect(_on_hype_milestone)
 	p2.hype_milestone_reached.connect(_on_hype_milestone)
 	p1.static_parry_triggered.connect(_on_static_parry)
@@ -640,6 +647,8 @@ func _refresh_debug_chip() -> void:
 	if arena3d != null:
 		parts.append("LOOK %s · F6" % arena3d.look_label())
 	parts.append("QUALITY %s · F7" % render_quality_label())
+	if comic_callouts != null:
+		parts.append("CALLOUTS %s · F8" % ("ON" if comic_callouts.callout_enabled else "OFF"))
 	hud.set_debug_chip("   ·   ".join(parts))
 
 
@@ -717,6 +726,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_F7:
 			# PART B commit 5: Fast / Crisp / Max MSAA on the 3D buffer.
 			cycle_render_quality()
+		KEY_F8:
+			# PART D: comic callouts on/off, live, through the existing debug path.
+			if comic_callouts != null:
+				var on := comic_callouts.toggle_enabled()
+				if hud != null:
+					hud.show_toast("COMIC CALLOUTS · %s" % ("ON" if on else "OFF"))
+				_refresh_debug_chip()
 
 
 # =========================================================================
@@ -795,6 +811,10 @@ func is_muted() -> bool:
 ## Impact cue. Blocked contacts knock, plain contacts thud, and a strike judged on the beat
 ## gets the sub-bass punch so timing reads with the music muted.
 func _on_strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dictionary) -> void:
+	# PART D: any contact — clean, blocked or parried — confirms the attack's ACTIVE window,
+	# so the comic callouts never report the same strike as a whiff.
+	if comic_callouts != null and attacker != null:
+		comic_callouts.note_contact(attacker)
 	if bool(result.get("ignored", false)) or bool(result.get("parried", false)):
 		return                    # a parry has its own cue, fired from the fighter signal
 	# Event-driven sound clash engine (AGENTS.md §9 item 46): any significant single hit
@@ -822,6 +842,10 @@ func _on_strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dic
 		var fx_point := target.global_position + Vector2(0.0, -110.0) if target != null \
 			else attacker.global_position + Vector2(0.0, -100.0)
 		_play_arcade_fx(&"hit_spark", fx_point, 0.55 if on_beat else 0.4)
+		# PART D: the comic SFX text at the same impact point, classified from the shipped
+		# move table. Blocked contacts are excluded, so a guard never shouts.
+		if comic_callouts != null and arena3d != null:
+			comic_callouts.register_strike(attacker, target, result, arena3d.world_point_of(fx_point))
 		var fx_heavy := StringName(result.get("attack_id", &"")) in BaseFighter.HEAVY_ATTACK_IDS
 		if on_beat and fx_heavy:
 			_play_arcade_fx(&"bass_shockwave", fx_point, 1.0)
@@ -963,6 +987,15 @@ func _on_hype_surge(seconds: float) -> void:
 	_announce_callout(&"hype")
 
 
+## PART D: the 132 BPM hype callout. Bound per fighter so the layer's own rate cap knows who
+## surged; the existing `_on_hype_surge` handler above is untouched and still owns the yard.
+func _on_comic_hype_surge(_seconds: float, fighter: BaseFighter) -> void:
+	if comic_callouts == null or arena3d == null or fighter == null:
+		return
+	comic_callouts.register_hype(fighter,
+		arena3d.world_point_of(fighter.global_position + Vector2(0.0, -150.0)))
+
+
 ## Advance one trigger's callout pool and show the next line. Returns false when subtitles
 ## are off or the HUD pill is still cooling down, so a burst can never stack pills.
 func _announce_callout(kind: StringName) -> bool:
@@ -1043,6 +1076,9 @@ func _on_throw_connected(attacker: BaseFighter, defender: BaseFighter, kind: Str
 ## Once per active window: per-move 3D flourish. These are presentation only; the hitbox
 ## and frame data were already fixed in FighterRoster / BaseFighter.
 func _on_attack_active(attacker: BaseFighter, attack_id: StringName) -> void:
+	# PART D: remember the ACTIVE window so its end can be classified as a whiff.
+	if comic_callouts != null and attacker != null:
+		comic_callouts.note_attack_active(attacker, attack_id)
 	if attacker == null or arena3d == null:
 		return
 	var front := attacker.global_position + Vector2(float(attacker.facing) * 78.0, -110.0)
@@ -1291,6 +1327,13 @@ func _set_shadow_light(stretch: float) -> void:
 ## Fired on every FSM transition for both fighters. ATTACK_ACTIVE is the tick the hitbox is
 ## armed, so the smear appears exactly with the contact window instead of on the input.
 func _on_fighter_state_changed(old_state: int, new_state: int, fighter: BaseFighter) -> void:
+	# PART D: an ACTIVE window that ends into RECOVERY without contact was a whiff. An
+	# interruption (HITSTUN, KNOCKDOWN, KO) is not a whiff and falls through untouched.
+	if comic_callouts != null and fighter != null and arena3d != null \
+			and old_state == BaseFighter.State.ATTACK_ACTIVE \
+			and new_state == BaseFighter.State.ATTACK_RECOVERY:
+		var whiff_at := fighter.global_position + Vector2(float(fighter.facing) * 62.0, -150.0)
+		comic_callouts.note_attack_ended(fighter, arena3d.world_point_of(whiff_at))
 	if fighter != null and new_state == BaseFighter.State.KNOCKDOWN \
 			and old_state != BaseFighter.State.KNOCKDOWN:
 		# TEK WEH HIM MIC! for a body on the sand (AGENTS.md §8, item 47).
@@ -1401,6 +1444,13 @@ func _setup_arcade_vfx() -> void:
 	arcade_vfx.name = "ArcadeVFX2D"
 	arcade_vfx.camera = arena3d.camera if arena3d != null else null
 	vfx_layer.add_child(arcade_vfx)
+	# PART D: the comic callouts live on the same CanvasLayer, with the same camera. Built
+	# here, in `_ready`, so no label is ever added while the match runs.
+	comic_callouts = ComicCallout2D.new()
+	comic_callouts.name = "ComicCallouts"
+	comic_callouts.camera = arcade_vfx.camera
+	vfx_layer.add_child(comic_callouts)
+	_refresh_debug_chip()
 
 
 ## Play an arcade effect over a 2D arena point (the space `BaseFighter` uses). No-op when the

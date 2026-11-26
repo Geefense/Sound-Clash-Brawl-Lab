@@ -40,6 +40,14 @@ const COMBAT_FILES := {
 	"res://scripts/fighters/FighterRoster.gd":
 		"25b9d82111e6ebacb4cfa02561ce85fc0b2953f5f16e76e43e954dc0c2ac6adb",
 }
+## The owner's 31-entry Patois collection (`TestArena.PATWA_COLLECTION`) plus the per-trigger
+## callout pools and their English glosses. This is the dictionary PART D must not touch:
+## the comic SFX text lives in its own script and is not allowed to edit, reorder or extend
+## any of it. The hash is of the canonical text built in `_audit_patois()`; it is baked from
+## the committed file, so a spelling change, a reorder or an added entry fails here.
+const PATOIS_ENTRIES := 31
+const PATOIS_CALLOUTS := 30
+const PATOIS_SHA := "883141ae0e1da970cb71663993e5d43d51284d713d378b864eb00207f5386ce6"
 const PIN_TOLERANCE := 0.01
 const FACING_TOLERANCE_DEG := 5.0
 ## The shipped combat frame data, frozen: `[startup, active, recovery, damage, hitbox y]`.
@@ -98,6 +106,7 @@ func _initialize() -> void:
 func _run() -> void:
 	print("\n=== ANIMATION FEEL AUDIT (Stefan Iverson overhaul) ===")
 	_audit_combat_files()
+	_audit_patois()
 	_audit_no_primitive_meshes()
 	await _audit_static_curves()
 	for key in FIGHTERS:
@@ -126,6 +135,46 @@ func _audit_combat_files() -> void:
 		var sha := _sha256(path)
 		_check(sha == String(COMBAT_FILES[path]), "%s is byte-identical" % path,
 			"sha256 %s" % sha)
+
+
+## PART D guard: the Patois dictionary is data the comic callouts may read but never write.
+func _audit_patois() -> void:
+	print("\n-- PATOIS DICTIONARY UNTOUCHED")
+	var script := load("res://scripts/TestArena.gd") as GDScript
+	if script == null:
+		_check(false, "TestArena.gd could not be read for the Patois hash")
+		return
+	var constants := script.get_script_constant_map()
+	var callouts: Dictionary = constants.get("CALLOUTS", {})
+	var glosses: Dictionary = constants.get("CALLOUT_GLOSSES", {})
+	var collection: Array = constants.get("PATWA_COLLECTION", [])
+	var entries: Array[String] = []
+	for category in callouts:
+		for line in callouts[category]:
+			entries.append("%s=%s" % [String(category), String(line)])
+	entries.sort()
+	var gloss_lines: Array[String] = []
+	for phrase in glosses:
+		gloss_lines.append("%s=%s" % [String(phrase), String(glosses[phrase])])
+	gloss_lines.sort()
+	var collection_lines: Array[String] = []
+	for line in collection:
+		collection_lines.append(String(line))
+	var blob := "|".join(entries) + "||" + "|".join(gloss_lines) + "||" \
+		+ "|".join(collection_lines)
+	var sha := _sha256_text(blob)
+	_check(collection.size() == PATOIS_ENTRIES and entries.size() == PATOIS_CALLOUTS,
+		"the Patois dictionary still holds its entries verbatim",
+		"%d collection, %d callouts" % [collection.size(), entries.size()])
+	_check(sha == PATOIS_SHA,
+		"the 31-entry Patois dictionary is byte-for-byte unchanged", "sha256 %s" % sha)
+
+
+func _sha256_text(text: String) -> String:
+	var ctx := HashingContext.new()
+	ctx.start(HashingContext.HASH_SHA256)
+	ctx.update(text.to_utf8_buffer())
+	return ctx.finish().hex_encode()
 
 
 func _sha256(path: String) -> String:
@@ -1579,6 +1628,69 @@ func _audit_allocation() -> void:
 	_check(res_after <= res_before,
 		"the live arena grows no resources over 600 simulated frames",
 		"%d -> %d" % [res_before, res_after])
+
+	# PART D: 200 comic-callout triggers (hits and whiffs, both fighters, all categories).
+	# The pool is fixed, so neither the fire path nor the frame tick may create anything.
+	var comic: ComicCallout2D = arena.get("comic_callouts")
+	if comic == null:
+		_check(false, "the comic callout layer is missing from the live arena")
+	else:
+		var p1: BaseFighter = arena.get("p1")
+		var p2: BaseFighter = arena.get("p2")
+		# (a) One burst of 200 triggers, no frames in between: this isolates the fire path
+		# from the arena's own lazy allocation (the first 600 idle frames add ~6 objects).
+		var objects_before := int(Performance.get_monitor(Performance.OBJECT_COUNT))
+		var nodes_pool_before := int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+		var res_pool_before := int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT))
+		var fired := 0
+		var whiffs := 0
+		for i in 200:
+			var who: BaseFighter = p1 if i % 2 == 0 else p2
+			var point := Vector3(float(i % 7) * 0.18 - 0.6, 1.0 + float(i % 5) * 0.24, 0.0)
+			var category := i % 5
+			if category == 1:
+				comic.note_attack_active(who, &"jab")
+				comic.note_attack_ended(who, point)
+				if comic.last_category() == &"whiff":
+					whiffs += 1
+			elif comic.register_hit(who, &"jab", category == 3, category == 4, point):
+				fired += 1
+			comic.debug_advance(0.2)
+		var objects_after := int(Performance.get_monitor(Performance.OBJECT_COUNT))
+		var nodes_pool_after := int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+		var res_pool_after := int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT))
+		_check(objects_after == objects_before and nodes_pool_after == nodes_pool_before
+				and res_pool_after == res_pool_before and fired + whiffs >= 120
+				and comic.label_count() == ComicCallout2D.POOL_SIZE,
+			"200 callout triggers in one burst create no node, object or resource",
+			"%d fired + %d whiffs, objects %d -> %d, nodes %d -> %d, resources %d -> %d, %d labels" % [
+				fired, whiffs, objects_before, objects_after, nodes_pool_before,
+				nodes_pool_after, res_pool_before, res_pool_after, comic.label_count()])
+		# (b) The same triggers spread across 600 live frames, so the per-frame tick is
+		# exercised too. Scene nodes and resources are exact; the object count is left to
+		# (a), where it is not mixed with the arena's own one-off allocation.
+		var nodes_live_before := int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+		var res_live_before := int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT))
+		var live_fires := 0
+		for i in 600:
+			if i % 3 == 0:
+				var live_who: BaseFighter = p1 if (i / 3) % 2 == 0 else p2
+				var live_point := Vector3(float((i / 3) % 7) * 0.18 - 0.6,
+					1.0 + float(i % 5) * 0.24, 0.0)
+				if (i / 3) % 5 != 1:
+					if comic.register_hit(live_who, &"jab", (i / 3) % 5 == 3,
+							(i / 3) % 5 == 4, live_point):
+						live_fires += 1
+				comic.debug_advance(0.2)
+			await physics_frame
+		var nodes_live_after := int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+		var res_live_after := int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT))
+		_check(nodes_live_after == nodes_live_before and res_live_after == res_live_before
+				and live_fires >= 100 and comic.label_count() == ComicCallout2D.POOL_SIZE,
+			"600 frames of live callouts add no scene node or resource",
+			"%d fired, nodes %d -> %d, resources %d -> %d, %d labels" % [
+				live_fires, nodes_live_before, nodes_live_after, res_live_before,
+				res_live_after, comic.label_count()])
 	# The built yard is a real crowd, a real booth and real fighters: no primitive meshes.
 	var primitives := 0
 	for holder in ["CrowdController3D", "DJBooth3D"]:

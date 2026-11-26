@@ -6229,3 +6229,171 @@ Contact sheet: **not refreshed** in this pass (no still was captured; `qa/contac
 and its pre-existing untracked `.import` file are untouched).
 
 Suites: roster **490 PASS / 0 FAIL**, live **454 / 0**, facing **310 / 0**, feel **440 / 0**.
+
+## 2026-11-26 — PART C · Commit 8: the pack, measured, then slimmed
+
+Branch `feature/3d-cel-shaded`, starting commit `6f21ee1` (HEAD == origin). Nothing here
+touches gameplay: `BaseFighter.gd`, `FighterModel3D.gd`, the facing pin, the 5° contract,
+frame data, hitboxes, 132 BPM, Crowd Hype and every test assertion are unchanged. The only
+code-visible files are `godot/export_presets.cfg`, three `.import` files and the export
+output.
+
+### How it was measured
+
+`docs/index.pck` was parsed directly (Godot 4.5 PCK v3: 24-byte header, `u64` at 0x20 is the
+directory offset, then per entry `u32` path length, path, `u64` offset, `u64` size, 16-byte MD5,
+`u32` flags). Entry sizes are summed per file, then mapped to source assets through each
+`*.import` file's `dest_files`. The same parser is re-run after the changes, so every
+before/after number below is the same measurement over the same 503/461 entries.
+
+### Before — the 40 largest contributors (74,480,156 B pack / 74,426,746 B payload / 503 files)
+
+| # | bytes | share | entry | what it is | action |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 4,905,486 | 6.59% | `feedback_fitted_jacket_albedo.jpg` ctex | 4096² texture of an archived upload | **excluded** (no material, no code reference) |
+| 2 | 4,235,099 | 5.69% | `beat_02.mp3` | music bed | kept (runtime scans `production/beats/`) |
+| 3 | 2,796,268 | 3.76% | `jamaican_speaker_0.png` **s3tc** ctex | speaker atlas, desktop Chrome variant | kept (owner art + required variant) |
+| 4 | 2,796,268 | 3.76% | `jamaican_speaker_0.png` **etc2** ctex | speaker atlas, ETC2/ASTC variant | kept (documented fallback, untested → not dropped) |
+| 5 | 1,802,876 | 2.42% | `feedback_v2_albedo.png` ctex | Feedback's graded albedo (1024²) | kept |
+| 6 | 1,802,876 | 2.42% | `feedback_rigged_0.png` ctex | upload's own texture, never sampled | **re-imported at 64 px** |
+| 7 | 1,776,694 | 2.39% | `lickshot_placeholder_static.fbx` scn | archived static placeholder | **excluded** |
+| 8 | 1,624,426 | 2.18% | `lickshot_rigged_0.png` ctex | upload's own texture | **re-imported at 64 px** |
+| 9 | 1,624,426 | 2.18% | `lickshot_albedo.png` ctex | L!ckshot's graded albedo | kept |
+| 10 | 1,445,267 | 1.94% | `beat_03.mp3` | music bed | kept |
+| 11 | 1,422,282 | 1.91% | `likkle_moore_rigged_0.png` ctex | upload's own texture | **re-imported at 64 px** |
+| 12 | 1,422,282 | 1.91% | `likkle_moore_albedo.png` ctex | Young Selecta's graded albedo | kept |
+| 13 | 1,326,790 | 1.78% | `feedback_fighting_idle_rigged.fbx` scn | archived upload | **excluded** |
+| 14 | 1,250,131 | 1.68% | `feedback_v2.fbx` scn | superseded upload | **excluded** |
+| 15 | 1,205,618 | 1.62% | `sound_clash_sand_stage_1280x720.png` ctex | stage backdrop, 1280×720 = one screen | kept |
+| 16 | 1,149,434 | 1.54% | `dj/Crowd Male Rallying_1.png` ctex | 1024² normal map of a 1.4 m crowd body | kept (referenced as `normal_texture`) |
+| 17 | 1,149,434 | 1.54% | `crowd/Crowd Male Rallying_1.png` ctex | same, duplicate copy | kept |
+| 18 | 1,149,434 | 1.54% | `crowd/Crowd Male Cheering_1.png` ctex | same | kept |
+| 19 | 1,149,434 | 1.54% | `dj/Crowd Male Cheering_1.png` ctex | same, duplicate copy | kept |
+| 20 | 1,149,434 | 1.54% | `crowd/Crowd Male Angry Gesture_1.png` ctex | same | kept |
+| 21 | 1,127,288 | 1.51% | `likkle_moore.fbx` scn | unrigged source upload | **excluded** |
+| 22 | 1,125,391 | 1.51% | `lickshot.fbx` scn | unrigged source upload | **excluded** |
+| 23 | 1,054,762 | 1.42% | `feedback_rigged.fbx` scn | the Feedback body actually used | kept |
+| 24 | 1,036,472 | 1.39% | `likkle_moore_rigged.fbx` scn | the Young Selecta body actually used | kept |
+| 25 | 996,750 | 1.34% | `dj/Crowd Male Rallying_0.png` ctex | the crowd atlas (albedo) | kept |
+| 26 | 996,750 | 1.34% | `crowd/Crowd Male Rallying_0.png` ctex | duplicate copy | kept |
+| 27 | 996,750 | 1.34% | `crowd/Crowd Male Cheering_0.png` ctex | duplicate copy | kept |
+| 28 | 996,750 | 1.34% | `dj/Crowd Male Cheering_0.png` ctex | duplicate copy | kept |
+| 29 | 996,750 | 1.34% | `crowd/Crowd Male Angry Gesture_0.png` ctex | the crowd atlas | kept |
+| 30 | 989,987 | 1.33% | `lickshot_rigged.fbx` scn | the L!ckshot body actually used | kept |
+| 31 | 726,958 | 0.98% | `dj/Crowd Male Rallying_2.png` ctex | **no material references page 2** | **excluded** |
+| 32 | 726,958 | 0.98% | `crowd/Crowd Male Rallying_2.png` ctex | unreferenced | **excluded** |
+| 33 | 726,958 | 0.98% | `crowd/Crowd Male Cheering_2.png` ctex | unreferenced | **excluded** |
+| 34 | 726,958 | 0.98% | `dj/Crowd Male Cheering_2.png` ctex | unreferenced | **excluded** |
+| 35 | 726,958 | 0.98% | `crowd/Crowd Male Angry Gesture_2.png` ctex | unreferenced | **excluded** |
+| 36 | 598,222 | 0.80% | `Crowd female Hip Hop Dancing.fbx` scn | crowd rig actually used | kept |
+| 37 | 511,446 | 0.69% | `Crowd female Snake Hip Hop Dance_4.png` ctex | hair albedo | kept |
+| 38 | 511,446 | 0.69% | `Crowd female Hip Hop Dancing_4.png` ctex | hair albedo, duplicate copy | kept |
+| 39 | 492,902 | 0.66% | `Crowd female Dancing Twerk.fbx` scn | crowd rig actually used | kept |
+| 40 | 458,426 | 0.62% | `Crowd female Snake Hip Hop Dance_1.png` ctex | body normal map | kept |
+
+Totals before: **74,480,156 B** pack (71.03 MiB), 74,426,746 B payload, 74,480,156 → gzip −9
+**70,251,709 B**; `docs/index.wasm` 38,057,390 B → gzip −9 **9,256,790 B** (first-load
+transfer before: 79.5 MB gzipped).
+
+Both VRAM variants do ship — but only for the one texture imported as VRAM-compressed
+(`jamaican_speaker_0.png`: `.s3tc.ctex` + `.etc2.ctex`). Every other texture is Lossless, so
+there is no second variant to drop anywhere else.
+
+### What changed (root causes, not tolerances)
+
+1. **Archived uploads were never excluded.** `export_filter="all_resources"` ships every file
+   in the project, so six uploads that no code path can select were in the build:
+   `feedback_fitted_jacket_albedo.jpg` (4096², 1.8 MB source / 4.9 MB ctex),
+   `feedback_v2.fbx`, `feedback_fighting_idle_rigged.fbx`, `lickshot.fbx`,
+   `lickshot_placeholder_static.fbx` and `likkle_moore.fbx` (the unrigged originals;
+   `FighterModel3D.MODEL_SOURCES` names only the three `*_rigged.fbx`). They are now in
+   `exclude_filter` and stay in git. → −11,512,780 B.
+2. **Two dead texture pages per crowd body.** Probing every shipped crowd/DJ material
+   (`albedo_texture`, `normal_texture`, `roughness_texture`, `metallic_texture`,
+   `emission_texture`, `ao_texture`) shows each model uses only page `_0` (atlas) and, for the
+   males, `_1` (normal). Pages `_2`/`_3` are referenced by nothing — they shipped only because
+   the preset exports all resources. 13 files excluded. `_0` is deliberately **not** excluded:
+   `CharacterModelSlots` builds the delivered atlas as `<model>_0.png` by path, even when the
+   imported material has no albedo (all four female bodies). → −3,867,000 B (ctex).
+3. **The uploaded body texture was drawn from a copy that is thrown away.** Each rigged FBX
+   material carries the upload's own `*_rigged_0.png`; `FighterModel3D._apply_materials()`
+   replaces every surface with the cel `ShaderMaterial` built from the graded `*_albedo.png`,
+   so the upload texture is never sampled. It is still a hard external reference inside the
+   imported `.scn`, so it cannot be excluded (that would leave a broken ext_resource). It is
+   re-imported at 64 px instead (`process/size_limit=64`) → −4,834,000 B.
+4. `tools/*` (the nine headless harnesses, 183,504 B of `.gdc`) and `qa/*` (the contact sheet,
+   332,824 B) are development-only and now excluded. `qa/contact_sheet.png` itself stays in git.
+
+### After
+
+| | before | after | delta |
+| --- | --- | --- | --- |
+| `docs/index.pck` | 74,480,156 B (71.03 MiB) | **53,811,184 B (51.32 MiB)** | −20,668,972 B (−27.8%) |
+| files in pack | 503 | 461 | −42 |
+| `index.pck` gzip −9 (transfer) | 70,251,709 B | **49,741,273 B** | −20,510,436 B |
+| `docs/index.wasm` | 38,057,390 B | 38,057,390 B | 0 (engine binary, unchanged) |
+| `index.wasm` gzip −9 | 9,256,790 B | 9,256,790 B | 0 |
+| first-load transfer (both, gzip) | 79,508,499 B | **58,998,063 B** | −20,510,436 B |
+
+Composition after (payload 53,762,499 B): ctex 38,745,740 (72.1%) · scn 7,957,811 (14.8%) ·
+mp3 6,054,777 (11.3%) · gdc 370,487 · fonts 355,053 · sample 178,867 · everything else <75 KB.
+
+### Documented budget (pack growth, stated so it is not rediscovered later)
+
+- Today's ceiling: **55 MB** for `index.pck`; the build sits at 51.3 MiB (53.8 MB), i.e. ~1.2 MB
+  under it.
+- Reserved outside that figure: **4 undelivered props at ≈3 MB each (12 MB)** — `rasta_speaker`,
+  `dj_booth`, `wireless_mic`, `mic_stand` (`PropLoader` scans for exactly these; all four are
+  still absent and warn at runtime) — and **4 sprite sheets at ≈1 MB each (4 MB)**. A build
+  carrying all eight would land near **69.8 MB** unless each prop is slimmed at delivery
+  (the delivered `jamaican_speaker.glb` is 3.3 MB source / 5.6 MB of packed VRAM variants —
+  that is the shape of the problem).
+- Whoever adds those files should re-run this measurement, not assume the 55 MB figure holds.
+
+### Considered and deliberately not done
+
+- **WAV → Ogg Vorbis**: the only WAV is `assets/audio/dev/click_132bpm.wav` (882 KB source,
+  178,867 B packed as a compressed `.sample`). There is no Ogg encoder in this environment
+  (`ffmpeg` is not installed) and the saving would be ≈0.1 MB of 53.8 MB, so the beat-click
+  asset the harness plays was left byte-identical rather than converted by hand.
+- **Mesh compression**: Godot 4.5's scene importer exposes no mesh-compression option
+  (`meshes/force_disable_compression` is already `false`). Measured on a copy of
+  `feedback_rigged.fbx`: `meshes/light_baking=0` −0%, `meshes/create_shadow_meshes=false` −0%,
+  `meshes/ensure_tangents=false` −0%, `animation/import=false` −0%. The only lever with any
+  effect was `meshes/generate_lods=false` (−12.2%, 1,054,751 → 926,449 B), which was **not**
+  taken: dropping LODs costs the 22-body crowd draw cost on the 4 GB Chromebook, i.e. it would
+  trade a size win for a runtime regression.
+- **VRAM compression or lossy re-encode of the delivered art** (fighters, crowd, 512 sprite
+  frames, stage): the brief's rule is imperceptible-or-nothing; block/lossy artefacts on the
+  character skin and on sprite alpha edges are exactly what that rule forbids, and none of
+  those textures exceeds 1K today. Nothing was downscaled except the three never-drawn
+  `*_rigged_0.png` pages that nothing samples.
+- **Dropping the S3TC or ETC2/ASTC variant** of the speaker atlas: Godot's fallback for an
+  unsupported format is not something this project has tested on a device, so both stay
+  (5.59 MB combined — the single largest art line item).
+
+### Visual risk list (what could look different, ranked)
+
+1. **Nothing that is drawn changed.** The 19 excluded files are unreferenced; the three shrunken
+   pages are never sampled; no material, shader, mesh, sprite or audio asset was re-encoded.
+   The only player-visible change is that build size/time moved.
+2. The residual risk is a *dependency I did not find*: a code path that loads one of the 13
+   excluded `_2`/`_3` crowd pages or one of the six archived uploads by string. Mitigation:
+   the exported pack was booted headlessly straight from `docs/index.pck`
+   (`godot --headless --main-pack docs/index.pck res://scenes/TestArena.tscn`), which built the
+   arena, both DJ rigs and the whole crowd with **no missing-resource error**; the log's own
+   `[albedo]` lines list `_0.png` for every body.
+3. **Not visually verified:** nothing was rendered this pass — there is no Xvfb, GPU or browser
+   in this environment, so no still, no contact-sheet refresh and no pixel comparison exists.
+   `qa/contact_sheet.png` still describes the PART B build.
+
+### Tests and checks actually run (Godot 4.5.stable.official.876b29033, headless, Linux)
+
+- Before the changes: roster **490 PASS / 0 FAIL**, live **454 / 0**, facing **310 / 0**, feel
+  **440 / 0**. After the texture re-import: identical, **490 / 454 / 310 / 440, 0 FAIL**.
+- Web export (`--export-release "Web" ../docs/index.html`): exit 0, no export errors, no
+  missing-resource lines. First attempt included a temporary `_packtest.fbx` probe file I had
+  left in `assets/models/`; it was deleted and the export re-run, so the committed pack has
+  neither the probe nor its 1.8 MB texture.
+- Pack booted from the exported bundle as described above (exit 0).
+- **No test assertion was changed, added, weakened or skipped in this commit.**

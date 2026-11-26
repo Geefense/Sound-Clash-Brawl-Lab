@@ -836,16 +836,17 @@ func _on_strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dic
 	if target != null:
 		_add_spark(target.global_position + Vector2(0.0, -110.0),
 			&"hit_onbeat" if on_beat else &"hit")
+	var fx_point := target.global_position + Vector2(0.0, -110.0) if target != null \
+		else attacker.global_position + Vector2(0.0, -100.0)
+	# PART D: the comic SFX text at the same impact point, classified from the shipped move
+	# table. Every contact reaches the layer, including a guarded one (its own block/parry
+	# category), so the routing lives in one place instead of in this handler.
+	if comic_callouts != null and arena3d != null:
+		comic_callouts.register_strike(attacker, target, result, arena3d.world_point_of(fx_point))
 	# Arcade FX: a spark on every unblocked contact, and the bass shockwave on a heavy strike
 	# that landed on the beat — timing reads as a visual, not only as a sound.
 	if not bool(result.get("blocked", false)):
-		var fx_point := target.global_position + Vector2(0.0, -110.0) if target != null \
-			else attacker.global_position + Vector2(0.0, -100.0)
 		_play_arcade_fx(&"hit_spark", fx_point, 0.55 if on_beat else 0.4)
-		# PART D: the comic SFX text at the same impact point, classified from the shipped
-		# move table. Blocked contacts are excluded, so a guard never shouts.
-		if comic_callouts != null and arena3d != null:
-			comic_callouts.register_strike(attacker, target, result, arena3d.world_point_of(fx_point))
 		var fx_heavy := StringName(result.get("attack_id", &"")) in BaseFighter.HEAVY_ATTACK_IDS
 		if on_beat and fx_heavy:
 			_play_arcade_fx(&"bass_shockwave", fx_point, 1.0)

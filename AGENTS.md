@@ -6607,3 +6607,72 @@ the real camera extremes, the F8 toggle and chip in a live window, and the absen
 shaping hitch on iPhone Safari or a Chromebook. The audits are geometric and structural
 (projection math, safe-rect containment, fonts and glyphs, pool and allocation counts), not
 pixel evidence. `qa/contact_sheet.png` was not refreshed.
+
+## PART E (2026-11-26) — ten more comic callouts: block/parry, and the knockdown half of heavy
+
+**What shipped.** `godot/scripts/stages/ComicCallout2D.gd` now holds **22** SFX strings, exactly
+these, nothing else added:
+
+| Category | Strings (verbatim) |
+| --- | --- |
+| `light` | `PLIM!` `BAP!` `BAP-BAP!` |
+| `whiff` (whiff / slip / dodge) | `BOOPS!` `ZOOPS!` `SWOOPS!` `WIISH!` |
+| `block` (blocked / parried contact) | `CHOOPS!` `CHO!` `PLUCK!` |
+| `medium` | `BLAPS!` `BIM!` `AIEE!` |
+| `heavy` — plain half | `BRAGADAPS!` `PLAX!` `BUDUM!` |
+| `heavy` — downing half | `BLAM!` `BOGOF!` `BUGUYAGA!` `HUSH!` |
+| `beat` (132 BPM / Crowd Hype) | `BRRRRAP!` `PYAW! PYAW!` |
+
+The original twelve keep their categories unchanged; the ten new strings above are the whole
+delta. They are still SFX text, never Patois dictionary entries: no string appears in
+`TestArena.CALLOUTS` or `PATWA_COLLECTION`, and the 31-entry collection is still 31 entries.
+
+**Block/parry wiring — and the one trigger that stayed skipped.** The build's only read-only
+block event is the existing `BaseFighter.strike_resolved` result, which carries
+`result["blocked"]`; `result["parried"]` marks the Record Static Parry. `register_strike()` now
+routes a blocked contact to `&"block"` and returns before that for `parried`, because the parry
+instant already owns the `clash_callout` arcade sprite (4×4 sheet) and the Patois parry line
+(`BIG TUNE!` / `WHOLE-AWN-DEH!` …) — a second burst of text on the same frame would double up.
+**Skipped triggers, logged here:** the clash / Record Static Parry (owns the clash sprite and the
+parry subtitle), the K.O. (owns the `ko_callout` sprite, the banner and the knockdown line), and
+slip/dodge (this build has no slip or dodge event to read at all). No gameplay, hitbox, frame
+data or signal was touched to create one.
+
+**Heavy splits into two rotations, one category.** `PHRASES[&"heavy"]` holds all seven strings in
+order; the first `HEAVY_PLAIN_COUNT` (3) answer an ordinary heavy or counter hit, the last four
+answer a heavy hit that **downs** its target. "Downs" is read from the existing
+`strike_resolved` result (`result["ko"]`) and the target's own state (`KNOCKDOWN` / `KO`) after
+resolution — never from a new field. The split only chooses which half the round-robin advances;
+the caps, the pool, the priority and the heavy lifetime are still the category's. Each half keeps
+its own cursor, so there is still no immediate repeat inside either half.
+
+**Unchanged by design.** Six-label pool created in `_ready()` (no node is ever added at runtime,
+still 6 labels for 22 phrases); 120 ms per-fighter interval; two per category at once; the last
+free label reserved for heavy / on-beat / hype; deterministic round-robin (no gameplay RNG);
+`callout_enabled`, `callout_scale`, `reduced_motion` and the F8 / debug-chip path; the safe
+rectangle clamp (pop peak 1.25, max tilt 14°, 0.5 px inset); startup pre-shaping of every phrase
+(all 22), with `font.has_char` coverage checked per character — including the hyphen in
+`BAP-BAP!` — and a phrase with a missing glyph skipped with a warning instead of drawing tofu.
+
+**Tests (counts only went up; 0 FAIL on all four).**
+
+- Roster **490 PASS**, live **500 checks** (baseline 493, +7), facing **310** (unchanged), feel
+  **444** (unchanged).
+- `live_match_check.gd` now asserts the exact 22-string table category by category and that all
+  twenty-two are distinct; glyph coverage across all 22 strings; that no comic string is in
+  `CALLOUTS` or `PATWA_COLLECTION` and the collection is still 31; a guarded contact through
+  `register_strike` taking the `block` category; a parried contact being skipped; an `ignored`
+  strike being skipped; the plain-heavy half and the knockdown half each drawing only from their
+  own four/three strings; the three-phrase light round-robin with no back-to-back repeat. The
+  existing placement check (every phrase, both impact points plus three off-stage points, at the
+  stacked accent + lean + punch maximum for all nine pairings) now covers all 22 strings.
+- `animation_feel_audit.gd` drives every category — light, whiff, block, medium-or-heavy,
+  knockdown-heavy, on-beat — through the 200-trigger burst (no node, object or resource created)
+  and through the 600-frame live loop (no scene node or resource added). The 31-entry Patois
+  canonical hash check is unchanged and passes.
+
+**What was not verified.** No GPU, no Xvfb and no browser here, so nothing was seen rendered: the
+three new gold/green/red/white mixes, `PLUCK!` vs `CHOOPS!` legibility over the crowd, the
+`BUGUYAGA!` box inside the safe rectangle at the real camera extremes in a live window, and the
+block callout's read against the existing `BIM!`/`BLAPS!` rhythm. The audits are geometric and
+structural, not pixel evidence.

@@ -1644,17 +1644,35 @@ func _audit_allocation() -> void:
 		var res_pool_before := int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT))
 		var fired := 0
 		var whiffs := 0
+		# Every category, including the block deflection and the knockdown half of the heavy
+		# table, so no rotation can allocate on its first use.
 		for i in 200:
 			var who: BaseFighter = p1 if i % 2 == 0 else p2
+			var other: BaseFighter = p2 if i % 2 == 0 else p1
 			var point := Vector3(float(i % 7) * 0.18 - 0.6, 1.0 + float(i % 5) * 0.24, 0.0)
-			var category := i % 5
-			if category == 1:
-				comic.note_attack_active(who, &"jab")
-				comic.note_attack_ended(who, point)
-				if comic.last_category() == &"whiff":
-					whiffs += 1
-			elif comic.register_hit(who, &"jab", category == 3, category == 4, point):
-				fired += 1
+			match i % 6:
+				1:
+					comic.note_attack_active(who, &"jab")
+					comic.note_attack_ended(who, point)
+					if comic.last_category() == &"whiff":
+						whiffs += 1
+				2:
+					if comic.register_strike(who, other,
+							{"blocked": true, "attack_id": &"strong"}, point):
+						fired += 1
+				3:
+					# Feedback's 15-damage box is heavy, L!ckshot's 10-damage box is medium.
+					if comic.register_hit(who, &"strong", false, false, point):
+						fired += 1
+				4:
+					if comic.register_hit(who, &"strong", false, false, point, true):
+						fired += 1
+				5:
+					if comic.register_hit(who, &"strong", false, true, point):
+						fired += 1
+				_:
+					if comic.register_hit(who, &"jab", false, false, point):
+						fired += 1
 			comic.debug_advance(0.2)
 		var objects_after := int(Performance.get_monitor(Performance.OBJECT_COUNT))
 		var nodes_pool_after := int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
@@ -1675,12 +1693,29 @@ func _audit_allocation() -> void:
 		for i in 600:
 			if i % 3 == 0:
 				var live_who: BaseFighter = p1 if (i / 3) % 2 == 0 else p2
+				var live_other: BaseFighter = p2 if (i / 3) % 2 == 0 else p1
 				var live_point := Vector3(float((i / 3) % 7) * 0.18 - 0.6,
 					1.0 + float(i % 5) * 0.24, 0.0)
-				if (i / 3) % 5 != 1:
-					if comic.register_hit(live_who, &"jab", (i / 3) % 5 == 3,
-							(i / 3) % 5 == 4, live_point):
-						live_fires += 1
+				match (i / 3) % 6:
+					1:
+						comic.note_attack_active(live_who, &"jab")
+						comic.note_attack_ended(live_who, live_point)
+					2:
+						if comic.register_strike(live_who, live_other,
+								{"blocked": true, "attack_id": &"strong"}, live_point):
+							live_fires += 1
+					3:
+						if comic.register_hit(live_who, &"strong", false, false, live_point):
+							live_fires += 1
+					4:
+						if comic.register_hit(live_who, &"strong", false, false, live_point, true):
+							live_fires += 1
+					5:
+						if comic.register_hit(live_who, &"strong", false, true, live_point):
+							live_fires += 1
+					_:
+						if comic.register_hit(live_who, &"jab", false, false, live_point):
+							live_fires += 1
 				comic.debug_advance(0.2)
 			await physics_frame
 		var nodes_live_after := int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))

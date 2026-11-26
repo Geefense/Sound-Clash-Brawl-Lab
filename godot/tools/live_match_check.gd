@@ -355,12 +355,14 @@ func _check_comic_callouts() -> void:
 	_check(outline_ok, "every pooled label carries a thick dark outline")
 	_check(hidden_ok, "every pooled label starts hidden until a trigger")
 
-	# --- the exact 12-string table -------------------------------------------------------
+	# --- the exact 22-string table --------------------------------------------------------
 	var expected := {
-		&"light": ["PLIM!", "BAP!"],
-		&"whiff": ["BOOPS!", "ZOOPS!", "SWOOPS!"],
-		&"medium": ["BLAPS!", "BIM!"],
-		&"heavy": ["BRAGADAPS!", "PLAX!", "BUDUM!"],
+		&"light": ["PLIM!", "BAP!", "BAP-BAP!"],
+		&"whiff": ["BOOPS!", "ZOOPS!", "SWOOPS!", "WIISH!"],
+		&"block": ["CHOOPS!", "CHO!", "PLUCK!"],
+		&"medium": ["BLAPS!", "BIM!", "AIEE!"],
+		&"heavy": ["BRAGADAPS!", "PLAX!", "BUDUM!", "BLAM!", "BOGOF!", "BUGUYAGA!",
+			"HUSH!"],
 		&"beat": ["BRRRRAP!", "PYAW! PYAW!"],
 	}
 	var table_ok := ComicCallout2D.PHRASES.size() == expected.size()
@@ -377,10 +379,22 @@ func _check_comic_callouts() -> void:
 				table_ok = false
 			seen[String(got[i])] = true
 			total += 1
-	_check(table_ok, "the table holds exactly the approved strings in their categories",
+	_check(table_ok, "the table holds exactly the twenty-two approved strings in their categories",
 		"%d categories, %d strings" % [expected.size(), total])
-	_check(total == 12 and seen.size() == 12,
-		"all twelve strings are distinct", "%d unique" % seen.size())
+	_check(total == 22 and seen.size() == 22,
+		"all twenty-two strings are present once, byte-for-byte distinct", "%d unique" % seen.size())
+	# They are SFX text, never Patois dictionary entries, and the 31-entry collection is intact.
+	var overlap := 0
+	for kind in arena.CALLOUTS:
+		for line in arena.CALLOUTS[kind]:
+			if seen.has(String(line)):
+				overlap += 1
+	for line in arena.PATWA_COLLECTION:
+		if seen.has(String(line)):
+			overlap += 1
+	_check(overlap == 0 and arena.PATWA_COLLECTION.size() == 31,
+		"no comic string is a Patois entry, and the collection is still 31 entries",
+		"%d overlaps" % overlap)
 
 	# --- glyph coverage, measured on the font itself -------------------------------------
 	var missing := comic.missing_glyphs()
@@ -392,7 +406,8 @@ func _check_comic_callouts() -> void:
 				if not ComicCallout2D.FONT.has_char(text.unicode_at(i)):
 					glyph_ok = false
 	_check(glyph_ok and missing.is_empty(),
-		"every character in all twelve strings has a glyph in the HUD font")
+		"every character in all twenty-two strings has a glyph, the hyphen in BAP-BAP! included",
+		"%d missing" % missing.size())
 
 	# --- one trigger per category, on the real fighters ----------------------------------
 	var p1: BaseFighter = arena.p1
@@ -428,6 +443,38 @@ func _check_comic_callouts() -> void:
 	_check(comic.last_category() == &"whiff",
 		"an ACTIVE window that ends without contact is a whiff", "%s" % comic.last_phrase())
 
+	# --- block/parry: the shipped block event feeds it, the shipped clash keeps its own -----
+	comic.debug_advance(1.2)
+	var block_result := {"blocked": true, "parried": false, "attack_id": &"strong"}
+	_check(comic.register_strike(p2, p1, block_result, world)
+			and comic.last_category() == &"block",
+		"a guarded contact takes the block category", "%s" % comic.last_phrase())
+	comic.debug_advance(1.2)
+	var parry_result := {"blocked": true, "parried": true, "attack_id": &"strong"}
+	_check(not comic.register_strike(p2, p1, parry_result, world),
+		"a record static parry is skipped: the clash sprite and its line own that instant")
+	comic.debug_advance(1.2)
+	var ignored_result := {"ignored": true, "attack_id": &"jab"}
+	_check(not comic.register_strike(p2, p1, ignored_result, world),
+		"a strike on a downed body is ignored, exactly as combat ignores it")
+
+	# --- the heavy table splits: plain hits vs hits that put the body on the floor ---------
+	comic.debug_advance(1.2)
+	var heavy_plain := comic.register_hit(p1, &"strong", false, false, world)
+	var plain_phrase := comic.last_phrase()
+	comic.debug_advance(1.2)
+	var heavy_down := comic.register_hit(p1, &"strong", false, false, world, true)
+	var down_phrase := comic.last_phrase()
+	var plain_list := comic.rotation_phrases(&"heavy")
+	var down_list := comic.rotation_phrases(ComicCallout2D.HEAVY_DOWN_KEY)
+	_check(heavy_plain and plain_list.has(plain_phrase) and not down_list.has(plain_phrase),
+		"an ordinary heavy hit draws from the plain heavy half", plain_phrase)
+	_check(heavy_down and down_list.has(down_phrase) and not plain_list.has(down_phrase),
+		"a heavy hit that downs its target draws from the knockdown half", down_phrase)
+	_check(plain_list.size() == 3 and down_list.size() == 4,
+		"the heavy table splits three plain / four knockdown phrases",
+		"%d + %d" % [plain_list.size(), down_list.size()])
+
 	# --- deterministic round-robin, no immediate repeat ----------------------------------
 	comic.debug_advance(1.2)
 	var repeats := 0
@@ -441,8 +488,8 @@ func _check_comic_callouts() -> void:
 			previous = comic.last_phrase()
 			phrases[previous] = true
 		comic.debug_advance(0.75)
-	_check(repeats == 0 and phrases.size() == 2,
-		"the light category round-robins both phrases with no back-to-back repeat",
+	_check(repeats == 0 and phrases.size() == 3,
+		"the light category round-robins all three phrases with no back-to-back repeat",
 		"%d phrases, %d repeats" % [phrases.size(), repeats])
 
 	# --- per-fighter rate cap ------------------------------------------------------------

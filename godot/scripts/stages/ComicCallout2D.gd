@@ -2,21 +2,26 @@ class_name ComicCallout2D
 extends Node2D
 ## Pre-pooled comic-book onomatopoeia (PART D). Presentation only.
 ##
-## Twelve SFX strings pop, tilt and fade over the world-to-screen impact point, next to the
+## Twenty-two SFX strings pop, tilt and fade over the world-to-screen impact point, next to the
 ## existing hit sparks (`ArcadeVFX2D`) and music-note trails. They are **not** Patois
 ## dictionary entries and never touch `TestArena.CALLOUTS`, the HUD subtitles or the
 ## Thirty-one-entry collection.
 ##
 ## It reads existing events and writes nothing back:
 ##
-##   * `BaseFighter.strike_resolved` -> light / medium / heavy / counter contact,
+##   * `BaseFighter.strike_resolved` -> light / medium / heavy / counter / blocked contact,
 ##   * `BaseFighter.attack_became_active` + `state_changed` -> a whiff (the ACTIVE window
 ##     ended with no contact), which is the only place the game exposes that outcome,
 ##   * `BaseFighter.hype_surge_started` -> the 132 BPM hype callout,
 ##   * `BaseFighter.static_parry_triggered` -> shipped clash: skipped, see AGENTS.md,
 ##   * `BaseFighter.died` -> shipped K.O.: skipped, see AGENTS.md.
 ##
-## Slips/dodges are skipped too: this build has no slip or dodge event to read.
+## A blocked contact reaches this file through the SAME `strike_resolved` result that carries
+## every other contact (`result["blocked"]`), which is the build's only block event, so the
+## block/parry category is wired to it. A record-static-parry (`result["parried"]`) is ruled
+## out first: that instant already owns the `clash_callout` arcade sprite and the Patois parry
+## line, so a second burst of text on it would double up. Slips/dodges are skipped too: this
+## build has no slip or dodge event to read. The skipped triggers are logged in AGENTS.md.
 ##
 ## Everything is preallocated in `_ready()`: six `Label`s, one font, one palette, and every
 ## phrase shaped once while hidden. A trigger picks a free label, assigns a preallocated
@@ -24,25 +29,36 @@ extends Node2D
 ## only. An exhausted pool skips the new callout — it never creates a node.
 
 ## kind -> the exact phrase strings, verbatim, no others. The order is the round-robin order.
+## `heavy` carries both halves: the first `HEAVY_PLAIN_COUNT` strings answer an ordinary heavy
+## hit, the rest answer a heavy hit that DOWNS its target (knockdown or K.O.). They stay one
+## category for the caps and the pool, and each half keeps its own round-robin cursor.
 const PHRASES := {
-	&"light": ["PLIM!", "BAP!"],
-	&"whiff": ["BOOPS!", "ZOOPS!", "SWOOPS!"],
-	&"medium": ["BLAPS!", "BIM!"],
-	&"heavy": ["BRAGADAPS!", "PLAX!", "BUDUM!"],
+	&"light": ["PLIM!", "BAP!", "BAP-BAP!"],
+	&"whiff": ["BOOPS!", "ZOOPS!", "SWOOPS!", "WIISH!"],
+	&"block": ["CHOOPS!", "CHO!", "PLUCK!"],
+	&"medium": ["BLAPS!", "BIM!", "AIEE!"],
+	&"heavy": ["BRAGADAPS!", "PLAX!", "BUDUM!", "BLAM!", "BOGOF!", "BUGUYAGA!", "HUSH!"],
 	&"beat": ["BRRRRAP!", "PYAW! PYAW!"],
 }
-const CATEGORIES: Array[StringName] = [&"light", &"whiff", &"medium", &"heavy", &"beat"]
+## The plain-heavy half of `PHRASES[&"heavy"]`; everything after it is the downed half.
+const HEAVY_PLAIN_COUNT := 3
+const HEAVY_DOWN_KEY := &"heavy_down"
+const CATEGORIES: Array[StringName] = [&"light", &"whiff", &"block", &"medium", &"heavy", &"beat"]
 ## Gold / green / red / white by category. The on-beat group reuses the bright gold, because
-## a hype callout should read as the same celebration as a gold medium slap.
+## a hype callout should read as the same celebration as a gold medium slap. A guard shares
+## the green of a whiff: both are a strike that did not land on a body.
 const COLORS := {
 	&"light": Color(1.0, 1.0, 1.0, 1.0),
 	&"whiff": Color(0.42, 1.0, 0.55, 1.0),
+	&"block": Color(0.60, 1.0, 0.66, 1.0),
 	&"medium": Color(1.0, 0.84, 0.20, 1.0),
 	&"heavy": Color(1.0, 0.30, 0.26, 1.0),
 	&"beat": Color(1.0, 0.93, 0.46, 1.0),
 }
-## Pool-tight priority. The lowest tier never takes the last free label.
-const PRIORITY := {&"beat": 3, &"heavy": 2, &"medium": 2, &"light": 1, &"whiff": 1}
+## Pool-tight priority. The lowest tier never takes the last free label; a guard deflection is
+## a light touch, so it sits with the light / whiff tier.
+const PRIORITY := {&"beat": 3, &"heavy": 2, &"medium": 2, &"light": 1, &"whiff": 1,
+	&"block": 1}
 
 ## Strength tiers read from the shipped move table (`BaseFighter.attacks[].damage`), which is
 ## the only strength data the combat code carries. A counter flag upgrades any contact.
@@ -113,7 +129,8 @@ var _slots: Array = []
 var _view: Vector2 = Vector2(1280.0, 720.0)
 var _clock: float = 0.0
 var _last_ms: Dictionary = {}          # fighter instance id -> last callout time (ms)
-var _cursor: Dictionary = {}           # category -> round-robin index
+var _cursor: Dictionary = {}           # rotation key -> round-robin index
+var _rotation: Dictionary = {}         # rotation key -> Array[int] of phrase indices
 var _fires_by_category: Dictionary = {} # category -> trigger count (headless checks)
 var _phrase_text: Array[String] = []
 var _phrase_category: Array[StringName] = []
@@ -133,6 +150,7 @@ func _ready() -> void:
 	for category in CATEGORIES:
 		_cursor[category] = 0
 		_fires_by_category[category] = 0
+	_cursor[HEAVY_DOWN_KEY] = 0
 	_build_pool()
 	_warm_phrases()
 	set_process(true)
@@ -167,9 +185,12 @@ func _build_pool() -> void:
 ## Shape every phrase once, while hidden, and cache its box. The first on-screen use therefore
 ## never pays a text-shaping hitch (iPhone Safari / Chromebook).
 func _warm_phrases() -> void:
+	_rotation.clear()
 	for category in CATEGORIES:
 		var px := _font_px(category)
 		var list: Array = PHRASES[category]
+		var plain: Array[int] = []
+		var downed: Array[int] = []
 		for entry in list:
 			var phrase := String(entry)
 			var index := _phrase_text.size()
@@ -182,6 +203,13 @@ func _warm_phrases() -> void:
 			_phrase_size.append(Vector2(width + SIZE_PAD, float(px) * 1.30))
 			if not safe:
 				push_warning("ComicCallout2D: %s is missing a glyph — that phrase is skipped" % phrase)
+			if category == &"heavy" and plain.size() + downed.size() >= HEAVY_PLAIN_COUNT:
+				downed.append(index)
+			else:
+				plain.append(index)
+		_rotation[category] = plain
+		if category == &"heavy":
+			_rotation[HEAVY_DOWN_KEY] = downed
 	for i in _phrase_text.size():
 		var label: Label = _slots[i % _slots.size()].label
 		var px := _font_px(_phrase_category[i])
@@ -224,18 +252,28 @@ func register_strike(attacker: BaseFighter, target: BaseFighter, result: Diction
 	if attacker == null or target == null:
 		return false
 	if bool(result.get("ignored", false)) or bool(result.get("parried", false)):
-		return false
+		return false                       # the shipped clash owns that instant
 	if bool(result.get("blocked", false)):
-		return false                       # a guarded contact knocks, it does not shout
+		return _fire(&"block", attacker, world_pos)
 	var category := classify(attacker, StringName(result.get("attack_id", &"")),
 		bool(result.get("counter", false)), bool(result.get("on_beat", false)))
-	return _fire(category, attacker, world_pos)
+	return _fire(category, attacker, world_pos, _downed(target, result))
+
+
+## True when this contact put the target on the floor — the only condition that unlocks the
+## knockdown half of the heavy table. `result["ko"]` is read as well as the live state, so the
+## answer cannot depend on signal order.
+func _downed(target: BaseFighter, result: Dictionary) -> bool:
+	if bool(result.get("ko", false)):
+		return true
+	return target != null and (target.state == BaseFighter.State.KNOCKDOWN
+		or target.state == BaseFighter.State.KO)
 
 
 ## One contact by move id, for callers that already have the read-only flags.
 func register_hit(fighter: BaseFighter, attack_id: StringName, counter: bool, on_beat: bool,
-		world_pos: Vector3) -> bool:
-	return _fire(classify(fighter, attack_id, counter, on_beat), fighter, world_pos)
+		world_pos: Vector3, downed: bool = false) -> bool:
+	return _fire(classify(fighter, attack_id, counter, on_beat), fighter, world_pos, downed)
 
 
 ## Light / medium / heavy / counter / on-beat, from the existing move data only.
@@ -288,10 +326,14 @@ func register_hype(fighter: BaseFighter, world_pos: Vector3) -> bool:
 	return _fire(&"beat", fighter, world_pos)
 
 
-## Every cap, the pool, the phrase rotation and the placement, in one place.
-func _fire(category: StringName, fighter: BaseFighter, world_pos: Vector3) -> bool:
+## Every cap, the pool, the phrase rotation and the placement, in one place. `downed` only
+## changes which half of the heavy table is rotated through; caps, pool and priority are the
+## category's.
+func _fire(category: StringName, fighter: BaseFighter, world_pos: Vector3,
+		downed: bool = false) -> bool:
 	if not callout_enabled or camera == null or not PHRASES.has(category):
 		return false
+	var rotation: StringName = HEAVY_DOWN_KEY if category == &"heavy" and downed else category
 	var slot := _first_free_slot()
 	if slot == null:
 		return false
@@ -303,7 +345,7 @@ func _fire(category: StringName, fighter: BaseFighter, world_pos: Vector3) -> bo
 	var fighter_id := fighter.get_instance_id() if fighter != null else 0
 	if _clock * 1000.0 - float(_last_ms.get(fighter_id, -1000000.0)) < MIN_INTERVAL_MS:
 		return false
-	var index := _next_phrase(category)
+	var index := _next_phrase(rotation)
 	if index < 0:
 		return false
 	var label: Label = slot.label
@@ -336,20 +378,22 @@ func _fire(category: StringName, fighter: BaseFighter, world_pos: Vector3) -> bo
 	return true
 
 
-## Deterministic round-robin per category, skipping any phrase whose glyphs are missing.
-func _next_phrase(category: StringName) -> int:
-	var list: Array = PHRASES[category]
-	var cursor := int(_cursor.get(category, 0))
+## Deterministic round-robin per rotation (a category, or one half of the heavy table),
+## skipping any phrase whose glyphs are missing.
+func _next_phrase(rotation: StringName) -> int:
+	var list: Array = _rotation.get(rotation, [])
+	if list.is_empty():
+		return -1
+	var cursor := int(_cursor.get(rotation, 0))
 	for step in list.size():
 		var slot_index := (cursor + step) % list.size()
-		var phrase := String(list[slot_index])
-		var index := int(_phrase_index.get(phrase, -1))
+		var index := int(list[slot_index])
 		if index >= 0 and bool(_phrase_safe[index]):
-			_cursor[category] = (slot_index + 1) % list.size()
+			_cursor[rotation] = (slot_index + 1) % list.size()
 			return index
-	if not _warned_phrases.has(category):
-		_warned_phrases[category] = true
-		push_warning("ComicCallout2D: no drawable %s phrase — callout skipped" % String(category))
+	if not _warned_phrases.has(rotation):
+		_warned_phrases[rotation] = true
+		push_warning("ComicCallout2D: no drawable %s phrase — callout skipped" % String(rotation))
 	return -1
 
 
@@ -515,6 +559,21 @@ func phrase_table() -> Dictionary:
 
 func phrase_count() -> int:
 	return _phrase_text.size()
+
+
+## The rotation keys that exist (one per category, plus the heavy knockdown half). Order is
+## the order `_warm_phrases()` built them in.
+func rotation_keys() -> Array:
+	return _rotation.keys()
+
+
+## The phrases a rotation can draw, in round-robin order. Used by the audits to prove the
+## knockdown half is reached only by a downing hit.
+func rotation_phrases(rotation: StringName) -> Array[String]:
+	var out: Array[String] = []
+	for index in _rotation.get(rotation, []):
+		out.append(_phrase_text[int(index)])
+	return out
 
 
 func phrase_size(phrase: String) -> Vector2:

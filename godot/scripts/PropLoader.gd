@@ -63,6 +63,13 @@ const SEAT_EPSILON := 0.0005
 ## `cull_back` cel material. Off uses the standard toon material; on uses the `cull_disabled`
 ## variant of the same family.
 @export var double_sided: bool = false
+## Render the delivered model with its OWN imported materials instead of the fighters' cel
+## shader (PART A step 3, 2026-11-26). The owner reported the tower looking "made by code":
+## the cel pass quantised a 2048 px photographic albedo into a green poster, which is what a
+## toon ramp does to photographic detail. On this path the albedo is kept, roughness is 1,
+## metallic is 0, specular is off and the imported two-sided culling is preserved, with
+## mipmaps and anisotropic filtering so 12 m of texture stops shimmering at distance.
+@export var native_material: bool = false
 
 ## The instanced model, or null while the file is missing.
 var model: Node3D = null
@@ -112,11 +119,55 @@ func load_model() -> bool:
 	# Same cel/ink treatment the fighters and crowd wear, with a white tint and the shader's
 	# shadow bias off, so the delivered albedo renders at full brightness. `apply_cel` skips
 	# any surface the exporter left without a texture and warns about it; the model stays.
+	if native_material:
+		var native := _apply_native_materials(node)
+		if native == 0:
+			push_warning("PropLoader: %s has no surface to keep native" % model_path)
+		return true
 	var textured := CharacterModelSlots.apply_cel(node, Color.WHITE, Color.WHITE, 900, 0.0, "",
 		double_sided)
 	if textured == 0:
 		push_warning("PropLoader: %s has no textured surface — left as imported" % model_path)
 	return true
+
+
+## Keep the delivered look: one `StandardMaterial3D` per surface built from whatever the
+## importer bound, with the physical values a printed speaker cabinet actually has. Returns
+## the number of surfaces it touched.
+func _apply_native_materials(root: Node3D) -> int:
+	var touched := 0
+	for child in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := child as MeshInstance3D
+		if mi == null or mi.mesh == null:
+			continue
+		for surface in mi.mesh.get_surface_count():
+			var source := mi.get_active_material(surface)
+			var std := StandardMaterial3D.new()
+			var albedo: Texture2D = null
+			if source is BaseMaterial3D:
+				albedo = (source as BaseMaterial3D).albedo_texture
+			elif source is ShaderMaterial:
+				var shader_tex = (source as ShaderMaterial).get_shader_parameter("albedo_texture")
+				if shader_tex is Texture2D:
+					albedo = shader_tex
+			std.albedo_texture = albedo
+			std.albedo_color = Color.WHITE
+			std.roughness = 1.0
+			std.metallic = 0.0
+			std.metallic_specular = 0.0
+			std.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+			# Mipmaps + anisotropic: the tower is read at 6-12 m, where an unfiltered 2048
+			# albedo aliases into noise on a Chromebook.
+			std.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+			if double_sided:
+				std.cull_mode = BaseMaterial3D.CULL_DISABLED
+			mi.set_surface_override_material(surface, std)
+			# The tower is stage dressing: it must not write into the shadow map the
+			# fighters' contact shadows are drawn from (the cel path relies on the
+			# shared slab for this, the native path has to say it).
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			touched += 1
+	return touched
 
 
 ## True while the slot is empty. Used by the headless check and the tree dump.

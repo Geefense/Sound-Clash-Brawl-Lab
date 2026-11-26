@@ -1173,6 +1173,8 @@ func _build_speakers() -> void:
 			slot.model_path = SPEAKER_MODELS[0]
 		slot.required = true
 		slot.double_sided = true
+		# PART A step 3: the delivered tower keeps its own photographic albedo.
+		slot.native_material = true
 		slot.yaw_degrees = -side * speaker_inward_yaw_degrees
 		slot.position = Vector3(side * 2.55, 0.0, -1.45)
 		add_child(slot)

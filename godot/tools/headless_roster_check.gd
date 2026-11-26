@@ -2635,38 +2635,59 @@ func _run() -> void:
 		prop_yard._update_speakers(0.0)
 		_check(is_equal_approx(spk_muted.x, spk_base),
 			"speaker_pulse off leaves the tower at its seated scale", "%.4f" % spk_muted.x)
-		# The delivered albedo is bound to the cel material, and that material's rim follows
-		# the preset so Afternoon, Sunset and Night all keep the tower readable.
-		var spk_material_ok := false
-		var spk_materials: Array[ShaderMaterial] = []
-		CharacterModelSlots.collect_cel_materials(speaker.model, spk_materials)
-		for material in spk_materials:
-			var spk_tex = material.get_shader_parameter("albedo_texture")
-			if spk_tex is Texture2D and (spk_tex as Texture2D).get_width() == 2048:
-				spk_material_ok = true
-		_check(spk_material_ok,
-			"the delivered 2048 albedo is bound to the cel material, not replaced",
-			"%d material(s)" % spk_materials.size())
-		var spk_rim: Array[float] = []
-		var spk_rim_ok := true
+		# PART A step 3: the tower keeps its OWN imported material. The cel pass is what made a
+		# photographic 2048 albedo read as a flat green poster, so the contract is now the
+		# opposite one: a `StandardMaterial3D` carrying that albedo at full physical values.
+		var native_ok := false
+		var native_tex_w := 0
+		var native_count := 0
+		for child in speaker.model.find_children("*", "MeshInstance3D", true, false):
+			var spk_mi := child as MeshInstance3D
+			if spk_mi == null or spk_mi.mesh == null:
+				continue
+			for surface in spk_mi.mesh.get_surface_count():
+				var mat := spk_mi.get_active_material(surface)
+				if not (mat is StandardMaterial3D):
+					continue
+				native_count += 1
+				var std := mat as StandardMaterial3D
+				if std.albedo_texture != null:
+					native_tex_w = maxi(native_tex_w, std.albedo_texture.get_width())
+				native_ok = std.albedo_texture != null and is_equal_approx(std.roughness, 1.0) \
+					and is_zero_approx(std.metallic) \
+					and std.cull_mode == BaseMaterial3D.CULL_DISABLED \
+					and std.texture_filter == BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+		_check(native_ok and native_tex_w == 2048,
+			"the delivered 2048 albedo is kept on a StandardMaterial3D (roughness 1, metallic 0, "
+			+ "culling disabled, mipmaps+anisotropic)", "%d surface(s), %d px" % [native_count, native_tex_w])
+		# ... and the time-of-day pass must not repaint it: the same albedo, at every preset.
+		var kept_texture: Texture2D = null
+		var kept_ok := true
 		for spk_phase in [0, 1, 2]:
 			prop_yard.apply_phase(spk_phase, 0.0)
 			await process_frame
-			var spk_phase_materials: Array[ShaderMaterial] = []
-			CharacterModelSlots.collect_cel_materials(speaker.model, spk_phase_materials)
-			var spk_strength := -1.0
-			for material in spk_phase_materials:
-				if material.get_shader_parameter("albedo_texture") != null:
-					spk_strength = maxf(spk_strength, float(material.get_shader_parameter("rim_strength")))
-			if spk_strength <= 0.0:
-				spk_rim_ok = false
-			spk_rim.append(spk_strength)
+			var phase_tex: Texture2D = null
+			var cel_left := 0
+			for child in speaker.model.find_children("*", "MeshInstance3D", true, false):
+				var spk_mi := child as MeshInstance3D
+				if spk_mi == null or spk_mi.mesh == null:
+					continue
+				for surface in spk_mi.mesh.get_surface_count():
+					var mat := spk_mi.get_active_material(surface)
+					if mat is ShaderMaterial:
+						cel_left += 1
+					elif mat is StandardMaterial3D and (mat as StandardMaterial3D).albedo_texture != null:
+						phase_tex = (mat as StandardMaterial3D).albedo_texture
+			if cel_left != 0:
+				kept_ok = false
+			if kept_texture == null:
+				kept_texture = phase_tex
+			elif phase_tex != kept_texture:
+				kept_ok = false
 		prop_yard.apply_phase(0, 0.0)
 		await process_frame
-		_check(spk_rim_ok and spk_rim[0] > 0.0 and spk_rim[1] > spk_rim[0] \
-				and spk_rim[2] > spk_rim[1],
-			"the tower's cel rim follows the phase and cannot go black at Night",
-			"%.2f / %.2f / %.2f" % [spk_rim[0], spk_rim[1], spk_rim[2]])
+		_check(kept_ok and kept_texture != null,
+			"no cel material is left on the tower and its albedo survives all three presets")
 		# Lighting and shadows: no light is added, the fighter shadow rig is the same seven
 		# lights, and the imported tower casts no shadow of its own to disturb it.
 		_check(prop_yard.light_count() == 7 and prop_yard.sun.shadow_enabled and prop_yard.sun.light_angular_distance < 0.001,

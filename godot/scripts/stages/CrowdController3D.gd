@@ -32,6 +32,19 @@ extends Node3D
 ## Excitement is expressed through acting and timing only — which Mixamo act is crossfaded
 ## in, the per-person phase offset, and a small beat bobbing on the anchor. Nothing here
 ## dims or desaturates a character: every one of them renders its full albedo.
+##
+## **The rigs are OFF by default (fix pass, 2026-11-27, commit 1).** `crowd_rigs_enabled` is
+## false in the shipped scene, and with it false this controller instantiates nothing, draws
+## nothing, poses nothing and ticks nothing: no anchor node, no imported character, no shader
+## material. The cue API (`react`, `erupt`, `settle`, the counters) still runs as scalar
+## bookkeeping, so the Crowd Hype readout, the hype callouts, the spotlight pulse and the
+## camera audit cannot hit a null reference. Crowd Hype itself, its GAMEPLAY rules and the
+## crowd AUDIO were never in this node — they live in `BaseFighter` and `SoundClashAudio` —
+## so nothing about the game changes when the bodies go. The delivered models and atlases
+## stay in git; they are excluded from the Web export through `export_presets.cfg`.
+
+## The master switch for the 22 spectator rigs. See the header: off means zero nodes.
+@export var crowd_rigs_enabled: bool = false
 
 const COUNT := 22
 ## Left bank warm, right bank cool, matching the stage light. Full brightness: these are
@@ -156,6 +169,8 @@ var _models: Array[Node3D] = []
 var _cel_materials: Array[ShaderMaterial] = []
 var _time: float = 0.0
 var _reactions: int = 0
+## One-shot build guard: `build()` is called by `Arena3D` and again by `_ready()`.
+var _built: bool = false
 ## Eruption state (PART 2, commit 5). Scalar only: `_eruption` is the 0–1 energy the arena
 ## passed in (read from the hype meters, never written back), `_eruption_age` runs the peak
 ## then the settle, and nothing here creates a node or a light.
@@ -177,7 +192,12 @@ func _ready() -> void:
 ## Build the banks. Called by `Arena3D` right after this node is added; `_ready()` also
 ## builds a standalone instance so the crowd works in any scene.
 func build() -> void:
-	if not _members.is_empty():
+	if _built or not _members.is_empty():
+		return
+	_built = true
+	# Rigs off (the shipped state): return before the first `Node3D.new()`. Nothing of the
+	# crowd is in the tree, so there is nothing to draw, pose or free later.
+	if not crowd_rigs_enabled:
 		return
 	_rng.seed = 20261122
 	var index := 0
@@ -358,6 +378,9 @@ func react(kind: StringName, side: int = -1) -> void:
 ## Advance the staggered reaction queue and the ambient acting. `Arena3D` calls this from its
 ## `_process`; the headless check calls it directly so the ripple is measurable off-screen.
 func tick(delta: float) -> void:
+	# No rigs, no clock: a disabled crowd does no per-frame work at all.
+	if not crowd_rigs_enabled:
+		return
 	_time += delta
 	if _eruption_live:
 		_eruption_age += delta
@@ -861,9 +884,29 @@ func beat_phase_of(index: int) -> float:
 
 
 ## Live Node count of the built crowd. The 600-frame stability check compares this before and
-## after, so a pose path that starts creating nodes is caught.
+## after, so a pose path that starts creating nodes is caught. Zero with the rigs off.
 func node_count() -> int:
 	return find_children("*", "Node", true, false).size()
+
+
+## True while the 22 spectator rigs are allowed to exist.
+func rigs_enabled() -> bool:
+	return crowd_rigs_enabled
+
+
+## How many rigs the flag would build if it were on. Data only — this is what the "keep the
+## crowd out of the Web export" check reads beside `count()`.
+func planned_rig_count() -> int:
+	var total := 0
+	for row in ROW_COUNTS.size():
+		total += int(ROW_COUNTS[row])
+	return total * 2
+
+
+## Crowd Hype cues the controller has forwarded. Non-zero with the rigs off proves the cue
+## path is still live (callout hype triggers, spotlight pulse) without a single body.
+func cue_count() -> int:
+	return _reactions
 
 
 func member_count() -> int:

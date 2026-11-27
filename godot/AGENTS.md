@@ -7190,3 +7190,89 @@ never by eye. A visual pass over the twelve landing poses is still owed.
 | 2026-11-27, after STEP 0 | Confirmed `feature/3d-cel-shaded` at the remote tip `2ef9592` (the owner's two upload commits). Baselines before any change: roster 490, live 500, facing 310, feel 444, 0 FAIL. TASK 0 checked: the workflow already publishes one orphan commit per run. | `2ef9592` |
 | 2026-11-27, props done | TASK 1: deck + mic delivered, inspected, wired, tested, measured. Four suites green: roster 494, live 578, facing 310, feel 444, 0 FAIL. **Next: TASK 2, supine knockdowns (12 cells).** | see the commit below |
 | 2026-11-27, knockdowns done (final) | TASK 2: rigid fall + drawn-vertex seat. 0/12 → **12/12** cells supine (PART I has the side-by-side table). Two metric bugs fixed (`chest_ny` sign while lying, `head_away` 2D-vs-3D); the toe-line 5° audit needed no change because it never asserts in KNOCKDOWN/KO. Live suite gained 3 lying-contract checks per fighter. Four suites green: roster **494**, live **587**, facing **310**, feel **444**, 0 FAIL. Nothing left in this pass: FINISH verified `cmp` on the two AGENTS.md files, and push #2 is ff-only. | this commit |
+
+## PART J — Fix pass (2026-11-27): crowd off, deeper stage, freezes, J/I, mic grip, lighting
+
+Autonomous pass. Owner's brief: a wide clean sand strip in front of a deeper backdrop, the 22
+spectator rigs removed, freezes instrumented away, J and I made to connect at neutral spacing,
+the wireless mic actually gripped, and crisper PBR lighting. Every decision below is the safest
+reading of the brief; the alternatives considered are noted where they mattered.
+
+### J1. The 22 spectator rigs are switched OFF (commit 1)
+
+`CrowdController3D` gained a master export flag, **`crowd_rigs_enabled`, default `false`**. With
+it false the controller returns from `build()` before the first `Node3D.new()`: no anchor, no
+imported character, no shader material, and `tick()` returns before it touches its clock — the
+crowd costs no nodes, no draw calls and no per-frame work. `planned_rig_count()` still reports the
+22-rig yard the flag would build, so turning it back on in the editor restores exactly what was
+there; every row/spacing/palette constant is untouched, and the delivered `.fbx` models and
+atlases stay in git.
+
+Nothing else had to change, because the crowd never owned anything the game needs: Crowd Hype, its
+GAMEPLAY rules, the hype readout, the callout hype triggers, the spotlight/light pump and the crowd
+AUDIO all live in `BaseFighter`, `ComicCallout2D`, `Arena3D` and `SoundClashAudio`. `react()`,
+`erupt()` and `settle()` still run as scalar bookkeeping, so a Hype surge on a fight with no bodies
+cannot hit a null reference. The **two DJ rigs are not crowd** and stay: they still nod, point,
+raise the arm on a tag, celebrate a K.O. and crossfade their delivered clips.
+
+**Web export.** `export_presets.cfg`'s `exclude_filter` now drops `assets/models/crowd/*` (7
+characters, 21 atlases). The DJ copies live in `assets/models/dj/` and are untouched. If the flag
+is turned on in a build that excluded them, `_load_models()` logs its single "no character in
+assets/models/crowd" warning and the yard simply stays empty — the same graceful path the repo
+already had for undelivered art.
+
+**Measured pack delta** (real headless Web export, same source, only the exclusion toggled):
+
+| Pack | Bytes |
+| --- | --- |
+| with the crowd shipped | 58,990,800 |
+| with the crowd excluded | 45,546,168 |
+| **delta** | **−13,444,632 B (−12.8 MiB, −22.8 %)** |
+
+`ASSET_LICENSES.md`'s two crowd rows now read **"Not shipped in the Web export (crowd rigs are
+off; the files stay in git)"**. The DJ rows are unchanged.
+
+#### Removed crowd-specific assertions, itemized
+
+The brief allows the total check count to fall by exactly the crowd assertions removed. Roster
+**494 → 442**, live **587 → 581** (0 FAIL both), i.e. −52 and −6 executed checks. 54 `_check`
+statements were deleted from the roster suite and 11 added (the four required new checks plus
+their replacements); the parametrized ones ran once per delivered female model, which is why the
+executed delta is two lower than the statement count.
+
+**`headless_roster_check.gd` — 54 removed:**
+
+| Group | Assertions removed |
+| --- | --- |
+| Yard is built (1) | "the yard is built by the 3D crowd controller" |
+| Packed-yard block (8) | packed with 18–24 spectators · two equal loyalty banks · three staggered depth rows · rows stand in real depth · seven delivered characters · shared base meshes · no procedural flags/lighters/airhorns · old capsule nodes gone |
+| Staggered reaction (7) | yard starts neutral · nobody answers on the impact frame · ringside cheers inside 0.14 s · bank ripples outward · whole yard answers inside a beat · P1's bank erupts · rival bank in disbelief |
+| Knockdown / K.O. / tag / hype (4) | selector's arm + his bank hyped · K.O. sends the winning bank into a jump · DJ tag answered (mistakenly worded for the selector) · Hype surge puts the whole yard on its feet |
+| Budget (1) | "the packed 3D crowd and booth stay inside 90 000 triangles" (replaced by the booth-only ceiling) |
+| Female crowd models (7) | four female models ship · imports as 3D · keeps a mixamorig skeleton · decimated to 3 500 tris (those three run once per model) · female spectators in the front rows |
+| Palette (2) | crowd rim follows the night cyan · night palette leaves every albedo bound |
+| Bug 4 scale/spacing (4) | row Y rises with depth · every rig within 10 % of fighter height · no two rigs overlap · each row holds its minimum spacing |
+| PART B commit 7 (5) | no row opens a gap past 1.25× · each row staggered half a step · palette is a luma-preserving mix · tint holds luminance within 10 % · cluster sits inside the backdrop |
+| Frame / palette / material (5) | every rig inside the camera frame · green/gold/red/black palette · palette rides shared materials · crowd skank locked to 132 BPM · 600 frames of crowd motion create no nodes |
+| 600-frame cluster (1) | "600 frames later the cluster still holds 22 rigs across all 7 models" |
+| Rig-slot block (2) | every spectator is a delivered character · every spectator's clip is playing |
+| Delivered-character block (2) | "every crowd and DJ body … (> 20 bones)" (now DJ-only) · crowd/DJ clip tracks (now DJ-only) |
+| Acting (3) | banks crossfade to cheer + disbelief · cheer clip is playing · settled yard crossfades back (now the booth) |
+| Albedo / tint (1) | "every crowd and DJ surface binds a delivered albedo" (now DJ-only) |
+| Instance accent (2) | every rig carries its own instance palette · writing one accent leaves its neighbour alone |
+
+**Added (4, as the brief requires):** the 22 rigs are disabled by default · nothing of the crowd
+is instantiated, drawn or parented · 600 frames of ticks and hype cues create no crowd node · the
+Crowd Hype readout still follows the fighter's meter with no rigs. The old capsule-node, folder
+and DJ assertions were **kept**, reworded where they had mentioned the crowd.
+
+**`live_match_check.gd` — 12 removed:** no-crowd guard · eruption covers 22 rigs · wave ordered
+ringside → mid → back · light pump 0–1 · ringside before back tier · all 22 join · eruption decays ·
+beat jump visible and bounded · 300 frames add no node · packed yard 18–24 · seven crowd models ·
+clearance runs with the crowd erupting. **6 added:** the rigs are off and build nothing · the flag
+still describes a 22-rig yard · the hype cue path runs with no rigs and the pump stays 0–1 ·
+300 frames add no crowd node and no yard node · clearance runs with the rigs off and the eruption
+cue live (plus the guard reword). The crowd **audio** assertions in the roster suite
+(`SoundClashAudio` crowd layer, bus layout) were never touched — they are the part that had to
+keep working.
+

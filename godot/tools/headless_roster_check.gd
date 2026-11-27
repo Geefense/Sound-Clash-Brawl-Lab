@@ -1613,8 +1613,8 @@ func _run() -> void:
 			and arena2.get_node_or_null("CrowdHaze") == null,
 		"the 2D crowd line, foreground stack and haze cards are deleted from the scene")
 	var yard: CrowdController3D = arena2.crowd
-	_check(yard != null and yard.count() >= 4,
-		"the yard is built by the 3D crowd controller",
+	_check(yard != null and not yard.rigs_enabled() and yard.count() == 0,
+		"the 3D crowd controller exists with its rigs switched off",
 		"%d spectators" % (yard.count() if yard != null else -1))
 
 	# Facing: the CPU must look at Feedback and both must turn on a side swap.
@@ -1925,105 +1925,43 @@ func _run() -> void:
 	_check(booth != null and booth.empty_slot_count() == 0,
 		"both DJ slots are filled by delivered characters",
 		"%d empty" % (booth.empty_slot_count() if booth != null else -1))
-	# Owner playtest PART 2: a PACKED yard — 18–24 spectators across three staggered depth
-	# rows a side, cycling all seven delivered Mixamo characters.
-	_check(crowd3d != null and crowd3d.count() >= 18 and crowd3d.count() <= 24
-			and atmosphere.crowd_count() == crowd3d.count(),
-		"the yard is packed with 18–24 delivered spectators",
-		"%d spectators" % atmosphere.crowd_count())
-	_check(crowd3d.zone_count(0) == crowd3d.count() / 2
-			and crowd3d.zone_count(1) == crowd3d.count() / 2,
-		"the crowd splits into two equal loyalty banks",
-		"%d / %d" % [crowd3d.zone_count(0), crowd3d.zone_count(1)])
-	var rows_ok: bool = CrowdController3D.ROW_COUNTS.size() == 3
-	for row in CrowdController3D.ROW_COUNTS.size():
-		rows_ok = rows_ok and crowd3d.row_count(row) == int(CrowdController3D.ROW_COUNTS[row]) * 2
-	_check(rows_ok,
-		"three staggered depth rows hold the bank (4 + 4 + 3 a side)",
-		"%d / %d / %d" % [crowd3d.row_count(0), crowd3d.row_count(1), crowd3d.row_count(2)])
-	_check(crowd3d.depth_span() > 1.4
-			and crowd3d.row_z(0) > crowd3d.row_z(2),
-		"the rows stand behind each other in real depth, behind the barrier",
-		"z %.2f to %.2f (barrier -2.55)" % [crowd3d.row_z(0), crowd3d.row_z(2)])
-	_check(crowd3d.model_names().size() == 7,
-		"all seven delivered Mixamo characters stand in the yard",
-		", ".join(crowd3d.model_names()))
-	_check(crowd3d.unique_mesh_count() > 0
-			and crowd3d.unique_mesh_count() < crowd3d.mesh_instance_count(),
-		"the 20+ bodies share their base meshes instead of duplicating geometry",
-		"%d unique mesh(es) across %d mesh node(s)" % [crowd3d.unique_mesh_count(),
-			crowd3d.mesh_instance_count()])
-	var dropped_props := crowd3d.find_children("FlagPole", "Node3D", true, false).size() \
-		+ crowd3d.find_children("LighterHand", "Node3D", true, false).size() \
-		+ crowd3d.find_children("Airhorn", "Node3D", true, false).size()
-	_check(dropped_props == 0,
-		"the yard carries no procedural flags, lighters or airhorns",
-		"%d prop node(s)" % dropped_props)
-	_check(atmosphere.get_node_or_null("Crowd00") == null
-			and crowd3d.get_node_or_null("Spectator00") != null,
-		"the old capsule crowd nodes are gone")
-
-	# Staggered heavy-hit reaction: ringside first, back rows last.
+	# ---- Fix pass commit 1 (2026-11-27): the 22 spectator rigs are GONE ------------------
+	# Owner request: a wide, clean sand strip in front of a deeper set. The rigs stand behind
+	# a master switch that defaults to false, so the shipped scene builds no spectator node at
+	# all — no anchor, no imported character, no material. Crowd Hype, the hype readout, the
+	# callout cues and the crowd AUDIO never lived in this controller and are unchanged.
+	_check(crowd3d != null and not crowd3d.rigs_enabled() and crowd3d.count() == 0,
+		"the 22 spectator rigs are disabled by default",
+		"%d rigs / %d planned / enabled %s" % [crowd3d.count() if crowd3d != null else -1,
+			crowd3d.planned_rig_count() if crowd3d != null else -1,
+			str(crowd3d.rigs_enabled()) if crowd3d != null else "-"])
+	_check(crowd3d != null and crowd3d.node_count() == 0
+			and crowd3d.find_children("*", "MeshInstance3D", true, false).is_empty()
+			and crowd3d.get_node_or_null("Spectator00") == null,
+		"nothing of the crowd is instantiated, drawn or parented",
+		"%d node(s)" % (crowd3d.node_count() if crowd3d != null else -1))
+	var crowd_nodes_before: int = crowd3d.node_count()
+	for i in 600:
+		crowd3d.tick(1.0 / 60.0)
+		if i % 150 == 0:
+			atmosphere.notify_combat_event(&"heavy_hit", 0)
+	_check(crowd3d.node_count() == crowd_nodes_before and crowd3d.count() == 0,
+		"600 frames of ticks and hype cues create no crowd node",
+		"%d → %d node(s), %d cue(s)" % [crowd_nodes_before, crowd3d.node_count(),
+			crowd3d.cue_count()])
+	p1b.hype = int(BaseFighter.HYPE_MAX * 0.4)
+	_check(atmosphere._hype_energy() > 0.39 and atmosphere._hype_energy() < 0.41,
+		"the Crowd Hype readout still follows the fighter's meter with no rigs",
+		"%.2f of the meter" % atmosphere._hype_energy())
+	# ---- The two DJs are NOT crowd: they still answer every cue -------------------------
 	crowd3d.settle()
 	booth.settle()
-	_check(crowd3d.reacting_count() == 0, "the yard starts neutral")
 	atmosphere.notify_combat_event(&"heavy_hit", 0)
-	_check(crowd3d.reacting_count() == 0 and crowd3d.pending_count() == crowd3d.count(),
-		"nobody answers on the impact frame itself",
-		"%d queued" % crowd3d.pending_count())
-	crowd3d.tick(0.14)
-	var ringside := crowd3d.row_reacting(0)
-	_check(ringside > 0, "ringside starts cheering inside 0.14 s", "%d person(s)" % ringside)
-	_check(ringside < crowd3d.count() and crowd3d.pending_count() > 0,
-		"the bank ripples outward instead of jumping in unison",
-		"%d up / %d still queued" % [ringside, crowd3d.pending_count()])
-	crowd3d.tick(0.8)
-	_check(crowd3d.reacting_count() == crowd3d.count(),
-		"the whole yard answers inside a beat",
-		"%d / %d" % [crowd3d.reacting_count(), crowd3d.count()])
-	_check(crowd3d.zone_state_count(0, CrowdController3D.STATE_CHEER)
-			+ crowd3d.zone_state_count(0, CrowdController3D.STATE_HYPE) == crowd3d.zone_count(0),
-		"P1's whole bank erupts in cheers",
-		"%d cheering" % (crowd3d.zone_state_count(0, CrowdController3D.STATE_CHEER)
-			+ crowd3d.zone_state_count(0, CrowdController3D.STATE_HYPE)))
-	_check(crowd3d.zone_state_count(1, CrowdController3D.STATE_DISBELIEF) == crowd3d.zone_count(1),
-		"the rival bank throws its hands on its head",
-		"%d in disbelief" % crowd3d.zone_state_count(1, CrowdController3D.STATE_DISBELIEF))
 	_check(booth.pointing(), "a DJ points at the fighters on a heavy hit")
 	_check(booth.deck != null and booth.deck.model_path.ends_with("dj_booth.glb")
 			and booth.deck_loaded(),
 		"the deck slot loads the delivered dj_booth.glb",
 		"%s loaded=%s" % [booth.deck_path(), str(booth.deck_loaded())])
-
-	# Knockdown, K.O. and DJ tag: horns up and the booth celebrates.
-	crowd3d.settle()
-	booth.settle()
-	atmosphere.notify_combat_event(&"knockdown", 1)
-	crowd3d.tick(0.6)
-	booth.tick(0.1)
-	_check(booth.airhorn_up()
-			and crowd3d.zone_state_count(1, CrowdController3D.STATE_HYPE) == crowd3d.zone_count(1),
-		"a knockdown lifts the selector's arm and sends his bank into hype",
-		"booth raised %s / %d hyped" % [str(booth.airhorn_up()),
-			crowd3d.zone_state_count(1, CrowdController3D.STATE_HYPE)])
-	crowd3d.settle()
-	booth.settle()
-	atmosphere.notify_combat_event(&"ko", 1)
-	crowd3d.tick(0.6)
-	booth.tick(0.1)
-	_check(booth.celebrating()
-			and crowd3d.zone_state_count(1, CrowdController3D.STATE_HYPE) == crowd3d.zone_count(1),
-		"a K.O. sends the winning bank into a jump and the booth into a celebration")
-	crowd3d.settle()
-	booth.settle()
-	atmosphere.notify_combat_event(&"tag", -1)
-	_check(booth.airhorn_up(), "a DJ tag is answered by the selector raising his arm")
-	atmosphere.notify_combat_event(&"hype", -1)
-	crowd3d.tick(0.6)
-	_check(crowd3d.reacting_count() == crowd3d.count(),
-		"a Hype surge puts the whole yard on its feet",
-		"%d / %d" % [crowd3d.reacting_count(), crowd3d.count()])
-
 	# Cues are presentation only: health, state and frame data never move.
 	var hp_before := [p1b.health, p2.health]
 	var state_before := [p1b.state, p2.state]
@@ -2032,173 +1970,12 @@ func _run() -> void:
 			and p1b.state == state_before[0] and p2.state == state_before[1],
 		"crowd and DJ cues never touch health or fighter state")
 
-	# Budget: measured from the meshes that were actually built.
-	var crowd_tris := crowd3d.triangle_count()
+	# Budget: measured from the meshes that were actually built. With the rigs off this is the
+	# DJ booth alone, so the old 90 000-triangle crowd ceiling now stands as the booth ceiling.
 	var booth_tris := booth.triangle_count()
-	# PART 2 packs 22 ringside characters (each ≤3 500 tris) plus both decks, so the atmosphere
-	# ceiling moves from 40 000 to 90 000. The geometry is shared, so this is draw work, not
-	# 22 copies of an atlas; every individual character is still held to 3 500 below.
-	_check(crowd_tris > 0 and booth_tris > 0 and atmosphere.atmosphere_triangles() < 90000,
-		"the packed 3D crowd and booth stay inside the 90 000-triangle Chromebook ceiling",
-		"%d total (crowd %d / booth %d)" % [atmosphere.atmosphere_triangles(),
-			crowd_tris, booth_tris])
-
-	# ---- Four female crowd models in the ringside banks (2026-11-24) -------------
-	var female_files: Array[String] = []
-	for path in CharacterModelSlots.model_paths(CharacterModelSlots.CROWD_DIR):
-		if path.get_file().to_lower().contains("female"):
-			female_files.append(path)
-	_check(female_files.size() == 4, "all four female crowd models ship in the crowd slot",
-		", ".join(female_files.map(func(p): return String(p).get_file())))
-	var probe_root := Node3D.new()
-	crowd3d.add_child(probe_root)
-	for path in female_files:
-		var female := CharacterModelSlots.spawn_one(probe_root, path, 1.70)
-		var label := String(path).get_file()
-		_check(female != null, "%s imports as a 3D character" % label)
-		if female == null:
-			continue
-		_check(CharacterModelSlots.character_bones(female) > 20,
-			"%s keeps a real mixamorig skeleton" % label,
-			"%d bones" % CharacterModelSlots.character_bones(female))
-		_check(CharacterModelSlots.character_triangles(female) <= 3500,
-			"%s is decimated to the 3 500-triangle crowd budget" % label,
-			"%d tris" % CharacterModelSlots.character_triangles(female))
-		female.queue_free()
-	probe_root.queue_free()
-	var female_front := 0
-	for slot in crowd3d.model_slots():
-		if String(slot.scene_file_path).to_lower().contains("female"):
-			female_front += 1
-	_check(female_front >= 2,
-		"female spectators stand in the front-row 3D banks with the male crowd",
-		"%d female / %d ringside" % [female_front, crowd3d.model_slots().size()])
-
-	# Palette: the phase rim reaches every character through its own cel material, and
-	# nothing else about the material moves — albedo and brightness stay untouched.
-	atmosphere.apply_phase(2)
-	var night_rim: Color = crowd3d._cel_materials[0].get_shader_parameter("rim_colour")
-	_check(night_rim.b > night_rim.r,
-		"the crowd's rim follows the night cyan palette", str(night_rim))
-	var night_albedo: Texture2D = crowd3d._cel_materials[0].get_shader_parameter("albedo_texture")
-	_check(night_albedo != null and night_albedo.resource_path != "",
-		"the night palette leaves every character's albedo bound",
-		str(night_albedo.resource_path if night_albedo != null else "<null>"))
-	atmosphere.apply_phase(0)
-	crowd3d.settle()
-	booth.settle()
-
-	# ---- Bug 4 (2026-11-25): scale, spacing, palette and 132 BPM crowd motion ----------
-	# Audited on the yard as built: row tiers strictly rising with depth, no rig clipping
-	# another, every rig inside ±10 % of the fighter's height, the palette carried through
-	# shared materials, and a 600-frame run that creates nothing.
-	var row_tiers_ok: bool = crowd3d.row_y(0) < crowd3d.row_y(1) \
-		and crowd3d.row_y(1) < crowd3d.row_y(2) \
-		and crowd3d.row_z(0) > crowd3d.row_z(1) and crowd3d.row_z(1) > crowd3d.row_z(2)
-	_check(row_tiers_ok, "row Y strictly increases with depth",
-		"y %.2f/%.2f/%.2f at z %.2f/%.2f/%.2f" % [crowd3d.row_y(0), crowd3d.row_y(1),
-			crowd3d.row_y(2), crowd3d.row_z(0), crowd3d.row_z(1), crowd3d.row_z(2)])
-	var scale_ok := true
-	var ratio_lo := INF
-	var ratio_hi := -INF
-	for i in crowd3d.count():
-		var ratio: float = crowd3d.height_ratio(i)
-		ratio_lo = minf(ratio_lo, ratio)
-		ratio_hi = maxf(ratio_hi, ratio)
-		if ratio < 0.90 or ratio > 1.10:
-			scale_ok = false
-	_check(scale_ok, "every rig stands within 10 % of the fighter's height",
-		"%.3f–%.3f of %.2f m" % [ratio_lo, ratio_hi, CrowdController3D.FIGHTER_HEIGHT])
-	_check(crowd3d.overlap_count() == 0, "no two rigs overlap or clip across the rows",
-		"%d overlapping pair(s)" % crowd3d.overlap_count())
-	_check(crowd3d.min_row_spacing() >= CrowdController3D.MIN_SPACING - 0.001,
-		"each row holds its minimum spacing",
-		"%.3f m (min %.2f)" % [crowd3d.min_row_spacing(), CrowdController3D.MIN_SPACING])
-
-	# ---- PART B commit 7: one cohesive cluster, one gentle palette ------------------------
-	# The banks used to be three loose lines (the back row stepped 0.91 m between shoulders).
-	# They now hold one shoulder-width step per row, each row half a step across from the one
-	# behind it, and the palette is a luminance-preserving mix rather than a multiplicative
-	# tint, so the delivered albedo keeps its detail and its brightness.
-	var mean_width: float = crowd3d.mean_rig_width()
-	var widest_gap: float = crowd3d.max_row_gap()
-	# Two measures, because the measured AABB is the arm span (≈1.45 m) and the brief's 1.25×
-	# rule would let a loose line through. The shoulder box is the one neighbours actually
-	# touch in, so the same check is also run against 1.25× that.
-	_check(mean_width > 0.0 and widest_gap <= mean_width * 1.25
-			and widest_gap <= CrowdController3D.BODY_HALF_WIDTH * 2.0 * 1.25,
-		"no row opens a gap wider than 1.25× the mean rig width, or past a shoulder step",
-		"widest %.3f m step vs %.3f m mean width (shoulder box %.2f m, cap %.3f)" % [widest_gap,
-			mean_width, CrowdController3D.BODY_HALF_WIDTH * 2.0, CrowdController3D.BODY_HALF_WIDTH * 2.5])
-	var stagger_a := absf(crowd3d.row_first_center(0) - crowd3d.row_first_center(1))
-	var stagger_b := absf(crowd3d.row_first_center(1) - crowd3d.row_first_center(2))
-	_check(stagger_a >= 0.2 and stagger_b >= 0.2,
-		"each row is staggered by half a step instead of stacking in columns",
-		"%.2f / %.2f m offsets" % [stagger_a, stagger_b])
-	_check(crowd3d.tint_strength() > 0.0 and crowd3d.tint_strength() <= 0.25,
-		"the dancehall palette rides a gentle luma-preserving mix",
-		"strength %.2f (cap 0.25)" % crowd3d.tint_strength())
-	_check(crowd3d.palette_luma_error() <= 0.10,
-		"the tint holds the delivered albedo's luminance within 10 %",
-		"%.4f worst error" % crowd3d.palette_luma_error())
-	# The whole cluster has to sit inside the backdrop and inside the stage camera's frame.
-	var backdrop_half: Vector2 = atmosphere.backdrop_half_extent()
-	var cluster_edge: float = crowd3d.max_abs_x() + CrowdController3D.BODY_HALF_WIDTH
-	var cluster_top: float = CrowdController3D.ROW_Y[2] + CrowdController3D.HEIGHT_MAX \
-		* CrowdController3D.FIGHTER_HEIGHT
-	_check(cluster_edge <= backdrop_half.x and cluster_top <= atmosphere.backdrop_centre().y
-			+ backdrop_half.y,
-		"the cluster sits inside the backdrop",
-		"edge %.2f m of %.2f, top %.2f m" % [cluster_edge, backdrop_half.x, cluster_top])
-	var view_size: Vector2 = atmosphere.get_viewport().get_visible_rect().size
-	var off_frame := 0
-	var offenders := ""
-	for i in crowd3d.count():
-		var p: Vector3 = crowd3d.member_position(i)
-		# The body box, not the bind-pose arm span: the extremes of the AABB are empty air where
-		# a hand would be if the model were still in T-pose.
-		var half := CrowdController3D.BODY_HALF_WIDTH
-		for offset in [-half, 0.0, half]:
-			var screen: Vector2 = atmosphere.camera.unproject_position(p + Vector3(offset, 0.0, 0.0))
-			if screen.x < 0.0 or screen.y < 0.0 or screen.x > view_size.x or screen.y > view_size.y:
-				off_frame += 1
-				if offenders.length() < 80:
-					offenders += " #%d x%.2f z%.2f -> %s" % [i, p.x, p.z, screen]
-	_check(off_frame == 0,
-		"every rig in the cluster stays inside the stage camera's frame",
-		"%d of %d sample(s) off frame at %s%s" % [off_frame, crowd3d.count() * 3, view_size,
-			offenders])
-	var accents := {}
-	for i in crowd3d.count():
-		accents[crowd3d.palette_name_of(i)] = true
-	_check(accents.has("green") and accents.has("gold") and accents.has("red")
-			and accents.has("black") and accents.has("neon_cyan"),
-		"the bank wears the green / gold / red / black dancehall palette plus neon",
-		", ".join(accents.keys()))
-	_check(crowd3d.shared_material_count() > 0
-			and crowd3d.shared_material_count() < crowd3d.count(),
-		"the palette rides shared materials, not one material per rig",
-		"%d material(s) across %d rigs" % [crowd3d.shared_material_count(), crowd3d.count()])
-	var beat_a: float = crowd3d.beat_phase_of(0)
-	crowd3d.tick(CrowdController3D.BEAT_SEC)
-	var beat_b: float = crowd3d.beat_phase_of(0)
-	_check(absf(beat_b - beat_a) < 0.02, "the crowd skank is locked to 132 BPM",
-		"%.3f → %.3f after one beat" % [beat_a, beat_b])
-	var nodes_before := crowd3d.node_count()
-	var models_before := crowd3d.model_slots().size()
-	for i in 600:
-		crowd3d.tick(1.0 / 60.0)
-	_check(crowd3d.node_count() == nodes_before
-			and crowd3d.model_slots().size() == models_before,
-		"600 frames of crowd motion create no nodes and no objects",
-		"%d nodes, %d models" % [crowd3d.node_count(), crowd3d.model_slots().size()])
-	_check(crowd3d.tint_strength() <= 0.25 and crowd3d.count() == 22
-			and crowd3d.model_names().size() == 7,
-		"600 frames later the cluster still holds 22 rigs across all 7 models",
-		"%d rigs, %d models, tint %.2f" % [crowd3d.count(), crowd3d.model_names().size(),
-			crowd3d.tint_strength()])
-	crowd3d.settle()
-
+	_check(booth_tris > 0 and atmosphere.atmosphere_triangles() < 90000,
+		"the 3D booth stays inside the 90 000-triangle Chromebook ceiling",
+		"%d total (booth %d)" % [atmosphere.atmosphere_triangles(), booth_tris])
 	# ---- Bug 5 (2026-11-25): Afternoon / Sunset / Night rigs ----------------------------
 	# Each preset is a full setup: three-stop sky plus horizon haze, graded sand, key and rim,
 	# and four coloured stage beams inside Compatibility's per-object light limit.
@@ -2342,31 +2119,20 @@ func _run() -> void:
 	atmosphere._update_speakers(0.0)
 
 	# ---- Clean human-rig slots instead of capsule mannequins (2026-11-23) --------------
-	_check(crowd3d.empty_slot_count() == 0
-			and crowd3d.model_slots().size() == crowd3d.count(),
-		"every spectator is a delivered Mixamo character — no silhouettes exist",
-		"%d empty slots / %d models" % [crowd3d.empty_slot_count(),
-			crowd3d.model_slots().size()])
-	_check(crowd3d.animated_model_count() == crowd3d.count(),
-		"every spectator's own clip is playing",
-		"%d animated" % crowd3d.animated_model_count())
-	_check(crowd3d.legacy_mannequin_count() == 0 and booth.legacy_mannequin_count() == 0,
+	_check(booth.legacy_mannequin_count() == 0,
 		"no capsule or cylinder mannequin bodies are left on screen",
-		"%d / %d legacy body meshes" % [crowd3d.legacy_mannequin_count(),
-			booth.legacy_mannequin_count()])
-	_check(DirAccess.dir_exists_absolute(CharacterModelSlots.DJ_DIR)
-			and DirAccess.dir_exists_absolute(CharacterModelSlots.CROWD_DIR),
-		"the .fbx drop-in folders exist for DJs and the crowd")
+		"%d legacy body meshes" % booth.legacy_mannequin_count())
+	_check(DirAccess.dir_exists_absolute(CharacterModelSlots.DJ_DIR),
+		"the .fbx drop-in folder exists for the DJs")
 	_check(booth.model_slots().size() == booth.dj_count(),
 		"the delivered .fbx characters fill every DJ slot",
 		"%d models" % booth.model_slots().size())
-
-	# ---- Delivered Mixamo crowd/DJ characters (2026-11-23) ----------------------------
-	# Every delivered character must be a real 68-bone `mixamorig` rig with its animation
-	# take, decimated to the 3 500-triangle crowd/DJ budget, wearing the toon + ink pass,
-	# and crossfading its clips from the arena's own event cues.
+	# ---- Delivered Mixamo DJ characters (2026-11-23) ----------------------------------
+	# Every delivered selector must be a real 68-bone `mixamorig` rig with its animation
+	# take, decimated to the 3 500-triangle budget, wearing the toon + ink pass, and
+	# crossfading its clips from the arena's own event cues. The crowd carried the same
+	# contract until the rigs were switched off (fix pass commit 1); the two DJs carry it now.
 	var delivered: Array = []
-	delivered.append_array(crowd3d.model_slots())
 	delivered.append_array(booth.model_slots())
 	var rig_failures: Array[String] = []
 	var budget_failures: Array[String] = []
@@ -2389,103 +2155,47 @@ func _run() -> void:
 			clip_failures.append("%s:%d clips/%d tracks" % [model_name, clips.size(), tracks])
 		if CharacterModelSlots.cel_surfaces(model) == 0:
 			cel_failures.append(model_name)
-	# PART 2 packs the yard, so this is every BODY on stage (22 crowd + 2 DJ), not 10 slots.
-	_check(delivered.size() == crowd3d.count() + booth.dj_count() and rig_failures.is_empty(),
-		"every crowd and DJ body on stage carries a real Mixamo skeleton (> 20 bones)",
+	_check(delivered.size() == booth.dj_count() and rig_failures.is_empty(),
+		"every DJ body on stage carries a real Mixamo skeleton (> 20 bones)",
 		"%d characters, failures %s" % [delivered.size(), rig_failures])
 	_check(not delivered.is_empty() and budget_failures.is_empty(),
-		"every delivered crowd/DJ mesh is decimated to ≤ 3 500 triangles",
+		"every delivered DJ mesh is decimated to ≤ 3 500 triangles",
 		", ".join(budget_failures))
 	_check(not delivered.is_empty() and clip_failures.is_empty(),
-		"every delivered character has acting clips with real AnimationPlayer tracks",
+		"every delivered DJ has acting clips with real AnimationPlayer tracks",
 		", ".join(clip_failures))
 	_check(not delivered.is_empty() and cel_failures.is_empty(),
-		"every delivered character wears the toon shader plus inverted-hull ink",
+		"every delivered DJ wears the toon shader plus inverted-hull ink",
 		", ".join(cel_failures))
-	var hand_attachments := crowd3d.find_children("*", "BoneAttachment3D", true, false).size() \
-		+ booth.find_children("*", "BoneAttachment3D", true, false).size()
+	var hand_attachments := booth.find_children("*", "BoneAttachment3D", true, false).size()
 	_check(hand_attachments == 0,
-		"no procedural prop is parented to a crowd or DJ hand any more",
+		"no procedural prop is parented to a DJ hand any more",
 		"%d hand attachment(s)" % hand_attachments)
 
-	# Acting: the same combat cues crossfade the delivered characters, per bank.
-	crowd3d.settle()
+	# Acting: the same combat cues crossfade the delivered selectors.
 	booth.settle()
-	var neutral_clip := crowd3d.model_clip_of(0)
+	var neutral_clip := booth.model_clip_of(0)
 	atmosphere.notify_combat_event(&"heavy_hit", 0)
-	crowd3d.tick(0.9)
 	booth.tick(0.1)
-	_check(crowd3d.model_act_of(0) == CharacterModelSlots.ACT_CHEER
-			and crowd3d.model_act_of(crowd3d.zone_count(0)) == CharacterModelSlots.ACT_DISBELIEF,
-		"the delivered banks crossfade to cheer and disbelief on a heavy hit",
-		"left %s / right %s" % [crowd3d.model_act_of(0),
-			crowd3d.model_act_of(crowd3d.zone_count(0))])
-	_check(crowd3d.model_clip_of(0) == "mixamo_cheer"
-			and crowd3d.model_clip_of(0) != neutral_clip,
-		"the cheer clip is actually playing, not just recorded as a state",
-		"%s (neutral %s)" % [crowd3d.model_clip_of(0), neutral_clip])
 	_check(booth.model_act_of(0) == CharacterModelSlots.ACT_HYPE,
 		"the selectors crossfade to the hype take when they point at the fighters",
 		String(booth.model_act_of(0)))
-	crowd3d.settle()
 	booth.settle()
-	_check(crowd3d.model_act_of(0) == CharacterModelSlots.ACT_NEUTRAL
-			and crowd3d.model_clip_of(0) == neutral_clip,
-		"a settled yard crossfades back to each character's own loop",
-		crowd3d.model_clip_of(0))
-	# ---- Every crowd and DJ surface carries a real albedo (playtest 2026-11-24) --------
+	_check(booth.model_act_of(0) == CharacterModelSlots.ACT_NEUTRAL
+			and booth.model_clip_of(0) == neutral_clip,
+		"a settled booth crossfades back to the selector's own loop",
+		booth.model_clip_of(0))
+	# ---- Every DJ surface carries a real albedo (playtest 2026-11-24) ------------------
 	var unbound := 0
 	var surfaces := 0
-	for model in crowd3d.model_slots():
-		surfaces += _count_cel_surfaces(model)
-		unbound += CharacterModelSlots.report_albedo("crowd", model)
 	for model in booth.model_slots():
 		surfaces += _count_cel_surfaces(model)
 		unbound += CharacterModelSlots.report_albedo("dj", model)
-	_check(unbound == 0 and surfaces >= crowd3d.model_slots().size() + booth.model_slots().size(),
-		"every crowd and DJ surface binds a delivered albedo — none is null",
+	_check(unbound == 0 and surfaces >= booth.model_slots().size(),
+		"every DJ surface binds a delivered albedo — none is null",
 		"%d surfaces / %d unbound" % [surfaces, unbound])
-	# Bug 4c (2026-11-25): the bank now SHARES one cel material per delivered atlas, so the old
-	# "one material per character" rule is replaced by the stronger per-instance contract:
-	# every rig sets its own `instance_accent`, and writing one rig's accent cannot move a
-	# neighbour's accent or the shared material's albedo/tint.
-	var instance_ok := true
-	var instance_accents := {}
-	var bindings := 0
-	for model in crowd3d.model_slots():
-		var rig_accents := {}
-		for child in model.find_children("*", "MeshInstance3D", true, false):
-			var mi := child as MeshInstance3D
-			if mi == null or mi.mesh == null or CharacterModelSlots._under_hand_prop(mi):
-				continue
-			var accent = mi.get_instance_shader_parameter("instance_accent")
-			if accent == null:
-				instance_ok = false
-			else:
-				rig_accents[str(accent)] = true
-				instance_accents[str(accent)] = true
-			bindings += mi.mesh.get_surface_count()
-		if rig_accents.is_empty():
-			instance_ok = false
-	var accent_probe := _first_cel_mesh(crowd3d.model_slots()[0])
-	var accent_neighbour := _first_cel_mesh(crowd3d.model_slots()[1])
-	var isolated := false
-	if accent_probe != null and accent_neighbour != null:
-		var probe_before = accent_probe.get_instance_shader_parameter("instance_accent")
-		var neighbour_before = accent_neighbour.get_instance_shader_parameter("instance_accent")
-		accent_probe.set_instance_shader_parameter("instance_accent", Color(1.0, 0.0, 1.0, 1.0))
-		var neighbour_after = accent_neighbour.get_instance_shader_parameter("instance_accent")
-		var shared_material := accent_neighbour.get_surface_override_material(0) as ShaderMaterial
-		isolated = str(neighbour_after) == str(neighbour_before) and shared_material != null \
-			and shared_material.get_shader_parameter("tint") == Color.WHITE
-		accent_probe.set_instance_shader_parameter("instance_accent", probe_before)
-	_check(instance_ok and bindings > 0 and instance_accents.size() >= 4,
-		"every rig carries its own instance palette, so no two rigs tint each other",
-		"%d binds / %d accents" % [bindings, instance_accents.size()])
-	_check(isolated,
-		"writing one rig's instance accent leaves its neighbour and the shared material alone")
 	var tint_amount := 1.0
-	for model in crowd3d.model_slots():
+	for model in booth.model_slots():
 		for child in model.find_children("*", "MeshInstance3D", true, false):
 			var mi := child as MeshInstance3D
 			if mi == null or mi.mesh == null or mi.mesh.get_surface_count() == 0:
@@ -2495,9 +2205,8 @@ func _run() -> void:
 				tint_amount = minf(tint_amount,
 					float(material.get_shader_parameter("shadow_tint_amount")))
 	_check(tint_amount <= 0.001,
-		"no global darkening on the cel shader — crowd and DJ albedo renders at full brightness",
+		"no global darkening on the cel shader — DJ albedo renders at full brightness",
 		"shadow_tint_amount %.3f" % tint_amount)
-
 	# ---- Music bed cannot bleed into Match 2+ (owner playtest, 2026-11-23) --------------
 	music_bed.play_victory()
 	_check(music_bed.is_playing() and not music_bed.is_off(),

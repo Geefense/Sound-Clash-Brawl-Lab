@@ -736,8 +736,12 @@ func _check_arena_integrity() -> void:
 		"%.2f × %.2f × %.2f m" % [deck.size.x, deck.size.y, deck.size.z])
 	_check(absf(deck.position.y) <= 0.01,
 		"the deck's lowest vertex sits on the sand within 1 cm", "y %+.4f m" % deck.position.y)
-	_check(absf(deck.size.y - 1.15) / 1.15 <= 0.02,
-		"the deck stands 1.15 m tall within 2 %", "%.3f m" % deck.size.y)
+	# Fix pass commit 2 (intentional change): the deck is authored at 1.15 m and the stage's
+	# perspective compensation multiplies it, so the asserted height is 1.15 × that scale.
+	var deck_scale: float = yard3d.stage_booth_scale() if yard3d != null else 1.0
+	_check(absf(deck.size.y / deck_scale - 1.15) / 1.15 <= 0.02,
+		"the deck stands its authored 1.15 m under the stage scale, within 2 %",
+		"%.3f m (1.15 × %.2f×)" % [deck.size.y, deck_scale])
 	var deck_front := Vector3.ZERO
 	var mic_slots := 0
 	var mic_lengths := ""
@@ -1269,6 +1273,62 @@ func _check_camera_stage_clearance() -> void:
 			arena.p2.global_position = Vector2(890.0, 600.0)
 			for i in 45:
 				await process_frame
+			# ---- Fix pass commit 2: the deeper set, framed at the NEUTRAL camera -----------
+			# Booth depth, both towers and the two DJ stands were placed by `StageLayout` over
+			# the measured AABBs at load; read back here on the live lens.
+			var layout: Dictionary = arena3d.stage_layout()
+			var booth_z: float = arena3d.stage_booth_z()
+			var nearest_face: float = arena3d.stage_nearest_face_z()
+			_check(booth_z >= StageLayout.BOOTH_Z_MIN and booth_z <= StageLayout.BOOTH_Z_MAX,
+				"%s vs %s: the booth stands in the brief's -5.0 to -4.2 m band" % [a, b],
+				"booth z %.2f" % booth_z)
+			_check(nearest_face <= -3.6 and -nearest_face >= 2.5,
+				"%s vs %s: the clean sand strip to the nearest prop is at least 2.5 m" % [a, b],
+				"nearest face z %.2f (%.2f m of sand)" % [nearest_face, -nearest_face])
+			var prop_boxes: Array = arena3d.prop_bounds()
+			var margin_details := ""
+			for box in prop_boxes:
+				var escape := _outside_margin(arena3d.camera, view, box, StageLayout.MARGIN_PX)
+				if escape != "":
+					margin_details += " " + escape
+			_check(prop_boxes.size() == 2 and margin_details == "",
+				"%s vs %s: every deck and tower corner sits inside the frame with a 12 px margin" % [a, b],
+				margin_details if margin_details != "" else "%d prop box(es) in a %.0fx%.0f view" % [
+					prop_boxes.size(), view.x, view.y])
+			var overlap := ""
+			for box in prop_boxes:
+				if box != _prop_bounds(arena3d, "dj_booth.glb") \
+						and box.intersects(_prop_bounds(arena3d, "dj_booth.glb")):
+					overlap = "tower z %.2f..%.2f vs deck z %.2f..%.2f" % [box.position.z,
+						box.end.z, _prop_bounds(arena3d, "dj_booth.glb").position.z,
+						_prop_bounds(arena3d, "dj_booth.glb").end.z]
+			_check(overlap == "",
+				"%s vs %s: the towers stand clear of the deck in depth" % [a, b],
+				overlap if overlap != "" else "no tower/deck intersection")
+			var rays_blocked := ""
+			for box in prop_boxes:
+				for fighter in [arena.p1, arena.p2]:
+					var ray_x: float = arena3d.px_to_world_x(fighter.global_position.x)
+					for height in [0.35, 1.0, 1.65]:
+						if _ray_hits_box(arena3d.camera.global_position,
+								Vector3(ray_x, height, 0.0), box):
+							rays_blocked = "%s at y %.2f" % [fighter.fighter_key, height]
+			_check(rays_blocked == "",
+				"%s vs %s: no camera-to-fighter ray crosses a prop" % [a, b],
+				rays_blocked if rays_blocked != "" else "%d prop box(es) x 6 rays" % prop_boxes.size())
+			var deck_box := _prop_bounds(arena3d, "dj_booth.glb")
+			var dj_clear := true
+			var dj_detail := ""
+			for dj_index in arena3d.dj_booth.dj_count():
+				var dj_box: AABB = arena3d.dj_booth.dj_world_bounds(dj_index)
+				if dj_box.size == Vector3.ZERO or dj_box.intersects(deck_box) \
+						or dj_box.position.z >= deck_box.position.z:
+					dj_clear = false
+					dj_detail += " #%d z %.2f..%.2f" % [dj_index, dj_box.position.z, dj_box.end.z]
+			_check(dj_clear,
+				"%s vs %s: both DJ rigs stand behind the deck without interpenetrating it" % [a, b],
+				dj_detail if not dj_clear else "deck z %.2f..%.2f" % [deck_box.position.z,
+					deck_box.end.z])
 			# PART 2 commit 5: the clearance must hold with the crowd at its ERUPTION PEAK, so
 			# the yard is erupting before the obstacle boxes are measured and stays erupting
 			# (0.9 s peak) across all four stacks.
@@ -1302,6 +1362,7 @@ func _check_camera_stage_clearance() -> void:
 				callout_points.append(Vector3(0.0, 3.4, 0.0))
 			var stacked_angle := 0.0
 			var stacked_punch := 0.0
+			var worst_visible := 1.0
 			for yaw in [-4.0, 4.0]:
 				for side in [-1, 1]:
 					var cam: Camera3D = arena3d.camera
@@ -1312,6 +1373,10 @@ func _check_camera_stage_clearance() -> void:
 						await process_frame
 					stacked_angle = rad_to_deg(cam.rotation.y)
 					stacked_punch = float(arena3d.camera_punch)
+					# The towers may lose a sliver at the stacked extreme; the brief allows 10 %.
+					for tower_box in prop_boxes:
+						worst_visible = minf(worst_visible,
+							_visible_fraction(cam, view, tower_box))
 					var label := "%s vs %s: %+.0f° lean, accent side %+d" % [a, b, yaw, side]
 					# (1) The lens body never enters the yard's own furniture.
 					var cam_pos: Vector3 = cam.global_position
@@ -1389,6 +1454,10 @@ func _check_camera_stage_clearance() -> void:
 		# punch must still be pinned there, or the three checks above prove nothing.
 			_check(absf(stacked_angle) > 5.0 and stacked_punch > 1.55,
 				"%s vs %s: the max stack reaches the lens (%.2f°, punch %.2f)" % [a, b, stacked_angle, stacked_punch])
+			_check(worst_visible >= 0.90,
+				"%s vs %s: at least 90 %% of every prop stays framed at the stacked extremes"
+					% [a, b],
+				"worst visible share %.3f across 4 extremes" % worst_visible)
 			_check(callout != null and callout_escapes == 0,
 				"%s vs %s: every comic callout box stays inside the safe play rectangle at the stacked extremes"
 					% [a, b],
@@ -1712,4 +1781,37 @@ func _bone(skel: Skeleton3D, suffix: String) -> int:
 	return -1
 
 
+## How far outside the viewport's 12 px margin any corner of `box` projects; "" when every
+## corner is inside. The neutral-camera half of the stage-framing audit.
+func _outside_margin(cam: Camera3D, view: Vector2, box: AABB, margin: float) -> String:
+	var worst := ""
+	var m := maxf(margin, 0.0)
+	for i in 8:
+		var p := Vector3(box.position.x if i & 1 == 0 else box.end.x,
+			box.position.y if i & 2 == 0 else box.end.y,
+			box.position.z if i & 4 == 0 else box.end.z)
+		var s: Vector2 = cam.unproject_position(p)
+		if s.x < m or s.y < m or s.x > view.x - m or s.y > view.y - m:
+			worst = "corner %s at (%.0f, %.0f) of %.0fx%.0f" % [p, s.x, s.y, view.x, view.y]
+	return worst
 
+
+## Share of a prop's sampled volume that projects inside the viewport, 0-1. Sampled on a
+## 5x5x5 grid so a corner-only test cannot hide a whole side going off frame.
+func _visible_fraction(cam: Camera3D, view: Vector2, box: AABB) -> float:
+	if box.size == Vector3.ZERO:
+		return 1.0
+	var inside := 0
+	var total := 0
+	for i in 5:
+		for j in 5:
+			for k in 5:
+				var p := Vector3(
+					lerpf(box.position.x, box.end.x, float(i) / 4.0),
+					lerpf(box.position.y, box.end.y, float(j) / 4.0),
+					lerpf(box.position.z, box.end.z, float(k) / 4.0))
+				var s: Vector2 = cam.unproject_position(p)
+				total += 1
+				if s.x >= 0.0 and s.y >= 0.0 and s.x <= view.x and s.y <= view.y:
+					inside += 1
+	return float(inside) / float(total)

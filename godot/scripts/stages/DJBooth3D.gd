@@ -30,10 +30,11 @@ const DJ_RIM := Color(1.0, 0.78, 0.34)
 const HAND_BONE := "mixamorig_RightHand"
 const BOOTH_MODEL := "res://assets/models/props/dj_booth.glb"
 const DJ_HEIGHT := 1.62
-## Where the two selectors stand, in this node's own space. The delivered deck is 2.40 m wide
-## and 1.29 m deep once seated at 1.15 m tall, so −0.62 put both men inside the cabinet; at
-## −1.05 they stand behind it with their hands over the top, feet on the sand (overnight props
-## pass, 2026-11-27). The rack itself keeps its authored slot transform.
+## The selectors' stand is DERIVED, not fixed (fix pass 2026-11-27, commit 2): `place_djs()`
+## measures the loaded deck's AABB and its front yaw, then stands both men `StageLayout.DJ_GAP`
+## behind its back face, feet on the sand, spaced across its own width. A replacement
+## `dj_booth.glb` of any size therefore puts them in the right place with no code change.
+## `DJ_Z` is only the pre-placement parking spot, used before the deck has been measured.
 const DJ_Z := -1.05
 
 
@@ -59,6 +60,9 @@ var _cel_materials: Array[ShaderMaterial] = []
 var deck: PropLoader = null
 var _time: float = 0.0
 var _rng := RandomNumberGenerator.new()
+## The perspective compensation `Arena3D` applied to the deck (`StageLayout`). The DJs are
+## people, not set dressing, so the scale rides the deck slot only, never this node.
+var _stage_scale: float = 1.0
 
 
 func _ready() -> void:
@@ -74,6 +78,100 @@ func build() -> void:
 	_make_dj(0, -0.62)
 	_make_dj(1, 0.62)
 	_load_models()
+	# Standalone instances (the editor, a unit test) place themselves; `Arena3D` re-places after
+	# it has applied the perspective scale, which is why this is safe to call twice.
+	place_djs()
+
+
+## Apply the stage's perspective compensation to the deck slot only. 1.0 leaves the authored
+## seat untouched; the men keep their real 1.62 m height either way.
+func apply_stage_scale(scale_factor: float) -> void:
+	_stage_scale = clampf(scale_factor, StageLayout.SCALE_MIN, StageLayout.SCALE_MAX)
+	if deck != null:
+		deck.scale = Vector3.ONE * _stage_scale
+	place_djs()
+
+
+## Stand the two selectors behind the loaded deck: feet on the floor, clear of its AABB by
+## `StageLayout.DJ_GAP` along the deck's own front axis, spaced across its measured width.
+## Positions are in this booth's local space, which is where the DJ anchors live.
+func place_djs() -> void:
+	if _djs.is_empty():
+		return
+	var box := deck_local_bounds()
+	if box.size == Vector3.ZERO:
+		return
+	var positions: Array = StageLayout.dj_positions(box.get_center(), box.size, deck_front())
+	for i in _djs.size():
+		if i >= positions.size():
+			break
+		var at: Vector3 = positions[i]
+		_djs[i].node.position = Vector3(at.x, 0.0, at.z)
+		_djs[i].base_y = 0.0
+
+
+## The loaded deck's mesh AABB in this booth's local space. Measured once per placement, never
+## per frame. Empty while the model is missing.
+func deck_local_bounds() -> AABB:
+	var out := AABB()
+	if deck == null or deck.model == null:
+		return out
+	var to_local := global_transform.affine_inverse()
+	var first := true
+	for child in deck.model.find_children("*", "MeshInstance3D", true, false):
+		var mi := child as MeshInstance3D
+		if mi == null or mi.mesh == null:
+			continue
+		var box: AABB = (to_local * mi.global_transform) * mi.mesh.get_aabb()
+		out = box if first else out.merge(box)
+		first = false
+	return out
+
+
+## Which way the deck's ARTWORK faces, in the booth's local space, as a flat unit vector. The
+## delivered deck has `front_axis = "-z"` turned 180°, so its painted face points at the
+## camera; this reads the model's real transform instead of re-deriving the yaw by hand.
+func deck_front() -> Vector3:
+	if deck == null or deck.model == null:
+		return Vector3(0.0, 0.0, 1.0)
+	var local := Vector3(0.0, 0.0, 1.0)
+	match deck.front_axis:
+		&"-z":
+			local = Vector3(0.0, 0.0, -1.0)
+		&"+x":
+			local = Vector3(1.0, 0.0, 0.0)
+		&"-x":
+			local = Vector3(-1.0, 0.0, 0.0)
+	if deck.front_flip:
+		local = -local
+	var world: Vector3 = (global_transform.basis.inverse() * (deck.model.global_transform.basis * local))
+	world.y = 0.0
+	return world.normalized() if world.length() > 0.001 else Vector3(0.0, 0.0, 1.0)
+
+
+## World AABB of one selector's character, for the "outside the deck" audit.
+func dj_world_bounds(index: int) -> AABB:
+	if index < 0 or index >= _djs.size() or _djs[index].model == null:
+		return AABB()
+	return _model_bounds(_djs[index].model)
+
+
+func _model_bounds(root: Node3D) -> AABB:
+	var out := AABB()
+	var first := true
+	for child in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := child as MeshInstance3D
+		if mi == null or mi.mesh == null:
+			continue
+		var box: AABB = mi.global_transform * mi.mesh.get_aabb()
+		out = box if first else out.merge(box)
+		first = false
+	return out
+
+
+## The stage scale applied to the deck.
+func stage_scale() -> float:
+	return _stage_scale
 
 
 ## One empty slot for the delivered deck. No plinth, no platters, no sign: nothing is drawn

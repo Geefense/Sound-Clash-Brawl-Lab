@@ -52,6 +52,14 @@ const NOTE_SPARK := 0.35
 const NOTE_HEAVY := 1.0
 
 const MODEL_SCRIPT := preload("res://scripts/fighters/FighterModel3D.gd")
+## The background set's placement rules (fix pass 2026-11-27, commit 2). `StageLayout` owns
+## the depths, the mirrored X, the frame clamp and the perspective compensation; this node
+## only feeds it the measured prop sizes and applies what it returns.
+const LAYOUT_SCRIPT := preload("res://scripts/stages/StageLayout.gd")
+## The crowd barrier now stands BEHIND the whole set (it was at z −2.55, i.e. inside the clean
+## sand strip, where it also cut across the bottom of the booth). Moved back with the set: no
+## new geometry, same rail, lower rail and nine posts, just 4.7 m deeper.
+const BARRIER_Z := -7.25
 const BILLBOARD_SCRIPT := preload("res://scripts/fighters/FighterBillboard3D.gd")
 const CROWD_SCRIPT := preload("res://scripts/stages/CrowdController3D.gd")
 const BOOTH_SCRIPT := preload("res://scripts/stages/DJBooth3D.gd")
@@ -256,6 +264,8 @@ var _sound_stacks: Array[PropLoader] = []
 var _prop_cel_materials: Array[ShaderMaterial] = []
 ## 3D atmosphere (owner request, 2026-11-22): the DJ booth behind the decks and the
 ## staggered silhouette crowd. Both are presentation only and are ticked from `_process`.
+## `_stage_layout` is what `_place_stage_set()` measured and applied (fix pass commit 2).
+var _stage_layout: Dictionary = {}
 var crowd3d: CrowdController3D = null
 var dj_booth: DJBooth3D = null
 var _pulse: float = 0.0
@@ -312,6 +322,8 @@ func _ready() -> void:
 	_cache_prop_cel()
 	_build_truss_and_lights()
 	_build_dj_booth()
+	# Both the towers and the deck exist now, so the set can be measured and placed as one.
+	_place_stage_set()
 	_build_crowd()
 	_apply_phase(PHASES[0])
 
@@ -1232,13 +1244,15 @@ func _build_yard() -> void:
 	horizon_material = _mat(Color(0.86, 0.86, 0.80), 1.0)
 	_add_box(self, "HorizonBand", Vector3(34.0, 0.55, 0.4), Vector3(0.0, 0.30, -12.4),
 		horizon_material)
-	_add_box(self, "BarrierRail", Vector3(13.0, 0.09, 0.09), Vector3(0.0, 0.95, -2.55),
+	# The crowd barrier moved back with the set (fix pass commit 2): at z −2.55 it stood in the
+	# clean sand strip and cut across the booth's base. Same rail, lower rail and nine posts.
+	_add_box(self, "BarrierRail", Vector3(13.0, 0.09, 0.09), Vector3(0.0, 0.95, BARRIER_Z),
 		_mat(Color(0.66, 0.68, 0.72), 0.45, 0.7))
-	_add_box(self, "BarrierLower", Vector3(13.0, 0.07, 0.07), Vector3(0.0, 0.50, -2.55),
+	_add_box(self, "BarrierLower", Vector3(13.0, 0.07, 0.07), Vector3(0.0, 0.50, BARRIER_Z),
 		_mat(Color(0.58, 0.60, 0.64), 0.5, 0.6))
 	for i in 9:
 		_add_box(self, "BarrierPost", Vector3(0.06, 1.02, 0.06),
-			Vector3(-6.0 + i * 1.5, 0.51, -2.55), _mat(Color(0.52, 0.54, 0.58), 0.5, 0.6))
+			Vector3(-6.0 + i * 1.5, 0.51, BARRIER_Z), _mat(Color(0.52, 0.54, 0.58), 0.5, 0.6))
 
 	# Additive pool of stage light on the sand (the SpotLights are the real illumination).
 	var pool_quad := QuadMesh.new()
@@ -1281,7 +1295,7 @@ func _build_speakers() -> void:
 		# PART A step 3: the delivered tower keeps its own photographic albedo.
 		slot.native_material = true
 		slot.yaw_degrees = -side * speaker_inward_yaw_degrees
-		slot.position = Vector3(side * 2.55, 0.0, -1.45)
+		# Position, depth and scale are set by `_place_stage_set()` from the measured AABBs.
 		add_child(slot)
 		_sound_stacks.append(slot)
 
@@ -1397,15 +1411,113 @@ func _build_truss_and_lights() -> void:
 	add_child(rim)
 
 
-## 3D DJ booth between the mid-ground stacks (owner request, 2026-11-22). It stands behind
-## the barrier and behind the fighting lane, in the centre bay both crowd banks leave open,
-## so the decks sit between the speaker stacks exactly as a real sound system is set up.
+## 3D DJ booth between the mid-ground stacks (owner request, 2026-11-22). It is measured and
+## placed by `_place_stage_set()`, which is what makes a replacement deck of any size land in
+## the same place with the DJs standing behind it.
 func _build_dj_booth() -> void:
 	dj_booth = BOOTH_SCRIPT.new()
 	dj_booth.name = "DJBooth3D"
-	dj_booth.position = Vector3(0.0, 0.0, -3.20)
 	add_child(dj_booth)
 	dj_booth.build()
+
+
+## Measure the delivered set and apply `StageLayout`'s placement to it. Runs once at build.
+## The booth depth, the towers' mirrored X and depth, the perspective compensation scales and
+## the two DJ stands all come out of one pure computation over the *measured* AABB sizes, so a
+## new `dj_booth.glb` of a different size needs no code change at all.
+func _place_stage_set() -> void:
+	var booth_size := Vector3(2.4, 1.15, 1.29)
+	if dj_booth != null:
+		var deck_size := _prop_model_size(dj_booth.deck)
+		if deck_size != Vector3.ZERO:
+			booth_size = deck_size
+	var speaker_size := Vector3(2.3, 2.6, 0.79)
+	for slot in _sound_stacks:
+		var tower_size := _prop_model_size(slot)
+		if tower_size != Vector3.ZERO:
+			speaker_size = tower_size
+			break
+	var view: Vector2 = get_viewport().get_visible_rect().size if is_inside_tree() \
+		else StageLayout.NEUTRAL_VIEW
+	_stage_layout = StageLayout.compute(booth_size, speaker_size, view, CAMERA_DISTANCE)
+	if dj_booth != null:
+		dj_booth.position = Vector3(0.0, 0.0, float(_stage_layout["booth_z"]))
+		dj_booth.apply_stage_scale(float(_stage_layout["booth_scale"]))
+		dj_booth.place_djs()
+	var x := float(_stage_layout["speaker_x"])
+	var z := float(_stage_layout["speaker_z"])
+	var s := float(_stage_layout["speaker_scale"])
+	for i in _sound_stacks.size():
+		var slot := _sound_stacks[i]
+		var side := -1.0 if i == 0 else 1.0
+		slot.position = Vector3(side * x, 0.0, z)
+		slot.scale = Vector3.ONE * s
+		slot.yaw_degrees = -side * float(_stage_layout["speaker_yaw_deg"])
+
+
+## Authored size of a filled prop slot's model in metres: what `PropLoader` measured from the
+## real meshes times the seat scale it applied, i.e. BEFORE the slot's own inward yaw and
+## before the stage's perspective multiplier. Measuring the live rotated AABB instead would
+## count the 12 deg yaw twice and shrink the towers' legal stand. Zero when the slot is empty
+## (the delivered file is missing), which is the expected state of the rasta slot.
+func _prop_model_size(slot: PropLoader) -> Vector3:
+	if slot == null or slot.model == null or slot.measured_aabb.size == Vector3.ZERO:
+		return Vector3.ZERO
+	return slot.measured_aabb.size * slot.seat_scale_applied
+
+
+## What `_place_stage_set()` applied: booth depth, tower X and depth, both perspective scales,
+## the frame limit it clamped against and the gap it kept. Audit only.
+func stage_layout() -> Dictionary:
+	return _stage_layout
+
+
+func stage_booth_z() -> float:
+	return float(_stage_layout.get("booth_z", 0.0))
+
+
+func stage_speaker_x() -> float:
+	return float(_stage_layout.get("speaker_x", 0.0))
+
+
+func stage_speaker_z() -> float:
+	return float(_stage_layout.get("speaker_z", 0.0))
+
+
+func stage_booth_scale() -> float:
+	return float(_stage_layout.get("booth_scale", 1.0))
+
+
+func stage_speaker_scale() -> float:
+	return float(_stage_layout.get("speaker_scale", 1.0))
+
+
+## Nearest front face of any filled prop, world Z. The clean strip is measured from here.
+func stage_nearest_face_z() -> float:
+	var nearest := -INF
+	var boxes: Array[AABB] = []
+	if dj_booth != null and dj_booth.deck != null and dj_booth.deck.model != null:
+		boxes.append(_meshes_world_aabb(dj_booth.deck.model))
+	for slot in _sound_stacks:
+		if slot != null and slot.model != null:
+			boxes.append(_meshes_world_aabb(slot.model))
+	for box in boxes:
+		if box.size != Vector3.ZERO:
+			# The NEAREST prop is the one whose front face is closest to the fight plane, i.e.
+			# the largest max-Z, not the deepest one.
+			nearest = maxf(nearest, box.end.z)
+	return 0.0 if nearest == -INF else nearest
+
+
+## Every filled prop's world AABB: the two tower slots and the deck. Audit only.
+func prop_bounds() -> Array[AABB]:
+	var out: Array[AABB] = []
+	if dj_booth != null and dj_booth.deck != null and dj_booth.deck.model != null:
+		_append_bounds(out, dj_booth.deck.model)
+	for slot in _sound_stacks:
+		if slot != null and slot.model != null:
+			_append_bounds(out, slot.model)
+	return out
 
 
 ## 20 staggered, zone-loyal 3D silhouettes replace the old 26-capsule placeholder bank,

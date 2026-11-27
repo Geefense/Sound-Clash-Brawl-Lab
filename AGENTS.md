@@ -7276,3 +7276,64 @@ cue live (plus the guard reword). The crowd **audio** assertions in the roster s
 (`SoundClashAudio` crowd layer, bus layout) were never touched — they are the part that had to
 keep working.
 
+
+### J2. The set moved back and is now placed by rule (commit 2)
+
+New file `godot/scripts/stages/StageLayout.gd` (`class_name StageLayout`, a `Resource`). It owns
+every number the set used to hard-code and exposes one pure function, `compute(booth_size,
+speaker_size, view, cam_z)`, that takes the two **measured** AABB sizes and returns the whole
+placement. `Arena3D._place_stage_set()` measures the loaded deck (`PropLoader.measured_aabb ×
+seat_scale`, i.e. before the slot's own 12° yaw and before the stage multiplier), feeds it in and
+applies the result; `DJBooth3D.place_djs()` then derives the two DJ stands from the deck's AABB and
+the direction its artwork actually faces.
+
+**What changed, in metres**
+
+| Item | Before | After |
+| --- | --- | --- |
+| Booth centre Z | −3.20 | **−4.50** |
+| Tower centre Z | −1.45 | **−6.10** (behind the booth's shoulders) |
+| Tower centre X | ±2.55 | **±2.15**, from the frame clamp |
+| Inward yaw | 12° | 12° (unchanged, still an export var) |
+| Perspective scale, booth | 1.00 | **1.178×** |
+| Perspective scale, towers | 1.00 | **1.250×** (clamped) |
+| Nearest prop front face | −0.80 (tower) | **−3.74** (deck front) |
+| Clean sand strip to the fight plane | 0.80 m | **3.74 m** |
+| Crowd barrier | z −2.55 | **z −7.25** (behind the set) |
+
+Frame rules in the layout: the towers aim at **0.80 × the visible half-width** at their depth, then
+are clamped so every corner keeps a **12 px** margin at the neutral camera *and* so the stacked lean
+(4.0° exchange lean + 2.0° × 0.85 accent = 5.7°) cannot swing them off frame — the reserve is
+`tan(5.7°) × lens-to-face distance`, not a guessed percentage. Measured result: **100 % of every
+prop stays framed at all four stacked extremes** in all 9 pairings.
+
+**Two deviations, both forced by the delivered art and both logged.**
+
+1. *The towers cannot flank the booth in the same plane.* The towers are 2.88 m wide at their seat
+   scale and the booth 2.82 m; a 30° lens 4.1 m away sees 8.2 m of width at that depth, so the three
+   props need ~8.6 m to sit side by side with margins. They therefore stand **behind the booth's
+   shoulders**, 0.05 m clear of its back face in depth, with a silhouette overlap of ~0.70 m a side
+   (never a mesh intersection — asserted). This is also what a real sound system looks like.
+2. *The towers' apparent size.* The brief asks for ±15 % of today's apparent size, but the towers
+   moved 4.65 m further back than the booth and the compensation is capped at 1.25×. Booth:
+   **1.000×** (perfect). Towers: **0.680×** — the clamp binds, and the arithmetic is
+   `2.60 × 1.25 / (4.10 + 6.10) = 0.3186` versus `2.60 / (4.10 + 1.45) = 0.4685`. Reaching 0.85×
+   would need 1.60×, i.e. a 4.2 m tower. The test asserts the measured floor (≥ 0.65×) instead of
+   the unreachable ±15 %, and the number is printed in every run.
+
+**Geometry verified.** The existing 24 × 18 m sand plane reaches z −12.5, i.e. 5.2 m behind the
+barrier and 3.6 m behind the towers (test: floor back ≥ 1 m behind the back-most prop). The sky
+backdrop, horizon band and their four-corner void audit are untouched and still green. The barrier
+rail, lower rail and its nine posts moved back as one set — no new geometry — because at z −2.55 the
+rail stood inside the clean strip and cut across the booth's base; it now reads as the yard's back
+fence behind the stacks. Shadows are unchanged: the deck and towers still cast nothing.
+
+**Tests.** Roster grew by 12 checks (booth Z band, nearest face ≤ −3.6, ≥ 2.5 m strip, frame + depth
+clamp, towers behind the booth, both scales inside 1.0–1.25, booth apparent size ±15 %, tower
+apparent floor, DJ-vs-deck separation, floor extension, and two synthetic-AABB layout proofs). Live
+grew by 9 × 7: booth Z, strip depth, 12 px corner margin, tower/deck depth separation, six
+camera-to-fighter rays per prop, DJ separation, and the 90 % visibility rule at the stacked
+extremes. **Two assertions changed intentionally:** "the tower stands 2.6 m tall" now reads its
+authored 2.6 m × the stage scale (it is 3.25 m in world space), and "the tower stands in front of
+the barrier" is inverted, because the barrier moved behind it. Nothing else moved.
+

@@ -2455,8 +2455,13 @@ func _run() -> void:
 		_check(absf(spk_box.position.y) <= 0.01,
 			"the tower's lowest vertex sits on the sand within 1 cm",
 			"y %+.4f m" % spk_box.position.y)
-		_check(absf(spk_box.size.y - 2.6) / 2.6 <= 0.02,
-			"the tower stands 2.6 m tall within 2 %", "%.3f m" % spk_box.size.y)
+		# Fix pass commit 2 (intentional change): the delivered tower is authored at 2.6 m, and the
+		# stage's perspective compensation multiplies it by the 1.25× the brief allows so it keeps
+		# its read after moving 4.45 m further back. Both numbers are asserted, separately.
+		var authored: float = 2.6 * float(prop_yard.stage_speaker_scale())
+		_check(absf(spk_box.size.y - authored) / authored <= 0.02,
+			"the tower stands its authored 2.6 m times the stage scale, within 2 %",
+			"%.3f m (2.60 × %.2f×)" % [spk_box.size.y, prop_yard.stage_speaker_scale()])
 		var spk_tris := 0
 		for node in speaker.model.find_children("*", "MeshInstance3D", true, false):
 			var spk_mi := node as MeshInstance3D
@@ -2489,8 +2494,12 @@ func _run() -> void:
 			spk_nearest if not spk_crowd_clear else "%d spk_rigs clear" % spk_rigs.size())
 		var spk_rail: Node3D = prop_yard.get_node_or_null("BarrierRail")
 		var spk_rail_box := _prop_world_bounds(spk_rail)
-		_check(spk_rail != null and not spk_box.intersects(spk_rail_box) and spk_box.position.z > spk_rail_box.end.z,
-			"the tower stands in front of the barrier without touching it",
+		# Fix pass commit 2 (intentional change of what this asserts): the rail moved back with the
+		# set, because at z −2.55 it stood inside the clean sand strip and cut across the booth.
+		# It is now BEHIND the towers, which is the ordering asserted here.
+		_check(spk_rail != null and not spk_box.intersects(spk_rail_box)
+				and spk_rail_box.position.z < spk_box.position.z,
+			"the barrier now stands behind the tower, clear of it",
 			"tower z %.2f..%.2f, spk_rail z %.2f..%.2f" % [spk_box.position.z, spk_box.end.z,
 				spk_rail_box.position.z, spk_rail_box.end.z])
 		var spk_lane_left := (BaseFighter.STAGE_LEFT - 640.0) / 140.0
@@ -2499,6 +2508,102 @@ func _run() -> void:
 		_check(not spk_box.intersects(spk_lane),
 			"the tower sits outside the fighters' play volume",
 			"tower z %.2f..%.2f vs spk_lane -0.50..0.50" % [spk_box.position.z, spk_box.end.z])
+
+		# ---- Fix pass commit 2 (2026-11-27): the set is placed by RULE, not by a constant ----
+		# Booth depth, both towers' mirrored X and depth, the perspective compensation and the
+		# two DJ stands all come out of `StageLayout.compute()` over the MEASURED AABB sizes.
+		# Everything below is read back from the live scene, so a replacement deck of a different
+		# size has to re-derive them itself or fail here.
+		var layout: Dictionary = prop_yard.stage_layout()
+		_check(not layout.is_empty()
+				and prop_yard.stage_booth_z() >= StageLayout.BOOTH_Z_MIN
+				and prop_yard.stage_booth_z() <= StageLayout.BOOTH_Z_MAX,
+			"the booth stands inside the brief's −5.0…−4.2 m band",
+			"booth z %.2f" % prop_yard.stage_booth_z())
+		var nearest_face: float = prop_yard.stage_nearest_face_z()
+		_check(nearest_face <= -3.6,
+			"the nearest prop face stands at least 3.6 m from the fight plane",
+			"nearest face z %.2f" % nearest_face)
+		_check(-nearest_face >= 2.5,
+			"the clear sand strip between the play plane and the set is at least 2.5 m",
+			"%.2f m of clean sand" % -nearest_face)
+		_check(bool(layout.get("frame_ok", false)) and bool(layout.get("gap_ok", false)),
+			"the towers fit the frame with the 12 px margin and clear the deck in depth",
+			"x %.2f (want %.2f, limit %.2f), %.2f m clear of the deck in depth" % [
+				prop_yard.stage_speaker_x(), float(layout.get("wanted_x", 0.0)),
+				float(layout.get("frame_limit_x", 0.0)),
+				float(layout.get("depth_clear_m", 0.0))])
+		_check(prop_yard.stage_speaker_z() < prop_yard.stage_booth_z(),
+			"the towers stand behind the booth's shoulders",
+			"tower z %.2f / booth z %.2f" % [prop_yard.stage_speaker_z(),
+				prop_yard.stage_booth_z()])
+		var s_booth: float = prop_yard.stage_booth_scale()
+		var s_tower: float = prop_yard.stage_speaker_scale()
+		_check(s_booth >= StageLayout.SCALE_MIN and s_booth <= StageLayout.SCALE_MAX
+				and s_tower >= StageLayout.SCALE_MIN and s_tower <= StageLayout.SCALE_MAX,
+			"both perspective scales sit inside the 1.0–1.25 clamp",
+			"booth %.3f× / tower %.3f×" % [s_booth, s_tower])
+		# Apparent size, measured the way the brief means it: world height over lens distance.
+		var deck_box := _prop_world_bounds(prop_yard.dj_booth.deck.model)
+		var booth_ratio: float = StageLayout.apparent_height(deck_box.size.y,
+				prop_yard.stage_booth_z()) / StageLayout.apparent_height(1.15,
+				StageLayout.LEGACY_BOOTH_Z)
+		var tower_ratio: float = StageLayout.apparent_height(spk_box.size.y,
+				prop_yard.stage_speaker_z()) / StageLayout.apparent_height(2.6,
+				StageLayout.LEGACY_SPEAKER_Z)
+		_check(absf(booth_ratio - 1.0) <= 0.15,
+			"the booth keeps its apparent size within 15 % after moving back",
+			"%.3f× of today's at %.2f× scale" % [booth_ratio, s_booth])
+		# The towers moved 4.45 m back, further than the booth. With the compensation capped at
+		# 1.25× their apparent size lands below the 15 % window; measured and logged rather
+		# than hidden (AGENTS.md PART J2).
+		_check(tower_ratio >= 0.65,
+			"the towers keep at least 65 % of their old apparent size at the 1.25× clamp",
+			"%.3f× of today's at %.2f× scale" % [tower_ratio, s_tower])
+		var dj_clear := true
+		var dj_detail := ""
+		for dj_index in prop_yard.dj_booth.dj_count():
+			var dj_box: AABB = prop_yard.dj_booth.dj_world_bounds(dj_index)
+			if dj_box.size == Vector3.ZERO or dj_box.intersects(deck_box) \
+					or dj_box.position.z >= deck_box.position.z:
+				dj_clear = false
+				dj_detail += " #%d z %.2f..%.2f" % [dj_index, dj_box.position.z, dj_box.end.z]
+		_check(dj_clear, "both DJ rigs stand behind the deck without interpenetrating it",
+			dj_detail if not dj_clear else "deck z %.2f..%.2f, %d men behind" % [
+				deck_box.position.z, deck_box.end.z, prop_yard.dj_booth.dj_count()])
+		# Data-driven proof, no mesh and no scene involved: a synthetic booth and tower of
+		# different sizes go through the same rule and keep the same contract.
+		var synthetic: Dictionary = StageLayout.compute(Vector3(3.2, 1.4, 1.6),
+			Vector3(0.8, 2.2, 0.6))
+		_check(bool(synthetic["frame_ok"]) and bool(synthetic["gap_ok"])
+				and is_equal_approx(float(synthetic["booth_z"]), StageLayout.BOOTH_Z)
+				and not is_equal_approx(float(synthetic["speaker_x"]),
+					prop_yard.stage_speaker_x()),
+			"a synthetic 3.2 m booth and 0.8 m tower re-place themselves by rule",
+			"tower x %.2f (delivered %.2f), gap %.2f m" % [float(synthetic["speaker_x"]),
+				prop_yard.stage_speaker_x(), float(synthetic["gap_m"])])
+		# The sand has to run at least 1 m behind the back-most prop AABB. The floor plane is the
+		# EXISTING one (no new scenery); this proves the deeper set still stands on it.
+		var floor_node: MeshInstance3D = prop_yard.get_node_or_null("SandFloor")
+		var floor_back := -INF
+		if floor_node != null and floor_node.mesh is PlaneMesh:
+			floor_back = floor_node.position.z - (floor_node.mesh as PlaneMesh).size.y * 0.5
+		var back_most := INF
+		for box in prop_yard.prop_bounds():
+			back_most = minf(back_most, box.position.z)
+		var barrier_node: Node3D = prop_yard.get_node_or_null("BarrierRail")
+		if barrier_node != null:
+			back_most = minf(back_most, _prop_world_bounds(barrier_node).position.z)
+		_check(is_finite(floor_back) and floor_back <= back_most - 1.0,
+			"the sand floor runs at least 1 m behind the back-most prop",
+			"floor back z %.2f vs prop back z %.2f" % [floor_back, back_most])
+		var wide: Dictionary = StageLayout.compute(Vector3(3.2, 1.4, 1.6),
+			Vector3(2.0, 2.6, 0.8))
+		_check(bool(wide["frame_ok"]) and is_equal_approx(float(wide["speaker_x"]),
+				float(wide["frame_limit_x"])),
+			"a wider tower is pushed out until the frame clamp stops it",
+			"tower x %.2f at frame limit %.2f" % [float(wide["speaker_x"]),
+				float(wide["frame_limit_x"])])
 		var spk_scenes: Array[String] = []
 		if DirAccess.dir_exists_absolute("res://scenes"):
 			for spk_file in DirAccess.get_files_at("res://scenes"):

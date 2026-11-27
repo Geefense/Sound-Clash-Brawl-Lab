@@ -6971,6 +6971,9 @@ Both are open shells and their glTF material is two-sided, so both slots run `do
 
 ### Which side is the booth's front, and why
 
+**Superseded for the deck by PART K2.** The rack this section describes was replaced on
+2026-11-27 by the thatched beach booth, which faces the opposite axis (+Z, no turn).
+
 Both models were rendered from **+Z, −Z, +X and −X** by a small software rasteriser
 (`_scratch/glb_render.py`, which parses the glb, samples the albedo with the triangles' UVs and
 z-buffers an orthographic view) and the four images were looked at. The **local −Z** face is the
@@ -7530,3 +7533,151 @@ rendered still behind it, and it is listed in the FINISH report as not done rath
 light present with shadows off, no fog and no ACES, and the directional shadow on at ≤ 18.5 m.
 Roster **473**, live **666**, 0 FAIL.
 
+## PART K — The thatched DJ booth (2026-11-27): re-faced, measured, calibrated
+
+Autonomous pass on the owner's upload. The brief: a newly committed thatched wooden beach
+`dj_booth.glb`; verify how `PropLoader` and `StageLayout` load, scale, orient and seat it, decide
+whether the 1.15 m authored height shrinks its counter too low, prove the two DJ stands, the
+towers, the camera rays and the lights still hold, and put the file into the licence ledger.
+
+| When | What | HEAD |
+| --- | --- | --- |
+| 2026-11-27, PART K | Thatched deck: re-faced to +Z (the camera had been looking at its back wall), counter and canopy measured and pinned, selectors' floor and clearance measured, licence row rewritten from the file. Roster **476**, live **666**, facing **310**, feel **444**, 0 FAIL. Pack −1,106,348 B (−2.43 %). | this commit |
+
+### K1. STEP 0 — what was actually committed
+
+`origin/feature/3d-cel-shaded` is **`89cbd38`** ("Add files via upload"), one commit on top of the
+fix pass's `824a4c0`, and it contains exactly one file: a **4,823,260 B `dj_booth.glb` at the
+repository ROOT**, not in `godot/assets/models/props/`. Two traps caught before any work:
+
+* `git fetch origin --prune` left `origin/feature/3d-cel-shaded` stale at `2d18e9a`, so
+  `git log origin/feature/3d-cel-shaded` showed the wrong tip until an explicit refspec
+  (`git fetch origin refs/heads/feature/3d-cel-shaded:refs/remotes/origin/feature/3d-cel-shaded`)
+  was used. `git ls-remote` is what caught it.
+* The worktree was parked at `824a4c0`, so the "new" booth in the props folder was still the old
+  12,292,616 B rack.
+
+The upload was moved into `godot/assets/models/props/dj_booth.glb` (replacing the rack) and
+`--headless --import` re-extracted a single texture, `dj_booth_0.png`. Baseline **before any code
+change**: roster **473**, live **666**, facing **310**, feel **444**, **0 FAIL**.
+
+**Measured facts of the delivery** (parsed from the GLB itself):
+
+| Property | Value |
+| --- | --- |
+| Bytes / SHA-256 | 4,823,260 B / `772611c7…f6c54e2e` |
+| Generator | glTF 2.0 written by **trimesh** (the rack used the Blender exporter) |
+| Nodes / meshes / materials | 1 (`geometry_0`) / 1 / 1 (`doubleSided: true`, base colour only) |
+| Triangles / vertices | **10,549 / 12,856** |
+| Authored bounds | 0.947 × 0.659 × 0.630 m — a **normalised unit export, not metres** |
+| Topology | open shell: 11,155 of its 21,401 edges are boundary edges |
+| Textures | one embedded 2,048² PNG albedo (4,252,004 B); no normal/MR/emissive maps |
+| Skeleton / animation | none |
+
+### K2. The camera had been looking at the plank back wall
+
+The mesh is an open-front hut: three deck units and a cabinet run against a full-height plank back
+wall, a thatched canopy on four posts over all of it. Rasterising it from +Z, −Z, +X and −X with the
+same CPU z-buffer script the PART I pass used (no GPU needed) shows the **open counter on local +Z**
+and a blank plank wall on local −Z.
+
+The rack it replaced was authored on −Z, so `DJBooth3D._build_booth_slot()` still set
+`front_axis = &"-z"`: the slot turned the new hut 180° and the game camera — at z +4.10 looking down
+−Z at a booth centred on z −4.50 — saw **a 1.95 m wide blank plank wall where the decks belong**.
+No suite caught it, because the orientation assertion only checks that the *declared* front points
+at the camera, never that the declared front is the open side.
+
+Fix: `front_axis = &"+z"` (no turn), with the measurement recorded in the slot's own comment.
+`DJBooth3D.deck_front()`, `StageLayout.dj_positions()` and the live check's `deck_front` readout all
+read the live transform, so the DJ stands followed the change; the live check's `-basis.z` readout
+became `+basis.z` and its assertion now reads "the deck's open counter is turned toward the camera
+side".
+
+### K3. The counter cannot sit at 1.10–1.20 m on this stage
+
+The hut's working surface (the three deck tops) is **28.2 % of the hut's own height**; its canopy
+underside is at **92.3 %**. Measured on the live deck at the authored 1.15 m: counter **0.417 m**,
+canopy underside **1.244 m**, roof top **1.350 m**, in a **1.95 × 1.35 × 1.30 m** world box (the
+1.746× seat scale times the 1.178× stage scale). `PropLoader` seats with one **uniform** scale, so
+height, width and depth grow together — the hut is 1.694 × its height wide and 1.127 × its height
+deep — and the counter target cannot be separated from the footprint:
+
+| Authored height | World w × h × d | Counter | Near face z | Depth clear of the towers |
+| --- | --- | --- | --- | --- |
+| **1.15 m (kept)** | 1.95 × 1.35 × 1.30 | **0.42 m** | −3.85 | +0.14 m |
+| 1.30 m | 2.20 × 1.53 × 1.47 | 0.47 m | −3.77 | +0.08 m |
+| 1.40 m | 2.37 × 1.64 × 1.58 | 0.51 m | −3.71 | +0.02 m (ceiling) |
+| 1.50 m (selectors would fit under the canopy) | 2.54 × 1.76 × 1.69 | 0.54 m | −3.65 | **−0.04 m** |
+| 3.17 m (counter at 1.10 m) | 5.37 × 3.72 × 3.57 | 1.10 m | **−2.71** | **−0.80 m** |
+
+Two contracts older than this pass set the ceiling: the nearest prop face must stand at least 3.6 m
+from the fight plane (2.5 m of clean sand), and the booth must clear the towers in depth. At the
+counter the brief asks for, the hut would be 3.72 m tall (above the top of the frame at that depth),
+5.37 m wide and 3.57 m deep, with its front face 0.89 m inside the clean sand strip and its back
+through both towers. **The 1.15 m height was therefore kept** — the only value that satisfies both
+contracts with margin (0.25 m of sand to spare, 0.14 m of tower clearance) — and the working surface
+is *measured* at 0.417 m instead of being asserted at a height the stage cannot carry. The brief's
+"~1.10–1.20 m waist height" is recorded as **not achievable with this delivery on this stage**;
+reaching it needs either an authored counter at ~28 % of a ~3.2 m hut on a deeper stage, or a
+re-cut asset with a taller cabinet relative to its canopy.
+
+**Tests added (roster +3).** The working surface and canopy underside are now measured from the
+live triangles by `DJBooth3D.deck_counter_y()` / `deck_canopy_underside_y()` — one cached pass over
+`MeshInstance3D.get_faces()` (highest up-facing face below 55 % of the height, lowest down-facing
+face above 70 %), re-measured whenever the stage scale changes, never per frame. The checks assert
+the counter stays in the 0.30–0.45 m band with the canopy above it, that the roof keeps more than
+`StageLayout.MARGIN_PX` of frame above it at the neutral camera (measured **308 px**), and that both
+selectors stand on the sand (feet **+0.009 m**) with real air behind the deck's back face
+(**0.13 m**).
+
+### K4. The selectors, the towers, the rays and the lights
+
+* **Selectors.** `place_djs()` still derives both stands from the loaded deck: `DJ_GAP` 0.40 m
+  behind its back face, ±26 % of its measured width. Both AABBs start **+0.009 m** above the sand
+  (the delivery's own foot clearance), sit **0.13 m** of air behind the deck's back face
+  (deck z −5.15…−3.85), and intersect neither the deck nor each other. Their mics ride the hand bone
+  inside those AABBs, so "the mic clears the booth" is the same measurement.
+* **Visibility, logged honestly.** The hut's back wall is full height, so with the men behind it at
+  the legal scale only their heads and shoulders show above the 1.35 m roof. Standing them *inside*
+  the hut needs a 1.50 m authored height, which is 0.04 m past the tower separation (K3). Nothing
+  was moved to force it: the stands, the towers and the sand strip are unchanged.
+* **Towers.** Untouched: z −6.10, 1.25× scale, apparent size 0.680× of the pre-pass set (logged in
+  J2), `frame_ok`/`gap_ok` true, no tower/deck intersection, 12° inward yaw, rasta slot empty.
+* **Camera rays.** The live suite's neutral and stacked-extreme passes — lens body clear of every
+  box, six camera-to-fighter rays per prop, the deck out of the play lane, the 12 px corner margin,
+  the 90 % visibility rule — are green at all four pairings.
+* **Lights and shadows.** No change: the booth is one mesh on the stage layer, the yard's worst case
+  stays 4 lights per mesh, and its native material keeps `SHADOW_CASTING_SETTING_OFF`.
+* **Triangles.** The booth node (deck + two selectors) is **17,531** triangles (deck 10,549 + 2 ×
+  3,491), inside the 90,000 ceiling.
+
+### K5. Licence ledger and pack effect
+
+`ASSET_LICENSES.md`'s prop row for the deck was rewritten from the file itself: trimesh generator,
+10,549 triangles / 12,856 vertices, one 2,048² embedded albedo, 0.947 × 0.659 × 0.630 m, open shell,
+commit `89cbd38`, SHA-256, and the same **OWNER TO FILL** provenance cells — the file still records
+no artist, tool plan or redistribution terms.
+
+Pack effect, measured by exporting the same project twice with only the deck swapped
+(`--export-release "Web"` into a scratch directory, never `/docs`):
+
+| | Old rack (`824a4c0`) | Thatched hut (`89cbd38`) |
+| --- | --- | --- |
+| `index.pck` | 45,561,420 B | **44,455,072 B** |
+
+That is **−1,106,348 B (−2.43 %)**. It only lands there because the extracted albedo was put on the
+same import budget the rack had (`process/size_limit=1024`, `detect_3d/compress_to=0`): at Godot's
+default 2,048² the identical export measured **49,725,372 B**, i.e. **+4,163,952 B** of
+VRAM-compressed texture for a 1.95 m prop read at 8.6 m. The three orphaned 2,048² maps of the old
+rack (normal, metallic-roughness, emissive — 2.8 MB of source PNGs) were deleted with it; nothing
+references them and the hut ships only an albedo.
+
+### K6. What is NOT visually verified
+
+There is still no GPU here (`sudo` blocked by `no_new_privileges`, no `xvfb`), so **no Godot-rendered
+frame exists**. Every "reads"/"faces"/"shows" statement above comes from CPU-rasterised geometry shot
+through the game's own camera (position, FOV, aspect), with no lights, materials, shadows, fog or cel
+ramp. That settles facing, scale, occlusion and interpenetration, and nothing more. Not seen: the
+native material and its 2,048² albedo on this mesh, two-sided culling on the thatch, the shadowless
+booth under the 18 m directional shadow, the two selector clips behind a wall, and the mic in a
+selector's hand.

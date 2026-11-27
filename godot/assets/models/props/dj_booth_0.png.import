@@ -2,19 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://beo745yvg007p"
-path="res://.godot/imported/dj_booth_texture_0_emit.png-645d7580fa3f1a1106fd0daf94229dee.ctex"
+uid="uid://clrd3ttf4xp8h"
+path="res://.godot/imported/dj_booth_0.png-74d37c218629adccfd89ad8fb2b09a1a.ctex"
 metadata={
 "vram_texture": false
-}
-generator_parameters={
-"md5": "c346c4dc2909bf2b2e1953870e3d5065"
 }
 
 [deps]
 
-source_file="res://assets/models/props/dj_booth_texture_0_emit.png"
-dest_files=["res://.godot/imported/dj_booth_texture_0_emit.png-645d7580fa3f1a1106fd0daf94229dee.ctex"]
+source_file="res://assets/models/props/dj_booth_0.png"
+dest_files=["res://.godot/imported/dj_booth_0.png-74d37c218629adccfd89ad8fb2b09a1a.ctex"]
 
 [params]
 
@@ -26,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
@@ -39,5 +36,5 @@ process/premult_alpha=false
 process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
-process/size_limit=0
+process/size_limit=1024
 detect_3d/compress_to=0

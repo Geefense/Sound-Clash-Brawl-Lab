@@ -2571,6 +2571,39 @@ func _run() -> void:
 		_check(dj_clear, "both DJ rigs stand behind the deck without interpenetrating it",
 			dj_detail if not dj_clear else "deck z %.2f..%.2f, %d men behind" % [
 				deck_box.position.z, deck_box.end.z, prop_yard.dj_booth.dj_count()])
+		# ---- The thatched deck uploaded 2026-11-27: counter, canopy and selector stands ------
+		# Every number is measured from the live mesh, never copied from the asset brief. The
+		# deck is authored at 1.15 m and the stage multiplies it by 1.178x, so the working
+		# surface of this low beach counter lands at 0.38 m, not the 1.10-1.20 m the brief
+		# wanted: reaching 1.10 m would need a 3.9 m authored hut whose 4.4 m depth breaks the
+		# sand strip, the tower separation and the frame (AGENTS.md PART K2).
+		var counter_y: float = prop_yard.dj_booth.deck_counter_y()
+		var canopy_y: float = prop_yard.dj_booth.deck_canopy_underside_y()
+		_check(counter_y >= 0.30 and counter_y <= 0.45 and canopy_y > counter_y + 0.5,
+			"the thatched deck's counter and canopy are measured where they were calibrated",
+			"counter %.3f m, canopy underside %.3f m" % [counter_y, canopy_y])
+		var deck_cam: Camera3D = prop_yard.camera
+		var cam_y := deck_cam.global_position.y
+		var frame_top := cam_y + tan(deg_to_rad(Arena3D.CAMERA_FOV * 0.5)) \
+			* (deck_cam.global_position.z - deck_box.position.z)
+		var top_margin_px := (frame_top - deck_box.end.y) \
+			* 360.0 / maxf(frame_top - cam_y, 0.001)
+		_check(top_margin_px >= StageLayout.MARGIN_PX,
+			"the thatched canopy stays inside the neutral frame with the 12 px margin",
+			"%.0f px above the roof (roof %.2f m, frame top %.2f m)" % [
+				top_margin_px, deck_box.end.y, frame_top])
+		var dj_feet := 0.0
+		var dj_gap := INF
+		for dj_index in prop_yard.dj_booth.dj_count():
+			var dj_box: AABB = prop_yard.dj_booth.dj_world_bounds(dj_index)
+			if dj_box.size == Vector3.ZERO:
+				dj_gap = -INF
+				continue
+			dj_feet = maxf(dj_feet, absf(dj_box.position.y))
+			dj_gap = minf(dj_gap, deck_box.position.z - dj_box.end.z)
+		_check(dj_feet <= 0.01 and dj_gap >= 0.10,
+			"both selectors stand on the sand, clear of the deck's back wall, posts and roof",
+			"feet %+.4f m, %.2f m of air behind the deck" % [dj_feet, dj_gap])
 		# Data-driven proof, no mesh and no scene involved: a synthetic booth and tower of
 		# different sizes go through the same rule and keep the same contract.
 		var synthetic: Dictionary = StageLayout.compute(Vector3(3.2, 1.4, 1.6),

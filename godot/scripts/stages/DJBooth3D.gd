@@ -30,6 +30,11 @@ const DJ_RIM := Color(1.0, 0.78, 0.34)
 const HAND_BONE := "mixamorig_RightHand"
 const BOOTH_MODEL := "res://assets/models/props/dj_booth.glb"
 const DJ_HEIGHT := 1.62
+## The band of the deck's own height the working surface may occupy (anything face-up below
+## it is counter) and the band the canopy must start above (anything face-down above it is
+## canopy). Both are fractions, so a replacement deck of any size is measured the same way.
+const COUNTER_BAND := 0.55
+const CANOPY_BAND := 0.70
 ## The selectors' stand is DERIVED, not fixed (fix pass 2026-11-27, commit 2): `place_djs()`
 ## measures the loaded deck's AABB and its front yaw, then stands both men `StageLayout.DJ_GAP`
 ## behind its back face, feet on the sand, spaced across its own width. A replacement
@@ -58,6 +63,10 @@ var _djs: Array[DJ] = []
 ## without touching albedo. Populated once at build time.
 var _cel_materials: Array[ShaderMaterial] = []
 var deck: PropLoader = null
+## Measured once by `_measure_deck_profile()`; 0.0 until a deck is loaded and read.
+var _counter_y: float = 0.0
+var _canopy_underside_y: float = 0.0
+var _profile_measured: bool = false
 var _time: float = 0.0
 var _rng := RandomNumberGenerator.new()
 ## The perspective compensation `Arena3D` applied to the deck (`StageLayout`). The DJs are
@@ -87,6 +96,8 @@ func build() -> void:
 ## seat untouched; the men keep their real 1.62 m height either way.
 func apply_stage_scale(scale_factor: float) -> void:
 	_stage_scale = clampf(scale_factor, StageLayout.SCALE_MIN, StageLayout.SCALE_MAX)
+	# The counter/canopy probe is in world metres, so a rescale has to re-measure it.
+	_profile_measured = false
 	if deck != null:
 		deck.scale = Vector3.ONE * _stage_scale
 	place_djs()
@@ -110,6 +121,21 @@ func place_djs() -> void:
 		_djs[i].base_y = 0.0
 
 
+## The working surface and the canopy, both measured once from the real triangles and cached.
+## `deck_counter_y()` is the world Y of the highest up-facing face below `COUNTER_BAND` of the
+## deck's height — the counter the turntables stand on. `deck_canopy_underside_y()` is the
+## world Y of the lowest down-facing face above `CANOPY_BAND` — the thatch over the selectors.
+## Both return 0.0 while the slot is empty or the delivered deck has no such face.
+func deck_counter_y() -> float:
+	_measure_deck_profile()
+	return _counter_y
+
+
+func deck_canopy_underside_y() -> float:
+	_measure_deck_profile()
+	return _canopy_underside_y
+
+
 ## The loaded deck's mesh AABB in this booth's local space. Measured once per placement, never
 ## per frame. Empty while the model is missing.
 func deck_local_bounds() -> AABB:
@@ -128,9 +154,10 @@ func deck_local_bounds() -> AABB:
 	return out
 
 
-## Which way the deck's ARTWORK faces, in the booth's local space, as a flat unit vector. The
-## delivered deck has `front_axis = "-z"` turned 180°, so its painted face points at the
-## camera; this reads the model's real transform instead of re-deriving the yaw by hand.
+## Which way the deck's OPEN COUNTER faces, in the booth's local space, as a flat unit vector.
+## The delivered thatched hut carries `front_axis = "+z"` and no turn, so the counter the
+## selectors work at is the model's own +Z basis; this reads the live transform instead of
+## re-deriving the yaw by hand.
 func deck_front() -> Vector3:
 	if deck == null or deck.model == null:
 		return Vector3(0.0, 0.0, 1.0)
@@ -181,12 +208,16 @@ func _build_booth_slot() -> void:
 	deck.name = "PropLoader"
 	deck.model_path = BOOTH_MODEL
 	deck.required = true
-	# The delivered rack is an open shell (130 of its 3 999 edges are boundary edges) and its     # glTF material is `doubleSided`, so it keeps its own culling.
+	# The delivered thatched hut is an open shell (11 155 of its 21 401 edges are boundary
+	# edges) and its glTF material is `doubleSided`, so it keeps its own culling.
 	deck.double_sided = true
-	# Its artwork — the two “Soundclash” panels, the VU meters, the grilles — is on its LOCAL
-	# −Z face. Both props were rendered from +Z, −Z, +X and −X before this was set; the front is
-	# the side where that lettering reads unmirrored and upright.
-	deck.front_axis = &"-z"
+	# Orientation, measured from the mesh (2026-11-27 upload): the OPEN COUNTER — the three
+	# turntables, the cabinet fronts, the plank back wall behind them — is on the model's LOCAL
+	# +Z face; the closed plank wall is its −Z side. Rasterising the mesh from +Z, −Z, +X and
+	# −X confirms it: from −Z the lens sees a blank plank wall, from +Z the counter and decks.
+	# This slot therefore applies NO turn. The rack it replaced was the other way round, so
+	# keeping that `"-z"` here would hide the whole deck behind its own back wall.
+	deck.front_axis = &"+z"
 	# Photographic albedo, not the cel ramp (PART A step 3's rule for delivered props).
 	deck.native_material = true
 	add_child(deck)
@@ -370,6 +401,48 @@ func hand_attached_props() -> int:
 		if dj.model != null:
 			n += dj.model.find_children("HandProp*", "BoneAttachment3D", true, false).size()
 	return n
+
+
+## One measure pass over the deck's triangles, in world space, cached. `get_faces()` expands the
+## index list once, so this is a load/readout cost and never a per-frame one.
+func _measure_deck_profile() -> void:
+	if _profile_measured:
+		return
+	_profile_measured = true
+	if deck == null or deck.model == null:
+		return
+	var box := _model_bounds(deck.model)
+	if box.size.y <= 0.0005:
+		return
+	var counter_limit := box.position.y + box.size.y * COUNTER_BAND
+	var canopy_limit := box.position.y + box.size.y * CANOPY_BAND
+	var counter := -INF
+	var canopy := INF
+	for node in deck.model.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi == null or mi.mesh == null:
+			continue
+		var faces := mi.mesh.get_faces()
+		var to_world := mi.global_transform
+		var i := 0
+		while i + 2 < faces.size():
+			var a: Vector3 = to_world * faces[i]
+			var b: Vector3 = to_world * faces[i + 1]
+			var c: Vector3 = to_world * faces[i + 2]
+			i += 3
+			var normal := (b - a).cross(c - a)
+			if normal.length_squared() <= 0.000000000001:
+				continue
+			var facing := normal.normalized().y
+			var y := (a.y + b.y + c.y) / 3.0
+			if facing > 0.75:
+				if y < counter_limit and y > counter:
+					counter = y
+			elif facing < -0.75:
+				if y > canopy_limit and y < canopy:
+					canopy = y
+	_counter_y = counter if is_finite(counter) else 0.0
+	_canopy_underside_y = canopy if is_finite(canopy) else 0.0
 
 
 func triangle_count() -> int:

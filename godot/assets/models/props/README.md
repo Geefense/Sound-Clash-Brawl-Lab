@@ -11,7 +11,7 @@ the next run and logs `PropLoader: missing …` while its file is absent.
 | --- | --- | --- | --- | --- |
 | `jamaican_speaker.glb` | `Arena3D/SpeakerStackLeft` | x −2.55, z −1.45 | left of the fighting lane | yes |
 | `rasta_speaker.glb` | `Arena3D/SpeakerStackRight` | x +2.55, z −1.45 | right of the fighting lane | no |
-| `dj_booth.glb` | `DJBooth3D/PropLoader` | x 0, z −3.20 | the two 3D DJ characters stand behind it | yes |
+| `dj_booth.glb` | `DJBooth3D/PropLoader` | x 0, z −4.50 | the two 3D DJ characters stand behind it | yes |
 | `wireless_mic.glb` | `…/mixamorig_RightHand/MicInHand` | right hand | Feedback and L!ckshot each | yes |
 | `mic_stand.glb` | `…/mixamorig_RightHand/MicStandInHand` | right hand | L!kkle Moore only | no |
 
@@ -21,7 +21,9 @@ headless checks assert exactly that.
 ## Export requirements
 
 - **Scale: 1 unit = 1 metre.** Godot imports `.glb` at that scale, so a 3.2 m sound-system
-  tower is 3.2 units tall and a microphone is ~0.15 units.
+  tower is 3.2 units tall and a microphone is ~0.15 units. Check the delivery: the thatched
+  booth arrived **normalised to ~0.95 units** (0.947 × 0.659 × 0.630 m), not at real size, and
+  `PropLoader` seats it to the slot's target height instead of trusting the export.
 - **Pivot at the base centre.** The slot places the model by its origin, on the ground plane
   (`y = 0`), so a speaker stack that is pivoted at its bottom centre stands on the sand with
   no offset.
@@ -34,10 +36,22 @@ headless checks assert exactly that.
   Mixamo export's `fit_height` factor leaves on the hand bone. Hand props also never seat at
   Y = 0 (`auto_ground_y = false`): their floor is the grip, so the model is centred on the
   hand bone and the fist closes around the middle of the body.
-- **Measured, not assumed.** Both delivered props were inspected before their slots were
-  wired: `dj_booth.glb` is 2 666 triangles, `wireless_mic.glb` 2 378, both with 2 048²
-  textures and both open shells (`130` and `198` boundary edges), which is why both slots keep
-  two-sided culling. The booth's "Soundclash" panels and VU meters are on its local −Z face.
+- **Measured, not assumed.** Every slot was inspected before it was wired: the thatched
+  `dj_booth.glb` (2026-11-27 upload) is **10 549 triangles / 12 856 vertices**, `wireless_mic.glb`
+  2 378, `jamaican_speaker.glb` 2 618, all with 2 048² textures. The booth and the mic are open
+  shells (11 155 of 21 401 edges and 198 of 3 331 edges are boundary edges), which is why their
+  slots keep two-sided culling.
+- **Facing is measured per delivery, never inherited.** The thatched booth's open counter —
+  three decks, cabinet fronts, and the plank back wall behind them — is on its LOCAL **+Z** face,
+  so its slot applies **no turn** (`front_axis = "+z"`). Rasterising the mesh from +Z, −Z, +X and
+  −X is how that was settled; the rack it replaced was authored on −Z and needed the opposite
+  180°, and reusing that turn here shows the camera a blank plank wall instead of the decks.
+- **A counter height is a proportion of the model, not a target.** `TARGET_HEIGHT_M` gives the
+  booth 1.15 m of authored height; this hut's working surface is 28 % of its own height, so it
+  lands at **0.42 m** — a low beach bar. Reaching a 1.10 m counter would need a 3.17 m authored
+  hut (3.72 m in world), whose uniform scale would also make it 3.57 m deep and 5.37 m wide: that
+  breaks the 2.5 m clean sand strip, the tower separation and the camera frame. See `AGENTS.md`
+  PART K3 for the arithmetic.
 - Two spare hand offsets are already set per slot (`place_transform`); if a delivered model
   sits wrong in the hand, adjust the slot's own `position` / `rotation_degrees` / `scale`
   in the scene instead of re-exporting.

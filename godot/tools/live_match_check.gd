@@ -755,9 +755,11 @@ func _check_arena_integrity() -> void:
 		if slot.is_empty():
 			continue
 		if String(slot.model_path).ends_with("dj_booth.glb"):
-			# The artwork is on the model's LOCAL −Z face, so the slot turns it 180° and the
-			# direction those panels face is minus the model's own +Z basis.
-			deck_front = -slot.model.global_transform.basis.z.normalized()
+			# The delivered thatched hut's open counter is on its LOCAL +Z face and the slot
+			# applies no turn, so the counter faces the model's own +Z basis. (The rack it
+			# replaced was authored the other way round; reusing that 180° turn would now show
+			# the camera a blank plank wall instead of the decks.)
+			deck_front = slot.model.global_transform.basis.z.normalized()
 		if String(slot.model_path).ends_with("wireless_mic.glb"):
 			mic_slots += 1
 			var length := _prop_longest_world(slot)
@@ -773,7 +775,7 @@ func _check_arena_integrity() -> void:
 	var cam_dir := Vector3(yard3d.camera.global_position.x - deck.get_center().x, 0.0,
 		yard3d.camera.global_position.z - deck.get_center().z).normalized()
 	_check(deck_front.dot(cam_dir) > 0.8,
-		"the deck's Soundclash face is turned toward the camera side",
+		"the deck's open counter is turned toward the camera side",
 		"front (%+.2f, %+.2f), camera dot %.2f" % [deck_front.x, deck_front.z,
 			deck_front.dot(cam_dir)])
 	_check(mic_slots == 2 and mic_length_ok,

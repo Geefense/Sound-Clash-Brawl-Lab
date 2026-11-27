@@ -105,15 +105,19 @@ func _probe(key: StringName, slot: String, state_name: StringName, forced: bool)
 	var ticks: Array[Dictionary] = []
 	for i in SETTLE + 60:
 		await physics_frame
-		var m := QAMatch.pose_metrics(model)
+		var face_hint := Vector3(signf(attacker.global_position.x - defender.global_position.x), 0.0, 0.0)
+		var m := QAMatch.pose_metrics(model, face_hint)
 		var hips: Vector3 = m["hips"]
 		var head: Vector3 = m["head"]
 		var opp_x: float = attacker.global_position.x
 		ticks.append({"fall": float(m["fall"]), "up": float(m["up_y"]),
 			"chest": float(m["chest_ny"]), "low": float(m["drawn_low_y"]),
 			"seat": float(m["visual_seat_y"]), "pivot": float(m["pivot_rz_deg"]),
-			# Head away from the opponent: the head is on the far side of the hips.
-			"away": 1 if (head.x - hips.x) * (hips.x - opp_x) < 0.0 else 0})
+			# Head away from the opponent: `head - hips` points the other way from the
+			# opponent's side of the hips. (The first version of this line multiplied by
+			# `hips - opp` instead of `opp - hips` and so scored "away" for a head that had
+			# fallen TOWARDS the opponent — a sign error in the test, fixed here.)
+			"away": 1 if (head.x - hips.x) * (opp_x - hips.x) < 0.0 else 0})
 	# KO holds its flat pose, so the settled frame is the LAST near-peak one; a knockdown does
 	# not, so its settled frame is the FIRST near-peak one before the get-up pulls it back.
 	var peak := 0.0

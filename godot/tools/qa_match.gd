@@ -161,6 +161,25 @@ static func bone_index(skel: Skeleton3D, suffix: String) -> int:
 	return -1
 
 
+## The toe line, foot->toe on both feet, flattened: the same direction the runtime facing pin
+## uses, so "the way this body faces" means one thing everywhere.
+static func toe_vector(model: Node3D) -> Vector3:
+	var v := Vector3.ZERO
+	for side in ["Left", "Right"]:
+		var toe := bone_world(model, side + "ToeBase")
+		var foot := bone_world(model, side + "Foot")
+		if toe != Vector3.ZERO and foot != Vector3.ZERO:
+			v += toe - foot
+	if v == Vector3.ZERO:
+		for pair in [["Toe.L", "Foot.L"], ["Toe.R", "Foot.R"]]:
+			var toe2 := bone_world(model, pair[0])
+			var foot2 := bone_world(model, pair[1])
+			if toe2 != Vector3.ZERO and foot2 != Vector3.ZERO:
+				v += toe2 - foot2
+	v.y = 0.0
+	return v.normalized() if v.length() > 0.0001 else Vector3.ZERO
+
+
 static func bone_world(model: Node3D, suffix: String) -> Vector3:
 	var skel := skeleton_of(model)
 	var index := bone_index(skel, suffix)
@@ -179,7 +198,7 @@ static func bone_basis(model: Node3D, suffix: String) -> Basis:
 
 ## Everything a downed-pose judgement needs, in world space, plus the presentation state
 ## that produced it. `up` is hips→head; `chest_n` is the Spine2 bone's own up axis.
-static func pose_metrics(model: Node3D) -> Dictionary:
+static func pose_metrics(model: Node3D, face_hint: Vector3 = Vector3.ZERO) -> Dictionary:
 	var skel := skeleton_of(model)
 	var out := {"ok": false}
 	if skel == null or model == null:
@@ -194,9 +213,28 @@ static func pose_metrics(model: Node3D) -> Dictionary:
 	if foot_r == Vector3.ZERO:
 		foot_r = bone_world(model, "Foot.R")
 	var up: Vector3 = (head - hips).normalized() if (head - hips).length() > 0.0001 else Vector3.UP
-	# The chest NORMAL is the spine's forward axis (its local +Z), not its along-bone axis:
-	# `Y` points up the spine toward the head and is horizontal on a lying body either way.
-	var chest_n: Vector3 = bone_basis(model, "Spine2").z.normalized()
+	# The chest NORMAL is the chest's own outward direction, built from the shoulder line and
+	# the spine, oriented to agree with the toe line: `up x side`. A standing body has it
+	# horizontal (chest faces forward) and a body on its back has it on world up, which is
+	# exactly what the knockdown acceptance means by "chest up".
+	#
+	# PART A4: this replaced `Spine2`'s local +Z. That axis is a rig convention, not a chest:
+	# it measured +0.99 on one delivered body and -0.98 on another for the same lying pose
+	# (Mixamo and Tripo disagree about which way a spine faces), so it could not be an
+	# acceptance for all three. The shoulder line is anatomy and every rig has it.
+	var chest_n: Vector3 = Vector3.UP
+	var shoulder_l := bone_world(model, "LeftShoulder")
+	var shoulder_r := bone_world(model, "RightShoulder")
+	if shoulder_l != Vector3.ZERO and shoulder_r != Vector3.ZERO:
+		var n := up.cross(shoulder_l - shoulder_r)
+		if n.length() > 0.0001:
+			chest_n = n.normalized()
+			# Which way the chest faces is the side the fighter faces. The caller passes that
+			# as world ±X (the slots are pinned to ±X); the toe line is only a fallback,
+			# because on a body already on the sand the toes no longer name the heading.
+			var ref := face_hint if face_hint != Vector3.ZERO else toe_vector(model)
+			if ref != Vector3.ZERO and chest_n.dot(ref) < 0.0:
+				chest_n = -chest_n
 	var bounds := skinned_bounds(model)
 	out["ok"] = true
 	out["hips"] = hips

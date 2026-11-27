@@ -6856,3 +6856,90 @@ Nothing here was seen rendered: the twelve cells are bone/vertex measurements, n
 screenshot or GPU frame was produced. The forced table is not perfectly repeatable frame-to-frame
 (Young Selecta's p1 knockdown measured `up_y +0.256` in the run recorded above and `+0.159` in
 the played run, both with `chest_ny +0.85`), because it samples the max-fall frame.
+
+## PART G (2026-11-27) — A4 rigid fall: what was proved, what was reverted, and the tests that were lying
+
+**What shipped.** Two test corrections, one measurement correction, and the deploy workflow. The
+runtime itself is unchanged: the A4 rigid fall was built, measured against the twelve cells, and
+reverted, because it left the four suites red and did not pass the acceptance. The evidence is
+below; nothing here is claimed as a visual improvement.
+
+### Three numbers in the knockdown table were wrong, not just the body
+
+1. **`chest_ny` was a bone convention, not a chest.** The audit read `Spine2`'s local +Z. That
+   axis measured `+0.99` on one delivered body and `-0.98` on another *for the same lying pose* —
+   Mixamo and Tripo disagree about which way a spine faces — so no single threshold could ever
+   hold for all three rigs. It is now the chest's own outward normal, built from the shoulder
+   line and the spine (`up x side`) and oriented by the side the fighter faces. A standing body
+   reads ~0 (chest horizontal) and a body on its back reads ~1, which is what the acceptance
+   means. No tolerance was changed.
+2. **The head-away test had its sign inverted.** It multiplied `(head.x - hips.x)` by
+   `(hips.x - opp.x)` instead of `(opp.x - hips.x)`, so it scored "head away" precisely when the
+   head had fallen TOWARDS the opponent. Every head column in every previous table was inverted.
+3. **`SETTLE` never actually reached the settled phase** for long takes: the window was 130 ticks
+   while Feedback's knocked-out take runs 4.9 s, so the "settled" frame was mid-clip.
+
+### The A4 build, measured
+
+The design was implemented in full: at fall start the standing frame is measured once (hips->head
+`u0`, calibrated toe line `f0`), frozen (the take is paused and seeked so its baked topple cannot
+double the rotation), then rotated rigidly about the hips in world space by an angle solved to
+land `u0` horizontal on `-f0`, with the lowest DRAWN vertex seated to `+0.015 m` through a
+vertical offset of the `VisualPivot` only. It got two of the four acceptance columns green on all
+twelve cells for the first time in three passes:
+
+- `|up_y| <= 0.30`: **12/12** (worst cell 0.28; the shipped roll measures 0.55–0.99).
+- lowest drawn vertex within 2 cm of `+0.015 m`: **7/12** (rest within 3.5 cm; the shipped roll
+  is 0.5–1.0 m out).
+- `chest_ny >= 0.70`: 6/12 — Feedback 0.84–0.93, L!ckshot 0.96 (or -0.99 depending on the
+  solved angle), Young Selecta 0.43–0.44.
+- head away: 6/12 — every P1 cell, no P2 cell.
+
+It was reverted for two reasons. First, the suites went red: the facing pin's 5-degree contract
+broke while the fall owned the `VisualPivot` basis (`feedback the forward coil keeps the facing
+pin inside 5° — 27-34°`), which is a real regression in a shipped contract, not a threshold.
+Second, the remaining failures are not tuning errors, they are facts about the delivered rigs:
+
+- **The chest normal is not perpendicular to the spine** on these bodies, so one rigid rotation
+  cannot make both "spine horizontal" and "chest up" true. A single-axis rotation is
+  over-determined for a hunched stance.
+- **P2 needs an unexplained handedness flip.** With identical inputs (P1 `f0=+X`, P2 `f0=-X`) the
+  same world rotation throws P1's head away from its opponent and P2's head towards its own.
+  A `determinant() < 0` test on the pose pivot did not find a mirrored parent, so the flip lives
+  somewhere in the P2 presentation chain and must be found before any P2 fall can be trusted.
+
+### The twelve cells on the shipped runtime (this pass's table, corrected metrics)
+
+| rig | slot | state | up_y | chest_ny | head away | low drawn | verdict |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| feedback | p1 | KNOCKDOWN | −0.091 | +0.993 | no | +0.091 | FAIL |
+| feedback | p1 | KO | +0.955 | −0.269 | no | +0.091 | FAIL |
+| feedback | p2 | KNOCKDOWN | +0.337 | −0.939 | yes | +0.015 | FAIL |
+| feedback | p2 | KO | +0.928 | −0.332 | yes | +0.095 | FAIL |
+| lickshot | p1 | KNOCKDOWN | −0.554 | +0.717 | no | +0.097 | FAIL |
+| lickshot | p1 | KO | −0.993 | +0.011 | no | +0.256 | FAIL |
+| lickshot | p2 | KNOCKDOWN | −0.595 | +0.738 | yes | +0.095 | FAIL |
+| lickshot | p2 | KO | −0.993 | +0.011 | yes | +0.243 | FAIL |
+| young_selecta | p1 | KNOCKDOWN | +0.249 | −0.749 | no | +0.011 | FAIL |
+| young_selecta | p1 | KO | +0.829 | −0.246 | no | +0.239 | FAIL |
+| young_selecta | p2 | KNOCKDOWN | +0.122 | −0.988 | yes | +0.032 | FAIL |
+| young_selecta | p2 | KO | +0.850 | −0.098 | yes | +0.231 | FAIL |
+
+**0 of 12 pass**, and the head column now reads the way the brief defines it (every P1 head is on
+its opponent's side, which the previous tables reported as "away").
+
+### Deploy
+
+`.github/workflows/deploy-web.yml` no longer deploys through the `github-pages` environment —
+that path needs the repository's Pages source switched to "GitHub Actions" and an environment
+rule for this branch, which is a manual owner step and made every run fail at the deploy job. It
+now publishes the exported Web build to a `gh-pages` branch (mirror push, `.nojekyll` included,
+`contents: write`). One owner step switches the site: Settings → Pages → Source → "Deploy from a
+branch" → `gh-pages` / `(root)`. After that every push to `feature/3d-cel-shaded` republishes with
+no branch rule at all.
+
+### Not verified
+
+No frame was rendered in this pass: no GPU, no Xvfb stack on the runner, so every number here is
+a bone/vertex measurement and the RSS/workflow change was not executed (no Actions run was
+watched; `gh` is unauthenticated in this workspace).

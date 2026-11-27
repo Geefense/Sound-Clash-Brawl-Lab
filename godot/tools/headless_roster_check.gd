@@ -1254,6 +1254,46 @@ func _run() -> void:
 				and stage3d._yard_solids.is_empty(),
 			"no procedural stack, barrier rail, post, horizon band or truss remains",
 			"%d code-built box(es) in the yard" % stage3d._yard_solids.size())
+		# STEP 1 (intentional change, 2026-11-27): the delivered props are GATED. The illustrated
+		# beach is the stage, so the booth and both tower slots draw nothing by default — and the
+		# gate must be a visibility gate, not a teardown: every slot, measurement, anchor and
+		# trigger has to keep working while nothing is drawn.
+		_check(not stage3d.stage_props_enabled and not stage3d.stage_props_visible(),
+			"the beach stage draws no delivered prop by default",
+			"flag %s / visible %s" % [str(stage3d.stage_props_enabled),
+				str(stage3d.stage_props_visible())])
+		_check(stage3d.stage_contact_shadow_count() >= 2
+				and stage3d.visible_stage_contact_shadows() == 0,
+			"the prop contact-shadow quads exist for measurement but draw nothing",
+			"%d quad(s), %d drawn" % [stage3d.stage_contact_shadow_count(),
+				stage3d.visible_stage_contact_shadows()])
+		_check(stage3d.speaker_stack_count() == 2 and stage3d.speaker_model_count() == 1
+				and stage3d.dj_booth != null and stage3d.dj_booth.deck_loaded(),
+			"the five-slot contract still loads behind the gate (2 tower slots, 1 tower, deck)",
+			"%d slot(s) / %d tower / deck %s" % [stage3d.speaker_stack_count(),
+				stage3d.speaker_model_count(), str(stage3d.dj_booth.deck_loaded())])
+		# The SPEAKER BOX! path reads the cabinet anchor and the rattle every time a finisher
+		# lands. With the props gated off neither may return a null / non-finite value.
+		var anchor: Vector3 = stage3d.speaker_cabinet_anchor()
+		stage3d.pulse_speakers(1.0)
+		stage3d.speaker_rattle(1.0)
+		_check(anchor != Vector3.ZERO and is_finite(anchor.x) and is_finite(anchor.y)
+				and is_finite(anchor.z),
+			"the SPEAKER BOX! cabinet anchor still resolves with the props gated off",
+			str(anchor))
+		_check(stage3d.speaker_rattle_amount() > 0.0
+				and stage3d.speaker_rattle_amount() <= Arena3D.SPEAKER_RATTLE_MAX,
+			"the SPEAKER BOX! rattle still fires, clamped, with the props gated off",
+			"%.3f" % stage3d.speaker_rattle_amount())
+		# The gate is a real switch: turning it on draws every prop and every contact shadow,
+		# and turning it back off returns the beach to the illustration alone.
+		stage3d.set_stage_props_enabled(true)
+		var shown: bool = stage3d.stage_props_visible() \
+			and stage3d.visible_stage_contact_shadows() == stage3d.stage_contact_shadow_count()
+		stage3d.set_stage_props_enabled(false)
+		_check(shown and not stage3d.stage_props_visible()
+				and stage3d.visible_stage_contact_shadows() == 0,
+			"stage_props_enabled flips the props and their shadows on and off cleanly")
 	# PART B commit 4 (intentional change): the graded look's depth fog was stripped with the
 	# washout — the three-stop sky gradient carries the depth instead, in every preset.
 	_check(stage3d != null and stage3d.world_env != null
@@ -1266,21 +1306,32 @@ func _run() -> void:
 	if stage3d != null:
 		stage3d.apply_phase(2, 0.0)
 		await process_frame
-		_check(stage3d.sun.light_energy < 0.2 and stage3d.spot_left.light_energy > 2.0,
-			"night is carried by the overhead SpotLight3D rig, not a screen tint",
-			"sun %.2f / spot %.2f" % [stage3d.sun.light_energy, stage3d.spot_left.light_energy])
+		# STEP 2 (intentional change): the coloured stage SpotLight3Ds are deleted, so night is the
+		# moon key over the ambient — and every preset must prove there is no spot in the yard.
+		_check(stage3d.sun.light_energy >= 0.6 and stage3d.stage_spot_count() == 0,
+			"night is carried by the moon key and the ambient, with no stage spot in the yard",
+			"sun %.2f / spots %d" % [stage3d.sun.light_energy, stage3d.stage_spot_count()])
+		_check(stage3d.key_to_ambient_ratio() >= 2.0,
+			"the night moon key still beats the ambient by at least 2:1",
+			"%.2f:1" % stage3d.key_to_ambient_ratio())
 		var night_sky: Color = stage3d.sky_top_colour()
 		_check(night_sky.b > night_sky.r and not stage3d.world_env.environment.fog_enabled,
 			"night darkens the 3D sky colour under a clear, unfogged preset")
 		stage3d.apply_phase(1, 0.0)
 		await process_frame
 		_check(stage3d.sun.light_color.r > stage3d.sun.light_color.b
-				and stage3d.spot_left.light_energy < 1.5,
-			"sunset turns the DirectionalLight3D warm and low")
+				and stage3d.stage_spot_count() == 0,
+			"sunset turns the DirectionalLight3D warm and low, with no beam over the sand")
 		stage3d.apply_phase(0, 0.0)
 		await process_frame
-		_check(stage3d.sun.light_energy > 1.0 and stage3d.spot_left.light_energy < 0.6,
-			"afternoon is a bright directional sun with the spots resting")
+		_check(stage3d.sun.light_energy > 1.0 and stage3d.stage_spot_count() == 0,
+			"afternoon is a bright directional sun with no stage spot in the yard")
+		# The whole rig: sun + fill + rim, exactly three lights, and no SpotLight3D anywhere.
+		_check(stage3d.light_count() == 3 and stage3d.directional_light_count() == 2
+				and stage3d.stage_spot_count() == 0,
+			"the whole light rig is the sun, the fill and the rim — three lights, no spots",
+			"%d light(s), %d directional" % [stage3d.light_count(),
+				stage3d.directional_light_count()])
 		# PART 2: the three rigs are designed light setups, not flat tints. The fighters'
 		# directional shadow must always be on, and each phase owns its own fill, sky and rim.
 		_check(stage3d.sun.shadow_enabled and stage3d.sun.light_angular_distance <= 0.001,
@@ -1316,8 +1367,13 @@ func _run() -> void:
 	# The arena's own phase API must drive the 3D rig too.
 	arena.set_time_of_day(2, 0.0)
 	await process_frame
-	_check(stage3d != null and stage3d.sun.light_energy < 0.2,
-		"set_time_of_day(2) drives the 3D night rig")
+	# STEP 2 (intentional change): the night key is the moon (0.85) instead of four coloured
+	# beams plus a 0.16 moon, so the preset is identified by the cool moon key, not a blackout.
+	_check(stage3d != null and stage3d.sun.light_energy >= 0.6
+			and stage3d.sun.light_color.b > stage3d.sun.light_color.r
+			and stage3d.stage_spot_count() == 0,
+		"set_time_of_day(2) drives the 3D night rig",
+		"sun %.2f %s" % [stage3d.sun.light_energy, str(stage3d.sun.light_color)] if stage3d != null else "")
 	arena.set_time_of_day(0, 0.0)
 	await process_frame
 
@@ -1757,8 +1813,10 @@ func _run() -> void:
 	# Afternoon palette is already applied (the block above left phase 0 selected).
 	_check(is_equal_approx(fight_shadow.density, 1.0),
 		"afternoon keeps full-density shadows", "%.2f" % fight_shadow.density)
-	_check(arena2.beams != null and is_zero_approx(arena2.beams.strength),
-		"no volumetric beams in the afternoon sun")
+	# STEP 2 (intentional change): the 2D volumetric beam stack (`LightBeams`) is deleted from the
+	# scene, so there is no beam layer to be off, on, or sweeping at any time of day.
+	_check(arena2.get_node_or_null("LightBeams") == null,
+		"the volumetric beam stack is deleted from the arena")
 
 	# Sunset: warm golden-amber rim, long skew, strong sand bounce.
 	arena2.set_time_of_day(1, 0.0)
@@ -1776,8 +1834,8 @@ func _run() -> void:
 		"stretch %.2f lean %.2f" % [fight_shadow.stretch, fight_shadow.shadow_lean()])
 	_check(fight_shadow.density < 1.0, "a long sunset shadow is also thinner",
 		"density %.2f" % fight_shadow.density)
-	_check(arena2.beams.strength > 0.5, "sunset light beams sweep the stage",
-		"intensity %.2f" % arena2.beams.strength)
+	_check(arena2.get_node_or_null("LightBeams") == null,
+		"sunset has no beam stack sweeping the stage")
 	_check(arena2.heat_haze != null and arena2.heat_haze.intensity > 0.5,
 		"sunset heat haze is up")
 	_check(arena2.get_node_or_null("ForegroundCrowd") == null,
@@ -1796,7 +1854,8 @@ func _run() -> void:
 		"%.2f" % p1b.rim_bounce)
 	_check(fight_shadow.shadow_lean() < 0.0 and fight_shadow.stretch < 1.3,
 		"the night floodlight projects a short shadow to the left")
-	_check(arena2.beams.strength > 0.5, "the festival trusses still beam at night")
+	_check(arena2.get_node_or_null("LightBeams") == null,
+		"night has no beam stack either — the sky and the lights carry it")
 
 	# Facing: the rim must stay on the stage's light side when the frame is mirrored. The
 	# fighters are parked either side of each other first, so the live AI cannot flip them
@@ -1873,13 +1932,20 @@ func _run() -> void:
 	p2.reset_for_round(Vector2(860, 600))
 	await physics_frame
 
-	# Layered stage depth: beams over the fighters, haze behind them, near-crowd in front.
-	_check(arena2.beams.z_index == 4 and p1b.z_index == 0 and arena2.beams.z_index > p1b.z_index,
-		"volumetric beams draw over the fighters but under the HUD",
-		"beams %d / fighter %d" % [arena2.beams.z_index, p1b.z_index])
-	var beam_mat := arena2.beams.material as CanvasItemMaterial
-	_check(beam_mat != null and beam_mat.blend_mode == CanvasItemMaterial.BLEND_MODE_ADD,
-		"the beams are additive, one draw pass, no shader")
+	# STEP 2 (intentional change): the beam layer used to be asserted at z 4 with an additive
+	# material. It is deleted, so the equivalent guarantee is that every legacy 2D wash, glow,
+	# shaft and floodlight is switched off behind the 3D yard — nothing 2D draws over the fight.
+	var legacy_2d_visible: Array = []
+	for legacy_name in ["Stage", "Atmosphere", "SunGlow", "SunShaft", "SunsetWash",
+			"NightWash", "Floodlight", "SpeakerRings"]:
+		var legacy := arena2.get_node_or_null(legacy_name) as CanvasItem
+		if legacy != null and legacy.visible:
+			legacy_2d_visible.append(legacy_name)
+	_check(legacy_2d_visible.is_empty(),
+		"no legacy 2D wash, glow, shaft or floodlight draws over the 3D yard",
+		"visible %s" % [legacy_2d_visible])
+	_check(arena2.get_node_or_null("StageLightPool") == null,
+		"no additive light pool is painted on the sand")
 	_check(arena2.heat_haze.z_index < p1b.z_index,
 		"heat haze and motes sit behind the fighters",
 		"haze %d" % arena2.heat_haze.z_index)
@@ -2036,8 +2102,8 @@ func _run() -> void:
 		"the 3D booth stays inside the 90 000-triangle Chromebook ceiling",
 		"%d total (booth %d)" % [atmosphere.atmosphere_triangles(), booth_tris])
 	# ---- Bug 5 (2026-11-25): Afternoon / Sunset / Night rigs ----------------------------
-	# Each preset is a full setup: three-stop sky plus horizon haze, graded sand, key and rim,
-	# and four coloured stage beams inside Compatibility's per-object light limit.
+	# Each preset is a full setup: illustrated sky, graded sand, one key, one fill and one rim,
+	# with NO stage spot, inside Compatibility's per-object light limit.
 	var stage: Arena3D = atmosphere
 	var presets_ok := true
 	var skies_ok := true
@@ -2073,7 +2139,7 @@ func _run() -> void:
 		if not stage.sun.shadow_enabled or stage.sun.light_angular_distance > 0.001:
 			shadow_ok = false
 		if stage.light_count() > Arena3D.max_lights_per_object() \
-				or stage.stage_spot_count() != 4 \
+				or stage.stage_spot_count() != 0 \
 				or stage.directional_light_count() > 4:
 			lights_ok = false
 		if stage.sand_material != null:
@@ -2177,35 +2243,31 @@ func _run() -> void:
 	_check(rim_warm_afternoon and rim_cool_night,
 		"the daylight rim is warm and the night rim is cool against its sky")
 	_check(rim_night_strength > rim_afternoon_strength,
-		"the night rim burns harder so fighters read between the stage beams",
+		"the night rim burns harder so fighters read against the dark sky",
 		"%.2f vs %.2f" % [rim_night_strength, rim_afternoon_strength])
 
 	stage.apply_phase(2, 0.0)
 	await process_frame
-	var beams := {}
-	var cyan := false
-	var magenta := false
-	var amber := false
-	for i in stage.stage_spot_count():
-		var c: Color = stage.stage_spot_colour(i)
-		beams["%.2f_%.2f_%.2f" % [c.r, c.g, c.b]] = true
-		if c.b > 0.8 and c.g > 0.8 and c.r < 0.4:
-			cyan = true
-		if c.r > 0.8 and c.b > 0.5 and c.g < 0.4:
-			magenta = true
-		if c.r > 0.9 and c.g > 0.5 and c.g < 0.9 and c.b < 0.35:
-			amber = true
-	_check(cyan and magenta and amber and beams.size() == 4,
-		"night lights the yard with four coloured stage beams (cyan / magenta / amber)",
-		"%d distinct" % beams.size())
+	# STEP 2 (intentional change): the four coloured stage beams are gone, so the night asserts
+	# the opposite — a cool moon key, no spot at all, and a light count that holds still while
+	# the 132 BPM envelope keeps running for the crowd.
+	_check(stage.stage_spot_count() == 0 and stage.sun.light_color.b > stage.sun.light_color.r,
+		"the night key is moonlit blue and no coloured stage beam lights the yard",
+		"sun %s" % stage.sun.light_color)
+	var night_lights: int = stage.light_count()
+	var night_sun: float = stage.sun.light_energy
 	stage._beat_phase = 0.0
-	stage._apply_stage_energies()
-	var pulse_high: float = stage.spot_left.light_energy
+	await process_frame
 	stage._beat_phase = 0.5
-	stage._apply_stage_energies()
-	var pulse_low: float = stage.spot_left.light_energy
-	_check(pulse_high > pulse_low * 1.05, "the night beams pulse on the 132 BPM beat",
-		"%.2f → %.2f" % [pulse_high, pulse_low])
+	await process_frame
+	_check(stage.light_count() == night_lights
+			and is_equal_approx(stage.sun.light_energy, night_sun)
+			and stage.stage_spot_count() == 0,
+		"the night rig holds a steady light count — nothing pulses a beam any more",
+		"%d light(s), sun %.2f" % [stage.light_count(), stage.sun.light_energy])
+	_check(stage.stage_pulse() > 0.0 and stage.stage_pulse() <= 1.0,
+		"the 132 BPM beat envelope still runs for the crowd with no light to drive",
+		"%.2f" % stage.stage_pulse())
 	stage.apply_phase(0, 0.0)
 	crowd3d.settle()
 	booth.settle()
@@ -3260,7 +3322,11 @@ func _run() -> void:
 			"no cel material is left on the tower and its albedo survives all three presets")
 		# Lighting and shadows: no light is added, the fighter shadow rig is the same seven
 		# lights, and the imported tower casts no shadow of its own to disturb it.
-		_check(prop_yard.light_count() == 7 and prop_yard.sun.shadow_enabled and prop_yard.sun.light_angular_distance < 0.001,
+		# STEP 2 (intentional change): the tower used to be asserted against a seven-light rig.
+		# With the four stage spots deleted the whole rig is three lights, and the tower still
+		# adds none of them.
+		_check(prop_yard.light_count() == 3 and prop_yard.sun.shadow_enabled
+				and prop_yard.sun.light_angular_distance < 0.001,
 			"the tower adds no light and leaves the crisp fighter shadow rig alone",
 			"%d light(s)" % prop_yard.light_count())
 		var spk_tower_shadows := 0
@@ -3271,6 +3337,9 @@ func _run() -> void:
 		_check(spk_tower_shadows == 0,
 			"the imported tower writes no shadow, so the fighter shadow map is untouched",
 			"%d casting mesh(es)" % spk_tower_shadows)
+
+	# ---- STEP 3: the bottom HUD band --------------------------------------
+	_check_hud_bottom_layout()
 
 	# ---- Esc back to Character Select ------------------------------------
 	setup.escape_to_setup()
@@ -3292,3 +3361,63 @@ func _run() -> void:
 	else:
 		print("%d CHECK(S) FAILED" % _failures)
 		quit(1)
+
+
+## STEP 3 (2026-11-27): the bottom HUD band, measured as rectangles. Nothing is drawn and no
+## window is opened — the audit calls the HUD's own `bottom_layout()`, which is exactly what
+## `_draw()` uses, so a collision cannot be "fixed" in the test without moving the drawing.
+## Three canvas sizes are covered (the design canvas plus a small and a large one), and the
+## worst-case strings are loaded into both movable bands: the longest Patois callout and a
+## status chip carrying every F6 / F7 / HitchLog / callout field.
+func _check_hud_bottom_layout() -> void:
+	print("\n-- HUD: bottom button bar / status chip / callout pill")
+	var hud_script := load("res://scripts/ui/TestHud.gd")
+	if hud_script == null:
+		_check(false, "the workshop HUD script loads")
+		return
+	var hud = hud_script.new()
+	if hud == null:
+		_check(false, "the workshop HUD builds headlessly")
+		return
+	hud.announce_subtitle("Mash up him geometry!", "He is about to get his geometry mashed up.")
+	hud.set_debug_chip("LOOK PBR · CLEAN · F6   ·   QUALITY Crisp · F7   ·   HITCH  145.5 ms  frame 2  state_change   ·   CALLOUTS ON · F8")
+	var sizes := [Vector2(1280, 720), Vector2(960, 540), Vector2(1600, 900)]
+	var count_ok := true
+	var inside_ok := true
+	var overlap: Array = []
+	var collision: Array = []
+	var stacked := true
+	var detail: Array = []
+	for view in sizes:
+		var layout: Dictionary = hud.bottom_layout(view)
+		var chips: Array = layout["chips"]
+		var labels: Array = layout["labels"]
+		var bar: Rect2 = layout["bar"]
+		var status: Rect2 = layout["debug"]
+		var pill: Rect2 = layout["pill"]
+		var view_rect := Rect2(Vector2.ZERO, view)
+		if chips.size() != (hud.KEY_LABELS as Array).size():
+			count_ok = false
+		for i in chips.size():
+			var rect: Rect2 = chips[i]
+			if not view_rect.encloses(rect) or not bar.encloses(rect):
+				inside_ok = false
+			for j in range(i + 1, chips.size()):
+				if rect.intersects(chips[j]):
+					overlap.append("%s x %s" % [String(labels[i]), String(labels[j])])
+			if rect.intersects(status) or rect.intersects(pill):
+				collision.append("%s" % String(labels[i]))
+		if status.intersects(pill):
+			collision.append("status x callout")
+		if pill.end.y > bar.position.y or status.end.y > bar.position.y:
+			stacked = false
+		detail.append("%dx%d bar %d rows" % [int(view.x), int(view.y), int(layout["rows"])])
+	_check(count_ok, "the bottom bar lays out every key label",
+		"%d label(s)" % (hud.KEY_LABELS as Array).size())
+	_check(inside_ok, "every key chip sits inside the bar plate and inside the canvas")
+	_check(overlap.is_empty(), "no two key chips overlap", ", ".join(overlap))
+	_check(collision.is_empty(),
+		"the status chip and the callout pill never touch a key chip (or each other)",
+		", ".join(collision))
+	_check(stacked, "the callout and status bands sit fully above the button bar",
+		", ".join(detail))

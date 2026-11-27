@@ -5,8 +5,10 @@ extends Node3D
 ## Presentation only. The authoritative fight still runs in the 2D `BaseFighter` bodies —
 ## hitboxes, hurtboxes, push separation, input buffering, beat judgement, the round clock and
 ## the Patois callouts are untouched. This node mirrors both fighters onto a 3D fighting
-## plane, builds the sand yard out of real geometry, and lights it with DirectionalLight3D /
-## SpotLight3D / OmniLight3D rigs for Afternoon, Sunset and Night.
+## plane, builds the sand yard out of real geometry, and lights it with a DirectionalLight3D
+## sun, one shadowless directional fill and one shadowless omni rim for Afternoon, Sunset and
+## Night. STEP 2 (2026-11-27) deleted every stage SpotLight3D: the illustrated beach is lit by
+## the sun and the ambient, never by a coloured beam hung over the sand.
 ##
 ## Layout: 140 px = 1 m, the 2D floor line (y 600) is world y 0, the stage centre (x 640) is
 ## world x 0. The fighters stay on the z 0 plane (classic 2.5D): only x/y move, the stage
@@ -45,7 +47,8 @@ const CAMERA_MIN_X := -1.78
 const CAMERA_MAX_X := 1.78
 
 ## Commit 5: how much extra energy the existing spots take at a full eruption peak.
-const ERUPT_LIGHT_PUMP := 0.55
+## STEP 2 (2026-11-27): with no stage spots left there is no light to pump, so the eruption
+## envelope is kept as a readout only (`light_pump()`), never as a light write.
 
 const MAX_BURSTS := 4
 const NOTE_SPARK := 0.35
@@ -66,7 +69,6 @@ const CROWD_SCRIPT := preload("res://scripts/stages/CrowdController3D.gd")
 const BOOTH_SCRIPT := preload("res://scripts/stages/DJBooth3D.gd")
 const BURST_SCRIPT := preload("res://scripts/stages/MusicNoteBurst.gd")
 const CONTACT_SHADOW := preload("res://assets/shaders/contact_shadow.gdshader")
-const LIGHT_POOL := preload("res://assets/shaders/light_pool.gdshader")
 const SKY_SHADER := preload("res://assets/shaders/sky_gradient.gdshader")
 const SUN_SHADER := preload("res://assets/shaders/sun_disc.gdshader")
 
@@ -92,9 +94,9 @@ const BACKDROP_CENTRE := Vector3(0.0, 2.55, -15.0)
 ## the three delivered files (the foam line is at 0.658–0.662 of the height in all three).
 const BACKDROP_SHORE_ROW := 0.66
 
-## The three round rigs. Every value is pushed into real scene objects: a DirectionalLight3D
-## sun, two overhead SpotLight3Ds, a warm rim/fill, the sky gradient, depth fog and the
-## visible pool on the sand. Nothing here is a full-screen tint.
+## The three round rigs. Every value is pushed into real scene objects: the DirectionalLight3D
+## sun, the shadowless camera fill, the shadowless omni rim and the sand albedo. Nothing here
+## is a full-screen tint and nothing here hangs a coloured beam over the beach.
 const PHASES := [
 	# AFTERNOON — vibrant Jamaican midday. A high, hard golden key (#FFD27A) over a tropical
 	# blue zenith (#1E6FD9) that fades through a light blue mid band into a pale golden haze
@@ -121,14 +123,6 @@ const PHASES := [
 		"mound": Color(0.72, 0.55, 0.33, 1.0),
 		"horizon": Color(0.86, 0.86, 0.80, 1.0),
 		"spot_colour": Color(1.0, 0.94, 0.80, 1.0),
-		"stage_a": Color(1.0, 0.94, 0.80, 1.0),
-		"stage_b": Color(0.90, 0.96, 1.0, 1.0),
-		"stage_c": Color(1.0, 0.90, 0.70, 1.0),
-		"stage_d": Color(0.85, 0.95, 1.0, 1.0),
-		"stage_energy": 0.20,
-		"stage_pulse": 0.04,
-		"pool": Color(1.0, 0.88, 0.62, 1.0),
-		"pool_alpha": 0.10,
 		"rim": Color(1.0, 0.85, 0.52, 1.0),
 		"rim_energy": 0.85,
 		# Commit 3: the fighter cel rim per preset. Warm cream against a blue afternoon sky,
@@ -166,14 +160,6 @@ const PHASES := [
 		"mound": Color(0.78, 0.47, 0.26, 1.0),
 		"horizon": Color(0.95, 0.55, 0.30, 1.0),
 		"spot_colour": Color(1.0, 0.62, 0.30, 1.0),
-		"stage_a": Color(1.0, 0.62, 0.30, 1.0),
-		"stage_b": Color(0.95, 0.35, 0.62, 1.0),
-		"stage_c": Color(1.0, 0.78, 0.38, 1.0),
-		"stage_d": Color(0.85, 0.45, 1.0, 1.0),
-		"stage_energy": 0.85,
-		"stage_pulse": 0.10,
-		"pool": Color(1.0, 0.56, 0.30, 1.0),
-		"pool_alpha": 0.26,
 		"rim": Color(1.0, 0.353, 0.212, 1.0),
 		"rim_energy": 1.45,
 		# Hot amber edge against the crimson band: the fighter reads as a silhouette lit from
@@ -185,9 +171,11 @@ const PHASES := [
 		"disc_pos": Vector3(3.2, 1.30, -13.6),
 		"disc_size": 7.0,
 	},
-	# NIGHT — deep indigo dancehall night. A cool moon key (#6F8CFF) at low energy still casts
-	# the fighters' crisp shadow, the yard is carried by four coloured stage SpotLight3Ds —
-	# cyan, magenta, amber, gold-amber — whose energy pulses on the 132 BPM beat.
+	# NIGHT — deep indigo dancehall night. A cool moon key (#6F8CFF) at low energy casts the
+	# fighters' crisp shadow and is the brightest light in the yard; the warm moonlit sand and
+	# the ambient carry the rest. STEP 2 removed the four coloured stage beams this preset used
+	# to lean on (they painted magenta/cyan pools over a painted beach), so the moon key is
+	# raised from 0.16 to 0.85 to keep the 2:1 key-to-ambient ratio the fighters need.
 	{
 		"name": "Late-Night Sound Clash",
 		"backdrop": "res://assets/stages/stage_night.jpg",
@@ -199,7 +187,7 @@ const PHASES := [
 		"haze_height": 0.24,
 		"haze_strength": 0.38,
 		"sun_colour": Color(0.435, 0.549, 1.0, 1.0),
-		"sun_energy": 0.16,
+		"sun_energy": 0.85,
 		"sun_rotation": Vector3(-64.0, 150.0, 0.0),
 		"ambient": Color(0.12, 0.14, 0.34, 1.0),
 		"ambient_energy": 0.34,
@@ -217,17 +205,6 @@ const PHASES := [
 		"mound": Color(0.53, 0.44, 0.29, 1.0),
 		"horizon": Color(0.14, 0.13, 0.30, 1.0),
 		"spot_colour": Color(0.35, 0.85, 1.0, 1.0),
-		"stage_a": Color(0.20, 0.95, 1.0, 1.0),
-		"stage_b": Color(1.0, 0.16, 0.72, 1.0),
-		"stage_c": Color(1.0, 0.62, 0.12, 1.0),
-		"stage_d": Color(1.0, 0.80, 0.28, 1.0),
-		# PART B commit 4: 2.30 instead of 2.60. With ACES and glow gone the highlights clip
-		# earlier, so the four coloured beams sit just under the washout point while still
-		# carrying the night (they stay well above the 2.0 floor the rig test asserts).
-		"stage_energy": 2.30,
-		"stage_pulse": 0.45,
-		"pool": Color(0.42, 0.78, 1.0, 1.0),
-		"pool_alpha": 0.42,
 		"rim": Color(0.26, 0.92, 1.0, 1.0),
 		"rim_energy": 1.60,
 		# Cyan edge against the indigo night. It burns hardest here because the sky is darkest
@@ -246,13 +223,13 @@ var world_env: WorldEnvironment
 var sun: DirectionalLight3D
 var fill: DirectionalLight3D
 var rim: OmniLight3D
-var spot_left: SpotLight3D
-var spot_right: SpotLight3D
-## Bug 5 (2026-11-25): two more stage spots, so the night rig is four coloured beams
-## (cyan / magenta / amber / gold-amber) instead of one white wash. Two directional lights,
-## one omni rim and four spots is seven lights — inside Compatibility's per-object limit.
-var stage_spot_a: SpotLight3D
-var stage_spot_b: SpotLight3D
+## STEP 2 (2026-11-27): the four coloured stage SpotLight3Ds are GONE. The yard is lit by the
+## sun, the shadowless camera fill and the shadowless omni rim — three lights, never a coloured
+## beam over the beach, and every mesh is lit by at most two of them.
+## STEP 1 (2026-11-27): the delivered 3D props are gated. The illustrated beach is the stage, so
+## the booth and both tower slots are hidden by default; the slots still load, measure and keep
+## every anchor and trigger working, they simply draw nothing.
+@export var stage_props_enabled: bool = false
 ## The yard's own surfaces, kept so the phase palette can re-grade them instead of only
 ## recolouring the light that falls on them.
 var sand_material: StandardMaterial3D
@@ -270,19 +247,16 @@ const SPEAKER_PULSE := 0.015
 const SPEAKER_RATTLE := 0.045
 const SPEAKER_RATTLE_MAX := SPEAKER_PULSE + SPEAKER_RATTLE
 const SPEAKER_RATTLE_DECAY := 1.9
-var _stage_energy_base: float = 0.0
-var _stage_pulse_amount: float = 0.0
 var _beat_phase: float = 0.0
-## Commit 5: eruption pump on the EXISTING stage spots and booth lights. A scalar multiplier
-## only — no light is created, moved or re-parented, so the 7-light Compatibility ceiling and
-## `light_count()` are unchanged.
+## Commit 5: the eruption envelope. With STEP 2 there is no stage spot left to pump, so this is
+## now a pure readout (`light_pump()`) of how hard the yard just erupted: no light is created,
+## moved, re-parented or re-energised, and `light_count()` never changes.
 var _light_pump: float = 0.0
 ## PART M: the illustrated backdrop material (one `StandardMaterial3D`, unshaded, one texture
 ## swapped per preset) and the gradient shader kept ONLY as the fallback for a missing file.
 ## Exactly one of the two is ever bound to `SkyBackdrop`.
 var backdrop_material: StandardMaterial3D = null
 var sky_material: ShaderMaterial = null
-var pool_material: ShaderMaterial
 var sun_material: ShaderMaterial
 ## Path of the backdrop texture actually bound to the quad, so the audit can prove the
 ## time-of-day preset swapped the ART and not just a tint.
@@ -358,10 +332,10 @@ var _phase_age: float = 0.0
 var _phase_duration: float = 0.0
 var _rng := RandomNumberGenerator.new()
 
-## Fix pass commit 3: render layers for the light cull. The night rig has seven lights and the
-## Compatibility renderer shades only a few per mesh, so each light declares which layers it
-## touches: the fighters see the sun, the camera fill and the two white spots; the stage sees the
-## sun, the warm rim and the two coloured stage beams. No mesh is lit by more than four.
+## Render layers for the light cull. STEP 2 leaves three lights, so the masks are simple: the
+## fighters see the sun and the camera fill, the stage sees the sun and the warm rim, and no mesh
+## is lit by more than two. (This is also what the Compatibility per-object limit is measured
+## against; the old rig needed layer juggling to stay under it.)
 const LAYER_FIGHTERS := 1
 const LAYER_STAGE := 2
 
@@ -373,7 +347,7 @@ func _ready() -> void:
 	_build_yard()
 	_build_speakers()
 	_cache_prop_cel()
-	_build_truss_and_lights()
+	_build_lights()
 	_build_dj_booth()
 	# Both the towers and the deck exist now, so the set can be measured and placed as one.
 	_place_stage_set()
@@ -381,6 +355,9 @@ func _ready() -> void:
 	_apply_phase(PHASES[0])
 	# Everything the yard built is stage furniture; the fighters tag themselves when they attach.
 	_assign_stage_layers()
+	# STEP 1: the delivered props are measured and placed first, then gated. The illustration
+	# is the beach, so the default is nothing drawn in front of it.
+	_set_stage_props_visible(stage_props_enabled)
 
 
 # =========================================================================
@@ -617,23 +594,12 @@ func stage_pulse() -> float:
 	return exp(-fposmod(_beat_phase, 1.0) * 3.0)
 
 
+## Beat clock + eruption envelope only. With no stage spots left there is no light to drive,
+## so this writes no light energy at all: the sun, the fill and the rim hold the preset values
+## every frame, which is what keeps the beach's lighting steady and natural.
 func _update_stage_lights(delta: float) -> void:
 	_beat_phase = fposmod(_beat_phase + delta * BPM / 60.0, 1.0)
 	_light_pump = maxf(0.0, _light_pump - delta * 1.6)
-	_apply_stage_energies()
-
-
-func _apply_stage_energies() -> void:
-	var pulse := (1.0 + _stage_pulse_amount * stage_pulse()) \
-		* (1.0 + _light_pump * ERUPT_LIGHT_PUMP * stage_pulse())
-	if spot_left != null:
-		spot_left.light_energy = _stage_energy_base * pulse
-	if spot_right != null:
-		spot_right.light_energy = _stage_energy_base * 0.92 * pulse
-	if stage_spot_a != null:
-		stage_spot_a.light_energy = _stage_energy_base * 0.80 * pulse
-	if stage_spot_b != null:
-		stage_spot_b.light_energy = _stage_energy_base * 0.72 * pulse
 
 
 ## Every light the yard currently draws, for the Web per-object light-limit audit.
@@ -661,19 +627,14 @@ static func max_lights_per_object() -> int:
 	return int(ProjectSettings.get_setting("rendering/limits/opengl/max_lights_per_object", 8))
 
 
+## STEP 2: the coloured stage spots and their coloured pools are gone, so a reader that asks for
+## one gets exactly zero. Kept as a named readout so "no beam is over the beach" is assertable.
 func stage_spot_count() -> int:
 	var n := 0
-	for light in [spot_left, spot_right, stage_spot_a, stage_spot_b]:
-		if light != null:
+	for node in find_children("*", "SpotLight3D", true, false):
+		if node is SpotLight3D:
 			n += 1
 	return n
-
-
-func stage_spot_colour(index: int) -> Color:
-	var lights := [spot_left, spot_right, stage_spot_a, stage_spot_b]
-	if index < 0 or index >= lights.size() or lights[index] == null:
-		return Color.BLACK
-	return (lights[index] as SpotLight3D).light_color
 
 
 func crowd_count() -> int:
@@ -875,9 +836,6 @@ func _process(delta: float) -> void:
 	_update_speakers(delta)
 	_update_crowd(delta)
 	_update_stage_lights(delta)
-	if pool_material != null:
-		var base := float(_phase_now.get("pool_alpha", 0.15))
-		pool_material.set_shader_parameter("intensity", base + _pulse * 0.10)
 
 
 func _update_camera(delta: float) -> void:
@@ -1064,19 +1022,9 @@ func _push_palette(p: Dictionary) -> void:
 		crowd3d.set_palette(p["rim"], p["spot_colour"], float(p["rim_energy"]))
 	if dj_booth != null:
 		dj_booth.set_palette(p["rim"], p["spot_colour"], float(p["rim_energy"]))
-	# Bug 5: the four stage beams each own a colour, and their energy rides the 132 BPM pulse.
-	if spot_left != null:
-		spot_left.light_color = p["stage_a"]
-	if spot_right != null:
-		spot_right.light_color = p["stage_b"]
-	if stage_spot_a != null:
-		stage_spot_a.light_color = p["stage_c"]
-	if stage_spot_b != null:
-		stage_spot_b.light_color = p["stage_d"]
-	_stage_energy_base = float(p["stage_energy"])
-	_stage_pulse_amount = float(p.get("stage_pulse", 0.0))
-	_apply_stage_energies()
-	# Sand, mounds and the horizon band are re-graded with the phase, so the floor answers the
+	# STEP 2: no stage beams to colour and no additive pool to tint. The preset's light rig is
+	# the sun, the fill and the rim, and all three were written above.
+	# Sand and mounds are re-graded with the phase, so the floor answers the
 	# sky instead of staying one fixed brown card under three different skies.
 	if sand_material != null:
 		sand_material.albedo_color = p["sand"]
@@ -1107,9 +1055,6 @@ func _push_palette(p: Dictionary) -> void:
 		sky_material.set_shader_parameter("mid_point", float(p["sky_mid_point"]))
 		sky_material.set_shader_parameter("haze_height", float(p["haze_height"]))
 		sky_material.set_shader_parameter("haze_strength", float(p["haze_strength"]))
-	if pool_material != null:
-		pool_material.set_shader_parameter("pool_colour", p["pool"])
-		pool_material.set_shader_parameter("intensity", float(p["pool_alpha"]))
 	if sun_material != null:
 		sun_material.set_shader_parameter("disc_colour", p["disc_colour"])
 		sun_material.set_shader_parameter("intensity", float(p["disc"]))
@@ -1172,8 +1117,8 @@ func cel_rim_strength() -> float:
 # =========================================================================
 ## The washout was three stacked effects, never the light rig. ACES rolled the saturated sky
 ## hexes toward white, glow bloomed every beam back over the bodies, and depth fog veiled a
-## fighter in its own haze a metre from the lens. The clean look removes all three; the seven
-## lights, the crisp directional shadow, the preset palettes and the cel materials are
+## fighter in its own haze a metre from the lens. The clean look removes all three; the sun,
+## the fill, the rim, the crisp directional shadow, the preset palettes and the materials are
 ## untouched. The sky gradient carries depth on its own, the delivered albedo reads at face
 ## value, and every preset keeps a key:ambient ratio of at least 2:1.
 ##
@@ -1339,12 +1284,7 @@ func ambient_energy() -> float:
 ## is the sun; at night the moonlight is deliberately low, so the coloured stage beams are the
 ## key. Either way the key must beat the ambient by at least 2:1, or the fighters flatten.
 func key_energy() -> float:
-	var best := 0.0
-	for light in [sun, spot_left, spot_right, stage_spot_a, stage_spot_b]:
-		var l := light as Light3D
-		if l != null and l.visible:
-			best = maxf(best, l.light_energy)
-	return best
+	return sun.light_energy if sun != null and sun.visible else 0.0
 
 
 func key_to_ambient_ratio() -> float:
@@ -1453,19 +1393,9 @@ func _build_yard() -> void:
 	# runs into the painted shore, so a grey band and two rails with nine posts would be the
 	# only straight lines left in the frame.
 
-	# Additive pool of stage light on the sand (the SpotLights are the real illumination).
-	var pool_quad := QuadMesh.new()
-	pool_quad.size = Vector2(5.6, 2.9)
-	pool_material = ShaderMaterial.new()
-	pool_material.shader = LIGHT_POOL
-	var pool := MeshInstance3D.new()
-	pool.name = "StageLightPool"
-	pool.mesh = pool_quad
-	pool.material_override = pool_material
-	pool.rotation.x = -PI * 0.5
-	pool.position = Vector3(0.0, 0.012, -0.3)
-	pool.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(pool)
+	# STEP 2: the additive `StageLightPool` quad is DELETED with the SpotLights it stood in
+	# for. It was a coloured glow painted flat on the sand in front of the fighters — one more
+	# fake light over an illustrated beach. The sand is lit by the sun and the ambient alone.
 
 
 ## The two towers the yard expects. Drop these files into `assets/models/props/` and they
@@ -1524,61 +1454,15 @@ func speaker_slot_paths() -> Array[String]:
 	return paths
 
 
-func _build_truss_and_lights() -> void:
-	# PART M: the truss is GONE. Two 4.4 m vertical poles at +/-3.55 m, a cross beam and four
-	# black fixture boxes were the last "corner poles" on the stage: straight, dark, built in
-	# code, and twice as tall as the shack. The four SpotLight3Ds below are what actually lit
-	# the yard and they are lights, not furniture, so they stay exactly as they were — no light
-	# is created, moved or re-parented, and the seven-light / four-per-mesh budget is unchanged.
-
-	spot_left = SpotLight3D.new()
-	spot_left.name = "SpotLeft"
-	spot_left.position = Vector3(-1.25, 3.95, 0.55)
-	spot_left.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
-	spot_left.spot_range = 8.0
-	spot_left.spot_angle = 34.0
-	spot_left.spot_angle_attenuation = 0.7
-	spot_left.light_energy = 1.0
-	spot_left.shadow_enabled = false
-	spot_left.light_cull_mask = LAYER_FIGHTERS      # fighters only: the stage has its own beams
-	add_child(spot_left)
-	spot_right = SpotLight3D.new()
-	spot_right.name = "SpotRight"
-	spot_right.position = Vector3(1.25, 3.95, 0.55)
-	spot_right.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
-	spot_right.spot_range = 8.0
-	spot_right.spot_angle = 34.0
-	spot_right.spot_angle_attenuation = 0.7
-	spot_right.light_energy = 1.0
-	spot_right.shadow_enabled = false
-	spot_right.light_cull_mask = LAYER_FIGHTERS      # fighters only: the stage has its own beams
-	add_child(spot_right)
-
-	# Bug 5: two more stage beams, angled across the fighting lane, so the night rig can light
-	# the yard in cyan / magenta / amber / gold instead of one flat white overhead wash.
-	stage_spot_a = SpotLight3D.new()
-	stage_spot_a.name = "StageSpotMagenta"
-	stage_spot_a.position = Vector3(-2.7, 3.9, 0.9)
-	stage_spot_a.rotation_degrees = Vector3(-76.0, 22.0, 0.0)
-	stage_spot_a.spot_range = 9.5
-	stage_spot_a.spot_angle = 40.0
-	stage_spot_a.spot_angle_attenuation = 0.9
-	stage_spot_a.light_energy = 0.0
-	stage_spot_a.shadow_enabled = false
-	stage_spot_a.light_cull_mask = LAYER_STAGE         # stage and props only: never a fighter
-	add_child(stage_spot_a)
-	stage_spot_b = SpotLight3D.new()
-	stage_spot_b.name = "StageSpotAmber"
-	stage_spot_b.position = Vector3(2.7, 3.9, 0.9)
-	stage_spot_b.rotation_degrees = Vector3(-76.0, -22.0, 0.0)
-	stage_spot_b.spot_range = 9.5
-	stage_spot_b.spot_angle = 40.0
-	stage_spot_b.spot_angle_attenuation = 0.9
-	stage_spot_b.light_energy = 0.0
-	stage_spot_b.shadow_enabled = false
-	stage_spot_b.light_cull_mask = LAYER_STAGE         # stage and props only: never a fighter
-	add_child(stage_spot_b)
-
+## The whole light rig: the sun (the only shadow caster), a shadowless camera fill and a
+## shadowless omni rim. STEP 2 deleted the four SpotLight3Ds this used to build — two overhead
+## white ones over the fighters and two angles ones that painted cyan / magenta / amber / gold
+## pools across the yard — because on the illustrated beach they read as coloured beams hanging
+## in the sky. PART M had already deleted the truss geometry they were hung from, so nothing
+## supported them either.
+##
+## Three lights, no SpotLight3D, and the layer masks keep every mesh at two or fewer.
+func _build_lights() -> void:
 	sun = DirectionalLight3D.new()
 	sun.name = "Sun"
 	sun.rotation_degrees = Vector3(-56.0, -30.0, 0.0)
@@ -1625,6 +1509,56 @@ func _build_truss_and_lights() -> void:
 ## 3D DJ booth between the mid-ground stacks (owner request, 2026-11-22). It is measured and
 ## placed by `_place_stage_set()`, which is what makes a replacement deck of any size land in
 ## the same place with the DJs standing behind it.
+## STEP 1 (2026-11-27): gate the delivered 3D props. The beach is illustrated, so the booth,
+## both tower slots and their contact shadows draw nothing unless `stage_props_enabled` is on.
+## The slots are still built and measured: the five-slot contract, the seated scales, the FX
+## anchors (`speaker_cabinet_anchor`) and every `SPEAKER BOX!` trigger keep working, and every
+## accessor below stays null-safe, because nothing is freed and no reference is cleared.
+func _set_stage_props_visible(on: bool) -> void:
+	if dj_booth != null:
+		dj_booth.visible = on
+	for slot in _sound_stacks:
+		if slot != null:
+			slot.visible = on
+	for node in find_children("StageContactShadow*", "MeshInstance3D", true, false):
+		var shadow := node as MeshInstance3D
+		if shadow != null:
+			shadow.visible = on
+
+
+## True when the delivered props are drawn. False is the default beach stage.
+func stage_props_visible() -> bool:
+	if dj_booth != null and dj_booth.visible:
+		return true
+	for slot in _sound_stacks:
+		if slot != null and slot.visible:
+			return true
+	return false
+
+
+## Toggle the gate at runtime (a menu, an A/B in the inspector, the headless audit) and apply
+## it immediately. Same call site the export flag uses, so a prop can never be left drawn or a
+## contact shadow stranded.
+func set_stage_props_enabled(on: bool) -> void:
+	stage_props_enabled = on
+	_set_stage_props_visible(on)
+
+
+## Every prop contact-shadow quad still in the yard (`StageContactShadow*`), drawn or not.
+func stage_contact_shadow_count() -> int:
+	return find_children("StageContactShadow*", "MeshInstance3D", true, false).size()
+
+
+## How many of those quads are actually drawn. Zero whenever the props are gated off.
+func visible_stage_contact_shadows() -> int:
+	var n := 0
+	for node in find_children("StageContactShadow*", "MeshInstance3D", true, false):
+		var shadow := node as MeshInstance3D
+		if shadow != null and shadow.visible:
+			n += 1
+	return n
+
+
 func _build_dj_booth() -> void:
 	dj_booth = BOOTH_SCRIPT.new()
 	dj_booth.name = "DJBooth3D"

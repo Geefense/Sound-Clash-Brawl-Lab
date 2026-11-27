@@ -358,6 +358,12 @@ var _rigid_tick := 0
 ## instead of being assumed to be 90°: a frozen hitstun pose is often already leaning 20-30°, and
 ## a fixed 90° would leave exactly that much of the spine upright.
 var _rigid_flat_rad := PI * 0.5
+## The body frame the downed relax aims at, captured at fall start: `up` is hips→head, `side`
+## is the body's own left/right axis (perpendicular to up and to the duel's ±X). Rotating these
+## by the fall's own angle gives a stable target for every limb, with no feedback from the pose
+## the relax itself writes.
+var _rigid_relax_up := Vector3.UP
+var _rigid_relax_side := Vector3.BACK
 var _clock: float = 0.0
 var _lean: float = 0.0
 var _lunge: float = 0.0
@@ -1133,6 +1139,10 @@ func _process(delta: float) -> void:
 	_apply_feel_layer(delta)
 	_pin_feet_to_ground()
 	_clamp_to_floor()
+	# STEP 4 (2026-11-27): a downed body relaxes its limbs BEFORE the rigid fall turns it over,
+	# so the pose the seat and the fall measure is the one that will actually be drawn: legs
+	# straight, arms out on the sand, head laid back — never the guard it was hit in.
+	_relax_downed_pose()
 	# Write order for a downed body: facing and every pose writer first, then the rigid fall
 	# rotation, then the seat — last, because the seat has to measure the pose that will actually
 	# be drawn. Run any earlier, it measured a body the rig offsets had not moved yet, and
@@ -1229,6 +1239,18 @@ func _begin_rigid_fall() -> void:
 		_rigid_flat_rad = atan2(up.cross(flat).dot(_rigid_axis), up.dot(flat))
 	else:
 		_rigid_flat_rad = PI * 0.5
+	# STEP 4: the body frame the relax pass aims at, captured once, before any fall rotation is
+	# written, so the targets never depend on the pass's own output. `up` is flattened into the
+	# fall plane (an already-tipped capture keeps a lateral component that would otherwise make
+	# the legs splay sideways), and the arms' target is the fall AXIS itself: horizontal, in the
+	# plane of the body, and unchanged by the fall's own rotation — measured as the body's
+	# left/right so both arms lie out on the sand instead of one reaching over the head.
+	_rigid_relax_up = up.normalized()
+	_rigid_relax_up = (_rigid_relax_up - _rigid_axis * _rigid_relax_up.dot(_rigid_axis))
+	if _rigid_relax_up.length() < 0.0001:
+		_rigid_relax_up = Vector3.UP.cross(_rigid_axis).normalized()
+	_rigid_relax_up = _rigid_relax_up.normalized()
+	_rigid_relax_side = _rigid_axis
 	_rigid_rest_basis = _visual_pivot.global_transform.basis
 	_rigid_anc_basis = parent.global_transform.basis
 	_rigid_anc_inv = parent.global_transform.affine_inverse()
@@ -1298,9 +1320,164 @@ func _advance_rigid_seat(rot: Basis) -> void:
 		_rigid_low = low
 
 
+# ---- Downed relax (STEP 4, 2026-11-27) -------------------------------------------------
+## A knocked-out body must not keep the stance it was hit in. `_begin_rigid_fall()` freezes the
+## take and lays it flat, which is what the supine contract measures — but a frozen boxer's pose
+## is still a boxer's pose: knees loaded, fists at the chin, chin tucked. That is exactly the
+## "stiff sideways fighting statue" the playtest reported. This pass relaxes the frozen pose
+## into a genuine lay-out while the body topples:
+##   * both thighs and shins are re-aimed along the body's own −up axis, so the legs extend
+##     straight and, once the rigid fall lands the body, run flat toward the opponent;
+##   * both upper arms are re-aimed along the body's own left/right axis and the forearms are
+##     straightened after them, so the arms lie out wide on the sand instead of guarding;
+##   * the spine and neck are re-aimed along +up, so the torso flattens and the head lies back
+##     on the sand rather than tucking into the chest.
+## An aim is ONE rotation of a bone that already exists: no translation, no scale, no new node,
+## no array. The weight ramps with `_fall`, so the limbs give way as the body goes over instead
+## of snapping on the first downed frame, and the whole pass is skipped once `_rigid` ends.
+const RELAX_SPINE := 0
+const RELAX_LEGS := 1
+const RELAX_RIGHT := 2
+const RELAX_LEFT := 3
+## [bone, child, aim kind, weight]. A parent is always aimed before its child, so the child's
+## aim is measured against the parent's new direction in the same frame.
+const DOWNED_RELAX_PAIRS := [
+	["Spine1", "Spine2", RELAX_SPINE, 0.55],
+	["Spine2", "Neck", RELAX_SPINE, 0.55],
+	["Neck", "Head", RELAX_SPINE, 0.55],
+	["LeftUpLeg", "LeftLeg", RELAX_LEGS, 1.0],
+	["LeftLeg", "LeftFoot", RELAX_LEGS, 1.0],
+	["RightUpLeg", "RightLeg", RELAX_LEGS, 1.0],
+	["RightLeg", "RightFoot", RELAX_LEGS, 1.0],
+	["LeftArm", "LeftForeArm", RELAX_LEFT, 0.92],
+	["LeftForeArm", "LeftHand", RELAX_LEFT, 0.88],
+	["RightArm", "RightForeArm", RELAX_RIGHT, 0.92],
+	["RightForeArm", "RightHand", RELAX_RIGHT, 0.88],
+]
+## Resolved [parent index, child index, kind, weight] once at bind: the per-frame pass is reads
+## and writes only, never a bone-name search.
+var _relax_pairs: Array = []
+## Aims actually applied on the last downed frame, for the headless audit.
+var _relax_aims := 0
+
+
+## Resolve the relax bone table once, at bind time. Missing bones (a future non-Mixamo upload)
+## are simply dropped, so the pass never fails a body it does not recognise.
+func _cache_relax_bones() -> void:
+	_relax_pairs.clear()
+	if skeleton == null:
+		return
+	for entry in DOWNED_RELAX_PAIRS:
+		var parent := _bone_suffix(String(entry[0]))
+		var child := _bone_suffix(String(entry[1]))
+		if parent < 0 or child < 0:
+			continue
+		_relax_pairs.append([parent, child, int(entry[2]), float(entry[3])])
+
+
+## The relax pass. Runs after the clip and the feel layer have written the frame and before the
+## rigid fall rotates the body, so the pose the fall lays down is the relaxed one. All vectors
+## are measured from the live pose, so it works in whatever orientation the take left the body.
+func _relax_downed_pose() -> void:
+	_relax_aims = 0
+	if skeleton == null or not _rigid or _relax_pairs.is_empty():
+		return
+	var weight := clampf(_fall, 0.0, 1.0)
+	if weight <= 0.0:
+		return
+	# The targets are the body frame CAPTURED AT FALL START, rotated by the fall's own angle.
+	# Measuring them from this frame's pose instead makes the pass chase itself: straightening
+	# the spine moves the head, which moves `up`, which is also the spine's own target. The
+	# first version of this pass did exactly that and settled 21 deg off every frame.
+	var rot := Basis(_rigid_axis, _rigid_flat_rad * clampf(_fall, 0.0, 1.0))
+	var up := (rot * _rigid_relax_up).normalized()
+	if up.length_squared() < 0.25:
+		return
+	# The body's own left/right axis: perpendicular to up and to the duel's ±X axis. The rigid
+	# fall turns ABOUT this axis, so it stays horizontal, which is why an arm aimed along it ends
+	# up lying on the sand rather than pointing at the sky.
+	# The arms' target is the fall axis, which the fall turns about, so it needs no rotation.
+	var side := _rigid_relax_side.normalized()
+	if side.length_squared() < 0.25:
+		return
+	var legs := -up
+	# Three passes over the table: each aim moves the frames the later bones are measured in (the
+	# hips/spine aims shift the shoulders, a thigh aim moves the knee the shin reads), so one pass
+	# leaves a residual bend. Measured on the three rigs: one pass left a 39 deg elbow, two left
+	# 22 deg, three settles every joint under 18 deg. Eleven aims a pass, only while a body is
+	# down, and nothing is allocated.
+	for pass_index in 3:
+		for entry in _relax_pairs:
+			var target := up
+			match int(entry[2]):
+				RELAX_LEGS:
+					target = legs
+				RELAX_RIGHT:
+					target = side
+				RELAX_LEFT:
+					target = -side
+			if not _aim_bone(int(entry[0]), int(entry[1]), target,
+					float(entry[3]) * weight):
+				continue
+			if pass_index == 0:
+				_relax_aims += 1
+			# The next bone in the table is this one's CHILD, and it is aimed from the child's
+			# live world position. Godot caches the global pose until something asks for it to be
+			# rebuilt, so without this the child was aimed against the pose the parent had BEFORE
+			# this frame's rotation — a constant residual bend in every relaxed limb (measured: a
+			# 50 deg knee that never went away). One rebuild per aimed bone, while a body is down.
+			skeleton.force_update_all_bone_transforms()
+
+
+
+## Rotate one bone about its own origin so the segment to `child` points along `target` (world
+## space), by `weight` of the angle that would make it exact. Rotation only: the bone's origin,
+## the skeleton's transform and every other bone are untouched, and no value is allocated.
+##
+## The bone's posed global basis is `G = A · L`, where `L` is the local pose rotation this
+## method writes and `A` is everything above it (ancestors, rest transform, skeleton scale).
+## `A` is read straight off the live pose as `G · L⁻¹` instead of being rebuilt from the rest
+## chain, so the conversion is correct whatever a rig's rest orientation happens to be — a
+## hand-built parent/rest product is exactly the bug that left the first version of this pass
+## bending elbows instead of straightening them. The world delta is brought into skeleton
+## space with the skeleton's own basis: `L' = A⁻¹ · S⁻¹ · D · S · A · L`.
+func _aim_bone(index: int, child: int, target: Vector3, weight: float) -> bool:
+	if weight <= 0.0 or target.length_squared() < 0.000001:
+		return false
+	if skeleton == null:
+		return false
+	# Work entirely inside the bone's own frame: the child's offset and the target direction are
+	# both expressed relative to the bone's live global pose, so the correction is a plain local
+	# rotation and no parent / rest / mirrored-axis convention can flip it.
+	var bone_xf := skeleton.get_bone_global_pose(index)
+	var child_xf := skeleton.get_bone_global_pose(child)
+	var from_local: Vector3 = (bone_xf.affine_inverse() * child_xf.origin)
+	if from_local.length() < 0.0001:
+		return false
+	var to_local: Vector3 = bone_xf.basis.inverse() * (skeleton.global_transform.basis.inverse() * target)
+	if to_local.length() < 0.0001:
+		return false
+	var aim := Quaternion(from_local.normalized(), to_local.normalized())
+	var local := skeleton.get_bone_pose_rotation(index)
+	var aim_angle := absf(aim.get_angle())
+	if aim_angle < 0.001:
+		return false
+	# Full weight every frame, not a step toward the target: the clip re-poses the skeleton from
+	# scratch each frame, so a capped step is re-applied from the clip pose and never converges
+	# (measured: a 28 deg/frame cap left every relaxed arm 60 deg off its target, forever).
+	skeleton.set_bone_pose_rotation(index, local.slerp(local * aim, clampf(weight, 0.0, 1.0)))
+	return true
+
+
+## Aims applied on the last downed frame, for the headless audit (0 while standing).
+func relax_aims() -> int:
+	return _relax_aims
+
+
 func _end_rigid_fall() -> void:
 	_rigid = false
 	_rigid_seat = 0.0
+	_relax_aims = 0
 	if _visual_pivot != null:
 		_visual_pivot.basis = Basis()
 		_visual_pivot.position = Vector3.ZERO
@@ -1760,6 +1937,7 @@ func _install_feel_layer() -> void:
 	if not feel_enabled:
 		return
 	_cache_foot_bones()
+	_cache_relax_bones()
 	_measure_sole_drop()
 	_measure_impact_times()
 	_measure_recoil_extreme()

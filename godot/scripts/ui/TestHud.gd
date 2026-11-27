@@ -31,10 +31,43 @@ const FONT_SUB := preload("res://assets/fonts/ChakraPetch-Bold.ttf")
 # Subtitle pill (AGENTS.md §9 item 19): one line at a time, 4 s cooldown, 1.8 s fade.
 const SUBTITLE_SECONDS := 1.8
 const SUBTITLE_COOLDOWN_SECONDS := 4.0
-const SUBTITLE_Y := 646.0
-## Bottom-edge key legend (below the subtitle pill, inside the 720 canvas).
-const LEGEND_Y := 700.0
 const SUBTITLE_FADE := 0.45
+
+# ---- Bottom button bar (STEP 3, 2026-11-27) -----------------------------------------
+## The three bottom readouts used to share one band and print through each other: the key
+## strip sat at y 700 across the whole width, the F6/F7/HitchLog chip at y 672 right-aligned,
+## and the 64 px callout pill at y 614-678 in the middle — so the chip crossed the pill's lower
+## edge and the strip's sixth key landed under it. They are now one measured vertical stack:
+## a two-row button bar pinned to the bottom, the status chip in its own band above it, and the
+## callout pill above that. `bottom_layout()` is the single source of truth for all three, so
+## `_draw()` and the headless rect-overlap audit can never disagree about where a label goes.
+const KEY_LABELS := [
+	"J jab", "K box", "L tump", "I upper box", "U grab/tech", "T taunt", "C crouch",
+	"G dummy guard", "Y AI mode", "B bird", "N time of day", "V subtitles", "F4 stepped",
+	"F6 look", "F7 quality", "R reset", "M mute/beats",
+]
+const KEY_FONT_SIZE := 12
+const KEY_CHIP_H := 24.0
+const KEY_PAD_X := 7.0
+const KEY_GAP_X := 6.0
+const KEY_GAP_Y := 4.0
+const KEY_MARGIN := 22.0
+const KEY_BAR_PAD := 6.0
+const KEY_BOTTOM_MARGIN := 6.0
+const KEY_MAX_ROWS := 2
+const CHIP_BAND_H := 22.0
+const CHIP_MAX_W := 545.0
+const PILL_H := 62.0
+## Gap between the bar, the chip band and the pill band. Never less than 4 px, so no two
+## readouts can share a pixel even at the smallest canvas.
+const BAND_GAP := 4.0
+
+## Cached layout, keyed by the view size: `_draw()` calls `bottom_layout()` every frame, and a
+## HUD must not re-measure 17 strings per frame. The entries are rebuilt only when the canvas
+## size changes.
+var _layout_key := Vector2(-1.0, -1.0)
+var _layout: Dictionary = {}
+var _layout_font_size := KEY_FONT_SIZE
 ## Match-intro proverb banner (AGENTS.md §8, 2026-11-22) sits under the round banner, so the
 ## round name and the yard wisdom read as one intro card. The English gloss is only drawn
 ## while subtitles are on (V).
@@ -93,6 +126,8 @@ func _process(delta: float) -> void:
 		if _sub_life == 0.0:
 			_sub = ""
 			_sub_translation = ""
+			_layout = {}
+			_layout_key = Vector2(-1.0, -1.0)
 	_sub_cooldown = maxf(0.0, _sub_cooldown - delta)
 	if _proverb_life > 0.0:
 		_proverb_life = maxf(0.0, _proverb_life - delta)
@@ -117,6 +152,9 @@ func announce_subtitle(patois: String, translation: String) -> bool:
 	_sub_translation = translation
 	_sub_life = SUBTITLE_SECONDS
 	_sub_cooldown = SUBTITLE_COOLDOWN_SECONDS
+	# The pill band is measured from the callout text, so a longer line re-measures it.
+	_layout = {}
+	_layout_key = Vector2(-1.0, -1.0)
 	_stamp_pop(&"sub")
 	queue_redraw()
 	return true
@@ -129,6 +167,8 @@ func toggle_subtitles() -> bool:
 		_sub = ""
 		_sub_translation = ""
 		_sub_life = 0.0
+		_layout = {}
+		_layout_key = Vector2(-1.0, -1.0)
 	return subtitles_enabled
 
 
@@ -181,6 +221,9 @@ func set_debug_chip(text: String) -> void:
 	if text == debug_chip:
 		return
 	debug_chip = text
+	# The chip's rect is measured from this text, so the cached bottom layout is stale now.
+	_layout = {}
+	_layout_key = Vector2(-1.0, -1.0)
 	queue_redraw()
 
 
@@ -206,17 +249,17 @@ func _draw() -> void:
 	_hype_bar(Vector2(MARGIN, MARGIN + BAR_H + 12.0))
 	_beat_pulse(Vector2(width * 0.5, MARGIN + BAR_H * 0.5))
 	_ai_banner(Vector2(width * 0.5 - 176.0, MARGIN + 44.0))
-	# Owner direction (§9 item 22): the workshop key strip belongs at the bottom edge, not
-	# across the sky/ocean where it fought the stage art.
-	_legend(Vector2(width * 0.5 - 240.0, LEGEND_Y))
+	# STEP 3: one measured bottom stack — button bar, status chip band, callout band.
+	var bottom := bottom_layout(size)
 	_round_clock(width)
 	_round_pips(width)
 	_surge_banner(Vector2(width * 0.5, size.y * 0.34))
 	_round_banner(width)
 	_wisdom_banner(width)
 	_music_toast_label(width)
-	_debug_chip_label(width)
-	_subtitle_pill(width)
+	_subtitle_pill(bottom)
+	_debug_chip_label(bottom)
+	_key_bar(bottom)
 
 
 ## Every label now draws like a classic arcade cabinet: three stacked extruded shadows, a
@@ -456,18 +499,136 @@ func _surge_banner(centre: Vector2) -> void:
 		Color(1.0, 1.0, 1.0, 0.95), HORIZONTAL_ALIGNMENT_CENTER, 600.0)
 
 
-## Patois shout + deadpan translation in a compact translucent pill, under the sand lane.
-func _subtitle_pill(width: float) -> void:
+# =========================================================================
+# Bottom stack geometry (STEP 3)
+# =========================================================================
+## One measured layout for everything that lives at the bottom of the screen: the button bar,
+## its key chips, the status chip and the callout pill. Pure arithmetic over the view size and
+## the current strings — it reads no game state, draws nothing, and is cached per view size so a
+## frame costs one Dictionary lookup. The headless audit calls exactly this, which is why a
+## collision cannot be "fixed in the test" without moving the drawing.
+func bottom_layout(view: Vector2) -> Dictionary:
+	if _layout_key == view and not _layout.is_empty():
+		return _layout
+	_layout_key = view
+	var bar_width := maxf(view.x - 2.0 * KEY_MARGIN, 240.0)
+	var font_size := KEY_FONT_SIZE
+	var widths: Array = []
+	var packed: Array = []
+	while font_size >= 9:
+		widths = []
+		for label in KEY_LABELS:
+			widths.append(FONT_SUB.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1,
+				font_size).x + KEY_PAD_X * 2.0)
+		packed = _pack_rows(widths, bar_width - 2.0 * KEY_BAR_PAD)
+		if packed.size() <= KEY_MAX_ROWS:
+			break
+		font_size -= 1
+	var rows: int = packed.size()
+	var bar_h := KEY_BAR_PAD * 2.0 + float(rows) * KEY_CHIP_H \
+		+ float(maxi(rows - 1, 0)) * KEY_GAP_Y
+	var bar := Rect2(Vector2(KEY_MARGIN, view.y - KEY_BOTTOM_MARGIN - bar_h),
+		Vector2(bar_width, bar_h))
+	var chips: Array = []
+	var labels: Array = []
+	for row in rows:
+		var entry: Array = packed[row]
+		var indices: Array = entry[0]
+		var used: float = entry[1]
+		var gaps := maxi(indices.size() - 1, 0)
+		var space := bar_width - 2.0 * KEY_BAR_PAD - used
+		var gap := KEY_GAP_X
+		if gaps > 0 and space > 0.0:
+			gap = maxf(KEY_GAP_X, space / float(gaps))
+		var x := bar.position.x + KEY_BAR_PAD
+		var y := bar.position.y + KEY_BAR_PAD + float(row) * (KEY_CHIP_H + KEY_GAP_Y)
+		for i in indices.size():
+			var index: int = indices[i]
+			var w: float = widths[index]
+			chips.append(Rect2(Vector2(x, y), Vector2(w, KEY_CHIP_H)))
+			labels.append(String(KEY_LABELS[index]))
+			x += w + gap
+	# The status chip owns the band directly above the bar, right-aligned, and is measured from
+	# the text it will actually draw (the live F6 / F7 / HitchLog / callout line).
+	var chip_w := clampf(FONT_SUB.get_string_size(debug_chip, HORIZONTAL_ALIGNMENT_LEFT, -1,
+		_chiptext_size(bar_width)).x + 26.0, 210.0, minf(CHIP_MAX_W, bar_width))
+	var debug_rect := Rect2(Vector2(view.x - KEY_MARGIN - chip_w,
+		bar.position.y - BAND_GAP - CHIP_BAND_H), Vector2(chip_w, CHIP_BAND_H))
+	# The callout pill owns the band above the chip. It is measured from the widest string it
+	# would draw right now, so its rect is honest even while it is faded out.
+	var shout_w := FONT_BUNGEE.get_string_size(_sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 27).x
+	var trans_w := FONT_SUB.get_string_size(_sub_translation, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+	var pill_w := clampf(maxf(shout_w, trans_w) + 56.0, 280.0, bar_width)
+	var pill := Rect2(Vector2(view.x * 0.5 - pill_w * 0.5,
+		debug_rect.position.y - BAND_GAP - PILL_H), Vector2(pill_w, PILL_H))
+	_layout = {
+		"view": view,
+		"bar": bar,
+		"chips": chips,
+		"labels": labels,
+		"debug": debug_rect,
+		"pill": pill,
+		"font_size": font_size,
+		"rows": rows,
+	}
+	return _layout
+
+
+## Greedy row packing. Returns [[indices, used_width], ...] — one entry per row.
+func _pack_rows(widths: Array, limit: float) -> Array:
+	var packed: Array = []
+	var line: Array = []
+	var used := 0.0
+	for i in widths.size():
+		var w: float = widths[i]
+		var extra := w if line.is_empty() else w + KEY_GAP_X
+		if not line.is_empty() and used + extra > limit:
+			packed.append([line, used])
+			line = []
+			used = 0.0
+			extra = w
+		line.append(i)
+		used += extra
+	if not line.is_empty():
+		packed.append([line, used])
+	return packed
+
+
+## Font size the status chip is measured/drawn at, so the rect and the drawn text agree.
+func _chiptext_size(_width: float) -> int:
+	return _fit_size(FONT_SUB, debug_chip, 14, CHIP_MAX_W - 26.0)
+
+
+## The button bar: a dark plate with the Rasta trim, and one bordered chip per key. Every chip
+## is a rect from `bottom_layout()`, so a label can never straddle another.
+func _key_bar(layout: Dictionary) -> void:
+	var bar: Rect2 = layout["bar"]
+	draw_rect(bar, Color(0.04, 0.035, 0.05, 0.80), true)
+	draw_rect(bar, Color(GOLD.r, GOLD.g, GOLD.b, 0.80), false, 2.0)
+	_rasta_strip(bar, 0.90)
+	var chips: Array = layout["chips"]
+	var labels: Array = layout["labels"]
+	var font_size: int = int(layout["font_size"])
+	for i in chips.size():
+		var rect: Rect2 = chips[i]
+		draw_rect(rect, Color(0.09, 0.08, 0.11, 0.94), true)
+		draw_rect(rect, Color(GOLD.r, GOLD.g, GOLD.b, 0.45), false, 1.0)
+		_text(Vector2(rect.position.x, rect.position.y + rect.size.y * 0.5
+			+ float(font_size) * 0.36), String(labels[i]), FONT_SUB, font_size,
+			Color(0.90, 0.94, 1.0), HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
+
+
+## Patois shout + deadpan translation in a compact translucent pill, above the button bar.
+func _subtitle_pill(layout: Dictionary) -> void:
 	if not subtitles_enabled or _sub == "" or _sub_life <= 0.0:
 		return
 	var fade := clampf(_sub_life / SUBTITLE_FADE, 0.0, 1.0)
-	var shout_size := _fit_size(FONT_BUNGEE, _sub, _pop_size(&"sub", 27), width - 180.0)
+	var pill: Rect2 = layout["pill"]
+	var pill_w := pill.size.x
+	var h := pill.size.y
+	var shout_size := _fit_size(FONT_BUNGEE, _sub, _pop_size(&"sub", 27), pill_w - 44.0)
 	var sub_size := 16
-	var shout_w := FONT_BUNGEE.get_string_size(_sub, HORIZONTAL_ALIGNMENT_LEFT, -1, shout_size).x
-	var trans_w := FONT_SUB.get_string_size(_sub_translation, HORIZONTAL_ALIGNMENT_LEFT, -1, sub_size).x
-	var pill_w := clampf(maxf(shout_w, trans_w) + 56.0, 280.0, width - 2.0 * MARGIN)
-	var h := 64.0
-	var origin := Vector2(width * 0.5 - pill_w * 0.5, SUBTITLE_Y - h * 0.5)
+	var origin := pill.position
 	var bg := Color(0.04, 0.03, 0.06, 0.72 * fade)
 	draw_rect(Rect2(origin, Vector2(pill_w, h)), bg, true)
 	draw_circle(origin + Vector2(0.0, h * 0.5), h * 0.5, bg)
@@ -524,22 +685,16 @@ func _music_toast_label(width: float) -> void:
 		Color(1.0, 0.90, 0.48, fade), HORIZONTAL_ALIGNMENT_CENTER, box_w)
 
 
-## Persistent presentation chip, bottom-right above the key strip: which of the two lighting
-## looks is live and which render quality is selected.
-func _debug_chip_label(width: float) -> void:
+## Persistent presentation chip (F6 look, F7 quality, the HitchLog lines and the F8 callout
+## state), in its OWN band above the button bar. It is right-aligned inside that band, so no
+## HitchLog line can ever reach the key chips below it.
+func _debug_chip_label(layout: Dictionary) -> void:
 	if debug_chip == "":
 		return
-	var text_size := _fit_size(FONT_SUB, debug_chip, 14, 520.0)
-	var text_w := FONT_SUB.get_string_size(debug_chip, HORIZONTAL_ALIGNMENT_LEFT, -1, text_size).x
-	var box_w := clampf(text_w + 26.0, 210.0, 545.0)
-	var box := Rect2(Vector2(width - MARGIN - box_w, LEGEND_Y - 28.0), Vector2(box_w, 24.0))
-	draw_rect(box, Color(0.05, 0.04, 0.07, 0.72), true)
+	var box: Rect2 = layout["debug"]
+	var text_size := _chiptext_size(box.size.x)
+	draw_rect(box, Color(0.05, 0.04, 0.07, 0.78), true)
 	draw_rect(box, Color(GOLD.r, GOLD.g, GOLD.b, 0.70), false, 1.0)
-	_text(Vector2(box.position.x, box.position.y + 17.0), debug_chip, FONT_SUB, text_size,
-		Color(0.92, 0.96, 1.0), HORIZONTAL_ALIGNMENT_CENTER, box_w)
-
-
-func _legend(pos: Vector2) -> void:
-	var keys := "J jab · K box · L tump · I upper box · U grab/tech · T taunt · C crouch · Y AI mode · B bird · N time of day · V subtitles · F4 stepped step · F6 look · F7 quality · R reset · G dummy guard · M mute/beats"
-	_text(pos, keys, FONT_SUB, _fit_size(FONT_SUB, keys, 14, size.x - 2.0 * MARGIN),
-		Color(0.82, 0.85, 0.92))
+	_text(Vector2(box.position.x, box.position.y + box.size.y * 0.5 + float(text_size) * 0.35),
+		debug_chip, FONT_SUB, text_size, Color(0.92, 0.96, 1.0),
+		HORIZONTAL_ALIGNMENT_CENTER, box.size.x)

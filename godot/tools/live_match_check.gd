@@ -36,6 +36,18 @@ const FIGHTERS := [&"feedback", &"lickshot", &"young_selecta"]
 const TOLERANCE_DEG := 5.0
 const FLOOR_TOLERANCE := -0.05        # metres below world y 0 the body may never go
 const DRIFT_LIMIT := 0.5              # metres of horizontal drift allowed while downed
+## STEP 4 limb relaxation thresholds, measured on the played full fall. A relaxed supine body
+## has nearly straight knees and elbows, hands out wider than its own shoulders and a long way
+## from its head; a frozen guard has bent knees, fists at the chin and hands inside the
+## shoulder line.
+## The fall fraction at which the laid-out limb contract is measured: the body is on the
+## sand by then, so the pose is the lying one and not a mid-tip guard frame.
+const LAID_OUT_FALL := 0.9
+const KNEE_BEND_LIMIT := 18.0
+const ELBOW_BEND_LIMIT := 22.0
+const HAND_SPAN_RATIO := 1.10
+const HANDS_FROM_HEAD := 0.45
+
 ## The lying contract's numbers, shared with tools/knockdown_table.gd.
 const LOW_TARGET := 0.015             # where the lowest drawn vertex sits while downed
 const LOW_SLACK := 0.02               # +- tolerance on that seat
@@ -671,7 +683,9 @@ func _check_crowd_eruption() -> void:
 		"%d planned" % crowd.planned_rig_count())
 	var nodes_before: int = _yard_node_count(arena3d)
 	var lights_before: int = arena3d.light_count()
-	var spots_before: int = arena3d.stage_spot_count()
+	# STEP 2 (intentional change): there are no stage spots left to keep, so the eruption's
+	# "adds no light" guarantee is measured against the sun itself — nothing may re-energise it.
+	var sun_before: float = arena3d.sun.light_energy
 	# Energy is the hype reading: a big impact still erupts at zero hype, 50 hype is half,
 	# 100 hype is full and never more than full. None of that needs a body.
 	arena.p1.hype = 0
@@ -692,9 +706,12 @@ func _check_crowd_eruption() -> void:
 			and arena3d.light_pump() <= 1.0,
 		"the hype cue path runs with no rigs and the light pump stays inside 0-1",
 		"%d cue(s), pump %.2f" % [crowd.cue_count(), arena3d.light_pump()])
-	_check(arena3d.light_count() == lights_before and arena3d.stage_spot_count() == spots_before,
-		"the eruption adds no light and keeps the stage spots",
-		"%d lights, %d spots" % [arena3d.light_count(), arena3d.stage_spot_count()])
+	_check(arena3d.light_count() == lights_before
+			and is_equal_approx(arena3d.sun.light_energy, sun_before)
+			and arena3d.stage_spot_count() == 0,
+		"the eruption adds no light and never re-energises the sun",
+		"%d lights, sun %.2f, %d spot(s)" % [arena3d.light_count(),
+			arena3d.sun.light_energy, arena3d.stage_spot_count()])
 	for i in 300:
 		await process_frame
 	_check(_yard_node_count(arena3d) == nodes_before
@@ -909,6 +926,12 @@ func _check_knockdowns() -> void:
 		var peak_chest := 0.0
 		var peak_away := true
 		var peak_low := 0.0
+		# STEP 4 (2026-11-27): the pose that lands must be a lay-out, not a frozen guard.
+		var peak_knee := 0.0
+		var peak_elbow := 0.0
+		var min_span_ratio := 99.0
+		var min_hands_head := 99.0
+		var peak_torso := 0.0
 		var low_step := 0.0
 		var prev_low := INF
 		var upright_again := false
@@ -930,6 +953,19 @@ func _check_knockdowns() -> void:
 				peak_chest = float(lying["chest_ny"])
 				peak_away = bool(lying["away"])
 				peak_low = drawn_low
+			# STEP 4: the laid-out contract belongs to the finished fall, not to the mid-rise
+			# frames where the body is still tipping over in its guard; the check itself already
+			# requires peak_fall >= 0.9, so sampling below it measured a different pose than the
+			# one the check is about (that is what the first green run got wrong: a 53 deg knee
+			# taken at fall 0.3 read as a failure of the lying pose).
+			if fall_now >= LAID_OUT_FALL:
+				var limbs := _limb_metrics(model)
+				peak_knee = maxf(peak_knee, float(limbs["knee"]))
+				peak_elbow = maxf(peak_elbow, float(limbs["elbow"]))
+				peak_torso = maxf(peak_torso, float(limbs["torso"]))
+				min_span_ratio = minf(min_span_ratio,
+					float(limbs["span"]) / maxf(float(limbs["shoulder"]), 0.001))
+				min_hands_head = minf(min_hands_head, float(limbs["hands_head"]))
 			if fall_now <= 0.01 and tick > 60:
 				upright_again = absf(_up_y(model)) >= 0.9
 			# The body itself must not teleport, and the render must stay anchored to the body:
@@ -953,6 +989,19 @@ func _check_knockdowns() -> void:
 		_check(absf(peak_low - LOW_TARGET) <= LOW_SLACK,
 			"%s: lowest drawn vertex on the sand at the full fall (%+.3f m, target %+.3f)"
 			% [key, peak_low, LOW_TARGET])
+		# STEP 4: the body is laid out, not tipped over mid-guard. Legs extend along the body axis
+		# (knees straight), the arms lie out wide on the sand (elbows straight, hands further from
+		# the head than a guard would ever put them). Measured on the same played fall.
+		_check(peak_fall >= 0.9 and peak_knee <= KNEE_BEND_LIMIT,
+			"%s: the legs are laid out straight, not frozen in a stance (knee bend %.1f deg)"
+			% [key, peak_knee])
+		_check(peak_fall >= 0.9 and peak_elbow <= ELBOW_BEND_LIMIT
+				and min_span_ratio >= HAND_SPAN_RATIO,
+			"%s: the arms relax out wide on the sand (elbow %.1f deg, span %.2f x shoulders)"
+			% [key, peak_elbow, min_span_ratio])
+		_check(peak_fall >= 0.9 and min_hands_head >= peak_torso * HANDS_FROM_HEAD,
+			"%s: the fists are nowhere near the chin — no guard survives the knock-out (%.2f m)"
+			% [key, min_hands_head])
 		_check(low_step <= 0.035 and upright_again,
 			"%s: the seat reverses on the get-up with no pop (max step %.3f m, upright again %s)"
 			% [key, low_step, str(upright_again)])
@@ -1139,8 +1188,11 @@ func _check_lighting_clarity() -> void:
 			"%s: key:ambient stays at 2:1 or better" % tag,
 			"%.2f : 1 (key %.2f / ambient %.2f)" % [a3d.key_to_ambient_ratio(),
 				a3d.key_energy(), a3d.ambient_energy()])
-		_check(a3d.light_count() == 7, "%s: the seven-light rig is unchanged" % tag,
-			"%d lights" % a3d.light_count())
+		# STEP 2 (intentional change): the four stage SpotLight3Ds are deleted, so the whole rig is
+		# the sun, the fill and the rim — three lights in every preset, never a spot.
+		_check(a3d.light_count() == 3 and a3d.stage_spot_count() == 0,
+			"%s: the sun, fill and rim are the only lights, with no stage spot" % tag,
+			"%d lights, %d spot(s)" % [a3d.light_count(), a3d.stage_spot_count()])
 		var casters := 0
 		for key in ["p1", "p2"]:
 			if _casts_directional_shadow(a3d.models.get(key)):
@@ -1149,11 +1201,13 @@ func _check_lighting_clarity() -> void:
 			"%s: both fighters still cast the crisp directional shadow" % tag,
 			"%d/2 casters, sun shadow %s" % [casters, str(a3d.sun.shadow_enabled)])
 		if idx == 2:
-			# The night beams stay coloured but are held under the washout point now that glow
-			# and ACES are gone (they were 2.60 under the graded look).
-			_check(a3d._stage_energy_base <= 2.4 and a3d.spot_left.light_color.b > 0.8,
-				"night keeps its coloured beams under the washout point",
-				"base %.2f %s" % [a3d._stage_energy_base, str(a3d.spot_left.light_color)])
+			# STEP 2 (intentional change): the night used to be carried by four coloured beams.
+			# It is now the moon key, so the night assertion is that the key is cool, dominant and
+			# that no coloured beam survives to wash the painted beach.
+			_check(a3d.stage_spot_count() == 0 and a3d.sun.light_color.b > a3d.sun.light_color.r
+					and a3d.sun.light_energy <= 1.2,
+				"night is a cool moon key under the washout point, with no coloured beam",
+				"sun %.2f %s" % [a3d.sun.light_energy, str(a3d.sun.light_color)])
 	# F6: the previous look returns on the exact same shot, and the lens/facing do not move.
 	a3d.apply_phase(0, 0.0)
 	await process_frame
@@ -1701,6 +1755,43 @@ func _up_y(model: Node3D) -> float:
 ## sign is the rig constant measured standing (`up × side` points backward on every delivered
 ## body), so it is flipped once here instead of being re-decided by a facing that is
 ## perpendicular to the normal once the body is flat.
+## STEP 4 readout: how laid-out the limbs are. Angles between the bone SEGMENTS, so a straight
+## knee or elbow reads 0 deg whatever the body's yaw, pitch or roll happens to be.
+func _limb_metrics(model: Node3D) -> Dictionary:
+	var hips := _bone_world(model, "Hips")
+	var head := _bone_world(model, "Head")
+	var shoulder_l := _bone_world(model, "LeftShoulder")
+	var shoulder_r := _bone_world(model, "RightShoulder")
+	var knee_l := _bone_world(model, "LeftLeg")
+	var knee_r := _bone_world(model, "RightLeg")
+	var ankle_l := _bone_world(model, "LeftFoot")
+	var ankle_r := _bone_world(model, "RightFoot")
+	var hip_l := _bone_world(model, "LeftUpLeg")
+	var hip_r := _bone_world(model, "RightUpLeg")
+	var hand_l := _bone_world(model, "LeftHand")
+	var hand_r := _bone_world(model, "RightHand")
+	var elbow_l := _bone_world(model, "LeftForeArm")
+	var elbow_r := _bone_world(model, "RightForeArm")
+	return {
+		"knee": maxf(_bend_deg(hip_l, knee_l, ankle_l), _bend_deg(hip_r, knee_r, ankle_r)),
+		"elbow": maxf(_bend_deg(shoulder_l, elbow_l, hand_l),
+			_bend_deg(shoulder_r, elbow_r, hand_r)),
+		"shoulder": shoulder_l.distance_to(shoulder_r),
+		"span": hand_l.distance_to(hand_r),
+		"torso": hips.distance_to(head),
+		"hands_head": minf(hand_l.distance_to(head), hand_r.distance_to(head)),
+	}
+
+
+## Angle at `joint`, in degrees: 0 when the two segments are collinear (a straight limb).
+func _bend_deg(a: Vector3, joint: Vector3, b: Vector3) -> float:
+	var u := joint - a
+	var v := b - joint
+	if u.length() < 0.0001 or v.length() < 0.0001:
+		return 180.0
+	return rad_to_deg(acos(clampf(u.normalized().dot(v.normalized()), -1.0, 1.0)))
+
+
 func _lying_metrics(model: Node3D, opp_model: Node3D) -> Dictionary:
 	var hips := _bone_world(model, "Hips")
 	var head := _bone_world(model, "Head")

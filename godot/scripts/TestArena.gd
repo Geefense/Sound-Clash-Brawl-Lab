@@ -409,7 +409,6 @@ var crowd: CrowdController3D:
 @onready var sun_shaft: Sprite2D = $SunShaft
 # 2.5D stage depth (AGENTS.md §9 item 41). `get_node_or_null` keeps the arena runnable if a
 # stripped scene omits them; every call site below already null-checks.
-@onready var beams: LightBeams = get_node_or_null("LightBeams") as LightBeams
 @onready var heat_haze: HeatHaze = get_node_or_null("HeatHaze") as HeatHaze
 
 var _dummy_guard: bool = false
@@ -1624,7 +1623,7 @@ func _setup_3d_presentation() -> void:
 	# later 2D fallback.
 	var hidden := [
 		"Stage", "Atmosphere", "SunsetWash", "NightWash", "SunGlow", "SunShaft",
-		"SpeakerRings", "LightBeams", "TimeOfDay", "Floodlight", "WindMotes",
+		"SpeakerRings", "TimeOfDay", "Floodlight", "WindMotes",
 		"RecordCrates", "HeatHaze", "BirdHazard",
 	]
 	for node_name in hidden:
@@ -1894,9 +1893,8 @@ func _push_visuals() -> void:
 		fighter.set_rim_light(rim_a, rim_b, rim_strength, light_uv, bounce)
 		if fighter.shadow != null:
 			fighter.shadow.density = density
-	if beams != null:
-		beams.set_palette(rim_a, rim_b)
-		beams.set_intensity(float(_vis_now.get("beam", 0.0)))
+	# STEP 2 (2026-11-27): the 2D volumetric beam stack is deleted, so there is no beam layer
+	# left to recolour. The 3D yard is lit by the sun, the fill and the rim only.
 	if heat_haze != null:
 		heat_haze.set_phase(sunset, night)
 		heat_haze.set_intensity(float(_vis_now.get("haze", 0.0)))

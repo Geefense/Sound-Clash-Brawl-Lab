@@ -8100,3 +8100,184 @@ surf meets the 3D sand at each preset, the 2.45 m shack's proportions in frame b
 fighters, the 12° tower yaw, the PBR rim read against the sunset sky, and whether the full-size shack
 now crowds the fighters at the widest dolly. The owner should press `F6` once against the shipped
 build and look at both camera extremes before signing the look off.
+
+## PART N — STAGE CLEANUP, SUNSET LIGHTS REMOVAL, BOTTOM HUD FIX & NATURAL KO POSE (2026-11-27)
+
+Branch `work/stage-cleanup` at `2ed6693` (= `origin/feature/3d-cel-shaded`), pushed ff-only back to
+`feature/3d-cel-shaded` to trigger the `gh-pages` Web deploy.
+
+**Protected things, untouched and re-proved by the four suites:** `BaseFighter.gd` (no change at all:
+`ANIM_OFFSET`, frame counts, damage, hitstun/blockstun, hitstop), 132 BPM pacing, Crowd Hype rules,
+the 31 Patois entries, the 22 comic callouts, the facing pin, the camera clamps,
+`crowd_rigs_enabled = false`. No programmer art was added, no texture was generated, and no per-frame
+allocation was introduced (every new value is a float / Vector3 / cached index; the relax table and its
+resolved bone indices are built once, in `_cache_relax_bones`).
+
+### N1. The DJ booth and the speakers are GATED, not torn down
+
+`Arena3D` gained an export flag `@export var stage_props_enabled := false` and a single writer,
+`set_stage_props_enabled(on)`, which calls `_set_stage_props_visible()`. When off:
+
+* `dj_booth.glb` (the thatched shack / deck), the two speaker stacks and their models are hidden
+  (`visible = false`, discovered once and cached), so **nothing is drawn or shaded** on the beach;
+* every `StageContactShadow*` quad that belongs to those props is hidden as well — a shadow under a
+  prop that is not drawn was the one thing that would have given the gate away;
+* the illustrated beach backdrop is left clean and unobstructed.
+
+The decision to gate rather than delete is deliberate: `PropLoader`'s **5-slot contract**, the prop
+anchors, the SPEAKER BOX! cabinet anchor, the shockwave, the comic callout and the audio trigger all
+still resolve — they are measured geometry, and the audit keeps proving them. `stage_props_visible()`,
+`stage_contact_shadow_count()`, `visible_stage_contact_shadows()`, `speaker_stack_count()` and
+`speaker_model_count()` exist so the headless suite can assert the gate without poking at nodes.
+The flag defaults to false for the shipped build (the owner asked for a clean stage); flipping it on
+restores the props and their shadows with no other change.
+
+### N2. The stage spotlights, the light pool and the 2D beams are gone
+
+Removed outright (not merely dimmed):
+
+* the four `SpotLight3D`s — `spot_left`, `spot_right`, `stage_spot_a`, `stage_spot_b` — with their
+  pink / cyan / magenta looks, in **all three** presets;
+* the `StageLightPool` additive quad and its `LIGHT_POOL` preload;
+* the 2D `LightBeams` node, its `LightBeams.gd` script, its `.uid` and the `TestArena` preload — the
+  "sweeping festival trusses" layer no longer exists at any time of day;
+* `_apply_stage_energies()` and `stage_spot_colour()` (there is no spot to colour or energise).
+
+What is left is exactly what the brief asked for: **one directional sun, one shadowless fill, one
+shadowless rim** (`light_count() == 3`, `directional_light_count() == 2`, `stage_spot_count() == 0`),
+with no fog and Linear tonemap. The night preset had been carried by four coloured beams plus a 0.16
+moon, so its `sun_energy` was raised to **0.85** — a cool moon key rather than a blackout — and
+`key_to_ambient_ratio() >= 2.0` is now asserted so the yard can never go flat. `_light_pump` survives
+as a readout only (`stage_pulse()`), so the beat is still measurable even though nothing pulses a beam.
+
+### N3. The bottom HUD is a dedicated, collision-free stack
+
+`TestHud` no longer draws the bottom out of hard-coded `SUBTITLE_Y` / `LEGEND_Y` constants (and
+`_legend` is deleted). One function, `bottom_layout(view)`, is now the single source of truth for both
+`_draw()` and the audit, and it returns, bottom-up:
+
+1. the **key-chip bar** — two rows of key labels on their own plate, pinned to the bottom;
+2. the **status chip band**, `BAND_GAP` (4 px) above the bar — every F6 / F7 / QUALITY / HitchLog /
+   CALL field on one line, elided rather than wrapped;
+3. the **callout pill band**, one `BAND_GAP` above that.
+
+The layout is cached per view size and invalidated when the subtitle or chip text changes, so no
+per-frame allocation or re-measure happens in `_draw`. Nothing about the fonts, colours or wording
+changed; only the geometry, and the bar now owns the bottom of the screen.
+
+### N4. The knock-out is a lay-out, not a tipped-over guard
+
+The stiff "sideways fighting statue" was the upright guard clip frozen by
+`animation.speed_scale = 0` and rotated 90° about the fall axis. None of the three knockdown takes is
+a lying pose (`knocked-out-1`, `falling-back-death`, `stumble-backwards`), so the body is re-posed
+procedurally after the feel layer and **before** `_apply_rigid_fall()`:
+
+`_relax_downed_pose()` aims eleven bone pairs (`DOWNED_RELAX_PAIRS`, resolved once by
+`_cache_relax_bones`) with `_aim_bone()`, weighted by `_fall`, so the relax fades in exactly as the
+body goes over:
+
+| Part | Target (world) | Weight |
+| --- | --- | --- |
+| thighs, shins | `-up` (feet away from the head, toward the opponent) | 1.00 / 0.95 |
+| arms, forearms | `±` the fall axis (out on the sand, both sides) | 0.92 / 0.88 |
+| spine 1, spine 2, neck, head | `+up` (torso and head supine, head laid back) | 0.85 / 0.70 / 0.60 / 0.50 |
+
+Three things had to be got right, and each was measured rather than guessed:
+
+1. **The targets are captured once, at fall start** (`_rigid_relax_up`, `_rigid_relax_side`), then
+   rotated by the fall's own angle. The first version measured `up` from the frame it was editing —
+   straightening the spine moves the head, which moves `up`, which is the spine's own target — and the
+   pass chased itself to a permanent 21° residual.
+2. **`_aim_bone` works in the bone's own frame.** The world correction was conjugated by
+   `G · L⁻¹`; on these rigs the pose composes the other way round, so half the limbs rotated by the
+   inverse of the requested angle (a thigh that moved 23° *away* from its target every frame). The
+   function now takes the child offset and the target direction, both expressed in the bone's live
+   global pose, and applies `Quaternion(from_local, to_local)` as a local slerp — no convention can
+   flip it.
+3. **The table is applied three times per frame.** Each aim moves the frame the later bones read (the
+   spine aims shift the shoulders, a thigh aim moves the knee the shin measures). Measured on the
+   three rigs: one pass left a 39° elbow, two left 22°, three settles every joint **under 18°**
+   (knob 0.1–1.2° knee, 6–17° elbow). Thirty-three aims and no allocation, only while a body is down.
+
+The arms' target is the **fall axis itself**: horizontal, in the plane of the body, and unchanged by
+the fall's rotation. Deriving it as `±X × up` from an already-tipped capture pointed one arm along the
+body toward the head (a hand 3 cm from the ear), which is exactly the guard silhouette the brief
+wanted gone. `up` is also flattened into the fall plane for the same reason. The rigid fall, the seat
+to `RIGID_SEAT_TARGET 0.015` and `DrawnBounds` measurement are untouched — all 12 supine cells stay
+green.
+
+### N5. Every changed assertion, itemized
+
+`godot/tools/headless_roster_check.gd` (+14 net, 491 → 505):
+
+1. **new** — `stage_props_enabled` is false *and* `stage_props_visible()` is false;
+2. **new** — `stage_contact_shadow_count() >= 2` (the quads still exist) while
+   `visible_stage_contact_shadows() == 0` (none is drawn);
+3. **new** — the 5-slot contract still holds with the props gated off:
+   `speaker_stack_count() == 2`, `speaker_model_count() == 1`;
+4. **new** — the SPEAKER BOX! cabinet anchor resolves to a non-zero, finite `Vector3` with the props
+   gated off (the "zero null references" requirement, measured);
+5. **new** — `speaker_rattle_amount() > 0` and clamped with the props gated off;
+6. **new** — `set_stage_props_enabled(true)` shows every prop and every contact shadow, and
+   `set_stage_props_enabled(false)` removes them again (both directions in one check);
+7. night: `sun.light_energy < 0.2 and spot_left.light_energy > 2.0` → `sun.light_energy >= 0.6 and
+   stage_spot_count() == 0`, plus a new `key_to_ambient_ratio() >= 2.0` check;
+8. sunset: `spot_left.light_energy < 1.5` → `stage_spot_count() == 0` (the warm, low directional
+   assertions are kept);
+9. afternoon: `spot_left.light_energy < 0.6` → `stage_spot_count() == 0`;
+10. the night rig: `stage_spot_count() != 4` → `!= 0`, with `light_count() == 3` and
+    `directional_light_count() == 2` added;
+11. the preset-identification check: `sun.light_energy < 0.2` → `>= 0.6 and stage_spot_count() == 0`
+    (night is identified by its cool moon key, not by a blackout);
+12. the beam layer: `beams.strength` (afternoon off, sunset > 0.5 sweeping, night beaming),
+    `beams.z_index == 4` layering over the fighters, and the additive-beam material check →
+    `get_node_or_null("LightBeams") == null` in all three presets, an empty legacy-2D-visible list,
+    and `get_node_or_null("StageLightPool") == null`;
+13. the night beam pulse: `_apply_stage_energies()` twice and `spot_left` pulsing > 1.05× → the light
+    count stays at its recorded value with `stage_spot_count() == 0`, and `stage_pulse()` in (0, 1];
+14. the four-colour beam check (cyan / magenta / amber, 4 distinct) → the night key is moonlit blue
+    (`light_color.b > light_color.r`) and no coloured spot lights the yard;
+15. `prop_yard.light_count() == 7` → `== 3` (sun, fill, rim), with the shadow and
+    `light_angular_distance` assertions kept;
+16. **new** `_check_hud_bottom_layout()`, five checks measured off `bottom_layout(1280 × 720)`, with a
+    fully populated callout and status chip: (a) the bar lays out every `KEY_LABELS` entry, (b) every
+    key chip sits inside the bar plate *and* inside the canvas, (c) no two key chips overlap,
+    (d) neither the status chip nor the callout pill intersects a key chip or each other,
+    (e) the callout and status bands sit fully above the button bar.
+
+`godot/tools/live_match_check.gd` (+9, 667 → 676):
+
+17. the spawn light rig: `light_count() == 7` → `light_count() == 3 and stage_spot_count() == 0`;
+18. the finisher eruption: "adds no light and keeps the stage spots" → "adds no light and never
+    re-energises the sun" (`sun.light_energy` bit-identical before and after, `stage_spot_count() == 0`);
+19. **new**, three checks per fighter × three fighters in `_check_knockdowns`, all sampled at
+    `fall >= 0.9` (`LAID_OUT_FALL`) because a mid-tip frame is not the lying pose the check is about:
+    * "the legs are laid out straight, not frozen in a stance" — worst knee bend `<= 18°`
+      (`KNEE_BEND_LIMIT`);
+    * "the arms relax out wide on the sand" — worst elbow bend `<= 22°` (`ELBOW_BEND_LIMIT`) *and*
+      hand-to-hand span `>= 1.10 ×` shoulder width (`HAND_SPAN_RATIO`);
+    * "the fists are nowhere near the chin" — every hand `>= 0.45 ×` torso length from the head
+      (`HANDS_FROM_HEAD`).
+
+Everything else in the two suites, and both other suites, is unchanged.
+
+### N6. Counts (each suite green, 0 FAIL)
+
+| Suite | Baseline (`2ed6693`) | Now |
+| --- | --- | --- |
+| `headless_roster_check` | 491 / 0 FAIL | **505 / 0 FAIL** |
+| `live_match_check` | 667 / 0 FAIL | **676 / 0 FAIL** |
+| `facing_audit` | 310 / 0 FAIL | **310 / 0 FAIL** |
+| `animation_feel_audit` | 444 / 0 FAIL | **444 / 0 FAIL** |
+
+All four were run through `_scratch/run_suites2.sh` on the final tree.
+
+### N7. What is NOT verified
+
+There is still **no GPU and no `xvfb` in this environment**, so **no rendered frame exists** of the
+clean beach (booth and speakers hidden, contact shadows gone), of the new three-light rig at sunset and
+at night, of the two-row bottom bar on a phone-shaped or Chromebook-shaped window, or of a knocked-out
+fighter lying on the sand. What is proved is state: node visibility, light counts, world-space bone
+directions at the full fall, and screen-space rectangles for every HUD chip. The owner should press
+`F6` once and look at a sunset and a night round, a knockdown, and the HUD at the narrowest supported
+aspect before signing this off.

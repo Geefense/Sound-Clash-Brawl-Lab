@@ -2412,3 +2412,20 @@ func feel_snapshot() -> Dictionary:
 		"anticipation": _anticipation_x,
 		"impact_lock": _impact_lock_steps,
 	}
+
+
+## Fix pass commit 3: Godot binds an animation's tracks lazily, so the first jab of a round can
+## pay the binding of every property track in its clip. This plays each clip this model owns once
+## at time zero, behind the loading overlay, so the binding is already paid. It keeps no time and
+## changes no frame count: the pose is overwritten by the next `play_clip()`.
+func warm_clips() -> int:
+	var bound := 0
+	for node in find_children("*", "AnimationPlayer", true, false):
+		var player := node as AnimationPlayer
+		if player == null:
+			continue
+		for clip in player.get_animation_list():
+			player.play(clip)
+			player.advance(0.0)
+			bound += 1
+	return bound

@@ -7337,3 +7337,66 @@ extremes. **Two assertions changed intentionally:** "the tower stands 2.6 m tall
 authored 2.6 m × the stage scale (it is 3.25 m in world space), and "the tower stands in front of
 the barrier" is inverted, because the barrier moved behind it. Nothing else moved.
 
+
+## Progress (fix pass)
+
+| When | What | HEAD |
+| --- | --- | --- |
+| 2026-11-27, commit 1 | Crowd: 22 spectator rigs off behind `crowd_rigs_enabled` (default false), crowd models excluded from the Web export, hype/callout/spotlight/audio untouched. Roster 442, live 581, 0 FAIL. Pack delta −13,444,632 B (−22.8 %). | `261545d` |
+| 2026-11-27, commit 2 | Deep stage: `StageLayout` places the booth (z −4.50), both towers (z −6.10, x ±2.15) and both DJ stands from measured AABBs; 3.74 m clean sand strip; barrier moved behind the set. Roster 454, live 644, facing 310, feel 444, 0 FAIL. | `39a269c` |
+| 2026-11-27, commit 3 | Freezes: `HitchLog`, load-time warm-up behind a LOADING overlay (44 passes), startup quality calibration, governor locked out of live rounds, light cull layers (max 4 lights per mesh). Roster **463**, live **648**, facing **310**, feel **444**, 0 FAIL. | this commit |
+
+### J3. Freezes instrumented, first-use costs paid at load (commit 3)
+
+**HitchLog (`godot/scripts/HitchLog.gd`).** A `RefCounted` with a 16-slot ring built once in
+`_init`. `record_frame(delta, tag)` is a float compare on a normal frame — the frame counter is an
+int, the spike line is formatted only when a spike happens, and the arrays are never resized, so
+the per-frame cost is one multiply, one compare and one int increment. The tags are `hit`,
+`ko`, `round_start`, `callout`, `camera_punch`, `quality_change`, `state_change` and `first_use_pass`.
+Each spike prints one line — `[hitch] 41.5 ms  frame 15670  round_start` — and the last six join the
+existing F8 debug chip. The console echo is off in headless, where every frame is slow by
+construction and would flood the suite log.
+
+**What the warm-up covers (`run_warmup`, 44 passes).** Both looks across all three times of day
+(sky shader, environment, shadow set-up, every light rig — six combinations, toggled back so boot
+ends clean at round-1 lighting), one of each 3D effect inside the frustum (spark, music notes,
+strike arc, sand burst, vinyl parry), the 2D spark and particle, **every animation clip of both
+bodies** played once at time zero (`FighterModel3D.warm_clips`, so the lazy track binding is paid
+here), all nine audio cues resolved into the stream cache (`SoundClashAudio.prewarm_streams`, so no
+`load()` can run mid-fight), and the 22 callout phrases (`ComicCallout2D._warm_phrases` already did
+this at `_ready`). Warm-up meshes are spawned at the fight plane, not off-screen: a culled object
+never uploads its textures or compiles its shaders. Headless skips the overlay and the VFX spawns —
+there is no renderer to warm, and the overlay's three nodes would appear and vanish inside the
+window the node-count audits measure — but still cycles the looks and presets.
+
+**Allocation sources found and what was done.** The only `load()` reachable from gameplay was
+`SoundClashAudio._stream()` → `_load_production()`, which `load()`s a WAV the first time a cue
+fires; it now runs at load. Everything else (`PropLoader`, `CharacterModelSlots`,
+`FighterModel3D.bind`, `MusicBed`, `ArcadeVFX2D`) already loads at build time. The remaining
+runtime node creation is the per-hit VFX — music-note bursts (hard-capped at 4) and the sand burst,
+each building its own small material set at spawn — which is bounded and now pre-warmed rather than
+removed, because pooling them would change the effect lifecycle the owner approved. There is no
+per-hit string building in the fight loop: the HUD only formats when a value actually changes.
+
+**Quality calibration and the governor.** One-time startup calibration runs 60 frames at Crisp and
+picks **Crisp or Fast once**: above 20 ms average, or with no renderer to measure (headless), Fast
+wins. The F7 manual cycle is untouched. The Part B governor still steps its timer every frame but
+now writes `viewport.scaling_3d_scale` **only** when `quality_writes_allowed()` — after the warm-up
+and never while `RoundController.phase == FIGHTING` — because a new 3D scale reallocates every
+render target and is itself the freeze it was meant to prevent.
+
+**Light cull (`Arena3D`).** Seven lights, two render layers: fighters on layer 1, the set on
+layer 2. The sun lights both; the camera fill and the two white overhead spots are fighters-only;
+the warm rim and the two coloured stage beams are stage-only. Measured: **worst case 4 lights on
+any mesh** (the sand floor) across 81 meshes, exactly **4 on a fighter**, and the Night rig's
+magenta/amber beams no longer tint the fighters. This is the 4-lights-per-mesh cap the brief asked
+for, done with cull masks rather than by deleting a light.
+
+**Tests.** Roster +9 (hitch ring: no store on a fast frame, wraps at 16, newest-six order, worst
+frame; per-mesh and per-fighter light counts; warm-up completed; nine streams cached; governor gate
+locked in FIGHTING and open in ANNOUNCE). Live +4 (the round controller reaches FIGHTING, 90 forced
+governor frames never move the scale inside a live round, a live round reports no safe moment,
+ANNOUNCE allows one). **One assertion changed intentionally:** the two "300 frames add no node"
+audits now count *persistent* yard nodes via `_yard_node_count()`, because the warm-up's one-of-each
+VFX legitimately appear and free themselves; every static node is still counted.
+

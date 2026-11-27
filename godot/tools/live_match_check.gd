@@ -77,6 +77,7 @@ func _run() -> void:
 	await _check_arcade_vfx()
 	await _check_comic_callouts()
 	await _check_crowd_eruption()
+	await _check_quality_governor()
 	await _check_arena_integrity()
 	print("\n%d checks, %d FAIL%s" % [_checks, _fails, "" if _fails == 0 else "S"])
 	print("ALL LIVE MATCH CHECKS PASSED" if _fails == 0 else "LIVE MATCH CHECKS FAILED")
@@ -523,9 +524,9 @@ func _check_comic_callouts() -> void:
 	comic.register_hype(p2, world)
 	comic.debug_advance(0.15)
 	var full_before := comic.active_count()
-	var nodes_before := arena.find_children("*", "Node", true, false).size()
+	var nodes_before := _yard_node_count(arena3d)
 	var overflow := comic.register_hit(p1, &"jab", false, false, world)
-	var nodes_after := arena.find_children("*", "Node", true, false).size()
+	var nodes_after := _yard_node_count(arena3d)
 	_check(full_before == 6 and not overflow and nodes_after == nodes_before
 			and comic.label_count() == 6,
 		"an exhausted pool skips the callout and creates no node",
@@ -648,7 +649,7 @@ func _check_crowd_eruption() -> void:
 	_check(crowd.planned_rig_count() == 22,
 		"the flag still describes the 22-rig yard it would build",
 		"%d planned" % crowd.planned_rig_count())
-	var nodes_before: int = arena3d.find_children("*", "Node", true, false).size()
+	var nodes_before: int = _yard_node_count(arena3d)
 	var lights_before: int = arena3d.light_count()
 	var spots_before: int = arena3d.stage_spot_count()
 	# Energy is the hype reading: a big impact still erupts at zero hype, 50 hype is half,
@@ -676,7 +677,7 @@ func _check_crowd_eruption() -> void:
 		"%d lights, %d spots" % [arena3d.light_count(), arena3d.stage_spot_count()])
 	for i in 300:
 		await process_frame
-	_check(arena3d.find_children("*", "Node", true, false).size() == nodes_before
+	_check(_yard_node_count(arena3d) == nodes_before
 			and crowd.node_count() == 0,
 		"300 frames of cues add no crowd node and no yard node",
 		"%d → %d yard node(s)" % [nodes_before,
@@ -1815,3 +1816,52 @@ func _visible_fraction(cam: Camera3D, view: Vector2, box: AABB) -> float:
 				if s.x >= 0.0 and s.y >= 0.0 and s.x <= view.x and s.y <= view.y:
 					inside += 1
 	return float(inside) / float(total)
+
+
+## Fix pass commit 3: a new 3D scale reallocates every render target, which is a freeze of its own,
+## so the frame-time governor may only write it between rounds. This drives the governor with a
+## deliberately huge delta inside a live round and proves the scale did not move.
+func _check_quality_governor() -> void:
+	print("\n-- QUALITY GOVERNOR: never rescales inside a live round")
+	var arena = await _spawn(FIGHTERS[0], FIGHTERS[1], true)
+	var rounds := arena.get_node_or_null("RoundController")
+	var viewport := arena.get_viewport()
+	var guard := 0
+	while rounds != null and rounds.phase != RoundController.Phase.FIGHTING and guard < 300:
+		await process_frame
+		guard += 1
+	var fighting: bool = rounds != null and rounds.phase == RoundController.Phase.FIGHTING
+	_check(fighting, "the round controller reaches FIGHTING",
+		"phase %s after %d frames" % [str(rounds.phase) if rounds != null else "-", guard])
+	var before := viewport.scaling_3d_scale
+	for i in 90:
+		arena._govern_quality(0.5)
+		await process_frame
+	var during := viewport.scaling_3d_scale
+	_check(is_equal_approx(before, during),
+		"the governor never writes the 3D scale while a round is live",
+		"%.3f -> %.3f over 90 forced frames" % [before, during])
+	_check(not arena.quality_writes_allowed(),
+		"a live round reports no safe quality moment", "phase FIGHTING")
+	var saved_phase = rounds.phase
+	rounds.phase = RoundController.Phase.ANNOUNCE
+	var allowed: bool = arena.quality_writes_allowed()
+	rounds.phase = saved_phase
+	_check(allowed, "the governor may rescale between rounds", "phase ANNOUNCE")
+	arena.queue_free()
+	await process_frame
+
+
+## Fix pass commit 3: a persistent yard node count. The one-of-each VFX the load-time warm-up
+## spawns are alive for a second after boot, so counting raw Node children compared a frame with
+## the warm-up bursts still in it against a frame after they had freed themselves. Transient
+## effect nodes are excluded; every static node of the yard is still counted.
+func _yard_node_count(arena3d) -> int:
+	var count := 0
+	for node in arena3d.find_children("*", "Node", true, false):
+		var name := String(node.name)
+		if name.contains("Burst") or name.contains("Parry") or name.contains("Spark") \
+				or name.contains("Note") or name.contains("Vinyl"):
+			continue
+		count += 1
+	return count

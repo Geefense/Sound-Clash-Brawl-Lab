@@ -2604,6 +2604,50 @@ func _run() -> void:
 			"a wider tower is pushed out until the frame clamp stops it",
 			"tower x %.2f at frame limit %.2f" % [float(wide["speaker_x"]),
 				float(wide["frame_limit_x"])])
+		# Fix pass commit 3: the hitch log, the light cull, the warm-up gate and the quality gate.
+		var hlog := HitchLog.new()
+		hlog.set_echo(false)
+		for hlog_frame in 600:
+			hlog.record_frame(0.016, &"hit")
+		_check(hlog.spike_count() == 0 and hlog.stored() == 0 and hlog.capacity() == 16,
+			"the hitch log stores nothing on a 16 ms frame",
+			"600 frames, 0 spikes, ring still %d" % hlog.capacity())
+		for hlog_frame in 20:
+			hlog.record_frame(0.050, &"ko")
+		_check(hlog.spike_count() == 20 and hlog.stored() == 16,
+			"the hitch ring keeps the newest 16 spikes and drops the rest",
+			"20 spikes -> %d stored" % hlog.stored())
+		var hlog_recent := hlog.recent()
+		_check(hlog_recent.size() == 6 and String(hlog_recent[5]).contains("ko"),
+			"the F8 chip lists the last 6 spikes, newest last",
+			"newest: %s" % String(hlog_recent[5]))
+		_check(is_equal_approx(hlog.worst_ms(), 50.0),
+			"the hitch log reports its worst frame", "%.1f ms" % hlog.worst_ms())
+
+		var per_mesh: Dictionary = prop_yard.lights_per_mesh()
+		_check(int(per_mesh["max"]) <= 4, "no mesh is lit by more than 4 lights",
+			"worst %d on %s over %d meshes (%d lights)" % [int(per_mesh["max"]),
+				String(per_mesh["mesh"]), int(per_mesh["meshes"]), int(per_mesh["lights"])])
+		_check(prop_yard.fighter_lights() <= 4, "at most 4 lights reach the fighters",
+			"%d lights on the fighter layer" % prop_yard.fighter_lights())
+		_check(arena2.warmup_done and arena2.warmup_steps >= 10,
+			"the load-time warm-up ran behind the loading overlay",
+			"%d passes" % arena2.warmup_steps)
+		var audio = arena2.get_node_or_null("/root/SoundClash")
+		if audio != null:
+			_check(int(audio.stream_cache_size()) >= 9,
+				"every audio cue is decoded before the first round",
+				"%d streams cached" % int(audio.stream_cache_size()))
+		var rounds_ref = arena2.rounds
+		var saved_phase = rounds_ref.phase
+		rounds_ref.phase = RoundController.Phase.FIGHTING
+		var blocked: bool = not arena2.quality_writes_allowed()
+		rounds_ref.phase = RoundController.Phase.ANNOUNCE
+		var allowed: bool = arena2.quality_writes_allowed()
+		rounds_ref.phase = saved_phase
+		_check(blocked and allowed,
+			"the quality governor refuses to rescale during a live round",
+			"FIGHTING -> locked, ANNOUNCE -> allowed")
 		var spk_scenes: Array[String] = []
 		if DirAccess.dir_exists_absolute("res://scenes"):
 			for spk_file in DirAccess.get_files_at("res://scenes"):

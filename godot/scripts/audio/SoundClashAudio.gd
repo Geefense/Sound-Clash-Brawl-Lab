@@ -682,3 +682,22 @@ func _add_call(buf: PackedFloat32Array, start: float, seconds: float, pitch: flo
 		var env := minf(1.0, k / 0.12) * clampf((1.0 - k) / 0.25, 0.0, 1.0)
 		env *= 0.6 + 0.4 * sin(PI * k)
 		buf[index] += tanh((voiced * 0.35 + vowel + breath) * env * 2.0) * gain
+
+
+## Fix pass commit 3: `_stream()` calls `load()` for a production recording and synthesises the
+## rest, and a load() the first time a cue plays is a hitch on a single-threaded web build. Every
+## cue the match can fire is resolved once, at load, so the fight only ever touches the cache.
+const PREWARM_KEYS := [&"sting", &"feedback_tag", &"lickshot_tag", &"selector_yell", &"horn",
+	&"stab", &"crowd_murmur", &"crowd_cheer", &"crowd_eruption"]
+
+
+func prewarm_streams() -> int:
+	var ready_count := 0
+	for key in PREWARM_KEYS:
+		if _stream(StringName(key)) != null:
+			ready_count += 1
+	return ready_count
+
+
+func stream_cache_size() -> int:
+	return _streams.size()

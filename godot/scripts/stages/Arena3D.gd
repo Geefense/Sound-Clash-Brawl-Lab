@@ -312,6 +312,13 @@ var _phase_age: float = 0.0
 var _phase_duration: float = 0.0
 var _rng := RandomNumberGenerator.new()
 
+## Fix pass commit 3: render layers for the light cull. The night rig has seven lights and the
+## Compatibility renderer shades only a few per mesh, so each light declares which layers it
+## touches: the fighters see the sun, the camera fill and the two white spots; the stage sees the
+## sun, the warm rim and the two coloured stage beams. No mesh is lit by more than four.
+const LAYER_FIGHTERS := 1
+const LAYER_STAGE := 2
+
 
 func _ready() -> void:
 	_rng.seed = 20261121
@@ -326,6 +333,8 @@ func _ready() -> void:
 	_place_stage_set()
 	_build_crowd()
 	_apply_phase(PHASES[0])
+	# Everything the yard built is stage furniture; the fighters tag themselves when they attach.
+	_assign_stage_layers()
 
 
 # =========================================================================
@@ -1344,6 +1353,7 @@ func _build_truss_and_lights() -> void:
 	spot_left.spot_angle_attenuation = 0.7
 	spot_left.light_energy = 1.0
 	spot_left.shadow_enabled = false
+	spot_left.light_cull_mask = LAYER_FIGHTERS      # fighters only: the stage has its own beams
 	add_child(spot_left)
 	spot_right = SpotLight3D.new()
 	spot_right.name = "SpotRight"
@@ -1354,6 +1364,7 @@ func _build_truss_and_lights() -> void:
 	spot_right.spot_angle_attenuation = 0.7
 	spot_right.light_energy = 1.0
 	spot_right.shadow_enabled = false
+	spot_right.light_cull_mask = LAYER_FIGHTERS      # fighters only: the stage has its own beams
 	add_child(spot_right)
 
 	# Bug 5: two more stage beams, angled across the fighting lane, so the night rig can light
@@ -1367,6 +1378,7 @@ func _build_truss_and_lights() -> void:
 	stage_spot_a.spot_angle_attenuation = 0.9
 	stage_spot_a.light_energy = 0.0
 	stage_spot_a.shadow_enabled = false
+	stage_spot_a.light_cull_mask = LAYER_STAGE         # stage and props only: never a fighter
 	add_child(stage_spot_a)
 	stage_spot_b = SpotLight3D.new()
 	stage_spot_b.name = "StageSpotAmber"
@@ -1377,6 +1389,7 @@ func _build_truss_and_lights() -> void:
 	stage_spot_b.spot_angle_attenuation = 0.9
 	stage_spot_b.light_energy = 0.0
 	stage_spot_b.shadow_enabled = false
+	stage_spot_b.light_cull_mask = LAYER_STAGE         # stage and props only: never a fighter
 	add_child(stage_spot_b)
 
 	sun = DirectionalLight3D.new()
@@ -1392,6 +1405,7 @@ func _build_truss_and_lights() -> void:
 	sun.light_angular_distance = 0.0
 	sun.shadow_blur = 0.7
 	sun.shadow_bias = 0.03
+	sun.light_cull_mask = LAYER_FIGHTERS | LAYER_STAGE
 	add_child(sun)
 
 	fill = DirectionalLight3D.new()
@@ -1400,6 +1414,7 @@ func _build_truss_and_lights() -> void:
 	fill.light_color = Color(0.72, 0.80, 1.0)
 	fill.light_energy = 0.28
 	fill.shadow_enabled = false
+	fill.light_cull_mask = LAYER_FIGHTERS
 	add_child(fill)
 
 	rim = OmniLight3D.new()
@@ -1408,6 +1423,7 @@ func _build_truss_and_lights() -> void:
 	rim.omni_range = 6.0
 	rim.light_energy = 0.6
 	rim.shadow_enabled = false
+	rim.light_cull_mask = LAYER_STAGE
 	add_child(rim)
 
 
@@ -1545,10 +1561,12 @@ func _make_fighter(fighter: BaseFighter) -> Node3D:
 		var model = MODEL_SCRIPT.new()
 		add_child(model)
 		if model.bind(fighter, key):
+			_set_layers_recursive(model, LAYER_FIGHTERS)
 			return model
 		model.queue_free()
 	var billboard = BILLBOARD_SCRIPT.new()
 	add_child(billboard)
+	_set_layers_recursive(billboard, LAYER_FIGHTERS)
 	billboard.bind(fighter, key)
 	return billboard
 
@@ -1777,3 +1795,62 @@ static func px_to_world_x(px: float) -> float:
 
 static func px_to_world(at: Vector2) -> Vector3:
 	return Vector3(px_to_world_x(at.x), maxf(0.0, (FLOOR_PX - at.y) / PX_PER_M), 0.0)
+
+
+# =========================================================================
+# Fix pass commit 3: light cull layers
+# =========================================================================
+func _set_layers_recursive(node: Node, mask: int) -> void:
+	var drawable := node as GeometryInstance3D
+	if drawable != null:
+		drawable.layers = mask
+	for child in node.get_children():
+		_set_layers_recursive(child, mask)
+
+
+## Static furniture goes on LAYER_STAGE. Fighters are tagged in `_make_fighter`, so a model that
+## attaches later still lands on LAYER_FIGHTERS. Called once per build, never per frame.
+func _assign_stage_layers() -> void:
+	for child in get_children():
+		if child is Light3D or child is Camera3D or child is WorldEnvironment \
+				or child is AudioStreamPlayer or child is AudioStreamPlayer3D:
+			continue
+		if child is Node3D and (child as Node3D).is_in_group("fighter"):
+			continue
+		_set_layers_recursive(child, LAYER_STAGE)
+
+
+## How many lights can actually reach each mesh. A light only shades a mesh when they share a
+## layer, so this is the number the Compatibility renderer pays per mesh.
+func lights_per_mesh() -> Dictionary:
+	var lights: Array[Light3D] = []
+	for node in find_children("*", "Light3D", true, false):
+		var light := node as Light3D
+		if light != null and light.visible:
+			lights.append(light)
+	var worst := 0
+	var worst_name := ""
+	var meshes := 0
+	for node in find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		if mesh == null or not mesh.visible:
+			continue
+		meshes += 1
+		var count := 0
+		for light in lights:
+			if (light.light_cull_mask & mesh.layers) != 0:
+				count += 1
+		if count > worst:
+			worst = count
+			worst_name = String(mesh.name)
+	return {"max": worst, "mesh": worst_name, "meshes": meshes, "lights": lights.size()}
+
+
+## Lights that can reach a fighter.
+func fighter_lights() -> int:
+	var count := 0
+	for node in find_children("*", "Light3D", true, false):
+		var light := node as Light3D
+		if light != null and (light.light_cull_mask & LAYER_FIGHTERS) != 0:
+			count += 1
+	return count

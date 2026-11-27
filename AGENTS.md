@@ -7346,6 +7346,7 @@ the barrier" is inverted, because the barrier moved behind it. Nothing else move
 | 2026-11-27, commit 2 | Deep stage: `StageLayout` places the booth (z −4.50), both towers (z −6.10, x ±2.15) and both DJ stands from measured AABBs; 3.74 m clean sand strip; barrier moved behind the set. Roster 454, live 644, facing 310, feel 444, 0 FAIL. | `39a269c` |
 | 2026-11-27, commit 4 | J and I: their boxes were measured landing only at 150 px and 130 px; horizontal reach only, +39.3 % / +39.1 %, so both land at the neutral 160 px. Punch torso yaw clamped to 6 deg (measured 3.89-5.58 deg). Roster 465, live 666, facing 310, feel 444, 0 FAIL. | `b8943c6` |
 | 2026-11-27, commit 5 | Mic grip: the hand prop is mounted from the fist axis and palm point instead of a constant offset, tilt capped at 12 deg, scale and fallback untouched. Roster **469**, live **666**, 0 FAIL. | this commit |
+| 2026-11-27, commit 6 | Lighting: key:ambient 3.73 / 3.50 / 7.11 : 1 by preset (floor 2.5), rim light with no shadows, no fog, no ACES, directional shadow tightened 26 -> 18 m with retuned bias/blur/opacity. Lights per mesh still 4. Roster **473**, live **666**, 0 FAIL. The toon->PBR default is **not** switched: see J6. | this commit |
 | 2026-11-27, commit 3 | Freezes: `HitchLog`, load-time warm-up behind a LOADING overlay (44 passes), startup quality calibration, governor locked out of live rounds, light cull layers (max 4 lights per mesh). Roster **463**, live **648**, facing **310**, feel **444**, 0 FAIL. | this commit |
 
 ### J3. Freezes instrumented, first-use costs paid at load (commit 3)
@@ -7485,4 +7486,47 @@ does: the mic axis within 15° of the fist axis (measured 12.0° at the 12° til
 centreline through the palm point at the handle radius (20.0 mm), the tilt clamped when asked for
 90° (12.0°), and the no-bones fallback landing on `MIC_PLACE` at 1.0 scale. Roster **469**, live
 **666**, 0 FAIL.
+
+
+### J6. Lighting: contrast per preset and shadows cut for the deeper stage (commit 6)
+
+**What was already true and is now pinned.** The clean look from PART B is still the default:
+`fog_enabled()` false, tonemap 0 (linear, not ACES), a rim light with `shadow_enabled` false, and a
+directional key that casts. The suite now asserts all four, per preset, instead of trusting them.
+
+**Key against ambient, measured per preset** (`key_energy()` is the brightest light actually on the
+yard — the sun by day, the coloured stage beams at night):
+
+| Preset | Key : ambient |
+| --- | --- |
+| Afternoon | 3.73 : 1 |
+| Sunset | 3.50 : 1 |
+| Night | 7.11 : 1 |
+
+All three clear the brief's 2.5 : 1 floor without touching a single exposure value, because the
+PART B grading had already put the key there; the new test is what keeps it there.
+
+**Shadows retuned for the deeper set, by settings only.** The directional cascade was 26 m, most of
+which was now spent on empty sand behind the towers, so it is **18 m** — still past the towers' backs
+at −7.9 m, with about 1.4× the texel density where the fighters stand. Blur 0.7 → **0.85**, bias
+0.03 → **0.02** with `shadow_normal_bias = 1.5` against acne, `shadow_opacity = 0.9` for a deeper
+contact. No decals, no blob quads, no fog: the contact edge still comes from the directional shadow.
+
+**Lights per mesh, unchanged by this commit:** worst **4** across the yard's 71 meshes, exactly 4 on a
+fighter (sun, camera fill, the two white spots); the rim and the two coloured stage beams stay on
+the stage layer.
+
+**What this commit deliberately did NOT do — the toon→PBR default.** The brief asks for the fighters,
+props and mic to default to the native imported `StandardMaterial3D` rather than the cel ramp, with
+the toon shader kept as a live A/B. That default is asserted by **52 checks in the roster suite and
+13 in the feel suite**, and flipping it changes how every delivered texture reads — a look change
+this workspace cannot look at (no GPU, no rendered still: `xvfb` is unavailable and `sudo` is
+blocked). Shipping it blind would trade a verified look for an unverified one in a pass whose whole
+point was to remove risk. The A/B the owner can press today is F6 (`toggle_lighting_look`), which
+switches the graded/legacy environment pass; the cel-ramp toggle is the next thing to build with a
+rendered still behind it, and it is listed in the FINISH report as not done rather than claimed.
+
+**Tests.** Roster +4: the 2.5 : 1 key floor per preset (with the measured ratio printed), the rim
+light present with shadows off, no fog and no ACES, and the directional shadow on at ≤ 18.5 m.
+Roster **473**, live **666**, 0 FAIL.
 

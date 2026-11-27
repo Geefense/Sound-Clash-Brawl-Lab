@@ -2684,6 +2684,28 @@ func _run() -> void:
 			"a model with no hand bones falls back to the tuned offset at 1.0 scale",
 			"offset %s, scale %s" % [str(fallback.origin), str(wild.get_scale())])
 
+		# Fix pass commit 6: every preset keeps the key well above the ambient, a rim light with
+		# no shadow cost, no fog and no ACES wash, and the fighters' directional shadow intact.
+		var ratio_rows: Array[String] = []
+		var ratio_ok := true
+		for phase in 3:
+			arena2.set_time_of_day(phase, 0.0)
+			var ratio: float = prop_yard.key_to_ambient_ratio()
+			ratio_rows.append("%s %.2f:1" % [["afternoon", "sunset", "night"][phase], ratio])
+			if ratio < 2.5:
+				ratio_ok = false
+		arena2.set_time_of_day(0, 0.0)
+		_check(ratio_ok, "every preset keeps its key light at 2.5x the ambient or more",
+			", ".join(ratio_rows))
+		_check(prop_yard.rim_shadows_off() and prop_yard.rim_energy() > 0.0,
+			"a rim light separates the fighters from the set and casts nothing",
+			"rim %.2f, shadows off" % prop_yard.rim_energy())
+		_check(not prop_yard.fog_enabled() and prop_yard.tonemap_mode() != Arena3D.LEGACY_TONEMAP,
+			"the yard is unfogged and off ACES", "tonemap %d" % prop_yard.tonemap_mode())
+		_check(prop_yard.sun_shadows_on() and prop_yard.shadow_max_distance() <= 18.5,
+			"the directional shadow is on and tightened to the deeper stage",
+			"max distance %.1f m" % prop_yard.shadow_max_distance())
+
 		var per_mesh: Dictionary = prop_yard.lights_per_mesh()
 		_check(int(per_mesh["max"]) <= 4, "no mesh is lit by more than 4 lights",
 			"worst %d on %s over %d meshes (%d lights)" % [int(per_mesh["max"]),

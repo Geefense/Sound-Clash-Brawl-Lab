@@ -1400,11 +1400,19 @@ func _build_truss_and_lights() -> void:
 	# key light always casts, with a sharp angular size and a tight bias/blur for clean edges.
 	sun.shadow_enabled = true
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	sun.directional_shadow_max_distance = 26.0
+	# Fix pass commit 6: the set stands 3-5 m deeper than it used to, so the old 26 m cascade was
+	# spending most of its resolution on empty sand behind the props. 18 m still covers the whole
+	# yard (the towers' backs are at -7.9 m) and buys roughly 1.4x the texel density where the
+	# fighters' contact shadows actually land.
+	sun.directional_shadow_max_distance = 18.0
 	sun.directional_shadow_split_1 = 0.28
 	sun.light_angular_distance = 0.0
-	sun.shadow_blur = 0.7
-	sun.shadow_bias = 0.03
+	# Deeper contact shadows come from the shadow settings, not from new geometry: a slightly
+	# softer blur, a lower bias with a normal bias to stop acne, and a touch less transparency.
+	sun.shadow_blur = 0.85
+	sun.shadow_bias = 0.02
+	sun.shadow_normal_bias = 1.5
+	sun.shadow_opacity = 0.9
 	sun.light_cull_mask = LAYER_FIGHTERS | LAYER_STAGE
 	add_child(sun)
 
@@ -1854,3 +1862,20 @@ func fighter_lights() -> int:
 		if light != null and (light.light_cull_mask & LAYER_FIGHTERS) != 0:
 			count += 1
 	return count
+
+
+# ---- Fix pass commit 6: lighting readouts for the audit -------------------------------------
+func rim_shadows_off() -> bool:
+	return rim != null and rim.visible and not rim.shadow_enabled
+
+
+func rim_energy() -> float:
+	return rim.light_energy if rim != null else 0.0
+
+
+func sun_shadows_on() -> bool:
+	return sun != null and sun.shadow_enabled
+
+
+func shadow_max_distance() -> float:
+	return sun.directional_shadow_max_distance if sun != null else 0.0

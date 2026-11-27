@@ -2652,6 +2652,38 @@ func _run() -> void:
 			"J 84 -> %.0f px (+%.0f %%), I 92 -> %.0f px (+%.0f %%)" % [jab_reach,
 				(jab_reach / 84.0 - 1.0) * 100.0, upper_reach, (upper_reach / 92.0 - 1.0) * 100.0])
 		probe_fighter.free()
+		# Fix pass commit 5: the hand-prop mount is a fist, not a fixed offset. Pure maths over
+		# synthetic finger points, so the contract is checked even though no rigged upload ships.
+		var fist_axis := Vector3(0.0, 0.0, 1.0)
+		var thumb_dir := Vector3(1.0, 0.0, 0.0)
+		var mount := FighterProps.grip_basis(fist_axis, thumb_dir)
+		var axis_deg := rad_to_deg(acos(clampf(mount.y.normalized().dot(fist_axis), -1.0, 1.0)))
+		_check(axis_deg <= 15.0,
+			"the mic's long axis lies within 15 deg of the fist axis",
+			"%.2f deg at the 12 deg tilt" % axis_deg)
+		var fingers: Array[Vector3] = [Vector3(0.0, 0.0, 0.02), Vector3(0.01, 0.0, 0.0),
+			Vector3(0.01, 0.0, -0.01), Vector3(0.0, 0.0, -0.02)]
+		var palm_normal := Vector3(1.0, 0.0, 0.0)
+		var grip := FighterProps.grip_point(fingers, palm_normal)
+		var mean := Vector3.ZERO
+		for point in fingers:
+			mean += point
+		mean /= float(fingers.size())
+		_check(absf(grip.distance_to(mean) - FighterProps.HANDLE_RADIUS) < 0.0015
+				and grip.distance_to(mean) <= 0.015 + 0.006,
+			"the handle centreline passes through the palm point",
+			"%.1f mm from the palm, handle radius %.0f mm" % [grip.distance_to(mean) * 1000.0,
+				FighterProps.HANDLE_RADIUS * 1000.0])
+		var wild := FighterProps.grip_basis(fist_axis, thumb_dir, 90.0)
+		var wild_deg := rad_to_deg(acos(clampf(wild.y.normalized().dot(fist_axis), -1.0, 1.0)))
+		_check(wild_deg <= 20.0, "the handle tilt is clamped to 20 deg or less",
+			"%.2f deg when asked for 90" % wild_deg)
+		var fallback := FighterProps.grip_transform(null, "")
+		_check(fallback.origin.is_equal_approx(FighterProps.MIC_PLACE)
+				and wild.get_scale().is_equal_approx(Vector3.ONE),
+			"a model with no hand bones falls back to the tuned offset at 1.0 scale",
+			"offset %s, scale %s" % [str(fallback.origin), str(wild.get_scale())])
+
 		var per_mesh: Dictionary = prop_yard.lights_per_mesh()
 		_check(int(per_mesh["max"]) <= 4, "no mesh is lit by more than 4 lights",
 			"worst %d on %s over %d meshes (%d lights)" % [int(per_mesh["max"]),

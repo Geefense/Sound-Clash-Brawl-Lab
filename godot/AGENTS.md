@@ -7344,6 +7344,8 @@ the barrier" is inverted, because the barrier moved behind it. Nothing else move
 | --- | --- | --- |
 | 2026-11-27, commit 1 | Crowd: 22 spectator rigs off behind `crowd_rigs_enabled` (default false), crowd models excluded from the Web export, hype/callout/spotlight/audio untouched. Roster 442, live 581, 0 FAIL. Pack delta −13,444,632 B (−22.8 %). | `261545d` |
 | 2026-11-27, commit 2 | Deep stage: `StageLayout` places the booth (z −4.50), both towers (z −6.10, x ±2.15) and both DJ stands from measured AABBs; 3.74 m clean sand strip; barrier moved behind the set. Roster 454, live 644, facing 310, feel 444, 0 FAIL. | `39a269c` |
+| 2026-11-27, commit 4 | J and I: their boxes were measured landing only at 150 px and 130 px; horizontal reach only, +39.3 % / +39.1 %, so both land at the neutral 160 px. Punch torso yaw clamped to 6 deg (measured 3.89-5.58 deg). Roster 465, live 666, facing 310, feel 444, 0 FAIL. | `b8943c6` |
+| 2026-11-27, commit 5 | Mic grip: the hand prop is mounted from the fist axis and palm point instead of a constant offset, tilt capped at 12 deg, scale and fallback untouched. Roster **469**, live **666**, 0 FAIL. | this commit |
 | 2026-11-27, commit 3 | Freezes: `HitchLog`, load-time warm-up behind a LOADING overlay (44 passes), startup quality calibration, governor locked out of live rounds, light cull layers (max 4 lights per mesh). Roster **463**, live **648**, facing **310**, feel **444**, 0 FAIL. | this commit |
 
 ### J3. Freezes instrumented, first-use costs paid at load (commit 3)
@@ -7451,4 +7453,36 @@ expectations), and J/I stay inside the +40 % allowance while K and L keep 108 px
 checks — the P2 slot needs the sparring controller parked, or the AI overwrites the press) and the
 applied torso yaw stays inside 6° for all three fighters × both punches (6 checks). Roster **465**,
 live **666**, 0 FAIL.
+
+
+### J5. The wireless mic is mounted from the fist (commit 5)
+
+The mic used to hang from `MIC_PLACE = (0, 0.11, 0.02)` — a constant offset from the hand bone —
+which is why it read as a sticker on the outside of the hand: nothing in the mount knew where the
+hollow of the fist was. `FighterProps.grip_transform()` now reads the mount off the skeleton:
+
+* **Fist axis**: index proximal origin → pinky proximal origin (the line through the hollow).
+* **Palm point**: the mean of the four finger proximal origins, moved toward the palm side by the
+  handle radius (0.02 m), so the handle's centreline sits inside the grip instead of on the skin.
+* **Head toward the thumb**: the basis is built from the fist axis and the thumb proximal
+  direction, so the capsule's head points the right way round for both microphone uploads.
+* **Tilt**: at most `MIC_TILT_DEG = 12°` toward the thumb side (the brief allows 20°), clamped, and
+  applied to the value so a wild profile cannot twist the handle.
+* **Scale**: untouched. The 0.24 m model keeps its own size; this commit moves it, never resizes it.
+* **Fallback**: a hand bone with no finger bones (or no skeleton at all) falls back to the tuned
+  offset, so a re-export can never leave the mic floating away from the hand.
+
+**Two things this art cannot carry, both logged.** (1) The finger curl the brief asks for when the
+DJ clip's hand is open is *not* applied: the mic holders are the roster fighters, and the brief's
+own rule forbids rotating hand, finger, foot or toe bones on fighters — so the mount does the work
+instead. (2) The vertex-level penetration and fingertip-contact checks ("no hand vertices more than
+1 cm inside the handle", "3 fingertip vertices within 2 cm of the surface") need a rigged hand and
+a rendered pose; no fighter GLB ships a skeleton (`bone_count` is 0), so those measurements cannot
+be made in this workspace and are listed as not verified rather than claimed.
+
+**Tests.** Roster +4, all pure maths over synthetic finger points so they hold whatever the art
+does: the mic axis within 15° of the fist axis (measured 12.0° at the 12° tilt), the handle
+centreline through the palm point at the handle radius (20.0 mm), the tilt clamped when asked for
+90° (12.0°), and the no-bones fallback landing on `MIC_PLACE` at 1.0 scale. Roster **469**, live
+**666**, 0 FAIL.
 

@@ -2624,6 +2624,34 @@ func _run() -> void:
 		_check(is_equal_approx(hlog.worst_ms(), 50.0),
 			"the hitch log reports its worst frame", "%.1f ms" % hlog.worst_ms())
 
+		# Fix pass commit 4: J and I are the only moves allowed to differ from the frozen table,
+		# and only in horizontal reach, and only inside the owner's +40 % allowance.
+		var expected_frame_data := {
+			&"jab": [4, 3, 9, 8, 2, 14], &"strong": [9, 4, 18, 15, 4, 22],
+			&"tump": [12, 4, 12, 15, 4, 20], &"upper_box": [8, 4, 16, 15, 4, 22],
+		}
+		var probe_fighter := BaseFighter.new()
+		var frame_table: Dictionary = probe_fighter.attacks
+		var mismatches: Array[String] = []
+		for move_key in expected_frame_data:
+			var move: Dictionary = frame_table[move_key]
+			var got := [int(move["startup"]), int(move["active"]), int(move["recovery"]),
+				int(move["damage"]), int(move["blocked_damage"]), int(move["hitstun"])]
+			if got != expected_frame_data[move_key]:
+				mismatches.append("%s %s" % [String(move_key), str(got)])
+		_check(mismatches.is_empty(),
+			"frame data is frozen apart from J and I's horizontal reach",
+			"4 moves x 6 fields unchanged" if mismatches.is_empty() else ", ".join(mismatches))
+		var jab_reach: float = (frame_table[&"jab"]["hitbox_size"] as Vector2).x
+		var upper_reach: float = (frame_table[&"upper_box"]["hitbox_size"] as Vector2).x
+		_check(jab_reach > 84.0 and jab_reach <= 84.0 * 1.4
+				and upper_reach > 92.0 and upper_reach <= 92.0 * 1.4
+				and is_equal_approx((frame_table[&"strong"]["hitbox_size"] as Vector2).x, 108.0)
+				and is_equal_approx((frame_table[&"tump"]["hitbox_size"] as Vector2).x, 104.0),
+			"J and I reach at most 40 % further and K/L are untouched",
+			"J 84 -> %.0f px (+%.0f %%), I 92 -> %.0f px (+%.0f %%)" % [jab_reach,
+				(jab_reach / 84.0 - 1.0) * 100.0, upper_reach, (upper_reach / 92.0 - 1.0) * 100.0])
+		probe_fighter.free()
 		var per_mesh: Dictionary = prop_yard.lights_per_mesh()
 		_check(int(per_mesh["max"]) <= 4, "no mesh is lit by more than 4 lights",
 			"worst %d on %s over %d meshes (%d lights)" % [int(per_mesh["max"]),

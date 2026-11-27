@@ -288,7 +288,12 @@ var attacks: Dictionary = {
 		"startup": 4, "active": 3, "recovery": 9,
 		"damage": 8, "blocked_damage": 2,
 		"hitstun": 14, "knockback": Vector2(160, 0), "knockdown": false,
-		"hitbox_pos": Vector2(84, -110), "hitbox_size": Vector2(84, 38),
+		# Fix pass commit 4: the owner says J only connects nose-to-nose. The box used to end at
+		# 168 px from the origin, which reached 150 px of separation and no further; it now ends
+		# at 201 px and lands past 180 px, so J connects at the neutral 160 px the live suite
+		# measures. Reach only: frames, damage, stun and knockback are untouched (+39.3 % of
+		# size.x, inside the owner's +40 % allowance).
+		"hitbox_pos": Vector2(84, -110), "hitbox_size": Vector2(117, 38),
 	},
 	# K = BOX (head/backhand). Poses 12/13/14 = startup/contact/recovery.
 	&"strong": {
@@ -314,7 +319,10 @@ var attacks: Dictionary = {
 		"startup": 8, "active": 4, "recovery": 16,
 		"damage": 15, "blocked_damage": 4,
 		"hitstun": 22, "knockback": Vector2(180, -120), "knockdown": false,
-		"hitbox_pos": Vector2(70, -132), "hitbox_size": Vector2(92, 96),
+		# Same fix for I: 92 -> 128 px of width (+39.1 %) puts the far edge at 198 px. The rising
+		# backhand's box sits high, so it needs more width than J to reach the same separation;
+		# 128 px is what makes it land at the neutral 160 px. Nothing else changes.
+		"hitbox_pos": Vector2(70, -132), "hitbox_size": Vector2(128, 96),
 	},
 }
 

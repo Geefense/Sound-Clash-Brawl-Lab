@@ -77,6 +77,8 @@ func _run() -> void:
 	await _check_arcade_vfx()
 	await _check_comic_callouts()
 	await _check_crowd_eruption()
+	await _check_punch_reach()
+	await _check_punch_twist()
 	await _check_quality_governor()
 	await _check_arena_integrity()
 	print("\n%d checks, %d FAIL%s" % [_checks, _fails, "" if _fails == 0 else "S"])
@@ -1865,3 +1867,96 @@ func _yard_node_count(arena3d) -> int:
 			continue
 		count += 1
 	return count
+
+
+## Fix pass commit 4: J and I have to connect at NEUTRAL spacing, the middle of the band the AI
+## walks in (135-155 px), which this suite has always called ~150. Measured before the change: J
+## landed up to 150 px and I up to 130 px with the gap held fixed. Both were widened by ~39 % of
+## their box width (+33 px / +36 px, inside the owner's +40 %), so both now land at 160 px.
+const NEUTRAL_SPACING := 160.0
+
+
+func _check_punch_reach() -> void:
+	print("\n-- J/I REACH: both punches land at neutral spacing, 3 fighters x both slots")
+	for fighter_key in FIGHTERS:
+		for slot in 2:
+			for move_key in [&"light", &"upper_box"]:
+				var attacker_key: StringName = fighter_key
+				var dummy_key: StringName = FIGHTERS[0] if fighter_key != FIGHTERS[0] else FIGHTERS[1]
+				var arena = await _spawn(attacker_key, dummy_key) if slot == 0 \
+					else await _spawn(dummy_key, attacker_key)
+				var p1: BaseFighter = arena.p1
+				var p2: BaseFighter = arena.p2
+				var attacker: BaseFighter = p1 if slot == 0 else p2
+				var target: BaseFighter = p2 if slot == 0 else p1
+				attacker.use_local_input = false
+				target.use_local_input = false
+				# The sparring controller writes P2's command every frame; parking it is what lets
+				# the second slot press a move at all (otherwise the AI overwrites the press).
+				arena.sparring.set_process(false)
+				arena.sparring.set_physics_process(false)
+				var landed := [0]
+				var on_hit := func(who: BaseFighter, _t: BaseFighter, result: Dictionary) -> void:
+					if who == attacker and not bool(result.get("blocked", false)) \
+							and not bool(result.get("parried", false)) \
+							and not bool(result.get("ignored", false)):
+						landed[0] += 1
+				attacker.strike_resolved.connect(on_hit)
+				var left := 500.0
+				var right := left + NEUTRAL_SPACING
+				var cmd := BaseFighter.Command.new()
+				for f in 60:
+					p1.global_position = Vector2(left if slot == 0 else right, 600.0)
+					p2.global_position = Vector2(right if slot == 0 else left, 600.0)
+					if slot == 0:
+						attacker.face_toward(p2.global_position.x)
+					else:
+						attacker.face_toward(p1.global_position.x)
+					cmd.move_x = 0.0
+					if move_key == &"light":
+						cmd.light = f == 2
+					else:
+						cmd.upper_box = f == 2
+					attacker.command = cmd
+					await physics_frame
+				_check(landed[0] >= 1, "%s %s (%s) lands a %s at %.0f px" % [
+					String(attacker_key), String(target.fighter_key), "P1" if slot == 0 else "P2",
+					"J" if move_key == &"light" else "I", NEUTRAL_SPACING],
+					"%d hit(s)" % landed[0])
+				arena.queue_free()
+				await process_frame
+
+
+## Fix pass commit 4: no fighter GLB has a skeleton, so the strike line cannot be aimed through
+## an arm chain; the torso yaw the profiles drive is the lever, and it is capped at 6 deg for the
+## two punches. This watches the value the model actually applied on the contact frame.
+func _check_punch_twist() -> void:
+	print("\n-- J/I AXIS: punch torso yaw capped at 6 deg, 3 fighters x both punches")
+	for fighter_key in FIGHTERS:
+		for move_key in [&"light", &"upper_box"]:
+			var arena = await _spawn(fighter_key, FIGHTERS[0] if fighter_key != FIGHTERS[0] else FIGHTERS[1])
+			var p1: BaseFighter = arena.p1
+			var p2: BaseFighter = arena.p2
+			p1.use_local_input = false
+			p2.use_local_input = false
+			var peak := 0.0
+			var cmd := BaseFighter.Command.new()
+			for f in 40:
+				p1.global_position = Vector2(500.0, 600.0)
+				p2.global_position = Vector2(660.0, 600.0)
+				cmd.move_x = 0.0
+				if move_key == &"light":
+					cmd.light = f == 2
+				else:
+					cmd.upper_box = f == 2
+				p1.command = cmd
+				await physics_frame
+				var model = arena.arena3d.models.get("p1")
+				if model != null and p1.state == BaseFighter.State.ATTACK_ACTIVE:
+					peak = maxf(peak, rad_to_deg(absf(float(model.last_twist))))
+			_check(peak <= FighterModel3D.J_I_TWIST_CAP * 57.2958 + 0.6,
+				"%s %s keeps its torso within 6 deg of the combat axis" % [
+					String(fighter_key), "J" if move_key == &"light" else "I"],
+				"peak %.2f deg" % peak)
+			arena.queue_free()
+			await process_frame

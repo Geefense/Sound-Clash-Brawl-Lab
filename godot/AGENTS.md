@@ -7400,3 +7400,55 @@ ANNOUNCE allows one). **One assertion changed intentionally:** the two "300 fram
 audits now count *persistent* yard nodes via `_yard_node_count()`, because the warm-up's one-of-each
 VFX legitimately appear and free themselves; every static node is still counted.
 
+
+### J4. J and I connect at neutral spacing, and their torso opened only 6° (commit 4)
+
+**Measured first, not guessed.** A throwaway probe held the gap fixed, pressed the move once and
+reported the largest separation that still produced a hit event:
+
+| Move | Landed at | Did not land at |
+| --- | --- | --- |
+| J (jab) | 90, 110, 130, **150** px | 170, 190, 210 px |
+| I (upper box) | 90, 110, **130** px | 150, 170, 190, 210 px |
+
+That is the owner's "only nose-to-nose". Neutral spacing in this suite has always been ~150 px (the
+AI's footsies band is 135–155), and I is the shorter of the two, so I is what had to reach 160 px.
+
+**Reach, changed only here.** Horizontal `hitbox_size.x` only — `hitbox_pos`, every frame count,
+damage, chip damage, hitstun, knockback and knockdown flag are untouched:
+
+| Move | Box width | Far edge | Landed at | Change |
+| --- | --- | --- | --- | --- |
+| J (jab) | 84 → **117** px | 168 → 201 px | 150 → **>180** px | +39.3 % (cap 40 %) |
+| I (upper box) | 92 → **128** px | 162 → 198 px | 130 → **>170** px | +39.1 % (cap 40 %) |
+| K (strong) | 108 px | unchanged | — | — |
+| L (tump) | 104 px | unchanged | — | — |
+
+I needs more width than J for the same separation because its box sits 22 px higher (y −132 vs
+−110), so it meets the hurtbox later. Both still stop short of K's 204 px far edge, so J (8 damage)
+has not out-ranged the heavy.
+
+**The strike line — a documented limitation, not a silent one.** *None of the three fighter GLBs
+has a skeleton*: `FighterModel3D` is a static GLB bake, `bone_count` is 0, and the additive
+skeleton layer idles out. There is therefore no shoulder → upper-arm → forearm chain to aim, and no
+hand bone to move — which also means the brief's analytic two-bone aim cannot be built on this art
+without re-exporting the fighters as rigged models. What *does* throw the baked fist off the
+combat axis is the whole-body yaw these profiles drive: `upper_box` opened the torso 0.48 rad
+(27.5°) on L!ckshot and 1.15 rad (66°) on L!kkle Moore. `_style_value()` now clamps `s_twist` and
+`w_twist` for `jab` and `upper_box` to **6°** (0.1047 rad) for every fighter, and to nothing else.
+Measured peak applied twist during the active frames, two decimal places: Feedback 4.83° (J) /
+5.55° (I), L!ckshot 5.09° / 5.58°, L!kkle Moore 3.89° / 5.34°. The clamp is applied to the value,
+not the table, because duplicating the style dictionary would allocate per frame.
+
+**One test re-pinned.** `animation_feel_audit` pinned `BaseFighter.gd` by sha256
+(`d69c8d85…` → `fb6565d5…`). The brief authorises this change, and the field-by-field literal check
+in the roster suite is the stronger guard: the hash only proves the file did not drift by accident.
+
+**Tests.** Roster +2: the frame-data table is frozen apart from J/I reach (all four moves × six
+fields of startup/active/recovery/damage/blocked damage/hitstun compared against literal
+expectations), and J/I stay inside the +40 % allowance while K and L keep 108 px and 104 px. Live
++18: a scripted J and a scripted I each land at 160 px for **all three fighters × both slots** (12
+checks — the P2 slot needs the sparring controller parked, or the AI overwrites the press) and the
+applied torso yaw stays inside 6° for all three fighters × both punches (6 checks). Roster **465**,
+live **666**, 0 FAIL.
+

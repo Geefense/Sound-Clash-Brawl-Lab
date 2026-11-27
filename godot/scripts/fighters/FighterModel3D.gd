@@ -137,6 +137,9 @@ var _hold_ticks := 0
 var _hold_index := -1
 ## Virtual clock for the slower idle/walk lattice, so the player's own advance can never fight
 ## the seek. Reset (from the player's position, not from zero) whenever the take changes.
+## The yaw this model asked for on the current frame, radians. Written by `_animate_pose`,
+## read by the punch-axis audit; never read by combat.
+var last_twist := 0.0
 var _slow_clock := 0.0
 var _slow_clip := ""
 
@@ -1402,9 +1405,28 @@ func hand_bone_name() -> String:
 # =========================================================================
 # Whole-body procedural stance (works for rigged and static uploads)
 # =========================================================================
+## Fix pass commit 4: J and I punch off the combat axis. None of the three fighter GLBs has a
+## skeleton (they are static bakes), so there is no shoulder -> upper arm -> forearm chain to aim
+## analytically; the only lever on the striking line is the whole-body yaw these profiles drive.
+## L!ckshot's upper box opens the torso 0.48 rad (27 deg) and L!kkle Moore's 1.15 rad (66 deg),
+## which is what throws the baked fist sideways. The two punch profiles are clamped to 6 deg in
+## `_style_value()`; every other move keeps its authored twist.
+const J_I_TWIST_CAP := 0.1047
+const PUNCH_IDS := [&"jab", &"upper_box"]
+
+
 func _move_style() -> Dictionary:
 	var table: Dictionary = MOVE_STYLES.get(fighter_key, {})
 	return table.get(fighter._attack_id, {})
+
+
+## Reads a profile value without allocating: a Dictionary `duplicate()` per frame would break the
+## no-per-frame-allocation rule, so the punch clamp is applied to the value, not the table.
+func _style_value(style: Dictionary, key: String, fallback: float) -> float:
+	var value := float(style.get(key, fallback))
+	if (key == "s_twist" or key == "w_twist") and fighter._attack_id in PUNCH_IDS:
+		return clampf(value, -J_I_TWIST_CAP, J_I_TWIST_CAP)
+	return value
 
 
 func _animate_pose(delta: float) -> void:
@@ -1418,6 +1440,7 @@ func _animate_pose(delta: float) -> void:
 	var twist_target := 0.0
 	var lift_target := 0.0
 	var style: Dictionary = {}
+	last_twist = 0.0
 	if state in [BaseFighter.State.ATTACK_STARTUP, BaseFighter.State.ATTACK_ACTIVE,
 			BaseFighter.State.ATTACK_RECOVERY]:
 		style = _move_style()
@@ -1436,7 +1459,7 @@ func _animate_pose(delta: float) -> void:
 			lean_target = -0.085 + float(style.get("w_lean", 0.0))
 			lunge_target = -0.06 + float(style.get("w_lunge", 0.0))
 			pitch_target = float(style.get("w_pitch", 0.0))
-			twist_target = float(style.get("w_twist", 0.0))
+			twist_target = _style_value(style, "w_twist", 0.0)
 			lift_target = float(style.get("w_lift", 0.0))
 			squash_target = float(style.get("w_squash", 0.93))
 		BaseFighter.State.ATTACK_ACTIVE:
@@ -1445,14 +1468,14 @@ func _animate_pose(delta: float) -> void:
 			lean_target = float(style.get("s_lean", 0.20 if heavy else 0.14))
 			lunge_target = float(style.get("s_lunge", 0.34 if heavy else 0.22))
 			pitch_target = float(style.get("s_pitch", 0.0))
-			twist_target = float(style.get("s_twist", 0.0))
+			twist_target = _style_value(style, "s_twist", 0.0)
 			lift_target = float(style.get("s_lift", 0.0))
 			squash_target = float(style.get("s_squash", 1.035))
 		BaseFighter.State.ATTACK_RECOVERY:
 			lean_target = 0.05 + float(style.get("s_lean", 0.0)) * 0.22
 			lunge_target = 0.08 + float(style.get("s_lunge", 0.0)) * 0.22
 			pitch_target = float(style.get("s_pitch", 0.0)) * 0.22
-			twist_target = float(style.get("s_twist", 0.0)) * 0.22
+			twist_target = _style_value(style, "s_twist", 0.0) * 0.22
 			lift_target = float(style.get("s_lift", 0.0)) * 0.22
 		BaseFighter.State.HITSTUN:
 			lean_target = -0.20
@@ -1514,6 +1537,7 @@ func _animate_pose(delta: float) -> void:
 	_fall = _approach(_fall, fall_target, 7.5 if fall_target > 0.0 else 12.0, delta)
 	_pitch = _approach(_pitch, pitch_target, 14.0, delta)
 	_twist = _approach(_twist, twist_target, 16.0, delta)
+	last_twist = _twist
 	_lift = _approach(_lift, lift_target, 18.0, delta)
 
 	var face := float(facing_sign)

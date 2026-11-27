@@ -34,9 +34,13 @@ extends SceneTree
 
 const FIGHTERS := [&"feedback", &"lickshot", &"young_selecta"]
 ## The two files whose combat data must not move. Hashes are of the committed files.
+## Fix pass commit 4 re-pinned BaseFighter.gd: the owner authorised changing ONLY the horizontal
+## reach of J and I (+39.3 % and +39.1 % of hitbox_size.x). Every frame count, damage, chip damage,
+## hitstun, knockback and knockdown value is still checked field by field against literals in
+## `headless_roster_check`, which is the stronger guard; this hash simply pins the new file.
 const COMBAT_FILES := {
 	"res://scripts/BaseFighter.gd":
-		"d69c8d859855c6ab9d6565135e2c884d7ba2faeb78d765f2e7a2cb39df70f675",
+		"fb6565d5820df89f2c7f5676b6a97491f5f2b0b3a5b265611d2315dc1e447b17",
 	"res://scripts/fighters/FighterRoster.gd":
 		"25b9d82111e6ebacb4cfa02561ce85fc0b2953f5f16e76e43e954dc0c2ac6adb",
 }

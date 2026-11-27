@@ -74,6 +74,9 @@ const POP_SECONDS := 0.16
 const FADE_SECONDS := 0.45
 const LIFE_SECONDS := 0.62
 const LIFE_HEAVY_SECONDS := 0.82
+## PART L: the `SPEAKER BOX!` featured word is the round's last line, so it holds the screen a
+## beat longer than a heavy hit's callout.
+const LIFE_FEATURED_SECONDS := 1.05
 const PEAK_SCALE := 1.25
 ## Alternating tilts in degrees, cycled in order. Deterministic: no gameplay RNG is read.
 const TILTS := [12.0, -13.0, 9.0, -14.0, 11.0, -9.0, 13.0, -10.0, 8.0, -12.0, 14.0, -11.0]
@@ -142,6 +145,8 @@ var _pending_whiff: Dictionary = {}     # fighter instance id -> true while an A
 var _tilt_step: int = 0
 var _last_category: StringName = &""
 var _last_phrase: String = ""
+var _featured_count: int = 0           # PART L featured-word fires (headless checks)
+var _last_featured: String = ""
 
 
 func _ready() -> void:
@@ -276,6 +281,11 @@ func register_hit(fighter: BaseFighter, attack_id: StringName, counter: bool, on
 	return _fire(classify(fighter, attack_id, counter, on_beat), fighter, world_pos, downed)
 
 
+## A guarded contact, by the flags the strike coordinator already collected (PART L).
+func register_block(fighter: BaseFighter, world_pos: Vector3) -> bool:
+	return _fire(&"block", fighter, world_pos)
+
+
 ## Light / medium / heavy / counter / on-beat, from the existing move data only.
 func classify(attacker: BaseFighter, attack_id: StringName, counter: bool,
 		on_beat: bool) -> StringName:
@@ -348,6 +358,20 @@ func _fire(category: StringName, fighter: BaseFighter, world_pos: Vector3,
 	var index := _next_phrase(rotation)
 	if index < 0:
 		return false
+	_place(slot, index, category, world_pos, COLORS[category],
+		LIFE_HEAVY_SECONDS if category == &"heavy" else LIFE_SECONDS)
+	_last_ms[fighter_id] = _clock * 1000.0
+	_last_category = category
+	_last_phrase = slot.phrase
+	_fires_by_category[category] = int(_fires_by_category.get(category, 0)) + 1
+	return true
+
+
+## Put phrase `index` on `slot` at `world_pos` in `tint`. Shared by the category fire and the
+## featured word, so the clamp, the tilt cycle and the pop clock have exactly one
+## implementation and cannot drift apart.
+func _place(slot: Slot, index: int, category: StringName, world_pos: Vector3,
+		tint: Color, life: float) -> void:
 	var label: Label = slot.label
 	var size: Vector2 = _phrase_size[index] * callout_scale
 	var px := _font_px(category)
@@ -361,20 +385,36 @@ func _fire(category: StringName, fighter: BaseFighter, world_pos: Vector3,
 	var centre := _centre_for(world_pos, size)
 	label.position = centre - size * 0.5
 	slot.age = 0.0
-	slot.life = LIFE_HEAVY_SECONDS if category == &"heavy" else LIFE_SECONDS
+	slot.life = life
 	slot.category = category
 	slot.phrase = _phrase_text[index]
-	slot.tint = COLORS[category]
+	slot.tint = tint
 	slot.tilt = 0.0 if reduced_motion else deg_to_rad(float(TILTS[_tilt_step]))
 	_tilt_step = (_tilt_step + 1) % TILTS.size()
 	label.rotation = slot.tilt
 	label.modulate = slot.tint
 	label.scale = Vector2.ONE if reduced_motion else Vector2(0.001, 0.001)
 	label.visible = true
-	_last_ms[fighter_id] = _clock * 1000.0
-	_last_category = category
-	_last_phrase = slot.phrase
-	_fires_by_category[category] = int(_fires_by_category.get(category, 0)) + 1
+
+
+## PART L: the `SPEAKER BOX!` featured word — one exact phrase at the cabinet blowout. It is
+## exempt from the per-fighter rate cap and the per-category cap because it is the round's
+## authored line, and it is placed with the same clamp as every other callout. It still never
+## allocates: with no free label the word is skipped rather than stealing a playing one.
+func fire_featured(phrase: String, world_pos: Vector3, tint: Color = Color.WHITE) -> bool:
+	if not callout_enabled or camera == null:
+		return false
+	var index := int(_phrase_index.get(phrase, -1))
+	if index < 0 or not bool(_phrase_safe[index]):
+		return false
+	var slot := _first_free_slot()
+	if slot == null:
+		return false
+	_place(slot, index, &"heavy", world_pos, tint, LIFE_FEATURED_SECONDS)
+	_featured_count += 1
+	_last_category = &"heavy"
+	_last_phrase = phrase
+	_last_featured = phrase
 	return true
 
 
@@ -551,6 +591,42 @@ func labels() -> Array:
 	for slot in _slots:
 		out.append((slot as Slot).label)
 	return out
+
+
+## Free labels right now. The strike coordinator reads this to trim its lowest-priority cue
+## (the extra music notes) before it spends the last slot on the contact word.
+func free_label_count() -> int:
+	return _free_count()
+
+
+## Headless audit hook: clear the per-fighter rate caps, so a check measures the pool and the
+## coordinator instead of whatever the live fight happened to do in the same second.
+func debug_reset_rate_caps() -> void:
+	_last_ms.clear()
+	_clock = 0.0
+
+
+func stop_all() -> void:
+	for slot in _slots:
+		var s := slot as Slot
+		s.age = -1.0
+		s.label.visible = false
+
+
+## Zero the trigger counters, so a check measures the match and not the boot warm pass.
+func reset_counts() -> void:
+	for category in CATEGORIES:
+		_fires_by_category[category] = 0
+	_featured_count = 0
+	_last_featured = ""
+
+
+func featured_count() -> int:
+	return _featured_count
+
+
+func last_featured() -> String:
+	return _last_featured
 
 
 func phrase_table() -> Dictionary:

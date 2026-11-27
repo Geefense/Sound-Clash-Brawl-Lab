@@ -2630,6 +2630,324 @@ func _run() -> void:
 		_check(is_finite(floor_back) and floor_back <= back_most - 1.0,
 			"the sand floor runs at least 1 m behind the back-most prop",
 			"floor back z %.2f vs prop back z %.2f" % [floor_back, back_most])
+
+		# ---- PART L (2026-11-27): coordinated hit FX and the SPEAKER BOX! finisher ----------
+		# The two delivered sheets are six-frame horizontal strips, not the 4 x 4 README grid,
+		# so the layer reads the grid from the texture. Everything below is measured on the live
+		# scene: the sheets, the coordinator's dedup and pool priority, the finisher's ring,
+		# rattle and punch-in, and the LOADING warm pass.
+		var fx: ArcadeVFX2D = arena2.arcade_vfx
+		var comic: ComicCallout2D = arena2.comic_callouts
+		var coord: StrikePresentation = arena2.strike_fx
+		var spark_size := fx.sheet_size(&"hit_spark") if fx != null else Vector2i.ZERO
+		var bass_size := fx.sheet_size(&"bass_shockwave") if fx != null else Vector2i.ZERO
+		var spark_cell := fx.cell_px(&"hit_spark") if fx != null else 0
+		var bass_cell := fx.cell_px(&"bass_shockwave") if fx != null else 0
+		_check(fx != null and spark_size == Vector2i(768, 128) and bass_size == Vector2i(1536, 256)
+				and fx.sheet_grid(&"hit_spark") == Vector2i(6, 1)
+				and fx.sheet_grid(&"bass_shockwave") == Vector2i(6, 1)
+				and fx.frame_count(&"hit_spark") == 6 and fx.frame_count(&"bass_shockwave") == 6
+				and spark_cell == 128 and bass_cell == 256,
+			"both delivered sheets load as six-frame horizontal strips",
+			"spark %dx%d (6x1 of %d px), bass %dx%d (6x1 of %d px)" % [
+				spark_size.x, spark_size.y, spark_cell, bass_size.x, bass_size.y, bass_cell])
+		_check(is_equal_approx(ArcadeVFX2D.draw_scale_for(128), 0.90)
+				and is_equal_approx(ArcadeVFX2D.draw_scale_for(256), ArcadeVFX2D.DRAW_SCALE),
+			"a 128 px strip frame is drawn at twice the scale of a 256 px one",
+			"%.2f vs %.2f" % [ArcadeVFX2D.draw_scale_for(128),
+				ArcadeVFX2D.draw_scale_for(256)])
+
+		var live_p1: BaseFighter = arena2.get_node("P1")
+		var live_p2: BaseFighter = arena2.get_node("P2")
+		var fx_point: Vector3 = prop_yard.world_point_of(Vector2(640.0, 430.0))
+		var strike_result := {
+			"attack_id": &"upper_box", "damage": 15, "blocked": false, "parried": false,
+			"ignored": false, "counter": true, "on_beat": true, "ko": false, "punish": false,
+		}
+		if fx != null and comic != null and coord != null:
+			fx.set_enabled(true)
+			comic.set_enabled(true)
+			coord.set_enabled(true)
+			# ---- One strike, one spark, one word ---------------------------------------------
+			fx.clear_all()
+			comic.stop_all()
+			comic.debug_reset_rate_caps()
+			fx.reset_counts()
+			comic.reset_counts()
+			coord.reset_counts()
+			coord.begin(live_p1, live_p2, strike_result, fx_point)
+			coord.contribute(&"hit")
+			coord.contribute(&"counter")
+			coord.contribute(&"beat")
+			coord.contribute(&"hit")          # the same reading twice is still one reading
+			var once: Dictionary = coord.commit()
+			var twice: Dictionary = coord.commit()
+			_check(bool(once.get("spark", false)) and bool(once.get("word", false))
+					and bool(once.get("ring", false)) and bool(once.get("notes", false))
+					and not bool(once.get("duplicate", true))
+					and bool(twice.get("duplicate", false))
+					and fx.play_count(&"hit_spark") == 1 and comic.total_fires() == 1
+					and coord.strikes == 1 and coord.duplicates == 1,
+				"hit + counter + beat on one strike draw one spark, one word and one ring",
+				"spark %d, word %d, ring %d, notes %s, second commit duplicate=%s" % [
+					fx.play_count(&"hit_spark"), comic.total_fires(),
+					fx.play_count(&"bass_shockwave"), str(once.get("notes", false)),
+					str(twice.get("duplicate", false))])
+
+			# ---- Pool exhaustion: notes first, then the secondary ring, never the spark -------
+			# Five of the six labels are held by other categories (light x2, block x2, whiff),
+			# so one label is left and the heavy table is free: the strike's word takes the last
+			# slot, and the extras are what get trimmed.
+			fx.clear_all()
+			comic.stop_all()
+			comic.reset_counts()
+			fx.reset_counts()
+			coord.reset_counts()
+			for _busy in 2:
+				comic.debug_reset_rate_caps()
+				comic.register_hit(live_p1, &"jab", false, false, fx_point)
+				comic.debug_reset_rate_caps()
+				comic.register_block(live_p2, fx_point)
+			comic.debug_reset_rate_caps()
+			comic.note_attack_active(live_p1, &"jab")
+			comic.note_attack_ended(live_p1, fx_point)
+			comic.debug_reset_rate_caps()      # measure the POOL, not the 120 ms rate cap
+			var free_before := comic.free_label_count()
+			coord.begin(live_p1, live_p2, strike_result, fx_point)
+			coord.contribute(&"counter")
+			coord.contribute(&"beat")
+			var tight: Dictionary = coord.commit()
+			_check(free_before == 1 and bool(tight.get("word", false))
+					and bool(tight.get("spark", false))
+					and not bool(tight.get("ring", true)) and not bool(tight.get("notes", true))
+					and coord.trimmed_notes == 1 and coord.trimmed_rings == 1
+					and fx.play_count(&"hit_spark") == 1 and fx.play_count(&"bass_shockwave") == 0,
+				"with one label left the notes and the secondary ring are trimmed, never the spark",
+				"free %d -> %d, spark %d, ring %d, trimmed notes %d" % [free_before,
+					comic.free_label_count(), fx.play_count(&"hit_spark"),
+					fx.play_count(&"bass_shockwave"), coord.trimmed_notes])
+
+			# ---- The featured word claims the last label, and never steals one ---------------
+			comic.stop_all()
+			comic.reset_counts()
+			for _busy in 5:
+				comic.fire_featured("BRAGADAPS!", fx_point)
+			var featured_before := comic.featured_count()
+			var last_label_ok := coord.feature_word("BRAGADAPS!", fx_point)
+			var featured_after := comic.featured_count()
+			var refused := coord.feature_word("BRAGADAPS!", fx_point)
+			_check(last_label_ok and comic.free_label_count() == 0
+					and featured_after == featured_before + 1
+					and comic.last_featured() == "BRAGADAPS!"
+					and not refused and comic.label_count() == ComicCallout2D.POOL_SIZE,
+				"the featured word takes the last free label, and an exhausted pool skips it",
+				"free %d, featured %d -> %d, refused %s, labels %d" % [
+					comic.free_label_count(), featured_before, featured_after, str(refused),
+					comic.label_count()])
+
+			# ---- The blowout ring: green -> gold -> red at 1.6x the ordinary ring ------------
+			fx.clear_all()
+			fx.reset_counts()
+			coord.finisher_ring(fx_point)
+			var ring_sprite := fx.playing_sprite(&"bass_shockwave")
+			var ring_scale := ring_sprite.scale.x if ring_sprite != null else 0.0
+			var start_colour := ring_sprite.modulate if ring_sprite != null else Color.BLACK
+			fx.debug_advance(0.125)
+			var mid_colour := ring_sprite.modulate if ring_sprite != null else Color.BLACK
+			fx.debug_advance(0.100)
+			var end_colour := ring_sprite.modulate if ring_sprite != null else Color.BLACK
+			_check(ring_sprite != null
+					and is_equal_approx(ring_scale,
+						ArcadeVFX2D.DRAW_SCALE * StrikePresentation.FINISHER_RING_SCALE)
+					and start_colour.g > start_colour.r and start_colour.g > start_colour.b
+					and mid_colour.r > 0.9 and mid_colour.g > 0.7 and mid_colour.b < 0.45
+					and end_colour.r > end_colour.g and end_colour.r > end_colour.b,
+				"the SPEAKER BOX! ring runs green -> gold -> red at 1.6x the ordinary ring",
+				"scale %.2f, green (%.2f,%.2f,%.2f) gold (%.2f,%.2f,%.2f) red (%.2f,%.2f,%.2f)" % [
+					ring_scale, start_colour.r, start_colour.g, start_colour.b, mid_colour.r,
+					mid_colour.g, mid_colour.b, end_colour.r, end_colour.g, end_colour.b])
+			fx.clear_all()
+
+			# ---- The cabinet rattle: its own clamp, back on the seat afterwards -------------
+			prop_yard.speaker_box_reset()
+			var seated: float = speaker.seat_scale_applied
+			prop_yard.speaker_rattle(1.0)
+			prop_yard._update_speakers(0.0)
+			var applied: float = speaker.model.scale.x / maxf(seated, 0.0001)
+			var rattle_amount: float = prop_yard.speaker_rattle_amount()
+			prop_yard.speaker_box_reset()
+			var seated_again: float = speaker.model.scale.x / maxf(seated, 0.0001)
+			_check(applied - 1.0 <= Arena3D.SPEAKER_RATTLE_MAX + 0.005
+					and applied - 1.0 >= Arena3D.SPEAKER_RATTLE - 0.005
+					and rattle_amount <= Arena3D.SPEAKER_RATTLE + 0.0001
+					and is_equal_approx(seated_again, 1.0),
+				"the finisher rattles the cabinet on its own 4.5 % clamp, clear of the 1.5 % beat pulse",
+				"seat x%.4f -> x%.4f (%.1f %%), rattle %.1f %%, total clamp %.1f %%" % [
+					seated, seated * applied, (applied - 1.0) * 100.0, rattle_amount * 100.0,
+					Arena3D.SPEAKER_RATTLE_MAX * 100.0])
+
+			# ---- The punch-in, held, inside the audited lens bounds for all 9 pairings --------
+			var punch_cam: Camera3D = prop_yard.camera
+			var view_size: Vector2 = arena2.get_viewport().get_visible_rect().size
+			var home_p1 := live_p1.global_position
+			var home_p2 := live_p2.global_position
+			var lens_ok := true
+			var lens_detail := ""
+			var worst_fov := Arena3D.CAMERA_FOV
+			var saw_accent := false
+			for spacing in [70.0, 260.0, 470.0]:
+				for lean in [-4.0, 0.0, 4.0]:
+					live_p1.global_position = Vector2(640.0 - spacing, home_p1.y)
+					live_p2.global_position = Vector2(640.0 + spacing, home_p2.y)
+					prop_yard.hold_exchange_yaw(lean, 2)
+					prop_yard.speaker_box_punch(1 if lean > 0.0 else (-1 if lean < 0.0 else 0))
+					prop_yard._update_camera(1.0 / 60.0)
+					if prop_yard.camera_accent() > 0.0:
+						saw_accent = true
+					worst_fov = minf(worst_fov, punch_cam.fov)
+					var fov_floor: float = Arena3D.CAMERA_FOV \
+						- AnimationFeel.CAMERA_PUNCH_MAX * AnimationFeel.CAMERA_PUNCH_FOV_DEG \
+						- AnimationFeel.CAMERA_ACCENT_MAX * AnimationFeel.CAMERA_ACCENT_FOV_DEG
+					var fov_ok: bool = punch_cam.fov >= fov_floor - 0.001 \
+						and punch_cam.fov <= Arena3D.CAMERA_FOV + 0.001
+					var dolly_ok: bool = punch_cam.global_position.z >= Arena3D.CAMERA_DISTANCE \
+						- AnimationFeel.CAMERA_ACCENT_DOLLY - 0.05
+					var clear_of_yard := true
+					for box in prop_yard.camera_obstacles():
+						if box.grow(0.05).has_point(punch_cam.global_position):
+							clear_of_yard = false
+					var head_1: Vector2 = punch_cam.unproject_position(prop_yard.world_point_of(
+						live_p1.global_position + Vector2(0.0, -96.0)))
+					var head_2: Vector2 = punch_cam.unproject_position(prop_yard.world_point_of(
+						live_p2.global_position + Vector2(0.0, -96.0)))
+					var framed: bool = head_1.x >= 0.0 and head_1.x <= view_size.x \
+						and head_1.y >= 0.0 and head_1.y <= view_size.y \
+						and head_2.x >= 0.0 and head_2.x <= view_size.x \
+						and head_2.y >= 0.0 and head_2.y <= view_size.y
+					if not (fov_ok and dolly_ok and clear_of_yard and framed):
+						lens_ok = false
+						lens_detail += " [d%.0f yaw%+.0f fov %.2f dolly %s yard %s frame %s]" % [
+							spacing, lean, punch_cam.fov, str(dolly_ok), str(clear_of_yard), str(framed)]
+			live_p1.global_position = home_p1
+			live_p2.global_position = home_p2
+			prop_yard.hold_exchange_yaw(0.0, 1)
+			prop_yard.speaker_box_reset()
+			prop_yard._update_camera(1.0 / 60.0)
+			_check(lens_ok and saw_accent,
+				"the SPEAKER BOX! punch-in stays inside the frustum and clearance bounds in all 9 pairings",
+				lens_detail.strip_edges() if not lens_ok else
+					"9 pairings clear, tightest fov %.2f deg (authored %.0f)" % [worst_fov,
+						Arena3D.CAMERA_FOV])
+
+			# ---- The qualifying K.O.: BRAGADAPS! featured, the ordinary word suppressed ------
+			fx.clear_all()
+			comic.stop_all()
+			comic.reset_counts()
+			fx.reset_counts()
+			coord.reset_counts()
+			comic.debug_reset_rate_caps()
+			prop_yard.speaker_box_reset()
+			var box_fires_before: int = arena2.speaker_box_count()
+			var hype_home: int = live_p1.hype
+			live_p1.hype = BaseFighter.HYPE_MAX     # test-only: production only ever READS hype
+			var ko_result := {
+				"attack_id": &"upper_box", "damage": 15, "blocked": false, "parried": false,
+				"ignored": false, "counter": false, "on_beat": true, "ko": true, "punish": false,
+			}
+			arena2._on_strike_resolved(live_p1, live_p2, ko_result)
+			var strike_words: int = comic.total_fires()
+			var strike_rings: int = fx.play_count(&"bass_shockwave")
+			arena2._on_fighter_died()
+			var featured_total: int = comic.featured_count()
+			var box_fires_after: int = arena2.speaker_box_count()
+			var rattle_live: float = prop_yard.speaker_rattle_amount()
+			prop_yard._update_camera(1.0 / 60.0)
+			var accent_live: float = prop_yard.camera_accent()
+			var rings_total: int = fx.play_count(&"bass_shockwave")
+			live_p1.hype = hype_home
+			_check(featured_total == 1 and comic.last_featured() == "BRAGADAPS!"
+					and box_fires_after == box_fires_before + 1 and strike_words == 0
+					and strike_rings == 1 and rings_total == 2
+					and rattle_live > 0.0 and accent_live > 0.0,
+				"the qualifying K.O. features BRAGADAPS! at the cabinet and suppresses the ordinary word",
+				"ordinary words %d, featured %d, rings %d -> %d, rattle %.1f %%, accent %.2f" % [
+					strike_words, featured_total, strike_rings, rings_total,
+					rattle_live * 100.0, accent_live])
+			# The same K.O. at low Hype draws the ordinary word and no blowout at all, so the
+			# finisher is a gate on the moment and not a decoration of every K.O.
+			prop_yard.speaker_box_reset()
+			comic.stop_all()
+			comic.reset_counts()
+			fx.reset_counts()
+			comic.debug_reset_rate_caps()
+			var cold_home: int = live_p1.hype
+			live_p1.hype = 0
+			arena2._on_strike_resolved(live_p1, live_p2, ko_result)
+			var cold_words: int = comic.total_fires()
+			arena2._on_fighter_died()
+			live_p1.hype = cold_home
+			prop_yard.speaker_box_reset()
+			comic.stop_all()
+			fx.clear_all()
+			_check(arena2.speaker_box_count() == box_fires_after
+					and comic.featured_count() == 0 and cold_words >= 1,
+				"the same K.O. at low Hype draws the ordinary word and no blowout",
+				"words %d, blowouts %d -> %d, featured %d" % [cold_words, box_fires_after,
+					arena2.speaker_box_count(), comic.featured_count()])
+
+			# ---- The LOADING warm pass covers the whole combined FX path ---------------------
+			_check(arena2.warmup_done and arena2.fx_warm_steps() == 6
+					and fx.has_sheet(&"hit_spark") and fx.has_sheet(&"bass_shockwave")
+					and fx.sprite_count() == 6 and comic.label_count() == ComicCallout2D.POOL_SIZE,
+				"the LOADING warm-up pays the whole combined FX path once",
+				"%d FX passes, %d warm-up steps, %d pooled sprites, %d labels" % [
+					arena2.fx_warm_steps(), arena2.warmup_steps, fx.sprite_count(),
+					comic.label_count()])
+
+			# ---- 600 simulated strikes: no node growth, no object growth, no hitch ----------
+			fx.clear_all()
+			comic.stop_all()
+			comic.reset_counts()
+			fx.reset_counts()
+			coord.reset_counts()
+			comic.debug_reset_rate_caps()
+			var nodes_before: int = arena2.find_children("*", "", true, false).size()
+			var objects_before := float(Performance.get_monitor(Performance.OBJECT_COUNT))
+			var spikes_before: int = arena2.hitch_log.spike_count()
+			for tick in 600:
+				var pattern := tick % 4
+				coord.begin(live_p1, live_p2, strike_result, fx_point)
+				coord.contribute(&"blocked" if pattern == 3 else &"hit")
+				if pattern == 1 or pattern == 3:
+					coord.contribute(&"counter")
+				if pattern >= 2:
+					coord.contribute(&"beat")
+				coord.commit()
+				fx.debug_advance(1.0 / 60.0)
+				comic.debug_advance(1.0 / 60.0)
+			var nodes_after: int = arena2.find_children("*", "", true, false).size()
+			var objects_after := float(Performance.get_monitor(Performance.OBJECT_COUNT))
+			_check(nodes_after == nodes_before and objects_after == objects_before
+					and arena2.hitch_log.spike_count() == spikes_before,
+				"600 simulated strike frames create no node, no object and no hitch spike",
+				"nodes %d -> %d, objects %.0f -> %.0f, spikes %d -> %d" % [nodes_before,
+					nodes_after, objects_before, objects_after, spikes_before,
+					arena2.hitch_log.spike_count()])
+
+			# ---- F9 switches the whole layer off and back on without leaving a sprite -------
+			var fx_off: bool = arena2.toggle_strike_fx()
+			var quiet: bool = fx.play_at_world(&"hit_spark", fx_point, 1.0) == false \
+				and comic.fire_featured("BRAGADAPS!", fx_point) == false
+			var fx_back: bool = arena2.toggle_strike_fx()
+			_check(not fx_off and quiet and fx_back and fx.playing_count() == 0
+					and comic.active_count() == 0,
+				"F9 switches strike FX off and back on, drawing nothing while off",
+				"off -> on = %s, silent while off = %s, sprites live %d, labels live %d" % [
+					str(fx_back), str(quiet), fx.playing_count(), comic.active_count()])
+			fx.clear_all()
+			comic.stop_all()
+			fx.set_enabled(true)
+			comic.set_enabled(true)
 		var wide: Dictionary = StageLayout.compute(Vector3(3.2, 1.4, 1.6),
 			Vector3(2.0, 2.6, 0.8))
 		_check(bool(wide["frame_ok"]) and is_equal_approx(float(wide["speaker_x"]),

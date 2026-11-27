@@ -365,7 +365,23 @@ var arcade_vfx: ArcadeVFX2D = null
 ## Pre-pooled comic callouts (PART D). Same layer, same camera, same read-only contract:
 ## twelve SFX strings over the impact point, never a gameplay value.
 var comic_callouts: ComicCallout2D = null
+## PART L: the per-strike presentation coordinator. It is the ONE place a resolved strike turns
+## into a spark, a word, a ring and a note request, so the hit / counter / on-beat readings of
+## the same moment can no longer double up.
+var strike_fx: StrikePresentation = null
 var vfx_layer: CanvasLayer = null
+## The `SPEAKER BOX!` finisher: the attacker whose qualifying K.O. is waiting for the death
+## signal, and how many times the blowout has actually fired (headless checks).
+var _speaker_box_pending: BaseFighter = null
+var _speaker_box_fires: int = 0
+## Passes the PART L warm-up actually ran (the boot prints the total; the checks read this).
+var _fx_warm_steps: int = 0
+## The pooled music notes leave AFTER the contact spark has started to clear. Scalars, not a
+## Timer node and not a tween: nothing is allocated per strike.
+var _note_delay: float = 0.0
+var _note_pos: Vector2 = Vector2.ZERO
+var _note_face: int = 1
+var _note_heavy: bool = false
 
 @onready var p1: BaseFighter = $P1
 @onready var p2: BaseFighter = $P2
@@ -547,6 +563,10 @@ func _process(delta: float) -> void:
 		_refresh_debug_chip()
 	_govern_quality(delta)
 	_thump = maxf(0.0, _thump - delta * THUMP_DECAY)
+	if _note_delay > 0.0:
+		_note_delay = maxf(0.0, _note_delay - delta)
+		if _note_delay <= 0.0:
+			_flush_strike_note()
 	_follow_action(delta)
 	_update_shake(delta)
 	_push_beat_phase()
@@ -761,6 +781,12 @@ func _unhandled_input(event: InputEvent) -> void:
 				if hud != null:
 					hud.show_toast("COMIC CALLOUTS · %s" % ("ON" if on else "OFF"))
 				_refresh_debug_chip()
+		KEY_F9:
+			# PART L4: strike FX on/off as one switch, so the finisher can be A/B'd cleanly.
+			var fx_on := toggle_strike_fx()
+			if hud != null:
+				hud.show_toast("STRIKE FX · %s" % ("ON" if fx_on else "OFF"))
+			_refresh_debug_chip()
 
 
 # =========================================================================
@@ -867,20 +893,32 @@ func _on_strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dic
 			&"hit_onbeat" if on_beat else &"hit")
 	var fx_point := target.global_position + Vector2(0.0, -110.0) if target != null \
 		else attacker.global_position + Vector2(0.0, -100.0)
-	# PART D: the comic SFX text at the same impact point, classified from the shipped move
-	# table. Every contact reaches the layer, including a guarded one (its own block/parry
-	# category), so the routing lives in one place instead of in this handler.
-	if comic_callouts != null and arena3d != null:
-		comic_callouts.register_strike(attacker, target, result, arena3d.world_point_of(fx_point))
-	# Arcade FX: a spark on every unblocked contact, and the bass shockwave on a heavy strike
-	# that landed on the beat — timing reads as a visual, not only as a sound.
-	if not bool(result.get("blocked", false)):
-		_play_arcade_fx(&"hit_spark", fx_point, 0.55 if on_beat else 0.4)
-		var fx_heavy := StringName(result.get("attack_id", &"")) in BaseFighter.HEAVY_ATTACK_IDS
-		if on_beat and fx_heavy:
-			_play_arcade_fx(&"bass_shockwave", fx_point, 1.0)
+	# PART L: ONE coordinator per resolved strike. The contact, the counter flag and the
+	# on-beat flag are three readings of the same instant, fed in as contributions to one record,
+	# so a heavy counter landed on the beat draws one spark, one word and one ring instead of one
+	# of each per reading (AGENTS.md PART L1).
+	var speaker_box := _speaker_box_qualifies(attacker, result)
+	if speaker_box:
+		# The blowout owns this strike's word and fires on the death signal, one frame later.
+		_speaker_box_pending = attacker
+	var strike_out: Dictionary = {}
+	if strike_fx != null and arena3d != null:
+		strike_fx.begin(attacker, target, result, arena3d.world_point_of(fx_point), speaker_box)
+		strike_fx.contribute(&"blocked" if bool(result.get("blocked", false)) else &"hit")
+		if bool(result.get("counter", false)):
+			strike_fx.contribute(&"counter")
+		if on_beat:
+			strike_fx.contribute(&"beat")
+		if StringName(result.get("attack_id", &"")) in BaseFighter.HEAVY_ATTACK_IDS:
+			strike_fx.contribute(&"heavy")
+		if bool(result.get("ko", false)):
+			strike_fx.contribute(&"ko")
+		strike_out = strike_fx.commit()
+	var fx_word_ok := strike_fx == null or bool(strike_out.get("word", false))
+	var fx_notes_ok := strike_fx == null or bool(strike_out.get("notes", false))
 	# Punish: the hit interrupted an attack or a taunt, so it gets the show-off callout.
-	if bool(result.get("punish", false)) and not bool(result.get("blocked", false)):
+	if bool(result.get("punish", false)) and not bool(result.get("blocked", false)) \
+			and fx_word_ok and not speaker_box:
 		_announce_callout(&"punish")
 
 	# Patois callouts (AGENTS.md §8). TUMP OUT HIM TEET! answers a heavy upper-box / tump
@@ -891,7 +929,9 @@ func _on_strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dic
 	# replaces the generic line instead of stacking two pills.
 	var kid_mic_counter := attacker != null and attacker.fighter_key == &"young_selecta" \
 		and bool(result.get("counter", false)) and (hit_id == &"strong" or hit_id == &"upper_box")
-	if unblocked:
+	# PART L2d: on the qualifying K.O. the finisher features `BRAGADAPS!` at the cabinet, so the
+	# ordinary hit/K.O. word is suppressed for this strike instead of stacking under it.
+	if unblocked and not speaker_box and fx_word_ok:
 		if kid_mic_counter:
 			_announce_callout(&"stun")
 		else:
@@ -924,8 +964,11 @@ func _on_strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dic
 		var attack_id := StringName(result.get("attack_id", &""))
 		var heavy_hit := attack_id in BaseFighter.HEAVY_ATTACK_IDS
 		var face := attacker.facing if attacker != null else 1
-		if heavy_hit or on_beat:
-			_add_note_trail(target.global_position + Vector2(0.0, -96.0), face, heavy_hit)
+		if (heavy_hit or on_beat) and fx_notes_ok:
+			# PART L1: the coordinator has already decided the note burst is affordable (it is
+			# the first cue trimmed when the callout pool is spent). The notes leave once the
+			# contact spark has started to clear, from one preallocated slot.
+			_schedule_strike_note(target.global_position + Vector2(0.0, -96.0), face, heavy_hit)
 		if bool(result.get("counter", false)):
 			_add_impact_frame(&"counter")
 			_zoom_punch_burst(0.06)
@@ -937,6 +980,85 @@ func _on_strike_resolved(attacker: BaseFighter, target: BaseFighter, result: Dic
 func music_bed_silent() -> bool:
 	return MusicBed.is_off() and not MusicBed.is_playing() \
 		and MusicBed.current_db() <= MusicBed.SILENT_DB + 0.01
+
+
+## PART L2: the `SPEAKER BOX!` gate. A qualifying K.O. is a round-winning HEAVY contact (or a
+## counter) landed while the attacker's Crowd Hype meter sits at its maximum. The meter is READ
+## at resolve time and never spent, granted or clamped here, which is why the Hype rules are
+## untouched; the round-winning part is carried by `result["ko"]`, which is what ends a round.
+func _speaker_box_qualifies(attacker: BaseFighter, result: Dictionary) -> bool:
+	if attacker == null or arena3d == null or strike_fx == null:
+		return false
+	if not bool(result.get("ko", false)):
+		return false
+	var heavy := bool(result.get("counter", false)) \
+		or StringName(result.get("attack_id", &"")) in BaseFighter.HEAVY_ATTACK_IDS
+	return heavy and attacker.hype >= BaseFighter.HYPE_MAX
+
+
+## PART L2: `SPEAKER BOX!` itself, fired once when the qualifying K.O. lands.
+##   (a) the delivered bass ring runs its whole green -> gold -> red sequence at 1.6x the
+##       ordinary ring's size, from the cabinet's own world anchor;
+##   (b) one bounded cabinet rattle on `jamaican_speaker.glb` (its own 4.5 % clamp, separate
+##       from the 1.5 % beat pulse) on top of the existing on-beat bass thump cue;
+##   (c) a subtle punch-in that borrows the audited cinematic-accent clamp;
+##   (d) `BRAGADAPS!` featured at the blowout, with the ordinary word already suppressed.
+func _fire_speaker_box(attacker: BaseFighter) -> void:
+	if arena3d == null or strike_fx == null or attacker == null:
+		return
+	_tag_hitch(&"speaker_box")
+	var anchor := arena3d.speaker_cabinet_anchor()
+	strike_fx.finisher_ring(anchor)
+	arena3d.speaker_rattle(1.0)
+	Sfx.play(&"hit_onbeat")
+	arena3d.speaker_box_punch(1 if attacker == p1 else -1)
+	strike_fx.feature_word("BRAGADAPS!", anchor)
+	_speaker_box_fires += 1
+
+
+## PART L1: hold the pooled music notes until the contact spark has started to clear. Four
+## scalars on this node, no Timer, no tween, no allocation.
+func _schedule_strike_note(at: Vector2, facing: int, heavy: bool) -> void:
+	_note_pos = at
+	_note_face = facing if facing != 0 else 1
+	_note_heavy = heavy
+	_note_delay = StrikePresentation.NOTE_DELAY
+
+
+func _flush_strike_note() -> void:
+	_add_note_trail(_note_pos, _note_face, _note_heavy)
+
+
+## Headless hook: fire the pending note burst now, so a check does not have to wait 0.22 s.
+## Returns true when there was one waiting. Nothing in the game calls it.
+func flush_strike_notes() -> bool:
+	if _note_delay <= 0.0:
+		return false
+	_note_delay = 0.0
+	_flush_strike_note()
+	return true
+
+
+## PART L4: the F9 master switch. Off stops both FX layers and clears what is playing; on
+## restores them, so the finisher can be A/B'd on the same blow-up from the same seat.
+func toggle_strike_fx() -> bool:
+	var on := strike_fx == null or not strike_fx.is_enabled()
+	if strike_fx != null:
+		strike_fx.set_enabled(on)
+	if arcade_vfx != null:
+		arcade_vfx.set_enabled(on)
+	if comic_callouts != null:
+		comic_callouts.set_enabled(on)
+	return on
+
+
+func strike_fx_enabled() -> bool:
+	return strike_fx != null and strike_fx.is_enabled()
+
+
+## How many times `SPEAKER BOX!` has fired this session (headless checks).
+func speaker_box_count() -> int:
+	return _speaker_box_fires
 
 
 ## A fighter entering KO: the dramatic arcade drop (fired once per K.O.).
@@ -958,6 +1080,13 @@ func _on_fighter_died() -> void:
 		var downed: BaseFighter = p1 if winner_side == 1 else p2
 		if downed != null:
 			_play_arcade_fx(&"ko_callout", downed.global_position + Vector2(0.0, -110.0), 1.0)
+	# PART L2: the qualifying blowout fires on the death signal, after the ordinary K.O. cues,
+	# so it is the last and largest thing on the frame. The pending attacker is always cleared,
+	# so a plain K.O. can never inherit a blowout.
+	var finisher_attacker := _speaker_box_pending
+	_speaker_box_pending = null
+	if finisher_attacker != null:
+		_fire_speaker_box(finisher_attacker)
 
 
 ## Round win: the winner throws its celebration pose while the result banner runs
@@ -1271,6 +1400,51 @@ func _prewarm_effects() -> int:
 	return 2
 
 
+## PART L3: the combined strike-FX path, warmed behind the LOADING overlay. Both delivered
+## sheets are stepped once (which uploads the texture and compiles the additive CanvasItem
+## draw), the featured word is shaped, placed and hidden, and a whole `SPEAKER BOX!` pass runs
+## inside the frustum — the green->gold->red ring, the cabinet rattle and the punch-in — then
+## every piece is put back at rest and the trigger counters are zeroed. The warm effects are
+## stopped before the overlay is lifted, so nothing drawn here can reach the first frame.
+func _warm_strike_fx() -> int:
+	if arcade_vfx == null or arena3d == null or strike_fx == null:
+		return 0
+	var front := arena3d.camera
+	var at := arena3d.world_point_of(Vector2(640.0, 430.0)) if front != null else Vector3.ZERO
+	var steps := 0
+	if arcade_vfx.play_at_world(&"hit_spark", at, 1.0):
+		steps += 1
+	if arcade_vfx.play_accent(&"bass_shockwave", at, StrikePresentation.RING_EDGE,
+			StrikePresentation.RING_TINT, 1.0, StrikePresentation.RING_SCALE):
+		steps += 1
+	if strike_fx.feature_word("BRAGADAPS!", at):
+		steps += 1
+	if strike_fx.finisher_ring(arena3d.speaker_cabinet_anchor()):
+		steps += 1
+	arena3d.speaker_rattle(1.0)
+	steps += 1
+	arena3d.speaker_box_punch(0)
+	steps += 1
+	# Present nothing: the ring is stopped, the labels hidden, the lens and the cabinet reset
+	# (a decaying accent left on the boot frame is exactly what the F6 frustum comparison
+	# reads, so it is cleared here rather than left to decay).
+	arena3d.speaker_box_reset()
+	arcade_vfx.clear_all()
+	if comic_callouts != null:
+		comic_callouts.stop_all()
+	arcade_vfx.reset_counts()
+	if comic_callouts != null:
+		comic_callouts.reset_counts()
+	strike_fx.reset_counts()
+	_fx_warm_steps = steps
+	return steps
+
+
+## PART L3: how many combined-FX passes the LOADING warm-up ran (0 before it completes).
+func fx_warm_steps() -> int:
+	return _fx_warm_steps
+
+
 ## Stage thump: one micro-pulse per 132 BPM downbeat (BeatService.beat).
 func _on_beat(_beat_index: int) -> void:
 	_thump = 1.0
@@ -1483,6 +1657,10 @@ func _setup_arcade_vfx() -> void:
 	comic_callouts.name = "ComicCallouts"
 	comic_callouts.camera = arcade_vfx.camera
 	vfx_layer.add_child(comic_callouts)
+	# PART L: one coordinator for the whole match, created with the layer it drives.
+	strike_fx = StrikePresentation.new()
+	strike_fx.arcade = arcade_vfx
+	strike_fx.comic = comic_callouts
 	_refresh_debug_chip()
 
 
@@ -1514,6 +1692,9 @@ func _on_round_started(round_index: int) -> void:
 	MusicBed.stop()
 	_match_over = false
 	_victory_music_started = false
+	# A blowout waits for its own K.O. and never crosses a round boundary.
+	_speaker_box_pending = null
+	_note_delay = 0.0
 	if arena3d != null:
 		# No new round opens on last round's celebration.
 		arena3d.reset_atmosphere()
@@ -1801,6 +1982,9 @@ func run_warmup() -> void:
 	if not headless:
 		warmup_steps += _prewarm_effects()
 	warmup_steps += _warm_clips()
+	# PART L3: the whole combined strike-FX path, warmed here so the first heavy counter, the
+	# first rapid combo and the first `SPEAKER BOX!` pay nothing mid-match.
+	warmup_steps += _warm_strike_fx()
 	if arena3d != null and not headless:
 		# One of each 3D effect, at the fight plane, behind the overlay.
 		arena3d.spawn_spark(Vector2(640.0, 360.0), &"hit")

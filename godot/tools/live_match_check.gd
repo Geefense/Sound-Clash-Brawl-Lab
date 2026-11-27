@@ -255,10 +255,11 @@ func _check_press_frame() -> void:
 		await _free(arena)
 
 
-## Commit 4: the arcade FX layer with no sheets delivered. Nothing is drawn, each missing sheet
-## is reported exactly once, and 600 presented frames add no node to the arena.
+## Commit 4: the arcade FX layer. Two of the four sheets were DELIVERED on 2026-11-27 (PART L)
+## as six-frame horizontal strips; the other two are still missing and must stay a logged
+## no-op. Whatever is delivered plays on a fixed pool, and 600 presented frames add no node.
 func _check_arcade_vfx() -> void:
-	print("\n-- ARCADE VFX: no sheets delivered, 600 frames")
+	print("\n-- ARCADE VFX: two strips delivered, two missing, 600 frames")
 	var arena = await _spawn(&"feedback", &"lickshot")
 	var vfx: ArcadeVFX2D = arena.get("arcade_vfx")
 	var layer: CanvasLayer = arena.get("vfx_layer")
@@ -282,28 +283,44 @@ func _check_arcade_vfx() -> void:
 		if not vfx.has_sheet(kind):
 			missing += 1
 	_check(paths_ok, "all four sheet paths follow assets/sprites/arcade_fx/<name>_sheet.png")
-	_check(missing == 4, "no arcade FX sheet is delivered in this build", "%d missing" % missing)
-	_check(vfx.warning_count() == 4,
+	var delivered: int = 4 - missing
+	_check(delivered == 2 and missing == 2,
+		"the two delivered sheets load and the two undelivered ones stay missing",
+		"%d delivered, %d missing" % [delivered, missing])
+	_check(vfx.warning_count() == 2,
 		"exactly one warning per missing sheet", "%d warnings" % vfx.warning_count())
 	var each_once := true
 	for kind in expected:
 		if vfx.warned(kind) == vfx.has_sheet(kind):
 			each_once = false
 	_check(each_once, "each sheet is reported independently, and only once")
-	_check(vfx.sprite_count() == 0,
-		"no sprite pool exists without a sheet", "%d sprites" % vfx.sprite_count())
+	_check(vfx.sprite_count() == 6 and vfx.frame_count(&"hit_spark") == 6
+			and vfx.frame_count(&"bass_shockwave") == 6
+			and vfx.cell_px(&"hit_spark") == 128 and vfx.cell_px(&"bass_shockwave") == 256,
+		"a delivered strip pools three sprites and plays its six frames",
+		"%d sprites, %d/%d frames, %d/%d px cells" % [vfx.sprite_count(),
+			vfx.frame_count(&"hit_spark"), vfx.frame_count(&"bass_shockwave"),
+			vfx.cell_px(&"hit_spark"), vfx.cell_px(&"bass_shockwave")])
 	var before := arena.find_children("*", "Node", true, false).size()
-	# Poke every trigger: a missing sheet must stay a no-op, never a node factory.
+	# Poke every trigger 40 times: the delivered sheets recycle their three slots, and a missing
+	# sheet must stay a no-op — never a node factory.
 	for i in 40:
 		vfx.play_at_world(&"hit_spark", Vector3.ZERO)
 		vfx.play_at_world(&"bass_shockwave", Vector3.ZERO)
 		vfx.play_at_world(&"clash_callout", Vector3.ZERO)
 		vfx.play_at_world(&"ko_callout", Vector3.ZERO)
-	_check(vfx.playing_count() == 0, "nothing plays when no sheet exists")
-	# The layer holds exactly one node — `ArcadeVFX2D` itself — and that node holds no sprite.
+	_check(vfx.play_count(&"hit_spark") == 40 and vfx.play_count(&"bass_shockwave") == 40
+			and vfx.play_count(&"clash_callout") == 0 and vfx.play_count(&"ko_callout") == 0,
+		"delivered sheets play on every trigger and a missing sheet never does",
+		"spark %d, bass %d, clash %d, ko %d" % [vfx.play_count(&"hit_spark"),
+			vfx.play_count(&"bass_shockwave"), vfx.play_count(&"clash_callout"),
+			vfx.play_count(&"ko_callout")])
+	_check(vfx.playing_count() == 6,
+		"40 plays on a three-slot pool recycle it instead of growing",
+		"%d of %d sprites live" % [vfx.playing_count(), vfx.sprite_count()])
 	var layer_sprites: int = layer.find_children("*", "Sprite2D", true, false).size()
-	_check(layer_sprites == 0 and vfx.get_child_count() == 0,
-		"the FX layer creates no sprite without a sheet",
+	_check(layer_sprites == 6 and vfx.get_child_count() == 6,
+		"the FX layer holds exactly the six pooled sprites and nothing else",
 		"%d sprites, %d children" % [layer_sprites, vfx.get_child_count()])
 	for i in 600:
 		await process_frame
@@ -311,9 +328,9 @@ func _check_arcade_vfx() -> void:
 	# Never grows. A single expired transient (a spark or note trail the fight itself created)
 	# can leave the count one lower; only a list of new nodes is a leak.
 	_check(after <= before, "600 frames add no node to the arena", "%d → %d" % [before, after])
-	_check(vfx.warning_count() == 4,
+	_check(vfx.warning_count() == 2,
 		"600 frames add no further warning", "%d" % vfx.warning_count())
-	_check(vfx.playing_count() == 0, "still nothing playing after 600 frames")
+	_check(vfx.sprite_count() == 6, "still exactly six pooled sprites after 600 frames")
 	await _free(arena)
 
 
@@ -329,9 +346,10 @@ func _check_comic_callouts() -> void:
 	var vfx: ArcadeVFX2D = arena.get("arcade_vfx")
 	_check(comic != null and layer != null and comic.get_parent() == layer,
 		"the comic callouts sit on the existing VFX CanvasLayer")
-	_check(vfx != null and vfx.get_child_count() == 0,
+	_check(vfx != null and vfx.get_child_count() == vfx.sprite_count(),
 		"the sprite FX layer keeps no callout child",
-		"vfx children %d" % (vfx.get_child_count() if vfx != null else -1))
+		"vfx children %d, pooled sprites %d" % [vfx.get_child_count() if vfx != null else -1,
+			vfx.sprite_count() if vfx != null else -1])
 	if comic == null or layer == null:
 		await _free(arena)
 		return

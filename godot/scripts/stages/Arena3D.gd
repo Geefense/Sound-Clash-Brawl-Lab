@@ -233,6 +233,13 @@ const BPM := 132.0
 ## placement brief allows; the pulse multiplies the seat pass's scale instead of replacing it,
 ## so the tower never snaps back to its authored 1.9 m on the first beat.
 const SPEAKER_PULSE := 0.015
+## PART L: the `SPEAKER BOX!` cabinet rattle. A DEDICATED clamp, separate from the 1.5 % beat
+## pulse above — 4.5 % of the seated scale, on its own decay, with the two summed and clamped to
+## a 6 % total. The tower can therefore never leave the seat it was measured into at load, and
+## no finisher can stack a second rattle on top of a live one.
+const SPEAKER_RATTLE := 0.045
+const SPEAKER_RATTLE_MAX := SPEAKER_PULSE + SPEAKER_RATTLE
+const SPEAKER_RATTLE_DECAY := 1.9
 var _stage_energy_base: float = 0.0
 var _stage_pulse_amount: float = 0.0
 var _beat_phase: float = 0.0
@@ -269,6 +276,7 @@ var _stage_layout: Dictionary = {}
 var crowd3d: CrowdController3D = null
 var dj_booth: DJBooth3D = null
 var _pulse: float = 0.0
+var _rattle: float = 0.0
 var _kick: float = 0.0
 ## Velocity of the hit-stop punch spring. The lens is impulse-then-spring, never stepped:
 ## `_update_camera` integrates it every presented frame at 60 fps, so a frozen contact can
@@ -395,6 +403,55 @@ func spawn_strike_arc(at_px: Vector2, facing: int, heavy: bool) -> void:
 ## Bass thump: the subwoofer cones visibly punch out of the cabinets and settle back.
 func pulse_speakers(strength: float = 1.0) -> void:
 	_pulse = maxf(_pulse, clampf(strength, 0.0, 2.0))
+
+
+## The `SPEAKER BOX!` cabinet rattle: one bounded pulse, separate from the beat pulse, that
+## decays on its own clock. It is a scalar on the slot's seated scale — nothing inside the
+## imported mesh is animated and nothing is allocated.
+func speaker_rattle(strength: float = 1.0) -> void:
+	_rattle = maxf(_rattle, clampf(strength, 0.0, 1.0))
+
+
+## The rattle's current contribution, 0…SPEAKER_RATTLE (headless checks read this).
+func speaker_rattle_amount() -> float:
+	return clampf(_rattle * _rattle, 0.0, 1.0) * SPEAKER_RATTLE
+
+
+## World anchor of the delivered cabinet's cone: the centre of the tower's measured world AABB
+## at 55 % of its height, which is where the painted woofer actually sits. Falls back to a point
+## in front of the left tower when no model is delivered, so a caller never gets a zero vector.
+func speaker_cabinet_anchor() -> Vector3:
+	for slot in _sound_stacks:
+		if slot == null or slot.model == null:
+			continue
+		var box := _meshes_world_aabb(slot.model)
+		if box.size != Vector3.ZERO:
+			var centre := box.get_center()
+			return Vector3(centre.x, box.position.y + box.size.y * 0.55, centre.z)
+	return Vector3(-stage_speaker_x(), 1.4, stage_speaker_z())
+
+
+## The `SPEAKER BOX!` punch-in. It borrows the SAME clamped cinematic accent the 9-pairing
+## framing audit already exercises (`CAMERA_ACCENT_MAX`: dolly, yaw and FOV) at 0.80 of its
+## range, plus a hair of the hit-stop kick, which rides the one-total FOV ceiling. It therefore
+## cannot invent a tighter lens than the one the audits proved, and it changes no hit-stop.
+func speaker_box_punch(side: int = 0) -> void:
+	accent_camera(side, 0.80)
+	hit_kick(0.35)
+
+
+## Put the lens and the cabinet back at rest after a warm-up pass or an audit: the finisher can
+## never leave a decaying accent on the boot frame.
+func speaker_box_reset() -> void:
+	_accent = 0.0
+	_accent_velocity = 0.0
+	_accent_hold = 0
+	_kick = 0.0
+	_kick_velocity = 0.0
+	_kick_hold = 0
+	_rattle = 0.0
+	_update_speakers(0.0)
+	_update_camera(0.0)
 
 
 ## Heavy contact / KO / knockdown: a brief subtle zoom-in plus camera shake. Hit-stop itself
@@ -745,6 +802,7 @@ func _is_exchanging(fighter: BaseFighter) -> bool:
 # =========================================================================
 func _process(delta: float) -> void:
 	_pulse = move_toward(_pulse, 0.0, delta * 4.2)
+	_rattle = move_toward(_rattle, 0.0, delta * SPEAKER_RATTLE_DECAY)
 	# Scalar spring decay for the hit-stop punch (never a stepped or linear falloff).
 	if _kick_hold > 0:
 		_kick_hold -= 1
@@ -883,7 +941,9 @@ func _update_speakers(_delta: float = 0.0) -> void:
 	# multiplier about the slot's SEATED scale — `seat_scale_applied` comes from the one
 	# measure-then-place pass at load — so it is bounded to SPEAKER_PULSE (1.5 %) and can
 	# never undo the 2.6 m seat or allocate per frame. `speaker_pulse` off holds the seat.
-	var punch := clampf(_pulse * _pulse, 0.0, 1.0) * SPEAKER_PULSE if speaker_pulse else 0.0
+	var beat_punch := clampf(_pulse * _pulse, 0.0, 1.0) * SPEAKER_PULSE if speaker_pulse else 0.0
+	var rattle_punch := clampf(_rattle * _rattle, 0.0, 1.0) * SPEAKER_RATTLE
+	var punch := clampf(beat_punch + rattle_punch, 0.0, SPEAKER_RATTLE_MAX)
 	for slot in _sound_stacks:
 		if slot == null or slot.model == null:
 			continue

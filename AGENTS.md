@@ -7681,3 +7681,170 @@ ramp. That settles facing, scale, occlusion and interpenetration, and nothing mo
 native material and its 2,048² albedo on this mesh, two-sided culling on the thatch, the shadowless
 booth under the 18 m directional shadow, the two selector clips behind a wall, and the mic in a
 selector's hand.
+
+## PART L — Coordinated hit FX and the SPEAKER BOX! finisher (2026-11-27)
+
+Owner brief: coordinate the hit / counter / on-beat presentation of one strike, make the two
+newly uploaded arcade sheets play, add a `SPEAKER BOX!` K.O. finisher on the delivered cabinet,
+warm the whole path behind `LOADING`, and cover it with headless checks. Autonomous pass.
+
+### L0. The upload, and the grid it forced
+
+`989368b` (on `cf4ffbc`) adds exactly two files, both in `godot/assets/sprites/arcade_fx/`:
+
+| File | Size | Grid | Cell | Bytes | SHA-256 |
+| --- | --- | --- | --- | --- | --- |
+| `hit_spark_sheet.png` | 768 × 128 | **6 × 1** | 128 × 128 | 22,287 | `173fc7d8…c3c419` |
+| `bass_shockwave_sheet.png` | 1536 × 256 | **6 × 1** | 256 × 256 | 98,126 | `cadf6dae…211e489` |
+
+The layer was written for a **4 × 4 grid of 256 px cells** (`arcade_fx/README.md`), which these
+are not. Rather than re-export the owner's art or hard-code a second layout, the grid is now
+**read from the texture**: a sheet six times as wide as it is tall is a six-frame strip, anything
+else keeps the README 4 × 4 grid. `draw_scale_for(cell)` then keeps the authored footprint — a
+128 px cell draws at 0.90 and a 256 px one at 0.45, both covering the same 115 px on screen. The
+two undelivered sheets (`clash_callout`, `ko_callout`) still warn once each at boot and draw
+nothing, exactly as before. Both delivered sheets import **lossless** with
+`detect_3d/compress_to=0`: they are 2D only, so an additive glow is never VRAM-compressed into
+blocky edges. `arcade_fx/README.md` was rewritten to record the delivered layout.
+
+### L1. One strike, one spark, one word (StrikePresentation)
+
+A resolved strike reaches presentation from three readings of the same instant — the contact,
+the counter flag, the on-beat flag — plus, for the finisher, a fourth claim on its word. The old
+handler fired one spark, and on a heavy on-beat hit a second ring, from each reading; a heavy
+counter on the beat therefore stacked cues. `scripts/stages/StrikePresentation.gd` (new,
+`RefCounted`, presentation only) owns them now:
+
+* `begin(attacker, target, result, world_pos, featured)` opens one record from the resolution the
+  fight already produces (a second `begin` over an open record is counted, never opened twice);
+* `contribute(flag)` adds a reading — `hit`, `counter`, `beat`, `heavy`, `blocked`, `ko`,
+  `featured` — and is idempotent: the same reading twice is one flag set twice;
+* `commit()` fires **at most one spark, one word, one ring and one note request**, then closes
+  the record. A second `commit()` returns `{duplicate: true}` and fires nothing, and is counted.
+
+Signature and colours as shipped: a yellow-white contact spark (`1.0, 1.0, 0.90`) with a brief
+red edge on a heavy counter (`1.0, 0.20, 0.16`, settling over 0.14 s), a smaller on-beat ring
+(0.75× the layer's draw scale) with a green edge (`0.38, 1.0, 0.50`), and the pooled music notes
+held **0.22 s** so they cross the impact as the spark starts to clear. The note delay is four
+scalars on `TestArena` ticked in `_process` — no `Timer`, no tween, no node.
+
+**Pool-tight priority** is the brief's order, and it is measured: the contact word is placed
+FIRST so it can take the last free label; the contact spark can never be refused (the sheet pool
+recycles its oldest slot); with one free label left the extra notes are trimmed, then the
+secondary ring is skipped — never the spark and never the word. `last` is one dictionary that is
+`clear()`ed and refilled per strike, so a brawl of thousands of strikes allocates nothing after
+the first `commit()`.
+
+### L2. SPEAKER BOX!
+
+Gate (`TestArena._speaker_box_qualifies`): the strike's `result` carries `ko` (which is exactly
+what ends a round), the contact is heavy or a counter, and the attacker's Crowd Hype meter is at
+`HYPE_MAX` **when the strike resolves**. The meter is READ and never spent, granted or clamped,
+so the Hype rules are untouched; no new combat field exists.
+
+(a) **Ring.** `bass_shockwave_sheet.png` plays its full **green → gold → red** ramp
+(`0.32,1.0,0.45 → 1.0,0.82,0.22 → 1.0,0.24,0.20`) at **1.6×** the ordinary ring's scale, from the
+cabinet's own world anchor — the centre of the delivered tower's measured world AABB at 55 % of
+its height, i.e. where the painted woofer sits (`Arena3D.speaker_cabinet_anchor()`). Measured on
+the live scene: scale 0.72, colours green (0.32,1.00,0.45) → gold (1.00,0.82,0.22) → red
+(1.00,0.36,0.20) as the six-frame clip steps.
+
+(b) **Cabinet rattle.** One bounded pulse on `jamaican_speaker.glb` on its **own clamp** —
+`SPEAKER_RATTLE = 4.5 %` of the seated scale, decay 1.9/s, summed with the 1.5 % beat pulse and
+clamped to `SPEAKER_RATTLE_MAX = 6 %` — so the tower can never leave the seat measured at load.
+Measured: seat ×1.3695 → ×1.4311 (+4.5 %), back on the seat after the pulse. The existing
+on-beat bass thump cue (`Sfx.play(&"hit_onbeat")`) plays with it; no new audio stream.
+
+(c) **Punch-in.** `Arena3D.speaker_box_punch()` borrows the SAME cinematic-accent clamp the
+framing audits already exercise (`accent_camera(side, 0.80)` → 0.68 of `CAMERA_ACCENT_MAX`) plus
+`hit_kick(0.35)`, which rides the one-total FOV ceiling. It changes no hit-stop, no freeze length
+and no input timing. Measured with the punch held across **9 pairings** (three spacings × three
+exchange leans): every pairing stays clear of every `camera_obstacles()` box, keeps the dolly
+inside `CAMERA_DISTANCE − accent`, keeps the FOV inside its authored floor, and leaves both
+fighters inside the viewport — tightest FOV **29.22°** against the authored 30°. Nothing was
+weakened to make it pass.
+
+(d) **Word.** `BRAGADAPS!` is placed as a **featured** callout at the cabinet blowout (gold tint,
+1.05 s life, same clamp as every other callout, exempt from the per-fighter rate cap and the
+per-category cap), and the ordinary K.O./hit word is **suppressed for that same strike**: the
+comic layer fires no category word and `_announce_callout` is skipped. The same K.O. at low Hype
+draws the ordinary word and no blowout at all — asserted, so the finisher is a gate on the moment
+and not a decoration of every K.O. `ComicCallout2D.fire_featured()` never steals a playing label:
+with the pool exhausted it returns false and allocates nothing.
+
+### L3. LOADING pre-warm and the hitch audit
+
+`run_warmup()` now also runs `TestArena._warm_strike_fx()` — **6 passes** behind the overlay:
+both delivered sheets played once (texture upload + the additive `CanvasItem` compile), the
+featured word shaped and placed, the green → gold → red finisher ring, the cabinet rattle, and the
+punch-in — all at a world point inside the frustum, because a culled effect never uploads. It
+then puts everything back at rest: the ring stopped, the labels hidden, the rattle zeroed, and
+`speaker_box_reset()` clears the accent and the kick before the overlay lifts, so no decaying
+lens is left on the boot frame (the exact thing the F6 frustum comparison reads). The trigger
+counters are zeroed afterwards, so a check measures the match and not the boot. Warm-up steps
+went **44 → 50**; the pass runs in headless too (it is pool and label work, no renderer).
+
+`HitchLog` records **no additional spike** across the 600 simulated strike frames below.
+
+### L4. F9 — the A/B switch
+
+`F9` is a master switch for strike FX (`TestArena.toggle_strike_fx()`): it disables the sprite
+layer and the callout layer in one move, clears what is playing, and restores both. `F8` remains
+the callout-only switch on top of it; turning F9 back on re-enables callouts, so an owner who had
+switched F8 off before pressing F9 will find callouts on again. Toast: `STRIKE FX · ON/OFF`.
+
+### L5. What the checks prove
+
+| Suite | Baseline | Now |
+| --- | --- | --- |
+| `headless_roster_check` | 476 / 0 FAIL | **489 / 0 FAIL** (+13) |
+| `live_match_check` | 666 / 0 FAIL | **667 / 0 FAIL** (+1) |
+| `facing_audit` | 310 / 0 FAIL | **310 / 0 FAIL** |
+| `animation_feel_audit` | 444 / 0 FAIL | **444 / 0 FAIL** |
+
+The 13 new roster checks, with their measured values:
+
+1. both delivered sheets load as six-frame horizontal strips — 768×128 (6×1 of 128 px), 1536×256
+   (6×1 of 256 px);
+2. a 128 px strip frame draws at twice the scale of a 256 px one — 0.90 vs 0.45;
+3. hit + counter + beat on one strike = one spark, one word, one ring, one note request, and the
+   second commit is a counted duplicate;
+4. with one label left the notes and the secondary ring are trimmed, never the spark;
+5. the featured word takes the last free label, and an exhausted pool skips it (labels stay 6);
+6. the finisher ring runs green → gold → red at 1.6× (scale 0.72);
+7. the rattle uses its own 4.5 % clamp, total 6 %, and returns to the seat;
+8. the punch-in stays inside the frustum, clearance and FOV bounds in all 9 pairings;
+9. the qualifying K.O. features BRAGADAPS!, fires one blowout, keeps 2 rings (strike + blowout),
+   rattles 4.5 % and holds the accent at 0.85;
+10. the same K.O. at low Hype draws the ordinary word and no blowout;
+11. the LOADING warm-up pays the whole path once — 6 FX passes, 50 warm-up steps, 6 pooled
+    sprites, 6 labels;
+12. 600 simulated strike frames: nodes 219 → 219, ObjectDB objects 2670 → 2670, zero new hitch
+    spikes — literal zero growth, not a tolerance;
+13. F9 switches the layer off and back on, drawing nothing while off.
+
+The live suite's old "no sheet is delivered in this build" block was **intentionally replaced** by
+the delivered contract: two sheets load and pool (6 sprites, 6 frames each), the two missing ones
+still warn exactly once and never play, 40 plays on a three-slot pool recycle it instead of
+growing, and 600 frames add no node and no further warning. That is the +1 check.
+
+### L6. Pack effect
+
+Same project exported twice with `--export-release "Web"` (never `/docs`):
+
+| | Before this pass (`cf4ffbc`) | With both sheets |
+| --- | --- | --- |
+| `index.pck` | 44,455,072 B | **44,562,508 B** |
+
+**+107,436 B (+0.24 %)** for 120,413 B of PNG — both sheets are stored lossless and uncompressed
+on disk in the pack, with no mipmaps (`mipmaps/generate=false`), because a 6-frame additive overlay
+read at one screen size gains nothing from them.
+
+### L7. What is NOT verified
+
+Still no GPU (`sudo` blocked by `no_new_privileges`, no `xvfb`): **no Godot-rendered frame of the
+new FX exists**. What is asserted above is geometry, pooled-node state, colour values read off the
+live `Sprite2D` modulate, camera scalars and node/object counts. Not seen: the sheets' pixels on
+screen, the additive blend against the sand, the rattle's read on the tower at 8.6 m, the punch-in
+in motion, and the `BRAGADAPS!` label against the cabinet at the blowout. The 9-pairing punch
+check holds the lens pressure rather than animating it, so its spring timing is not exercised.

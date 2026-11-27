@@ -7064,9 +7064,129 @@ two DJs behind the rack has **not** been seen. The lighting numbers for the deck
 Sunset / Night were not measured separately either: the props keep their own albedo, cast no
 shadow and are lit by the existing stage rigs.
 
+## PART I (2026-11-27) — Overnight pass 2 of 2: the rigid fall, 12/12 cells supine
+
+Shipped runtime before this pass: **0 of 12** cells passed (inverted bodies, hovering, every
+P2 cell "not away"). After it: **12 of 12**, with `|up_y|` −0.03…+0.09, `chest_ny` +0.77…+0.93,
+the head away from the opponent in every cell, and the lowest drawn vertex at +0.015 m in every
+cell. Four suites green: roster 494, live **587**, facing 310, feel 444, 0 FAIL.
+
+### Why 0/12 (measured, not guessed)
+
+1. **The take bakes its own lying rotation.** The knockdown/KO clip ends in a pose that is
+   already rolled, and the runtime rolled the animated pose again with `-_fall * face * 45°` on
+   the pose pivot: two rolls about the same axis. `tools/diag_fall.gd` shows the metrics swinging
+   from `chest_ny +0.99` to `-0.94` inside one fall because of it.
+2. **45° is not enough and 90° was not either.** The frozen pose is often already leaning 20–30°,
+   so a fixed angle leaves exactly that much spine upright (`up_y` 0.27…0.42 with a fixed 90°).
+3. **Two metric bugs.** `chest_ny` was oriented by the facing *every frame* — but once the body is
+   flat the facing is perpendicular to the chest normal, so the flip decided nothing and a supine
+   Feedback read **−0.84** with its chest plainly up. And `head_away` compared the opponent's 2D
+   battle `x` with the model's 3D `x`; the arena draws P2 on the opposite side of the origin from
+   its battle `x`, so every P2 cell scored "not away" for a head that was away.
+
+### What the fall is now (`godot/scripts/fighters/FighterModel3D.gd`)
+
+* `_update_rigid_fall_state()` at the top of `_process` — the frame the state changes is the only
+  frame that still knows the standing pose, so the rigid frame is measured there.
+* `_begin_rigid_fall()` measures, in world space: `up` = hips→head, the opponent's side from the
+  two fighters' **world** `x` (`facing_sign` only as a fallback when there is no duel opponent),
+  the fall axis `a = forward × up`, the pivot's rest basis, its ancestor's transform and the hips
+  origin. The angle is **computed**, not assumed: the target is `up` lying flat pointing away from
+  the opponent, and `_rigid_flat_rad` is the signed angle from the measured `up` to it about `a` —
+  78–102° on the three rigs. Then `animation.speed_scale = 0`.
+* `_drive_clips()` returns early while `_rigid`, so no clip-baked lying rotation can add to the
+  roll; the pose that topples is the pose that existed at fall start.
+* `_apply_rigid_fall()` runs **last** in the presentation chain (after `_clamp_to_floor`, before
+  `_push_flash`): facing, then the rigid rotation about the hips, then the seat. Rotation:
+  `basis = anc⁻¹ · (Basis(a, angle) · rest)`; position: rotate the pivot's origin about the hips
+  origin, convert through `anc⁻¹`, then add the seat as a world `+Y` offset through `anc⁻¹`. Both
+  slots are built from measured world vectors only, so a mirrored or yawed presentation cannot
+  flip the result (`facing_sign` −1 for P2 was the old bug: it made P2 fall *toward* P1).
+* `_advance_rigid_seat()` drives the lowest **DrawnBounds** vertex to `+0.015 m`: the topple's own
+  motion (`rise`) is carried in full and the remaining gap is closed at no more than 2 cm/frame,
+  in both directions, so the get-up reverses with no pop. The seat is then **verified** by
+  re-sampling, because the offset travels through the pivot's ancestor chain: Feedback settled
+  2.4 cm low while the arithmetic read exactly on target. Root, collision and hitboxes are never
+  written; foot pin is off in KNOCKDOWN/KO (it already was).
+
+Running the seat last mattered: with it before `_animate_rig`/`_apply_feel_layer` the seat
+measured a pose the rig offsets had not moved yet, and Feedback sat 2.4 cm into the sand.
+
+### Assertions and metrics changed on purpose
+
+| Where | Was | Now | Why |
+| --- | --- | --- | --- |
+| `chest_ny` (`tools/qa_match.gd`) | flipped toward the facing on every frame | flipped toward the facing only while upright; lying, the rig constant (measured standing: `up × side` points backward on all three bodies) is used | the flip is perpendicular to the normal once flat, so it decided nothing and inverted the column for a supine body |
+| `head_away` (`tools/knockdown_table.gd`) | opponent's 2D battle `x` vs the body's 3D hips `x` | opponent's **3D model** `x` vs the body's 3D hips `x` | mixing 2D and 3D put every P2 cell on the wrong side |
+| facing hint (table, `pose_metrics`) | a 2D ±X hint | `Vector3.ZERO`, so the metric uses the model's own toe line | the presentation mirrors the 2D side; the toe line is the only unmirrored 3D reference |
+| `tools/live_match_check.gd` | knockdown floor + drift only | +3 checks per fighter: lying contract (`|up_y| ≤ 0.30`, `chest_ny ≥ 0.70`, head away), seat at 0.015 ± 0.02, get-up reversibility (≤ 3.5 cm/frame, upright again) | the contract now lives in the live suite too |
+
+The toe-line 5° facing audit needed **no** change: `facing_audit.gd` and `animation_feel_audit.gd`
+assert the toe line only in the standing/walking/attack/hitstun/jump states, never in KNOCKDOWN
+or KO (checked: 310 and 444 checks, unchanged and green with the bodies lying down). The lying
+contract replaces it in those states, as the brief required, without loosening anything upright.
+
+### The 12-cell table — shipped runtime vs this pass (forced path, peak-fall frame)
+
+| Rig | Slot | State | up_y before | up_y now | chest before | chest now | away before | away now | low before | low now |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| feedback | p1 | KNOCKDOWN | +0.323 | **−0.024** | −0.944 | **+0.842** | 0 | **1** | +0.291 | **+0.015** |
+| feedback | p1 | KO | −0.213 | **−0.027** | +0.724 | **+0.772** | 0 | **1** | +0.062 | **+0.015** |
+| feedback | p2 | KNOCKDOWN | +0.338 | **−0.029** | −0.939 | **+0.876** | 1 | **1** | +0.015 | **+0.015** |
+| feedback | p2 | KO | −0.218 | **−0.027** | +0.726 | **+0.772** | 1 | **1** | +0.048 | **+0.015** |
+| lickshot | p1 | KNOCKDOWN | −0.456 | **+0.064** | +0.662 | **+0.917** | 0 | **1** | +0.089 | **+0.015** |
+| lickshot | p1 | KO | −0.993 | **+0.043** | +0.004 | **+0.918** | 0 | **1** | +0.221 | **+0.015** |
+| lickshot | p2 | KNOCKDOWN | −0.426 | **+0.068** | +0.625 | **+0.895** | 1 | **1** | +0.073 | **+0.015** |
+| lickshot | p2 | KO | −0.993 | **+0.043** | +0.002 | **+0.918** | 1 | **1** | +0.169 | **+0.015** |
+| young_selecta | p1 | KNOCKDOWN | +0.147 | **+0.084** | −0.970 | **+0.930** | 0 | **1** | −0.021 | **+0.015** |
+| young_selecta | p1 | KO | +0.844 | **+0.063** | −0.104 | **+0.932** | 0 | **1** | +0.236 | **+0.015** |
+| young_selecta | p2 | KNOCKDOWN | +0.288 | **+0.094** | −0.952 | **+0.918** | 1 | **1** | +0.032 | **+0.015** |
+| young_selecta | p2 | KO | +0.832 | **+0.063** | −0.309 | **+0.920** | 1 | **1** | +0.252 | **+0.015** |
+
+0/12 → **12/12**. No cell is worse than the shipped runtime on any metric (`pivot_rz` is 0 in both
+paths now: the procedural fall roll is off while the rigid fall owns the body).
+
+### Harness
+
+`tools/knockdown_table.gd` probes every cell twice: forced (`change_state`) and played (a real
+match driven through the InputMap with mirrored P2 bindings). The played path was dead when it
+was first run — `mirror_actions()` was called before any fighter existed, and `p1_` actions are
+registered in `BaseFighter._ready`, so every scripted P2 press was a no-op and all twelve played
+rows said "never reached". Mirroring after the boot fixed it (verified: the attacker walks in and
+lands heavies, the defender's health falls 100 → 46 → …). `tools/diag_rigid.gd`, `diag_seat.gd`,
+`diag_shoulders.gd` and `diag_play.gd` are the measurement-only tools used to get here.
+
+With `--played` the run reaches **6 of 12** cells: all six KOs (the six knock downs are not
+reachable with a scripted heavy string at all — that defender runs out of health and hits KO
+first). On those six the played and forced paths agree on the seat exactly (`d_low` 0.000–0.002 m)
+and on the chest normal within 0.06, but the hips→head tilt differs by 0.001–0.027 and the pivot
+angle by 1.3–3.8°: a played KO is pushed and lands on a different tick, so the two rows are not
+the same event. 2 of the 6 are inside the 1 cm / 3° bound, 4 are not — reported, not smoothed
+over. Both rows come from the same runtime code, so this is the harness's limit; the knockdown
+half of the contract is proved on the forced path and in the live suite.
+
+
+### Deviations logged
+
+* The seat samples the drawn body **every frame** while downed and verifies the result (two
+  `DrawnBounds` walks per downed frame per fighter, ~4 000 strided vertices each). Correctness of
+  a 2 cm seat over a 0.83 m topple is worth it; nothing is allocated.
+* The get-up is rigid too: the frozen pose rotates back upright and the clip resumes when `_fall`
+  reaches zero. Nothing pops, because the same rotation that laid the body down runs in reverse.
+* The seat's target is the **drawn** body, including the rig offsets, so the number the table reads
+  and the number the runtime drives are the same measurement by construction.
+
+### Not verified
+
+No frame was rendered (no GPU, `sudo` blocked by `no_new_privileges`). The supine poses are proved
+by numbers only — `|up_y|`, `chest_ny`, head-away, the drawn low vertex, and the get-up curve —
+never by eye. A visual pass over the twelve landing poses is still owed.
+
 ## Progress (overnight pass)
 
 | When | What | HEAD |
 | --- | --- | --- |
 | 2026-11-27, after STEP 0 | Confirmed `feature/3d-cel-shaded` at the remote tip `2ef9592` (the owner's two upload commits). Baselines before any change: roster 490, live 500, facing 310, feel 444, 0 FAIL. TASK 0 checked: the workflow already publishes one orphan commit per run. | `2ef9592` |
 | 2026-11-27, props done | TASK 1: deck + mic delivered, inspected, wired, tested, measured. Four suites green: roster 494, live 578, facing 310, feel 444, 0 FAIL. **Next: TASK 2, supine knockdowns (12 cells).** | see the commit below |
+| 2026-11-27, knockdowns done (final) | TASK 2: rigid fall + drawn-vertex seat. 0/12 → **12/12** cells supine (PART I has the side-by-side table). Two metric bugs fixed (`chest_ny` sign while lying, `head_away` 2D-vs-3D); the toe-line 5° audit needed no change because it never asserts in KNOCKDOWN/KO. Live suite gained 3 lying-contract checks per fighter. Four suites green: roster **494**, live **587**, facing **310**, feel **444**, 0 FAIL. Nothing left in this pass: FINISH verified `cmp` on the two AGENTS.md files, and push #2 is ff-only. | this commit |

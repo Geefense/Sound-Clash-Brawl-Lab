@@ -36,6 +36,9 @@ const FIGHTERS := [&"feedback", &"lickshot", &"young_selecta"]
 const TOLERANCE_DEG := 5.0
 const FLOOR_TOLERANCE := -0.05        # metres below world y 0 the body may never go
 const DRIFT_LIMIT := 0.5              # metres of horizontal drift allowed while downed
+## The lying contract's numbers, shared with tools/knockdown_table.gd.
+const LOW_TARGET := 0.015             # where the lowest drawn vertex sits while downed
+const LOW_SLACK := 0.02               # +- tolerance on that seat
 const PX_PER_M := 140.0
 const FLOOR_PX := 600.0
 const CENTER_PX := 640.0
@@ -897,12 +900,37 @@ func _check_knockdowns() -> void:
 		var lowest := INF
 		var body_drift := 0.0
 		var anchor_gap := 0.0
+		# The lying contract (overnight pass 2): at the fullest of the fall the body must be on its
+		# back with its head away from the opponent, and its lowest DRAWN vertex on the sand.
+		var opp_model: Node3D = arena3d.models.get("p1") if arena3d != null else null
+		var peak_fall := 0.0
+		var peak_up := 1.0
+		var peak_chest := 0.0
+		var peak_away := true
+		var peak_low := 0.0
+		var low_step := 0.0
+		var prev_low := INF
+		var upright_again := false
 		fighter.input_locked = false
 		var knocked := fighter.change_state(BaseFighter.State.KNOCKDOWN)
 		# 36 fall ticks + the get-up, plus slack.
 		for tick in 200:
 			await physics_frame
 			lowest = minf(lowest, _skinned_bounds(model)[0].y)
+			var fall_now := float(model.get("_fall"))
+			var drawn_low: float = _skinned_bounds(model)[0].y
+			if prev_low != INF and fall_now > 0.5:
+				low_step = maxf(low_step, absf(drawn_low - prev_low))
+			prev_low = drawn_low
+			if fall_now >= peak_fall:
+				peak_fall = fall_now
+				var lying := _lying_metrics(model, opp_model)
+				peak_up = absf(float(lying["up_y"]))
+				peak_chest = float(lying["chest_ny"])
+				peak_away = bool(lying["away"])
+				peak_low = drawn_low
+			if fall_now <= 0.01 and tick > 60:
+				upright_again = absf(_up_y(model)) >= 0.9
 			# The body itself must not teleport, and the render must stay anchored to the body:
 			# the pelvis is expected to travel ~a body length away when the fighter topples,
 			# so only these two are drift measures.
@@ -916,6 +944,17 @@ func _check_knockdowns() -> void:
 			% [key, body_drift, anchor_gap])
 		_check(_no_root_motion_tracks(model),
 			"%s: no installed take animates Hips/Root position — every clip plays in place" % key)
+		# The lying contract, on the played state: |up_y| <= 0.30, chest to world up
+		# (>= 0.70), head away from the opponent, and the lowest drawn vertex at 0.015 m +- 0.02.
+		_check(peak_fall >= 0.9 and peak_up <= 0.30 and peak_chest >= 0.70 and peak_away,
+			"%s: lies supine away from the opponent at the full fall (|up_y| %.2f, chest_ny %.2f, away %s)"
+			% [key, peak_up, peak_chest, str(peak_away)])
+		_check(absf(peak_low - LOW_TARGET) <= LOW_SLACK,
+			"%s: lowest drawn vertex on the sand at the full fall (%+.3f m, target %+.3f)"
+			% [key, peak_low, LOW_TARGET])
+		_check(low_step <= 0.035 and upright_again,
+			"%s: the seat reverses on the get-up with no pop (max step %.3f m, upright again %s)"
+			% [key, low_step, str(upright_again)])
 		await _free(arena)
 
 
@@ -1573,6 +1612,31 @@ func _view_size() -> Vector2:
 	# The window object is 64×64 headlessly, but the camera projects through the project's
 	# 1280×720 viewport; the audit must measure in that space.
 	return root.get_visible_rect().size
+
+
+## `|up_y|` of the body: hips -> head, which is the axis the lying contract measures.
+func _up_y(model: Node3D) -> float:
+	var hips := _bone_world(model, "Hips")
+	var head := _bone_world(model, "Head")
+	var up := head - hips
+	return (up.normalized() if up.length() > 0.0001 else Vector3.UP).y
+
+
+## The lying readout: up, chest normal and head-away, all in 3D world space. The chest normal's
+## sign is the rig constant measured standing (`up × side` points backward on every delivered
+## body), so it is flipped once here instead of being re-decided by a facing that is
+## perpendicular to the normal once the body is flat.
+func _lying_metrics(model: Node3D, opp_model: Node3D) -> Dictionary:
+	var hips := _bone_world(model, "Hips")
+	var head := _bone_world(model, "Head")
+	var side := (_bone_world(model, "LeftShoulder") - _bone_world(model, "RightShoulder"))
+	var up := (head - hips).normalized() if (head - hips).length() > 0.0001 else Vector3.UP
+	var chest := -up.cross(side.normalized())
+	var away := true
+	if opp_model != null:
+		var opp := opp_model.global_position.x - hips.x
+		away = (head.x - hips.x) * opp < 0.0
+	return {"up_y": up.y, "chest_ny": chest.y, "away": away}
 
 
 func _bone_world(model: Node3D, suffix: String) -> Vector3:

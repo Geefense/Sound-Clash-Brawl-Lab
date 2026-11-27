@@ -68,6 +68,12 @@ func _probe(key: StringName, slot: String, state_name: StringName, forced: bool)
 		return {"ok": false}
 	var arena3d = arena.get("arena3d")
 	var model: Node3D = arena3d.models.get(slot) if arena3d != null else null
+	# The opponent is measured in the SAME space as the body: the 3D model. The first version of
+	# this table mixed the fighter's 2D battle x with the model's 3D x, and the arena draws P2 on
+	# the opposite side of the origin from its battle x (P1 at 3D -X, P2 at 3D +X), so every P2
+	# cell scored "not away" for a head that was plainly away.
+	var opp_model: Node3D = arena3d.models.get("p2" if not as_p2 else "p1") \
+		if arena3d != null else null
 	var defender: BaseFighter = arena.p2 if as_p2 else arena.p1
 	var attacker: BaseFighter = arena.p1 if as_p2 else arena.p2
 	var state: int = STATES[state_name]
@@ -77,8 +83,13 @@ func _probe(key: StringName, slot: String, state_name: StringName, forced: bool)
 	if forced:
 		defender.change_state(state)
 	else:
+		# The p2_* actions have to be mirrored from p1_* AFTER a fighter exists: `p1_` actions are
+		# registered in BaseFighter._ready, so mirroring before the first boot created nothing and
+		# every scripted P2 press was a no-op (the table's played rows then said "never reached").
+		QAMatch.mirror_actions()
 		var prefix := "p1_" if as_p2 else "p2_"
 		attacker.use_local_input = true
+		attacker.input_locked = false
 		var guard := 0
 		while defender.state != state and guard < 1400:
 			guard += 1
@@ -105,11 +116,13 @@ func _probe(key: StringName, slot: String, state_name: StringName, forced: bool)
 	var ticks: Array[Dictionary] = []
 	for i in SETTLE + 60:
 		await physics_frame
-		var face_hint := Vector3(signf(attacker.global_position.x - defender.global_position.x), 0.0, 0.0)
-		var m := QAMatch.pose_metrics(model, face_hint)
+		# No world hint: the metric orients an upright body's chest by the model's own toe line,
+		# which is the only 3D reference that cannot be mirrored by the presentation.
+		var m := QAMatch.pose_metrics(model, Vector3.ZERO)
 		var hips: Vector3 = m["hips"]
 		var head: Vector3 = m["head"]
-		var opp_x: float = attacker.global_position.x
+		var opp_x: float = opp_model.global_position.x if opp_model != null \
+			else attacker.global_position.x
 		ticks.append({"fall": float(m["fall"]), "up": float(m["up_y"]),
 			"chest": float(m["chest_ny"]), "low": float(m["drawn_low_y"]),
 			"seat": float(m["visual_seat_y"]), "pivot": float(m["pivot_rz_deg"]),

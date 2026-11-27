@@ -229,11 +229,17 @@ static func pose_metrics(model: Node3D, face_hint: Vector3 = Vector3.ZERO) -> Di
 		var n := up.cross(shoulder_l - shoulder_r)
 		if n.length() > 0.0001:
 			chest_n = n.normalized()
-			# Which way the chest faces is the side the fighter faces. The caller passes that
-			# as world ±X (the slots are pinned to ±X); the toe line is only a fallback,
-			# because on a body already on the sand the toes no longer name the heading.
+			# The SIGN of `up × side` is a rig constant — measured standing, it points BACKWARD on
+			# all three delivered bodies — so it is not re-decided per frame. The previous rule
+			# flipped the normal toward the facing, which decides nothing once the body is lying
+			# (the facing is perpendicular to the normal there): a supine Feedback scored -0.84
+			# with its chest plainly up. Upright, the facing flip is kept so a rig that authors its
+			# shoulders the other way round still reads correctly.
 			var ref := face_hint if face_hint != Vector3.ZERO else toe_vector(model)
-			if ref != Vector3.ZERO and chest_n.dot(ref) < 0.0:
+			if absf(up.y) > 0.5:
+				if ref != Vector3.ZERO and chest_n.dot(ref) < 0.0:
+					chest_n = -chest_n
+			else:
 				chest_n = -chest_n
 	var bounds := skinned_bounds(model)
 	out["ok"] = true

@@ -306,6 +306,39 @@ var feet_offset: float = 0.0
 ## ALL facing lives on this one child pivot, with the model under it.
 var _pivot: Node3D = null
 var _visual_pivot: Node3D = null
+
+# ---- Rigid fall (overnight pass 2, 2026-11-27) -----------------------------------------
+## A knockdown is ONE rigid rotation of the pose that existed at fall start, in WORLD space,
+## about the hips: head away from the opponent, chest to world up, for P1 and P2 alike. Nothing
+## the take bakes in can add a second roll, because the take is frozen for exactly as long as
+## the body is down (`RIGID` + `animation.speed_scale = 0`).
+##
+## The axis is measured, never assumed: `a = forward × up`, where `forward` is the opponent's
+## side read from WORLD positions and `up` is hips→head. For a slot pinned to ±X that axis is
+## ±Z, so rotating +90° about it lays the body on its back with its head away from the
+## opponent — which is what `|up_y| ≤ 0.30` and `chest_ny ≥ 0.70` actually measure.
+const RIGID_FLAT_DEG := 90.0
+## Where the lowest DRAWN vertex is parked, and the most the seat may move in one frame.
+const RIGID_SEAT_TARGET := 0.015
+const RIGID_SEAT_STEP := 0.02
+## `DrawnBounds` walks up to 4 000 skinned vertices per mesh; only the residual needs it, so it
+## is sampled every other frame and the fall's own motion is carried in between.
+const RIGID_MEASURE_EVERY := 1
+
+var _rigid := false
+var _rigid_axis := Vector3.BACK
+var _rigid_rest_basis := Basis()
+var _rigid_anc_basis := Basis()
+var _rigid_anc_inv := Transform3D.IDENTITY
+var _rigid_origin := Vector3.ZERO
+var _rigid_hips := Vector3.ZERO
+var _rigid_seat := 0.0
+var _rigid_low := RIGID_SEAT_TARGET
+var _rigid_tick := 0
+## The exact angle that lays the measured `up` (hips→head) flat, computed from the standing pose
+## instead of being assumed to be 90°: a frozen hitstun pose is often already leaning 20-30°, and
+## a fixed 90° would leave exactly that much of the spine upright.
+var _rigid_flat_rad := PI * 0.5
 var _clock: float = 0.0
 var _lean: float = 0.0
 var _lunge: float = 0.0
@@ -976,6 +1009,7 @@ func _process(delta: float) -> void:
 			_measure_impact_times()
 			_measure_recoil_extreme()
 	_clock += delta
+	_update_rigid_fall_state()
 	_apply_facing()
 	_animate_pose(delta)
 	_drive_clips()
@@ -1013,6 +1047,11 @@ func _process(delta: float) -> void:
 	_apply_feel_layer(delta)
 	_pin_feet_to_ground()
 	_clamp_to_floor()
+	# Write order for a downed body: facing and every pose writer first, then the rigid fall
+	# rotation, then the seat — last, because the seat has to measure the pose that will actually
+	# be drawn. Run any earlier, it measured a body the rig offsets had not moved yet, and
+	# Feedback settled 2.4 cm low with the seat reading exactly on target.
+	_apply_rigid_fall()
 	_push_flash()
 
 
@@ -1039,7 +1078,9 @@ func _clamp_to_floor() -> void:
 	if skeleton == null or _pivot == null:
 		return
 	if _is_downed():
-		_seat_downed_core()
+		# The rigid fall seats the DRAWN body (DrawnBounds) as part of its own pass.
+		if not _rigid:
+			_seat_downed_core()
 		return
 	_clear_down_seat()
 	if _is_pinned_state() and _fall <= FALL_UPRIGHT:
@@ -1057,6 +1098,128 @@ func _clamp_to_floor() -> void:
 	var want := FLOOR_BONE_CLEARANCE - lowest
 	if want > 0.0:
 		_pivot.position.y += want
+
+
+## The frame the combat state puts the body on the ground is the only frame that still knows
+## the standing pose, so the rigid frame is measured there. The get-up ends it once the fall
+## ramp has run back to zero, which leaves the `VisualPivot` where the pose expects it.
+func _update_rigid_fall_state() -> void:
+	var downed := _is_downed()
+	if downed and not _rigid:
+		_begin_rigid_fall()
+	elif not downed and _rigid and _fall <= 0.01:
+		_end_rigid_fall()
+
+
+func _begin_rigid_fall() -> void:
+	if _visual_pivot == null or skeleton == null or _pivot == null:
+		return
+	var parent := _visual_pivot.get_parent() as Node3D
+	if parent == null:
+		return
+	var hips := _bone_world_pos("Hips")
+	var head := _bone_world_pos("Head")
+	if hips == Vector3.ZERO:
+		hips = _visual_pivot.global_position
+	var up := Vector3.UP
+	if (head - hips).length() > 0.0001:
+		up = (head - hips).normalized()
+	# The opponent's side comes from WORLD positions — never from a facing variable, which a
+	# mirrored or yawed presentation could report the other way round.
+	var side := 1.0
+	if fighter != null and fighter.duel_opponent != null and is_instance_valid(fighter.duel_opponent):
+		side = 1.0 if fighter.duel_opponent.global_position.x >= fighter.global_position.x else -1.0
+	elif float(facing_sign) < 0.0:
+		side = -1.0
+	_rigid_axis = Vector3(side, 0.0, 0.0).cross(up).normalized()
+	if _rigid_axis.length() < 0.5:
+		_rigid_axis = Vector3.BACK
+	# The target the spine must end on: horizontal, perpendicular to the fall axis, and pointing
+	# away from the opponent. `_rigid_flat_rad` is then the angle from the measured `up` to it,
+	# about the one axis the whole fall turns on.
+	var flat := Vector3(-side, 0.0, 0.0)
+	flat = (flat - _rigid_axis * flat.dot(_rigid_axis)).normalized()
+	if flat != Vector3.ZERO and up != Vector3.ZERO:
+		_rigid_flat_rad = atan2(up.cross(flat).dot(_rigid_axis), up.dot(flat))
+	else:
+		_rigid_flat_rad = PI * 0.5
+	_rigid_rest_basis = _visual_pivot.global_transform.basis
+	_rigid_anc_basis = parent.global_transform.basis
+	_rigid_anc_inv = parent.global_transform.affine_inverse()
+	_rigid_origin = _visual_pivot.global_transform.origin
+	_rigid_hips = hips
+	_rigid_seat = 0.0
+	_rigid_low = RIGID_SEAT_TARGET
+	_rigid_tick = 0
+	_rigid = true
+	if animation != null:
+		animation.speed_scale = 0.0
+
+
+## Facing has already been written this frame; this applies the fall rotation about the hips
+## and then the seat. The ancestry is pinned (`_animate_pose` zeroes the pose pivot while
+## `_rigid`), so the captured ancestor basis is still exact and no transform is read back from
+## a node written this tick.
+func _apply_rigid_fall() -> void:
+	if not _rigid or _visual_pivot == null:
+		return
+	var angle := _rigid_flat_rad * clampf(_fall, 0.0, 1.0)
+	var rot := Basis(_rigid_axis, angle)
+	_visual_pivot.basis = _rigid_anc_basis.inverse() * (rot * _rigid_rest_basis)
+	_rewrite_rigid_position(rot)
+	_advance_rigid_seat(rot)
+
+
+## Rotate rigidly about the hips position measured at fall start, then carry the seat.
+func _rewrite_rigid_position(rot: Basis) -> void:
+	if _visual_pivot == null:
+		return
+	var origin := _rigid_hips + rot * (_rigid_origin - _rigid_hips)
+	_visual_pivot.position = _rigid_anc_inv * origin \
+		+ _rigid_anc_basis.inverse() * Vector3(0.0, _rigid_seat, 0.0)
+
+
+## Drive the lowest DRAWN vertex to `RIGID_SEAT_TARGET`. The fall's own motion is carried in
+## full (the body descends because it is toppling, not because the seat snapped), and whatever
+## gap is left is closed at no more than `RIGID_SEAT_STEP` per frame, in both directions.
+func _advance_rigid_seat(rot: Basis) -> void:
+	_rigid_tick += 1
+	if _rigid_tick % RIGID_MEASURE_EVERY != 0:
+		return
+	var low := DrawnBounds.lowest_y(self)
+	if low == INF:
+		return
+	# `rise` is how far the fall itself moved the body since the last sample; it is carried in
+	# full, so the body descends WITH the topple instead of lagging it. `gap` is what is left of
+	# the seat and is closed at no more than `RIGID_SEAT_STEP`.
+	var rise := _rigid_low - low
+	var gap := RIGID_SEAT_TARGET - low
+	_rigid_seat += rise + clampf(gap, -RIGID_SEAT_STEP, RIGID_SEAT_STEP)
+	_rewrite_rigid_position(rot)
+	# Then verify what the seat actually did instead of trusting the arithmetic: the offset goes
+	# through the pivot's ancestor chain, and a rig that scales or rotates that chain would sit a
+	# constant few centimetres off while the prediction read exactly on target (Feedback did,
+	# 2.4 cm low). One extra sample per frame while the body is down is cheap next to that.
+	var after := DrawnBounds.lowest_y(self)
+	if after != INF:
+		var err := RIGID_SEAT_TARGET - after
+		if absf(err) > 0.002:
+			_rigid_seat += err
+			_rewrite_rigid_position(rot)
+			after = DrawnBounds.lowest_y(self)
+		_rigid_low = after if after != INF else low
+	else:
+		_rigid_low = low
+
+
+func _end_rigid_fall() -> void:
+	_rigid = false
+	_rigid_seat = 0.0
+	if _visual_pivot != null:
+		_visual_pivot.basis = Basis()
+		_visual_pivot.position = Vector3.ZERO
+	if animation != null:
+		animation.speed_scale = 1.0
 
 
 ## True while the combat state has the body on the ground (knockdown / K.O.). The feet are
@@ -1197,6 +1360,10 @@ func _play_role(role: StringName) -> void:
 ## `state`, `_attack_id` and `_celebrate_ticks` after the tick has already decided them.
 func _drive_clips() -> void:
 	if clips.is_empty() or fighter == null:
+		return
+	# While the body is down the take is frozen at the pose it had when the state changed: a
+	# knockdown/KO clip that bakes its own lying rotation would otherwise double the roll.
+	if _rigid:
 		return
 	_play_role(MixamoClips.role_for(fighter))
 	_drive_clip_time()
@@ -1356,7 +1523,10 @@ func _animate_pose(delta: float) -> void:
 	# NOTHING on this pivot may yaw: `VisualPivot` owns facing alone, so the whole body's
 	# forward stays within a few degrees of ±X in every animation (playtest fix 2026-11-24).
 	# The per-move body twist still reads, because it rides the spine in `_apply_twist()`.
-	_pivot.rotation.z = -_lean * face - _fall * face * PI * 0.5 * 0.94 + _spin_angle + roll * face
+	# The old procedural fall roll is off while the rigid fall owns the body: two rolls about the
+	# same axis is exactly the double-rotation this pass removes.
+	var fall_roll := 0.0 if _rigid else -_fall * face * PI * 0.5 * 0.94
+	_pivot.rotation.z = -_lean * face + fall_roll + _spin_angle + roll * face
 	_apply_twist(face)
 
 

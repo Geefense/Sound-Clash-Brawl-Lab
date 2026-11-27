@@ -27,10 +27,16 @@ const EXPECTED_MODELS := [
 ## Per-slot target height in metres, keyed by the model's file stem (PART 2, commit 6).
 ## `0.0` means "keep the delivered scale" — the mic and the stand are handheld props whose
 ## real size the export already carries, so they are never rescaled.
+## PART M (2026-11-27): the beach set is now a FULL-SIZE arcade stage, so the two wide slots
+## carry real shack/tower dimensions instead of table-top placeholders. The proportions are
+## the delivered files' own: the thatched hut is authored 0.947 × 0.659 × 0.630, so seating it
+## at 2.45 m tall makes it 3.52 m wide and 2.34 m deep — inside the brief's 2.35–2.55 ×
+## 3.4–3.7 window without a single non-uniform scale. The tower is authored 1.682 × 1.899 ×
+## 0.575, so 2.50 m tall makes it 2.21 m wide; the brief's 2.3–2.7 m band is the height.
 const TARGET_HEIGHT_M := {
-	"jamaican_speaker": 2.6,
-	"rasta_speaker": 2.6,
-	"dj_booth": 1.15,
+	"jamaican_speaker": 2.5,
+	"rasta_speaker": 2.5,
+	"dj_booth": 2.45,
 	"wireless_mic": 0.0,
 	"mic_stand": 0.0,
 }
@@ -91,6 +97,9 @@ const SEAT_EPSILON := 0.0005
 
 ## The instanced model, or null while the file is missing.
 var model: Node3D = null
+## Every `StandardMaterial3D` the native path built, so the stage can push its preset rim
+## through one loop instead of walking the meshes again. Empty on the cel path.
+var native_materials: Array[StandardMaterial3D] = []
 ## What the seating pass measured and applied, for the headless audit. `seat_scale` is 1.0 and
 ## `seat_offset_y` is 0.0 on an empty slot or when `auto_ground_y` is off.
 var measured_aabb := AABB()
@@ -151,11 +160,22 @@ func load_model() -> bool:
 	return true
 
 
+## PART M: the PBR values the whole beach set now wears (crisp PBR default). A painted
+## wooden cabinet with a lacquered paper cone is matte with a broad, weak highlight: 0.55
+## roughness, no metal, a 0.35 dielectric specular and a rim band that keeps the silhouette
+## off the illustrated sky. All four are ordinary StandardMaterial3D fields — nothing here
+## is a shader, so the Compatibility renderer draws the exact same surface.
+const PBR_ROUGHNESS := 0.55
+const PBR_SPECULAR := 0.35
+const PBR_RIM_TINT := 0.85
+const PBR_METALLIC := 0.0
+
 ## Keep the delivered look: one `StandardMaterial3D` per surface built from whatever the
 ## importer bound, with the physical values a printed speaker cabinet actually has. Returns
 ## the number of surfaces it touched.
 func _apply_native_materials(root: Node3D) -> int:
 	var touched := 0
+	native_materials.clear()
 	for child in root.find_children("*", "MeshInstance3D", true, false):
 		var mi := child as MeshInstance3D
 		if mi == null or mi.mesh == null:
@@ -172,15 +192,25 @@ func _apply_native_materials(root: Node3D) -> int:
 					albedo = shader_tex
 			std.albedo_texture = albedo
 			std.albedo_color = Color.WHITE
-			std.roughness = 1.0
-			std.metallic = 0.0
-			std.metallic_specular = 0.0
-			std.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+			# PART M (intentional change): the delivered surface used to be a fully diffuse
+			# (roughness 1.0, specular disabled) card. It is now a tuned PBR material, which is
+			# what makes the painted cabinets read as physical objects under the key light.
+			std.roughness = PBR_ROUGHNESS
+			std.metallic = PBR_METALLIC
+			std.metallic_specular = PBR_SPECULAR
+			std.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+			# Clean material rim: the same "lift the edge off the sky" band the fighters wear,
+			# built into the material instead of a second shader pass.
+			std.rim_enabled = true
+			std.rim = PBR_RIM_TINT
+			std.rim_tint = 0.30
 			# Mipmaps + anisotropic: the tower is read at 6-12 m, where an unfiltered 2048
 			# albedo aliases into noise on a Chromebook.
 			std.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 			if double_sided:
 				std.cull_mode = BaseMaterial3D.CULL_DISABLED
+			if not native_materials.has(std):
+				native_materials.append(std)
 			mi.set_surface_override_material(surface, std)
 			# The tower is stage dressing: it must not write into the shadow map the
 			# fighters' contact shadows are drawn from (the cel path relies on the
@@ -188,6 +218,19 @@ func _apply_native_materials(root: Node3D) -> int:
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			touched += 1
 	return touched
+
+
+## Push the stage preset's rim colour onto every native material this slot built. Albedo,
+## roughness and the delivered texture are never touched, so the tower keeps its print.
+func set_rim(colour: Color, strength: float) -> void:
+	var band := clampf(PBR_RIM_TINT * strength, 0.0, 1.0)
+	for material in native_materials:
+		# Godot 4's StandardMaterial3D carries the rim as an AMOUNT (`rim`) plus an
+		# albedo-bleed factor (`rim_tint`); the colour argument is kept in the signature
+		# because the toon path does use it, and the PBR band is a white edge.
+		material.rim_enabled = band > 0.0
+		material.rim = clampf(band, 0.0, 1.0)
+		material.rim_tint = 0.30
 
 
 ## True while the slot is empty. Used by the headless check and the tree dump.

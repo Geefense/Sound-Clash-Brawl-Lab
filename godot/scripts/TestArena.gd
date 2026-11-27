@@ -37,11 +37,12 @@ extends Node2D
 ## Sound (backlog item B8): every impact cue comes from `Sfx`, which synthesises its
 ## samples at run time — the build ships no audio files.
 ##
-## Crowd staging (AGENTS.md §9 item 21): `YardBarrier` closes the base of the yard so the
-## crowd stands behind something instead of being pinned onto the sand. The crowd itself is
-## 3D only — `Arena3D.crowd3d`, eight delivered Mixamo characters, reached here through the
-## `crowd` property. The 2D `CrowdLine` sprite layer, the `ForegroundCrowd` silhouette stack
-## and the `CrowdHaze` wash were deleted with the silhouettes (2026-11-24). Presentation only.
+## Crowd staging (AGENTS.md §9 item 21): the crowd is 3D only — `Arena3D.crowd3d`, reached
+## here through the `crowd` property — and its spectator rigs are switched OFF by default
+## (`crowd_rigs_enabled`), so no non-fighting body is instantiated or drawn on the stage. The
+## 2D `CrowdLine` sprite layer, the `ForegroundCrowd` silhouette stack and the `CrowdHaze` wash
+## were deleted with the silhouettes (2026-11-24); the 2D `YardBarrier` plank fence was deleted
+## with the rest of the programmer-art rails in PART M (2026-11-27). Presentation only.
 
 const CLICK_LOOP_SECONDS := 10.0      # 22 beats at 132 BPM
 const CAMERA_MIN_DISTANCE := 620.0
@@ -1624,7 +1625,7 @@ func _setup_3d_presentation() -> void:
 	var hidden := [
 		"Stage", "Atmosphere", "SunsetWash", "NightWash", "SunGlow", "SunShaft",
 		"SpeakerRings", "LightBeams", "TimeOfDay", "Floodlight", "WindMotes",
-		"RecordCrates", "HeatHaze", "YardBarrier", "BirdHazard",
+		"RecordCrates", "HeatHaze", "BirdHazard",
 	]
 	for node_name in hidden:
 		var node := get_node_or_null(node_name)
@@ -1979,6 +1980,11 @@ func run_warmup() -> void:
 				warmup_steps += 1
 			toggle_lighting_look()
 		set_time_of_day(0, 0.0)
+		# PART M: the three illustrated backdrops are bound once each here, in phase order,
+		# so the mip chain and anisotropic filter build behind LOADING instead of on the
+		# first round change. The look loop above already re-textures the quad per phase;
+		# this is the explicit, counted pass that owns the contract.
+		warmup_steps += arena3d.warm_backdrops()
 	if not headless:
 		warmup_steps += _prewarm_effects()
 	warmup_steps += _warm_clips()

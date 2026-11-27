@@ -7848,3 +7848,255 @@ live `Sprite2D` modulate, camera scalars and node/object counts. Not seen: the s
 screen, the additive blend against the sand, the rattle's read on the tower at 8.6 m, the punch-in
 in motion, and the `BRAGADAPS!` label against the cabinet at the blowout. The 9-pairing punch
 check holds the lens pressure rather than animating it, so its spring timing is not exercised.
+## PART M — CLEAN-SLATE 2.5D ARCADE STAGE & CRISP PBR OVERHAUL (2026-11-27)
+
+One pass, one commit, fully autonomous. Goal: a beach arena with **no people except the fighters and
+no programmer-art rails**, the owner's three painted backdrops mounted for real, a **full-size**
+thatched shack flanked by full-size towers, and **crisp native PBR as the default look** with the
+legacy toon ramp kept on `F6`. Nothing in the protected list moved: `BaseFighter.gd` (ANIM_OFFSET,
+frame counts, damage, hitstun/blockstun, hitstop), 132 BPM, the Crowd Hype rules, the 31 Patois
+entries, the 22 comic callouts, the facing pin, the camera clamps, `crowd_rigs_enabled=false` and
+`PropLoader`'s 5-slot contract are all byte-identical to `f2b9275`.
+
+### M0. STEP 0 — what the upload actually was
+
+`git fetch origin --prune`; `origin/feature/3d-cel-shaded` = **`f2b9275`**, which is `1328a8a` plus
+three files and nothing else (`git diff --stat 1328a8a..f2b9275` = 3 additions). The upload landed in
+**`godot/assets/stages/`**, not `godot/assets/sprites/stage/` as the brief expected:
+
+| File | Pixels | Format | Bytes |
+| --- | --- | --- | --- |
+| `godot/assets/stages/stage_afternoon.jpg` | 1376 × 768 | RGB JPEG | 943,903 |
+| `godot/assets/stages/stage_sunset.jpg` | 1376 × 768 | RGB JPEG | 781,734 |
+| `godot/assets/stages/stage_night.jpg` | 1376 × 768 | RGB JPEG | 903,572 |
+
+`--headless --import` ran twice (the first pass generates the `.import` files, the second proves them
+idempotent), then the four suites were re-baselined on the untouched upload **before** any edit:
+**489 / 667 / 310 / 444, 0 FAIL**. Those are the numbers this pass must not go below.
+
+The three JPEGs import as `compress/mode=0` (lossless), `mipmaps/generate=true`,
+`detect_3d/compress_to=0`, `process/fix_alpha_border=false`. That is deliberate and it costs pack size
+(M6): an arcade backdrop is looked at for a whole round, so a 4:2:0 VRAM-compressed sky would band and
+smear exactly where the eye rests. The three imported `.ctex` files total **5,005,000 B**
+(1,729,770 + 1,529,322 + 1,745,908).
+
+### M1. Zero non-fighting people (`DJBooth3D.gd`, `Arena3D.gd`)
+
+The two selector rigs were the only drawn humans left on the stage (PART J already put the 22
+spectator rigs behind `crowd_rigs_enabled=false`). They are gone rather than hidden:
+
+- `DJBooth3D.DJ_COUNT := 0` and `djs_enabled := false`, with a `_built` guard so the rig build
+  returns immediately and cannot be re-entered by a later `settle()`;
+- the cue path (`pointing()`, `settle()`, `model_act_of()`, the hype clips) still runs over the empty
+  list — every cue is answered by the deck with zero null references and zero node growth;
+- the deck slot, the shack art and the `SPEAKER BOX!` blowout are untouched: the finisher still
+  fires, `Crowd Hype` still tracks the meter, the audio cues are unchanged (9 cues at boot, as before).
+
+Measured: `dj_count()` 0 in both `atmosphere` and `DJBooth3D`, `booth.find_children("DJ*")` empty,
+`get_node_or_null("DJ1"/"DJ2")` null, and 600 frames of hype cues add **0** nodes to the booth.
+
+### M2. The fence and the corner poles (`YardBarrier.gd` deleted)
+
+`godot/scripts/stages/YardBarrier.gd` + `.uid` are deleted, along with its node and its
+`ext_resource` line in `scenes/TestArena.tscn` and its entry in `TestArena.gd`'s hidden list. The
+code-built geometry it owned went with it: `BarrierRail`, `BarrierLower` and `BarrierPost` ×9, plus
+the `HorizonBand` strip and the truss set (`TrussTower` ×2, `TrussBeam`, `Fixture` ×4) that carried
+the old "stage rig" look. Measured: **0** code-built boxes and 0 crowd rigs in the yard, and the tower
+no longer has anything to clear — the floor is open sand from the fight plane to the backdrop.
+
+### M3. The illustrated backdrops (`Arena3D.gd`)
+
+One `StandardMaterial3D` (unshaded, `albedo_texture`,
+`TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC`) on the existing `SkyBackdrop` `QuadMesh`, resized to
+**30.0 × 16.875 m** at **(0, 2.55, −15)**. Each `PHASES[i]` entry carries its own `backdrop` path and
+`_push_palette()` binds it, so a preset change swaps the art on the same mesh with no reload and no
+shader recompile. The old `sky_gradient.gdshader` stays only as the missing-file fallback, and its
+painted sun disc is hidden whenever art is bound, so nothing is drawn twice.
+
+Coverage is arithmetic, not a hope: at the widest dolly (`CAMERA_MAX_DISTANCE`) plus the stacked lean
+the lens needs **27.7 × 12.9 m** at the backdrop plane and the quad is **30.0 × 16.9 m** — checked in
+the roster suite from the live node, so a smaller quad, a shallower depth or a nearer dolly fails
+instead of showing a void.
+
+The **horizon seam** is solved by matching two numbers instead of blurring them: the art's painted
+shoreline sits on row 0.66 of a quad whose bottom edge is at Y −5.89 m, which puts the surf at world
+**Y −0.15 m**; the ray from the lens through the floor's far edge (−12.5 m) reaches the backdrop plane
+at **Y −0.15 m** as well. They agree to a centimetre, and the quad keeps running 5.74 m below that
+line, so the painting's fore-sand is never cut off and the fighter contact shadows land on real
+geometry rather than on the painting. Fog stays off and the tonemap stays Linear in all three presets, so the art keeps
+its contrast (the live suite reads `fog 0.0000`, `glow 0.00`, `tonemap mode 0` per preset).
+
+Sand palette re-graded to the art rather than to a generic daylight sky: afternoon (0.80, 0.64, 0.40),
+sunset (0.86, 0.56, 0.32), night (0.61, 0.51, 0.34) — the night art is a **moonlit bright beach**, not
+a dark one, so the old near-black sand would have read as a hole.
+
+### M4. Full-size shack and towers (`StageLayout.gd`, `PropLoader.gd`)
+
+Real-world metres replace the apparent-size compensation that had produced a table-top set:
+
+| Slot | Old target | New target | Measured on stage |
+| --- | --- | --- | --- |
+| `dj_booth` | 1.15 m | **2.45 m** | 3.522 × **2.450** × 2.345 m at z **−4.80**, bottom on Y = 0 |
+| `jamaican_speaker` / `rasta_speaker` | 2.60 m | **2.50 m** | **2.500** m tall × 2.32 m wide at z **−6.90**, x **±2.82** |
+
+`StageLayout.size_scale()` (target metres ÷ the model's own AABB height) replaced the old
+perspective-compensation factor in `compute()`, so a 0.66 m deck model becomes a 2.45 m shack by
+construction and a synthetic rig would too: a 3.2 m booth and a 0.8 m tower re-place themselves by
+rule (tower x 3.48, gap 0.23 m), and a wider tower is pushed out to the frame limit (x 2.96) rather
+than off-frame. Vertical frame margins were added so the 2.50 m towers sit inside the neutral frame
+with **≥ 12 px** margin (x 2.82 against a limit of 2.82) and `tower_visible_share` keeps **≥ 90 %** of
+each tower visible at the camera extremes.
+
+Clearances: booth back face at −5.97 m, tower near corner at −6.29 m (0.32 m clear of the shack), and
+the **nearest prop face is 3.63 m** in front of the fight plane — the brief asked for ≥ 2.5 m of clean
+open sand, and the camera-to-fighter rays stay clear of every prop box in all pairings. `BOOTH_Z` is
+−4.8 (inside the −4.6…−5.0 band) and the shack faces +Z with a 12° inward yaw on each tower.
+
+Two soft `StageContactShadow` quads (`contact_shadow.gdshader`) now sit on the sand under the shack
+and the near tower, so the full-size props are planted without giving them `cast_shadow` (a 2.45 m
+prop's cast shadow would fight the fighters' crisp key shadow). Duplicate sibling names were being
+auto-renamed by Godot, so they are `StageContactShadow0` / `…1` and matched by prefix.
+
+The shack's own build scales with it: counter top **0.754 m**, canopy underside **2.250 m** — a plain
+unit scale of the old shack would have left a 0.35 m counter on a 2.45 m building.
+
+### M5. Crisp PBR is the default (`FighterModel3D.gd`, `PropLoader.gd`)
+
+Fighters build **both** material sets and bind the PBR one:
+
+- `pbr_materials` is built from each imported surface (roughness, `0.35` dielectric specular, GGX,
+  `metallic 0`, `rim_enabled` with a per-phase rim);
+- `set_toon_look(bool)` swaps between the two sets in place — `F6` calls it, so the A/B toggle still
+  shows the cel ramp, and `look_is_pbr()` reports which set is live;
+- the hit flash is PBR **emission** instead of an albedo tint, and the parry rim is 1.0, so the block
+  read survives without the toon band;
+- Godot 4's `StandardMaterial3D.rim` is a **float amount** with a float `rim_tint`, not a rim colour:
+  the phase rim COLOUR therefore applies to the toon set only, and on PBR the amount carries the read.
+  That is a documented limitation, not an oversight.
+
+Props get the same treatment in `PropLoader._apply_native_materials`: the delivered 2048 albedo is
+kept, with `PBR_ROUGHNESS 0.55`, GGX specular 0.35, `metallic 0`, rim 0.85 / 0.30, culling disabled
+and `TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC`. The materials are collected in
+`native_materials` and re-rimmed per phase, so the time-of-day pass never repaints the albedo.
+
+Lighting stays inside the Compatibility budget: **7 lights, worst case 4 on any single mesh** across
+54 meshes, 4 on the fighter layer, no SSAO / SDFGI / volumetric fog / glow / fog, Linear tonemap,
+`shadow_angular_distance < 0.001` for a crisp key. `look_label()` now reads `PBR · CLEAN` /
+`TOON · LEGACY A/B` (`shading_model()` reports `pbr` / `toon`).
+
+### M6. Pre-warm, pack effect, roster note
+
+`Arena3D.warm_backdrops()` loads and binds the three textures once and returns the number of steps;
+`TestArena.run_warmup()` adds it to the LOADING pass count (48–53 passes at boot in the logs). The
+`HitchLog` shows entries only on **boot frames 1–2** (`quality_change` 84.5 ms, `state_change`
+145.5 ms — headless CPU frames of the first 3D build, before the fight), and **no mid-match spike**.
+
+| | Before (`f2b9275`) | With this pass |
+| --- | --- | --- |
+| `index.pck` | 44,562,508 B | **49,571,304 B** |
+
+**+5,008,796 B (+11.24 %)**, of which **5,005,000 B** is the three lossless `.ctex` backdrops and
+3,796 B is script. Nothing was added to `/docs`.
+
+**Roster expansion note (doc only, active 3-fighter roster untouched).** *Juggle Lynn* — **Female
+Selector / Rapid-Fire Riddim Juggler** archetype: a stage-hype selector concept for a future roster
+slot (she juggles riddim vocals over the beat instead of fighting), logged here so the idea survives
+the session. No model, no slot and no code path exists for her; the roster is still J, I and L!ckshot.
+
+### M7. Assertions changed on purpose (itemized)
+
+`godot/tools/headless_roster_check.gd` (+248 / −175). Every change below is a consequence of this
+brief; none of them weakens a check on the protected list.
+
+*Removed (the thing asserted no longer exists):*
+
+1. "the .fbx drop-in folder exists for the DJs" — the DJ slots are gone, so the folder contract is
+   replaced by "no DJ node exists".
+2. `booth.model_slots().size() == booth.dj_count()`, plus the four delivered-rig checks (rig / budget
+   / clip / cel for the selector models) — there are no rigs to validate; the single replacement
+   check asserts `booth.find_children("DJ*")` is empty.
+3. `booth.model_act_of(0) == CharacterModelSlots.ACT_HYPE` / `…ACT_NEUTRAL` and the "unbound
+   surfaces" counter that walked the selector meshes.
+4. `tint_amount <= 0.001` (the toon shadow-tint probe) — the toon set is no longer the default.
+5. `dj_feet <= 0.01 and dj_gap >= 0.10` (selector foot planting).
+6. `booth.empty_slot_count() == 0`.
+7. "no procedural stack remains, while the stage barrier still stands" — the barrier is deleted.
+8. `night_sky` / `dusk_top` / `dusk_bottom` shader-parameter reads — those parameters belong to the
+   fallback gradient, and the presets now bind art.
+
+*Replaced in place (same check, new contract):*
+
+9. `atmosphere.dj_count() == 2` → `== 0` **and** `booth.dj_count() == 0` **and** `DJ1`/`DJ2` null.
+10. "a DJ points at the fighters on a heavy hit" → "a heavy hit leaves the booth unposed, with no
+    selector to point" (`not booth.pointing() and booth.dj_count() == 0`).
+11. prop-slot height table 2.6 / 2.6 / 1.15 → **2.5 / 2.5 / 2.45**, and its message
+    ("speakers 2.6, booth 1.15" → "speakers 2.50, booth 2.45").
+12. booth placement `booth.position.z < -2.55` → **`<= -4.6`** (the shack now sits at −4.80).
+13. shack footprint: was `absf(booth_ratio - 1.0) <= 0.15` / `tower_ratio >= 0.65` (apparent-size
+    compensation) → absolute bands **2.35–2.55 m tall** and **3.4–3.7 m wide**, tower
+    **2.3–2.7 m tall**, seated `absf(position.y) <= 0.01`, plus the rule-based re-placement case.
+14. `s_booth >= StageLayout.SCALE_MIN` → `STAGE_SCALE_MIN` / `STAGE_SCALE_MAX` (the constants were
+    renamed to say what they scale).
+15. deck/counter proportions `counter_y 0.30–0.45 and canopy > counter + 0.5` → **0.55–0.85** and
+    **> counter + 0.6** (measured 0.754 / 2.250 m on the 2.45 m shack).
+16. barrier/tower clearance: `spk_rail != null and not spk_box.intersects(spk_rail_box)` →
+    `get_node_or_null("BarrierRail") == null` and the tower clears an empty yard.
+17. the sky audit `sky_material.get_shader_parameter("mid_colour")` → `backdrop_texture_path()
+    .contains("stage_")`; message "the sky gradient, sun disc and environment resources exist" →
+    "the backdrop, sun disc and environment resources exist".
+18. speaker material: `roughness == 1.0` **and specular disabled** → **`roughness == PBR_ROUGHNESS`
+    (0.55), specular enabled, rim enabled**, same albedo, culling and filter; the message now says
+    "TUNED StandardMaterial3D".
+19. `F6` toggle: `set_toon_look(false)` returns the *mode* (false = PBR), so the old
+    `var back_ok := fb3d.set_toon_look(false) and fb3d.look_is_pbr()` could never be true — corrected
+    to `not …`, and the check now also proves the body material set swapped.
+
+*Added (new contracts):*
+
+20. both fighters default to the PBR set with the toon set held for A/B;
+21. the shack wears a tuned native `StandardMaterial3D`, not a ramp;
+22. each preset binds its **own** distinct `stage_*.jpg` (3 distinct paths);
+23. the backdrop quad covers the frame at the widest dolly and the stacked lean (27.7 × 12.9 needed,
+    30.0 × 16.9 present);
+24. the painted shoreline lands on the floor's far edge (no horizon seam);
+25. no shader sun disc over the illustrated sky;
+26. the booth and the near tower each own a `StageContactShadow`;
+27. the full-size deck's counter/canopy scale with it;
+28. `size_scale()` normalises to 2.45 m ÷ the deck's own AABB height;
+29. two rules cases for `size_scale` (a synthetic 3.2 m / 0.8 m set, and the widened-tower frame
+    clamp).
+
+`godot/tools/live_match_check.gd` (+27 / −21):
+
+30. "the deck stands its authored 1.15 m under the stage scale, within 2 %" → "the thatched shack
+    stands at full arcade size (2.35–2.55 m tall, 3.4–3.7 m wide)";
+31. "both DJ rigs stand behind the deck without interpenetrating it" → "no non-fighting person stands
+    on the stage" (`dj_count` 0, no `DJ1`/`DJ2`);
+32. `look_label() == "LEGACY A/B"` / `== "CLEAN"` → `.contains("LEGACY")` / `.contains("CLEAN")` (the
+    labels are now `TOON · LEGACY A/B` and `PBR · CLEAN`), each also asserting the live body material
+    set and `shading_model()`.
+
+### M8. What the checks prove
+
+| Suite | Baseline (`f2b9275`) | Now |
+| --- | --- | --- |
+| `headless_roster_check` | 489 / 0 FAIL | **491 / 0 FAIL** (+2 net) |
+| `live_match_check` | 667 / 0 FAIL | **667 / 0 FAIL** |
+| `facing_audit` | 310 / 0 FAIL | **310 / 0 FAIL** |
+| `animation_feel_audit` | 444 / 0 FAIL | **444 / 0 FAIL** |
+
+Each suite was run twice with the same counts and 0 FAIL. The protected list is covered by the
+existing checks and they pass untouched: frame data frozen (4 moves × 6 fields), 132 BPM pacing, the
+31 Patois entries, the 22 callouts, the facing pin, the camera clamps, the 5-slot prop contract, the
+4-light budget, the 7-light rig, and the fighters' crisp key shadow in every preset.
+
+### M9. What is NOT verified
+
+There is still **no GPU in this environment** (`sudo` blocked by `no_new_privileges`, no `xvfb`), so
+**no rendered frame of the new look exists**. Everything above is measured state: node counts, world
+AABBs, material properties read off the live surfaces, projection arithmetic, pack bytes and the
+`HitchLog`. Not seen with my own eyes: the three paintings on the quad, the seam where the painted
+surf meets the 3D sand at each preset, the 2.45 m shack's proportions in frame beside two 1.7 m
+fighters, the 12° tower yaw, the PBR rim read against the sunset sky, and whether the full-size shack
+now crowds the fighters at the widest dolly. The owner should press `F6` once against the shipped
+build and look at both camera extremes before signing the look off.

@@ -34,16 +34,30 @@ const NEUTRAL_VIEW := Vector2(1280.0, 720.0)
 ## The brief's clearance: 12 px of frame around every AABB corner at the neutral camera.
 const MARGIN_PX := 12.0
 
-## Booth centre depth. Inside the brief's allowed −4.2…−5.0 m band.
-const BOOTH_Z := -4.5
+## Booth centre depth. Inside the brief's allowed −4.6…−5.0 m band (PART M, 2026-11-27: the
+## full-size shack needs the deeper half of it so its 2.34 m depth still leaves the 3.6 m
+## clean sand strip in front of the fighters).
+const BOOTH_Z := -4.8
 const BOOTH_Z_MIN := -5.0
-const BOOTH_Z_MAX := -4.2
+const BOOTH_Z_MAX := -4.6
 ## Where the set stood before this pass; the perspective compensation is measured from here.
 const LEGACY_BOOTH_Z := -3.20
 const LEGACY_SPEAKER_Z := -1.45
 const LEGACY_SPEAKER_X := 2.55
-## Towers behind the booth's shoulders, clear of its AABB (see the header).
-const SPEAKER_Z := -6.10
+## PART M: the brief's real-world sizes. `compute()` normalises whatever the delivered files
+## measure to these, so the shack is a shack and the towers are towers instead of whatever
+## scale the export happened to carry. `PropLoader` seats to the same numbers, which makes
+## this pass a guard rather than the only thing holding the size.
+const BOOTH_TARGET_HEIGHT := 2.45
+const BOOTH_TARGET_WIDTH := 3.55
+const SPEAKER_TARGET_HEIGHT := 2.50
+## The scale clamp for that normalisation: wide enough for a very small or very large upload,
+## tight enough that a degenerate AABB cannot turn the set into a monolith.
+const STAGE_SCALE_MIN := 0.4
+const STAGE_SCALE_MAX := 4.0
+## Towers behind the booth's shoulders, clear of its AABB (see the header). PART M: −6.9 m,
+## because the full-size shack is 2.34 m deep and its back wall now stands at −5.97 m.
+const SPEAKER_Z := -6.90
 ## Fraction of the visible half-width the towers aim for before the frame clamp.
 const SPEAKER_FRACTION := 0.80
 ## Inward yaw the two slots take, degrees. A rotation, never a mirror.
@@ -96,17 +110,29 @@ static func perspective_scale(new_z: float, old_z: float,
 	return clampf(d_new / d_old, SCALE_MIN, SCALE_MAX)
 
 
+## Uniform scale that brings a measured prop to a target world height. Data only: no mesh and
+## no scene, so a replacement upload of any size is normalised by the same rule. 1.0 on a
+## degenerate box.
+static func size_scale(measured_height: float, target_height: float) -> float:
+	if measured_height <= 0.001 or target_height <= 0.0:
+		return 1.0
+	return clampf(target_height / measured_height, STAGE_SCALE_MIN, STAGE_SCALE_MAX)
+
+
 ## The whole placement, pure. `booth_size` and `speaker_size` are the measured AABB sizes of
 ## the delivered props *after* their own seat scale, in metres; the returned scales multiply
 ## them. Returns:
 ##   booth_z, speaker_z, speaker_x, speaker_yaw_deg,
 ##   booth_scale, speaker_scale, booth_world_size, speaker_world_size,
-##   frame_limit_x, wanted_x, min_x, gap_m, frame_ok, gap_ok
+##   frame_limit_x, wanted_x, min_x, gap_m, frame_ok, gap_ok,
+##   booth_top_margin_px, speaker_top_margin_px, tower_visible_share
 static func compute(booth_size: Vector3, speaker_size: Vector3,
 		view: Vector2 = NEUTRAL_VIEW, cam_z: float = NEUTRAL_CAMERA_Z) -> Dictionary:
 	var aspect := aspect_of(view)
-	var s_booth := perspective_scale(BOOTH_Z, LEGACY_BOOTH_Z, cam_z)
-	var s_speaker := perspective_scale(SPEAKER_Z, LEGACY_SPEAKER_Z, cam_z)
+	# PART M (intentional change): the scale is the brief's real-world target over the measured
+	# size, not the old apparent-size compensation, so the shack and the towers are full size.
+	var s_booth := size_scale(booth_size.y, BOOTH_TARGET_HEIGHT)
+	var s_speaker := size_scale(speaker_size.y, SPEAKER_TARGET_HEIGHT)
 	var booth_world := Vector3(maxf(booth_size.x, 0.01), maxf(booth_size.y, 0.01),
 		maxf(booth_size.z, 0.01)) * s_booth
 	var speaker_world := Vector3(maxf(speaker_size.x, 0.01), maxf(speaker_size.y, 0.01),
@@ -135,6 +161,21 @@ static func compute(booth_size: Vector3, speaker_size: Vector3,
 		+ speaker_world.x * 0.5 * sin(deg_to_rad(SPEAKER_YAW_DEG))
 	var booth_back := BOOTH_Z - booth_world.z * 0.5
 	var depth_clear := near_corner <= booth_back - BOOTH_GAP
+	# Vertical frame: a full-size shack or tower is a TALL prop now, so the top corner is what
+	# leaves the frame if anything does. Measured at each prop's nearest face, where the frame
+	# is narrowest, with the same MARGIN_PX the horizontal rule uses.
+	var booth_near := cam_z - (BOOTH_Z + booth_world.z * 0.5)
+	var booth_half := half_extent_at(booth_near, aspect)
+	var booth_margin := booth_half.y * 2.0 * (MARGIN_PX / maxf(view.y, 1.0))
+	var booth_top_margin := (CAMERA_Y + booth_half.y - booth_margin) - booth_world.y
+	var speaker_margin := half.y * 2.0 * (MARGIN_PX / maxf(view.y, 1.0))
+	var speaker_top_margin := (CAMERA_Y + half.y - speaker_margin) - speaker_world.y
+	# How much of a tower is still inside the neutral frame sideways after the 12 px margin,
+	# 1.0 = fully framed. The brief's 90 %-at-the-extremes rule is asserted on the live lens;
+	# this is the neutral-camera figure the placement is chosen from.
+	var tower_span := half.x - margin
+	var tower_visible := clampf((tower_span - (x - speaker_world.x * 0.5))
+		/ maxf(speaker_world.x, 0.01), 0.0, 1.0)
 	return {
 		"booth_z": BOOTH_Z,
 		"speaker_z": SPEAKER_Z,
@@ -148,8 +189,12 @@ static func compute(booth_size: Vector3, speaker_size: Vector3,
 		"wanted_x": wanted,
 		"min_x": min_x,
 		"gap_m": x - (booth_world.x * 0.5 + speaker_world.x * 0.5),
-		"frame_ok": x <= frame_limit + 0.0001,
+		"frame_ok": x <= frame_limit + 0.0001 and booth_top_margin >= 0.0 \
+			and speaker_top_margin >= 0.0,
 		"gap_ok": depth_clear,
+		"booth_top_margin_px": booth_top_margin * (view.y * 0.5) / maxf(booth_half.y, 0.001),
+		"speaker_top_margin_px": speaker_top_margin * (view.y * 0.5) / maxf(half.y, 0.001),
+		"tower_visible_share": tower_visible,
 		"depth_clear_m": booth_back - near_corner,
 		"nearest_face_z": near_z,
 		"margin_m": margin,

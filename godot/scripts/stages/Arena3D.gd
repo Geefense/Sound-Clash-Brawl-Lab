@@ -56,10 +56,11 @@ const MODEL_SCRIPT := preload("res://scripts/fighters/FighterModel3D.gd")
 ## the depths, the mirrored X, the frame clamp and the perspective compensation; this node
 ## only feeds it the measured prop sizes and applies what it returns.
 const LAYOUT_SCRIPT := preload("res://scripts/stages/StageLayout.gd")
-## The crowd barrier now stands BEHIND the whole set (it was at z −2.55, i.e. inside the clean
-## sand strip, where it also cut across the bottom of the booth). Moved back with the set: no
-## new geometry, same rail, lower rail and nine posts, just 4.7 m deeper.
-const BARRIER_Z := -7.25
+## PART M (2026-11-27): the programmer-art rails are gone. The beach yard is the illustrated
+## backdrop, the sand the fighters stand on, the thatched shack and the two towers — nothing
+## else. The crowd barrier (two rails and nine posts), the horizon band and the four-piece
+## lighting truss were deleted with their constants; the SpotLights that lit the yard are
+## lights, not geometry, and stay.
 const BILLBOARD_SCRIPT := preload("res://scripts/fighters/FighterBillboard3D.gd")
 const CROWD_SCRIPT := preload("res://scripts/stages/CrowdController3D.gd")
 const BOOTH_SCRIPT := preload("res://scripts/stages/DJBooth3D.gd")
@@ -68,6 +69,28 @@ const CONTACT_SHADOW := preload("res://assets/shaders/contact_shadow.gdshader")
 const LIGHT_POOL := preload("res://assets/shaders/light_pool.gdshader")
 const SKY_SHADER := preload("res://assets/shaders/sky_gradient.gdshader")
 const SUN_SHADER := preload("res://assets/shaders/sun_disc.gdshader")
+
+## PART M: the three illustrated beach backdrops, swapped with the time-of-day preset. They
+## are mounted on the ONE big quad that used to carry the gradient (`SkyBackdrop`), so the
+## camera-clearance and backdrop-coverage audits keep measuring the same object.
+##
+## Size and depth are derived, not guessed. The lens dollies out to `CAMERA_MAX_DISTANCE`
+## (9.0 m) when the fighters spread, and leans up to ~5.7°, so at the quad's plane the widest
+## required half-width is tan(15°) × (9.0 + 15.0) × 16/9 + tan(5.7°) × 24 ≈ 13.8 m. 30 × 16.875
+## (16:9, undistorted) leaves a metre of margin on every side at the stacked extreme.
+##
+## Vertically the art is aligned to the FLOOR SEAM by measurement, not by eye. The quad runs
+## −5.89…10.985 m, so the illustration's foam line (row 0.66) lands at world Y −0.1525 m, and
+## the ray through the sand floor's far edge (z −12.5, y 0) crosses this plane at −0.150 m.
+## The two agree to 2.5 mm: the 3D sand ends exactly where the painted surf begins, which is
+## the beach's own waterline, so there is no grey band, no floating horizon and no colour
+## cliff to hide — and the 0.46 m of slack under the quad still covers the frame at the
+## widest dolly-out (camera distance 9.0 m).
+const BACKDROP_SIZE := Vector2(30.0, 16.875)
+const BACKDROP_CENTRE := Vector3(0.0, 2.55, -15.0)
+## Texture row the art's shoreline sits on, 0 = top of the image, 1 = bottom. Measured from
+## the three delivered files (the foam line is at 0.658–0.662 of the height in all three).
+const BACKDROP_SHORE_ROW := 0.66
 
 ## The three round rigs. Every value is pushed into real scene objects: a DirectionalLight3D
 ## sun, two overhead SpotLight3Ds, a warm rim/fill, the sky gradient, depth fog and the
@@ -78,6 +101,7 @@ const PHASES := [
 	# horizon (#FFE7B0). The sand sits warm and bright under it, and the spots rest.
 	{
 		"name": "Afternoon Sun",
+		"backdrop": "res://assets/stages/stage_afternoon.jpg",
 		"sky_top": Color(0.118, 0.435, 0.851, 1.0),
 		"sky_mid": Color(0.42, 0.68, 0.96, 1.0),
 		"sky_bottom": Color(1.0, 0.906, 0.690, 1.0),
@@ -86,16 +110,15 @@ const PHASES := [
 		"haze_height": 0.22,
 		"haze_strength": 0.45,
 		"sun_colour": Color(1.0, 0.824, 0.478, 1.0),
-		"sun_energy": 2.05,
-		"sun_rotation": Vector3(-52.0, -34.0, 0.0),
+		"sun_energy": 2.05,		"sun_rotation": Vector3(-52.0, -34.0, 0.0),
 		"ambient": Color(0.44, 0.60, 0.90, 1.0),
 		"ambient_energy": 0.55,
 		"fill_colour": Color(0.62, 0.78, 1.0, 1.0),
 		"fill_energy": 0.30,
 		"fog": Color(0.93, 0.94, 0.96, 1.0),
 		"fog_density": 0.0026,
-		"sand": Color(0.88, 0.72, 0.46, 1.0),
-		"mound": Color(0.80, 0.62, 0.38, 1.0),
+		"sand": Color(0.80, 0.64, 0.40, 1.0),
+		"mound": Color(0.72, 0.55, 0.33, 1.0),
 		"horizon": Color(0.86, 0.86, 0.80, 1.0),
 		"spot_colour": Color(1.0, 0.94, 0.80, 1.0),
 		"stage_a": Color(1.0, 0.94, 0.80, 1.0),
@@ -122,6 +145,7 @@ const PHASES := [
 	# orange-red rim (#FF5A36). The sand burns warm and the fog goes amber.
 	{
 		"name": "Golden Hour / Sunset Clash",
+		"backdrop": "res://assets/stages/stage_sunset.jpg",
 		"sky_top": Color(0.231, 0.114, 0.431, 1.0),
 		"sky_mid": Color(0.839, 0.200, 0.424, 1.0),
 		"sky_bottom": Color(1.0, 0.478, 0.102, 1.0),
@@ -138,8 +162,8 @@ const PHASES := [
 		"fill_energy": 0.42,
 		"fog": Color(0.98, 0.50, 0.34, 1.0),
 		"fog_density": 0.0115,
-		"sand": Color(0.94, 0.56, 0.34, 1.0),
-		"mound": Color(0.86, 0.46, 0.28, 1.0),
+		"sand": Color(0.86, 0.56, 0.32, 1.0),
+		"mound": Color(0.78, 0.47, 0.26, 1.0),
 		"horizon": Color(0.95, 0.55, 0.30, 1.0),
 		"spot_colour": Color(1.0, 0.62, 0.30, 1.0),
 		"stage_a": Color(1.0, 0.62, 0.30, 1.0),
@@ -166,6 +190,7 @@ const PHASES := [
 	# cyan, magenta, amber, gold-amber — whose energy pulses on the 132 BPM beat.
 	{
 		"name": "Late-Night Sound Clash",
+		"backdrop": "res://assets/stages/stage_night.jpg",
 		"sky_top": Color(0.027, 0.043, 0.180, 1.0),
 		"sky_mid": Color(0.090, 0.075, 0.280, 1.0),
 		"sky_bottom": Color(0.165, 0.106, 0.369, 1.0),
@@ -182,8 +207,14 @@ const PHASES := [
 		"fill_energy": 0.50,
 		"fog": Color(0.05, 0.07, 0.19, 1.0),
 		"fog_density": 0.019,
-		"sand": Color(0.32, 0.32, 0.46, 1.0),
-		"mound": Color(0.26, 0.26, 0.38, 1.0),
+		# PART M (intentional change): the night sand used to be a cold dark indigo, because
+		# the gradient sky it sat under was dark. The delivered night illustration is a
+		# MOONLIT beach — its foreground sand samples #D9C8A5 — so the floor is re-graded to
+		# the art's warm moonlit tone (linear 0.69/0.58/0.38, pulled 12 % down so the moon key
+		# and the four beams still do the lighting). Cold sand under a warm beach was the
+		# single biggest horizon mismatch this pass fixes.
+		"sand": Color(0.61, 0.51, 0.34, 1.0),
+		"mound": Color(0.53, 0.44, 0.29, 1.0),
 		"horizon": Color(0.14, 0.13, 0.30, 1.0),
 		"spot_colour": Color(0.35, 0.85, 1.0, 1.0),
 		"stage_a": Color(0.20, 0.95, 1.0, 1.0),
@@ -226,7 +257,6 @@ var stage_spot_b: SpotLight3D
 ## recolouring the light that falls on them.
 var sand_material: StandardMaterial3D
 var mound_material: StandardMaterial3D
-var horizon_material: StandardMaterial3D
 ## 132 BPM, the same clock the fighters and the crowd skank on.
 const BPM := 132.0
 ## A delivered tower's beat pulse, relative to its SEATED scale. 1.5 % is the ceiling the
@@ -247,9 +277,17 @@ var _beat_phase: float = 0.0
 ## only — no light is created, moved or re-parented, so the 7-light Compatibility ceiling and
 ## `light_count()` are unchanged.
 var _light_pump: float = 0.0
-var sky_material: ShaderMaterial
+## PART M: the illustrated backdrop material (one `StandardMaterial3D`, unshaded, one texture
+## swapped per preset) and the gradient shader kept ONLY as the fallback for a missing file.
+## Exactly one of the two is ever bound to `SkyBackdrop`.
+var backdrop_material: StandardMaterial3D = null
+var sky_material: ShaderMaterial = null
 var pool_material: ShaderMaterial
 var sun_material: ShaderMaterial
+## Path of the backdrop texture actually bound to the quad, so the audit can prove the
+## time-of-day preset swapped the ART and not just a tint.
+var _backdrop_path: String = ""
+var _backdrop_textures: Array[Texture2D] = []
 
 var fighters: Dictionary = {}          # "p1"/"p2" -> BaseFighter
 var models: Dictionary = {}            # "p1"/"p2" -> FighterModel3D or FighterBillboard3D
@@ -725,18 +763,18 @@ func hold_camera_pressure(yaw_deg: float, accent: float = 1.0, side: int = 0,
 
 
 ## World-space AABBs of everything the lens must never enter, for the yard clearance audit:
-## every crowd rig, the barrier's rail, lower rail and posts, the horizon band, the DJ booth and
-## both filled prop slots. The crowd's depth "tiers" are a per-row Y offset, not riser geometry,
-## so the rigs themselves are the only volume there is to hit. Allocated on call — audit only,
-## never per frame.
+## every crowd rig, the DJ booth and both filled prop slots. The crowd's depth "tiers" are a
+## per-row Y offset, not riser geometry, so the rigs themselves are the only volume there is
+## to hit — and with the rigs off (PART M) the furniture is the shack and the towers.
+## Allocated on call — audit only, never per frame.
 func camera_obstacles() -> Array[AABB]:
 	var out: Array[AABB] = []
 	if crowd3d != null:
 		for model in crowd3d.model_slots():
 			_append_bounds(out, model)
-	# Every box the yard was built from: barrier rail, lower rail, all nine posts, the horizon
-	# band, the truss and the fixtures. Kept by reference in `_yard_solids`, since eight of the
-	# posts end up with anonymous node names.
+	# The boxes the yard still builds (contact shadows and the sand mounds are below the lens's
+	# reach, so nothing but the props and the booth is a real volume any more). Kept by
+	# reference in `_yard_solids` because Godot renames duplicate siblings.
 	for solid in _yard_solids:
 		_append_bounds(out, solid)
 	_append_bounds(out, dj_booth)
@@ -1044,8 +1082,23 @@ func _push_palette(p: Dictionary) -> void:
 		sand_material.albedo_color = p["sand"]
 	if mound_material != null:
 		mound_material.albedo_color = p["mound"]
-	if horizon_material != null:
-		horizon_material.albedo_color = p["horizon"]
+	# PART M: the preset swaps the ILLUSTRATED ARTWORK, not a tint. The three textures are
+	# loaded once at build; this is one reference assignment per phase change.
+	if backdrop_material != null:
+		var art := String(p.get("backdrop", _backdrop_path))
+		# A blended palette is a merged dictionary, so the art is matched by PATH rather than
+		# by dictionary identity; the phase dictionaries themselves hold the same path. The
+		# path only differs on the first step of a phase change, so a steady frame — and every
+		# frame after the first of a blend — exits here without walking the phase list.
+		var idx := -1
+		if art != _backdrop_path:
+			for i in PHASES.size():
+				if String(PHASES[i].get("backdrop", "")) == art:
+					idx = i
+					break
+		if idx >= 0 and idx < _backdrop_textures.size() and _backdrop_textures[idx] != null:
+			backdrop_material.albedo_texture = _backdrop_textures[idx]
+			_backdrop_path = art
 	if sky_material != null:
 		sky_material.set_shader_parameter("top_colour", p["sky_top"])
 		sky_material.set_shader_parameter("mid_colour", p["sky_mid"])
@@ -1080,6 +1133,13 @@ func _push_cel_rim() -> void:
 		var model := models[key] as FighterModel3D
 		if model != null and is_instance_valid(model):
 			model.set_cel_rim(_cel_rim, _cel_rim_strength)
+	# PART M: the delivered towers and the shack keep their native PBR material, so the preset
+	# rim is pushed through the material's own `rim` band instead of a shader parameter.
+	for slot in _sound_stacks:
+		if slot != null:
+			slot.set_rim(_cel_rim, _cel_rim_strength * 0.55)
+	if dj_booth != null and dj_booth.deck != null:
+		dj_booth.deck.set_rim(_cel_rim, _cel_rim_strength * 0.55)
 	for material in _prop_cel_materials:
 		material.set_shader_parameter("rim_colour", _cel_rim)
 		# Scenery carries half a fighter's rim: enough that Night cannot crush the tower to
@@ -1166,6 +1226,13 @@ func _apply_look() -> void:
 	if world_env == null or world_env.environment == null:
 		return
 	var env := world_env.environment
+	# PART M: F6 is also the SHADING-MODEL A/B now. The clean default is the imported PBR
+	# surface on both bodies; the legacy pass binds the toon/cel material (and the graded
+	# tonemap below) exactly as it shipped before this pass.
+	for key in models:
+		var body := models[key] as FighterModel3D
+		if body != null and is_instance_valid(body):
+			body.set_toon_look(look_legacy)
 	if look_legacy:
 		env.tonemap_mode = LEGACY_TONEMAP
 		env.tonemap_exposure = LEGACY_EXPOSURE
@@ -1185,6 +1252,53 @@ func _apply_look() -> void:
 		env.fog_density = 0.0
 
 
+## The render path the yard is currently drawing, for the audit: "pbr" is the default.
+func shading_model() -> String:
+	return "toon" if look_legacy else "pbr"
+
+
+## PART M: bind each of the three illustrated backdrops once, in phase order, and land back
+## on Afternoon. Called from the startup LOADING pass: the textures themselves load at build,
+## so this pays the graphics-side upload, mip chain and anisotropic filter build for every
+## preset behind the overlay instead of on the first round change. The quad is in the frustum
+## at boot, which is what makes a culled object's upload actually happen. Returns the number
+## of presets it walked so the boot log counts them.
+func warm_backdrops() -> int:
+	if backdrop_material == null or _backdrop_textures.is_empty():
+		return 0
+	var steps := 0
+	for i in _backdrop_textures.size():
+		if _backdrop_textures[i] == null or i >= PHASES.size():
+			continue
+		backdrop_material.albedo_texture = _backdrop_textures[i]
+		_backdrop_path = String(PHASES[i].get("backdrop", ""))
+		steps += 1
+	if not _backdrop_textures.is_empty() and _backdrop_textures[0] != null:
+		backdrop_material.albedo_texture = _backdrop_textures[0]
+		_backdrop_path = String(PHASES[0].get("backdrop", ""))
+	return steps
+
+
+## Which illustrated backdrop is bound right now ("" on the gradient fallback).
+func backdrop_texture_path() -> String:
+	return _backdrop_path if backdrop_material != null else ""
+
+
+## The loaded backdrop textures, in phase order, for the startup warm pass and the audit.
+func backdrop_textures() -> Array[Texture2D]:
+	return _backdrop_textures
+
+
+## The preset's authored sky colour, which the environment and the gradient fallback use.
+## (With the art bound the sky itself is painted, so this is no longer what the player sees.)
+func sky_top_colour() -> Color:
+	return _phase_now.get("sky_top", Color.BLACK)
+
+
+func sky_bottom_colour() -> Color:
+	return _phase_now.get("sky_bottom", Color.BLACK)
+
+
 ## F6. Returns the new state: true means the previous graded look is on screen.
 func set_legacy_look(on: bool) -> bool:
 	look_legacy = on
@@ -1198,7 +1312,7 @@ func toggle_look() -> bool:
 
 ## HUD/debug label for whichever look is live.
 func look_label() -> String:
-	return "LEGACY A/B" if look_legacy else "CLEAN"
+	return "TOON · LEGACY A/B" if look_legacy else "PBR · CLEAN"
 
 
 func tonemap_mode() -> int:
@@ -1282,19 +1396,45 @@ func _build_yard() -> void:
 		mound.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(mound)
 
-	# Sky gradient and the afternoon/sunset disc.
+	# PART M: the illustrated arcade backdrop. One 30 x 16.875 quad on the old
+	# `SkyBackdrop` node, carrying a textured unshaded StandardMaterial3D that the
+	# time-of-day preset re-textures. Linear filtering with mipmaps plus 16x anisotropy
+	# is what keeps the delivered 1376 px art sharp at 12-20 m and stops the painted sand
+	# from shimmering as the lens dollies; `disable_fog` makes sure the clean look's zero
+	# fog can never veil it, and the gradient shader stays only as the missing-file
+	# fallback so the yard is never a void.
 	var sky_quad := QuadMesh.new()
-	sky_quad.size = Vector2(44.0, 22.0)
-	sky_material = ShaderMaterial.new()
-	sky_material.shader = SKY_SHADER
+	sky_quad.size = BACKDROP_SIZE
+	backdrop_material = StandardMaterial3D.new()
+	backdrop_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	backdrop_material.albedo_color = Color.WHITE
+	backdrop_material.texture_filter = \
+		BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	backdrop_material.disable_fog = true
+	backdrop_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	for phase in PHASES:
+		var path := String(phase.get("backdrop", ""))
+		var tex: Texture2D = (load(path) as Texture2D) if path != "" else null
+		_backdrop_textures.append(tex)
+	if _backdrop_textures.size() == PHASES.size() and not _backdrop_textures.has(null):
+		backdrop_material.albedo_texture = _backdrop_textures[0]
+		_backdrop_path = String(PHASES[0]["backdrop"])
+	else:
+		# Fallback: the three-stop gradient, so a missing upload never leaves a black wall.
+		backdrop_material = null
+		sky_material = ShaderMaterial.new()
+		sky_material.shader = SKY_SHADER
 	var sky := MeshInstance3D.new()
 	sky.name = "SkyBackdrop"
 	sky.mesh = sky_quad
-	sky.material_override = sky_material
-	sky.position = Vector3(0.0, 5.6, -15.0)
+	sky.material_override = backdrop_material if backdrop_material != null else sky_material
+	sky.position = BACKDROP_CENTRE
 	sky.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(sky)
 
+	# The painted sun and moon are IN the illustration now, so the old shader disc would be a
+	# second sun floating over the art. It is kept for the gradient fallback only and hidden
+	# whenever a backdrop texture is bound (the phase palette still drives it in that case).
 	var sun_quad := QuadMesh.new()
 	sun_quad.size = Vector2(1.0, 1.0)
 	sun_material = ShaderMaterial.new()
@@ -1305,23 +1445,13 @@ func _build_yard() -> void:
 	_sun_disc.material_override = sun_material
 	_sun_disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_sun_disc.position = Vector3(-3.2, 2.9, -13.6)
+	_sun_disc.visible = backdrop_material == null
 	add_child(_sun_disc)
 
-	# Horizon band and a crowd barrier: depth markers, not props stacked on the fighting lane.
-	# The band takes the phase's haze colour, so the horizon glows gold at noon, burns orange
-	# at dusk and sinks to indigo at night instead of reading as a grey wall.
-	horizon_material = _mat(Color(0.86, 0.86, 0.80), 1.0)
-	_add_box(self, "HorizonBand", Vector3(34.0, 0.55, 0.4), Vector3(0.0, 0.30, -12.4),
-		horizon_material)
-	# The crowd barrier moved back with the set (fix pass commit 2): at z −2.55 it stood in the
-	# clean sand strip and cut across the booth's base. Same rail, lower rail and nine posts.
-	_add_box(self, "BarrierRail", Vector3(13.0, 0.09, 0.09), Vector3(0.0, 0.95, BARRIER_Z),
-		_mat(Color(0.66, 0.68, 0.72), 0.45, 0.7))
-	_add_box(self, "BarrierLower", Vector3(13.0, 0.07, 0.07), Vector3(0.0, 0.50, BARRIER_Z),
-		_mat(Color(0.58, 0.60, 0.64), 0.5, 0.6))
-	for i in 9:
-		_add_box(self, "BarrierPost", Vector3(0.06, 1.02, 0.06),
-			Vector3(-6.0 + i * 1.5, 0.51, BARRIER_Z), _mat(Color(0.52, 0.54, 0.58), 0.5, 0.6))
+	# The horizon band and the crowd barrier are DELETED (PART M). Both were programmer art
+	# standing in for a sky and a crowd line; the illustrated backdrop is the sky and the sand
+	# runs into the painted shore, so a grey band and two rails with nine posts would be the
+	# only straight lines left in the frame.
 
 	# Additive pool of stage light on the sand (the SpotLights are the real illumination).
 	var pool_quad := QuadMesh.new()
@@ -1395,14 +1525,11 @@ func speaker_slot_paths() -> Array[String]:
 
 
 func _build_truss_and_lights() -> void:
-	var metal := _mat(Color(0.34, 0.36, 0.40), 0.45, 0.8)
-	for side in [-1.0, 1.0]:
-		_add_box(self, "TrussTower", Vector3(0.16, 4.4, 0.16),
-			Vector3(side * 3.55, 2.2, -0.35), metal)
-	_add_box(self, "TrussBeam", Vector3(7.4, 0.16, 0.16), Vector3(0.0, 4.35, -0.35), metal)
-	for i in 4:
-		_add_box(self, "Fixture", Vector3(0.22, 0.30, 0.22),
-			Vector3(-2.4 + i * 1.6, 4.05, -0.35), _mat(Color(0.08, 0.08, 0.09), 0.7))
+	# PART M: the truss is GONE. Two 4.4 m vertical poles at +/-3.55 m, a cross beam and four
+	# black fixture boxes were the last "corner poles" on the stage: straight, dark, built in
+	# code, and twice as tall as the shack. The four SpotLight3Ds below are what actually lit
+	# the yard and they are lights, not furniture, so they stay exactly as they were — no light
+	# is created, moved or re-parented, and the seven-light / four-per-mesh budget is unchanged.
 
 	spot_left = SpotLight3D.new()
 	spot_left.name = "SpotLeft"
@@ -1537,6 +1664,39 @@ func _place_stage_set() -> void:
 		slot.position = Vector3(side * x, 0.0, z)
 		slot.scale = Vector3.ONE * s
 		slot.yaw_degrees = -side * float(_stage_layout["speaker_yaw_deg"])
+	_build_stage_contact_shadows()
+
+
+## PART M: a soft contact shadow under the shack and each tower, so a full-size prop reads as
+## standing ON the sand instead of pasted onto it. These are the same `contact_shadow.gdshader`
+## ovals the fighters already wear — no new art, no new shader, no per-frame cost — sized from
+## the measured footprints and laid just above the floor (y 0.016 m) to avoid z-fighting.
+func _build_stage_contact_shadows() -> void:
+	var placed: Array = []
+	if dj_booth != null and dj_booth.deck != null and dj_booth.deck.model != null:
+		placed.append([dj_booth.deck.model, 0.70])
+	for slot in _sound_stacks:
+		if slot != null and slot.model != null:
+			placed.append([slot.model, 0.60])
+	for i in placed.size():
+		var entry: Array = placed[i]
+		var root: Node3D = entry[0]
+		var box := _meshes_world_aabb(root)
+		if box.size == Vector3.ZERO:
+			continue
+		var quad := QuadMesh.new()
+		quad.size = Vector2(maxf(box.size.x * 1.05, 0.6), maxf(box.size.z * 1.35, 0.5))
+		var mat := ShaderMaterial.new()
+		mat.shader = CONTACT_SHADOW
+		mat.set_shader_parameter("opacity", float(entry[1]) * 0.55)
+		var shadow := MeshInstance3D.new()
+		shadow.name = "StageContactShadow%d" % i
+		shadow.mesh = quad
+		shadow.material_override = mat
+		shadow.rotation.x = -PI * 0.5
+		shadow.position = Vector3(box.get_center().x, 0.016, box.get_center().z)
+		shadow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(shadow)
 
 
 ## Authored size of a filled prop slot's model in metres: what `PropLoader` measured from the

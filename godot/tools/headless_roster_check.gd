@@ -1170,7 +1170,7 @@ func _run() -> void:
 	var cel_materials: Array[ShaderMaterial] = []
 	for fighter_model in [fb3d, lick3d]:
 		if fighter_model != null:
-			CharacterModelSlots.collect_cel_materials(fighter_model, cel_materials)
+			cel_materials.append_array(fighter_model.materials)
 	var floor_ok := not cel_materials.is_empty()
 	var band_ok := true
 	var tint_ok := true
@@ -1190,6 +1190,44 @@ func _run() -> void:
 	_check(toon_code.contains("albedo_floor") and toon_code.contains("EMISSION"),
 		"the floor is the shader's own split, not a light or an ambient bump")
 
+	# ---- PART M (2026-11-27): CRISP PBR IS THE DEFAULT LOOK, TOON IS THE F6 A/B -------------
+	# Intentional change: the fighters used to bind the cel ShaderMaterial straight away. Now
+	# the default surface is the imported body's own StandardMaterial3D with tuned roughness, a
+	# dielectric specular and the material's built-in rim; the toon set is still built at bind
+	# (so the checks above still read it) and F6 swaps it in.
+	var pbr_failures: Array[String] = []
+	for fighter_model in [fb3d, lick3d]:
+		if fighter_model == null:
+			pbr_failures.append("no model")
+			continue
+		var pbr: StandardMaterial3D = fighter_model.pbr_material()
+		if pbr == null:
+			pbr_failures.append("%s: no PBR material" % String(fighter_model.fighter_key))
+			continue
+		if fighter_model.look_toon or not fighter_model.look_is_pbr():
+			pbr_failures.append("%s: not the default look" % String(fighter_model.fighter_key))
+		if pbr.roughness <= 0.0 or pbr.roughness >= 1.0 or not pbr.rim_enabled \
+				or pbr.specular_mode == BaseMaterial3D.SPECULAR_DISABLED \
+				or pbr.albedo_texture == null:
+			pbr_failures.append("%s: untuned (r %.2f, rim %s)" % [
+				String(fighter_model.fighter_key), pbr.roughness, str(pbr.rim_enabled)])
+		if not fighter_model.meshes.is_empty():
+			var live: Material = fighter_model.meshes[0].get_surface_override_material(0)
+			if live != pbr:
+				pbr_failures.append("%s: PBR not bound" % String(fighter_model.fighter_key))
+	_check(pbr_failures.is_empty(),
+		"both fighters default to the tuned native StandardMaterial3D (PBR) surface",
+		", ".join(pbr_failures) if not pbr_failures.is_empty() else "PBR bound, toon held for A/B")
+	# F6 swaps the shading model on the live bodies and swaps it back.
+	if fb3d != null:
+		var toon_ok := fb3d.set_toon_look(true) and fb3d.look_is_pbr() == false
+		var live_toon: Material = fb3d.meshes[0].get_surface_override_material(0)
+		var back_ok := not fb3d.set_toon_look(false) and fb3d.look_is_pbr()
+		_check(toon_ok and live_toon == fb3d.materials[0] and back_ok,
+			"the legacy toon shader is still bound by the A/B toggle, then released",
+			"toggle %s / bound %s / released %s" % [str(toon_ok),
+				str(live_toon == fb3d.materials[0]), str(back_ok)])
+
 	# The towers are `.glb` slots: two of them, and PART 3 commit 8 delivered the left one.
 	# No procedural cabinet, cone, bracket or VU LED exists anywhere in the scene.
 	_check(stage3d != null and stage3d.speaker_stack_count() == 2
@@ -1204,10 +1242,18 @@ func _run() -> void:
 				and paths[1].ends_with("rasta_speaker.glb"),
 			"the left slot asks for jamaican_speaker.glb and the right for rasta_speaker.glb",
 			"%s" % [paths])
+		# PART M (intentional change): the barrier used to be asserted present. The beach yard
+		# now has NO code-built geometry at all — the rail, the nine posts, the horizon band and
+		# the four-piece truss are deleted, so `_yard_solids` (every box `_add_box` appended to
+		# the yard) must be empty, and so must the named nodes that used to hold them.
 		_check(stage3d.get_node_or_null("SpeakerStackLeft/Plinth") == null
 				and stage3d.get_node_or_null("SpeakerStackLeft/AmpRack") == null
-				and stage3d.get_node_or_null("BarrierRail") != null,
-			"no procedural stack remains, while the stage barrier still stands")
+				and stage3d.get_node_or_null("BarrierRail") == null
+				and stage3d.get_node_or_null("HorizonBand") == null
+				and stage3d.get_node_or_null("TrussBeam") == null
+				and stage3d._yard_solids.is_empty(),
+			"no procedural stack, barrier rail, post, horizon band or truss remains",
+			"%d code-built box(es) in the yard" % stage3d._yard_solids.size())
 	# PART B commit 4 (intentional change): the graded look's depth fog was stripped with the
 	# washout — the three-stop sky gradient carries the depth instead, in every preset.
 	_check(stage3d != null and stage3d.world_env != null
@@ -1223,9 +1269,9 @@ func _run() -> void:
 		_check(stage3d.sun.light_energy < 0.2 and stage3d.spot_left.light_energy > 2.0,
 			"night is carried by the overhead SpotLight3D rig, not a screen tint",
 			"sun %.2f / spot %.2f" % [stage3d.sun.light_energy, stage3d.spot_left.light_energy])
-		var night_sky: Color = stage3d.sky_material.get_shader_parameter("top_colour")
+		var night_sky: Color = stage3d.sky_top_colour()
 		_check(night_sky.b > night_sky.r and not stage3d.world_env.environment.fog_enabled,
-			"night darkens the 3D sky under a clear, unfogged gradient")
+			"night darkens the 3D sky colour under a clear, unfogged preset")
 		stage3d.apply_phase(1, 0.0)
 		await process_frame
 		_check(stage3d.sun.light_color.r > stage3d.sun.light_color.b
@@ -1246,8 +1292,8 @@ func _run() -> void:
 			"fill %.2f" % stage3d.fill.light_energy)
 		stage3d.apply_phase(1, 0.0)
 		await process_frame
-		var dusk_bottom: Color = stage3d.sky_material.get_shader_parameter("bottom_colour")
-		var dusk_top: Color = stage3d.sky_material.get_shader_parameter("top_colour")
+		var dusk_bottom: Color = stage3d.sky_bottom_colour()
+		var dusk_top: Color = stage3d.sky_top_colour()
 		_check(stage3d.fill.light_color.b > stage3d.fill.light_color.g
 				and stage3d.fill.light_color.r > 0.6,
 			"sunset fills the yard with violet/magenta instead of grey",
@@ -1909,22 +1955,31 @@ func _run() -> void:
 	var atmosphere: Arena3D = arena2.arena3d
 	var crowd3d: CrowdController3D = atmosphere.crowd3d
 	var booth: DJBooth3D = atmosphere.dj_booth
-	_check(booth != null and atmosphere.dj_count() == 2,
-		"two 3D DJs work the decks between the speaker stacks",
-		"%d DJs" % atmosphere.dj_count())
-	_check(booth != null and absf(booth.position.x) < 0.01 and booth.position.z < -2.55,
-		"the DJ booth is centred between the stacks and behind the crowd barrier",
+	# ---- PART M (2026-11-27): ZERO NON-FIGHTING PEOPLE ON THE STAGE --------------------
+	# Intentional change: the booth used to stand two delivered Mixamo selectors behind the
+	# decks. Both DJ rigs are removed, so the illustrated beach set carries no non-fighting
+	# body at all (the spectator rigs were already switched off by fix pass commit 1).
+	# Crowd Hype, the hype readout, every callout and the whole audio path never lived here.
+	_check(booth != null and atmosphere.dj_count() == 0 and booth.dj_count() == 0
+			and booth.model_slots().is_empty() and not booth.djs_enabled,
+		"both DJ rigs are removed — no model slot, no anchor, the switch defaults to off",
+		"%d DJ(s), %d model slot(s)" % [atmosphere.dj_count(),
+			booth.model_slots().size() if booth != null else -1])
+	_check(booth != null and booth.get_node_or_null("DJ1") == null
+			and booth.get_node_or_null("DJ2") == null,
+		"the booth instantiates no DJ node at all",
+		"DJ1 %s / DJ2 %s" % [str(booth.get_node_or_null("DJ1")),
+			str(booth.get_node_or_null("DJ2"))] if booth != null else "no booth")
+	_check(booth != null and absf(booth.position.x) < 0.01 and booth.position.z <= -4.6,
+		"the shack is centred on the yard and seated at the brief's -4.8 m depth",
 		"%s" % [booth.position if booth != null else Vector3.ZERO])
 	_check(booth != null and booth.deck != null
 			and booth.deck.model_path.ends_with("dj_booth.glb")
 			and booth.find_children("Mixer", "MeshInstance3D", true, false).is_empty()
 			and booth.find_children("Vinyl", "MeshInstance3D", true, false).is_empty(),
-		"the rig is one dj_booth.glb slot — no turntable, vinyl, mixer or fader is built in code",
+		"the shack is one dj_booth.glb slot — no turntable, vinyl, mixer or fader is built in code",
 		"%s loaded=%s" % [booth.deck_path() if booth != null else "-",
 			str(booth.deck_loaded()) if booth != null else "-"])
-	_check(booth != null and booth.empty_slot_count() == 0,
-		"both DJ slots are filled by delivered characters",
-		"%d empty" % (booth.empty_slot_count() if booth != null else -1))
 	# ---- Fix pass commit 1 (2026-11-27): the 22 spectator rigs are GONE ------------------
 	# Owner request: a wide, clean sand strip in front of a deeper set. The rigs stand behind
 	# a master switch that defaults to false, so the shipped scene builds no spectator node at
@@ -1953,11 +2008,15 @@ func _run() -> void:
 	_check(atmosphere._hype_energy() > 0.39 and atmosphere._hype_energy() < 0.41,
 		"the Crowd Hype readout still follows the fighter's meter with no rigs",
 		"%.2f of the meter" % atmosphere._hype_energy())
-	# ---- The two DJs are NOT crowd: they still answer every cue -------------------------
+	# ---- The deck is not a person: the cue answers it and nothing is posed ---------------
+	# PART M (intentional change): this used to assert that a DJ pointed at whoever landed the
+	# heavy hit. There is no DJ, so the contract is that the same cue leaves the booth with no
+	# clip state, no rig and no error.
 	crowd3d.settle()
 	booth.settle()
 	atmosphere.notify_combat_event(&"heavy_hit", 0)
-	_check(booth.pointing(), "a DJ points at the fighters on a heavy hit")
+	_check(not booth.pointing() and booth.dj_count() == 0,
+		"a heavy hit leaves the booth unposed, with no selector to point")
 	_check(booth.deck != null and booth.deck.model_path.ends_with("dj_booth.glb")
 			and booth.deck_loaded(),
 		"the deck slot loads the delivered dj_booth.glb",
@@ -1982,6 +2041,8 @@ func _run() -> void:
 	var stage: Arena3D = atmosphere
 	var presets_ok := true
 	var skies_ok := true
+	var art_ok := true
+	var art_paths := {}
 	var shadow_ok := true
 	var lights_ok := true
 	var sand_colours := {}
@@ -1992,9 +2053,23 @@ func _run() -> void:
 		var env: Environment = stage.world_env.environment
 		if stage.phase_name() == "":
 			presets_ok = false
-		if stage.sky_material == null or stage.sun_material == null or env == null \
-				or stage.sky_material.get_shader_parameter("mid_colour") == null:
+		# PART M (intentional change): the backdrop is illustrated ART now, not a gradient. Each
+		# preset must bind its OWN texture, at full size, unshaded, linearly filtered with
+		# mipmaps and anisotropy, and with fog disabled so the clean look cannot veil it.
+		if stage.backdrop_material == null or stage.sun_material == null or env == null \
+				or stage.backdrop_material.albedo_texture == null:
 			skies_ok = false
+			art_ok = false
+		else:
+			var art: Texture2D = stage.backdrop_material.albedo_texture
+			art_paths[stage.backdrop_texture_path()] = true
+			if art.get_size() != Vector2(1376, 768) \
+					or stage.backdrop_material.shading_mode != BaseMaterial3D.SHADING_MODE_UNSHADED \
+					or not stage.backdrop_material.disable_fog \
+					or stage.backdrop_material.texture_filter \
+						!= BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC \
+					or not stage.backdrop_texture_path().contains("stage_"):
+				art_ok = false
 		if not stage.sun.shadow_enabled or stage.sun.light_angular_distance > 0.001:
 			shadow_ok = false
 		if stage.light_count() > Arena3D.max_lights_per_object() \
@@ -2006,7 +2081,48 @@ func _run() -> void:
 		rig_detail.append("%s %d/%d" % [stage.phase_name(), stage.light_count(),
 			Arena3D.max_lights_per_object()])
 	_check(presets_ok, "each preset loads its own rig", ", ".join(rig_detail))
-	_check(skies_ok, "the sky gradient, sun disc and environment resources exist in every preset")
+	_check(skies_ok, "the backdrop, sun disc and environment resources exist in every preset")
+	_check(art_ok and art_paths.size() == 3,
+		"each preset swaps to its own illustrated 1376 x 768 backdrop, unfogged and sharply filtered",
+		"%d distinct art file(s): %s" % [art_paths.size(), ", ".join(art_paths.keys())])
+	# ---- PART M: the backdrop actually COVERS the frame, measured from the live geometry ----
+	# The lens dollies out to `CAMERA_MAX_DISTANCE` and leans, so the quad must be wider than the
+	# neutral view by the lean shift plus a 12 px margin. Checked arithmetically here so a smaller
+	# quad, a shallower depth or a nearer dolly fails instead of showing a void.
+	var sky_node: MeshInstance3D = stage.get_node_or_null("SkyBackdrop") as MeshInstance3D
+	var sky_quad_size: Vector2 = (sky_node.mesh as QuadMesh).size if sky_node != null \
+			and sky_node.mesh is QuadMesh else Vector2.ZERO
+	var widest := Arena3D.CAMERA_MAX_DISTANCE + absf(sky_node.position.z) if sky_node != null else 0.0
+	var half_w := tan(deg_to_rad(Arena3D.CAMERA_FOV * 0.5)) * widest * (16.0 / 9.0) \
+		+ tan(deg_to_rad(StageLayout.LEAN_YAW_DEG)) * widest
+	var half_h := tan(deg_to_rad(Arena3D.CAMERA_FOV * 0.5)) * widest
+	_check(sky_quad_size.x * 0.5 >= half_w and sky_quad_size.y * 0.5 >= half_h,
+		"the backdrop quad still covers the frame at the widest dolly and the stacked lean",
+		"quad %.1f x %.1f vs needed %.1f x %.1f" % [sky_quad_size.x, sky_quad_size.y,
+			half_w * 2.0, half_h * 2.0])
+	# The painted shoreline (row 0.66) must land on the world Y the sand floor's far edge
+	# projects to at the backdrop plane, so the 3D sand meets the painted surf, not the sea.
+	var floor_mesh: PlaneMesh = null
+	var floor_node2: MeshInstance3D = stage.get_node_or_null("SandFloor") as MeshInstance3D
+	if floor_node2 != null and floor_node2.mesh is PlaneMesh:
+		floor_mesh = floor_node2.mesh as PlaneMesh
+	var floor_far_z: float = floor_node2.position.z - floor_mesh.size.y * 0.5 \
+		if floor_mesh != null else -99.0
+	var cam_z := Arena3D.CAMERA_DISTANCE
+	# Ray from the lens through the floor's far edge, continued to the backdrop plane:
+	# t = (cam_z - sky_z) / (cam_z - floor_far_z), and the height there is 1 - t metres
+	# because the floor edge sits at Y = 0 and the lens at CAMERA_HEIGHT.
+	var t_floor := (cam_z - sky_node.position.z) / maxf(cam_z - floor_far_z, 0.01) \
+		if sky_node != null else 0.0
+	var seam_y: float = Arena3D.CAMERA_HEIGHT * (1.0 - t_floor)
+	var quad_bottom: float = sky_node.position.y - sky_quad_size.y * 0.5 if sky_node != null else 0.0
+	var shore_y: float = quad_bottom + sky_quad_size.y * (1.0 - Arena3D.BACKDROP_SHORE_ROW)
+	_check(absf(shore_y - seam_y) <= 0.12,
+		"the painted shoreline lands on the sand floor's far edge (no horizon seam)",
+		"shore %.2f m vs seam %.2f m" % [shore_y, seam_y])
+	_check(stage.get_node_or_null("SunDisc") != null \
+				and not (stage.get_node_or_null("SunDisc") as Node3D).visible,
+		"no shader sun disc floats over the illustrated sky")
 	_check(shadow_ok, "the directional key light still shadows both fighters in every preset")
 	_check(lights_ok, "light counts stay inside Compatibility's per-object limit",
 		", ".join(rig_detail))
@@ -2118,95 +2234,48 @@ func _run() -> void:
 	atmosphere._pulse = 0.0
 	atmosphere._update_speakers(0.0)
 
-	# ---- Clean human-rig slots instead of capsule mannequins (2026-11-23) --------------
+	# ---- Nothing of a non-fighting body is left on the stage (PART M, 2026-11-27) ------
+	# The old block verified two delivered Mixamo selectors: a 68-bone rig, three acting
+	# clips, a cel material and a crossed clip state per cue. All of that is removed with the
+	# rigs, so what is verified now is the ABSENCE — and that the cue path still runs.
 	_check(booth.legacy_mannequin_count() == 0,
 		"no capsule or cylinder mannequin bodies are left on screen",
 		"%d legacy body meshes" % booth.legacy_mannequin_count())
-	_check(DirAccess.dir_exists_absolute(CharacterModelSlots.DJ_DIR),
-		"the .fbx drop-in folder exists for the DJs")
-	_check(booth.model_slots().size() == booth.dj_count(),
-		"the delivered .fbx characters fill every DJ slot",
-		"%d models" % booth.model_slots().size())
-	# ---- Delivered Mixamo DJ characters (2026-11-23) ----------------------------------
-	# Every delivered selector must be a real 68-bone `mixamorig` rig with its animation
-	# take, decimated to the 3 500-triangle budget, wearing the toon + ink pass, and
-	# crossfading its clips from the arena's own event cues. The crowd carried the same
-	# contract until the rigs were switched off (fix pass commit 1); the two DJs carry it now.
-	var delivered: Array = []
-	delivered.append_array(booth.model_slots())
-	var rig_failures: Array[String] = []
-	var budget_failures: Array[String] = []
-	var clip_failures: Array[String] = []
-	var cel_failures: Array[String] = []
-	for model in delivered:
-		var model_name := String(model.name)
-		var bones := CharacterModelSlots.character_bones(model)
-		if bones <= 20:
-			rig_failures.append("%s:%d" % [model_name, bones])
-		var tris := CharacterModelSlots.character_triangles(model)
-		if tris <= 0 or tris > 3500:
-			budget_failures.append("%s:%d" % [model_name, tris])
-		var player := CharacterModelSlots.animation_player(model)
-		var clips: Array = player.get_animation_list() if player != null else []
-		var tracks := 0
-		if player != null and not clips.is_empty():
-			tracks = player.get_animation(clips[0]).get_track_count()
-		if player == null or clips.size() < 3 or tracks < 50:
-			clip_failures.append("%s:%d clips/%d tracks" % [model_name, clips.size(), tracks])
-		if CharacterModelSlots.cel_surfaces(model) == 0:
-			cel_failures.append(model_name)
-	_check(delivered.size() == booth.dj_count() and rig_failures.is_empty(),
-		"every DJ body on stage carries a real Mixamo skeleton (> 20 bones)",
-		"%d characters, failures %s" % [delivered.size(), rig_failures])
-	_check(not delivered.is_empty() and budget_failures.is_empty(),
-		"every delivered DJ mesh is decimated to ≤ 3 500 triangles",
-		", ".join(budget_failures))
-	_check(not delivered.is_empty() and clip_failures.is_empty(),
-		"every delivered DJ has acting clips with real AnimationPlayer tracks",
-		", ".join(clip_failures))
-	_check(not delivered.is_empty() and cel_failures.is_empty(),
-		"every delivered DJ wears the toon shader plus inverted-hull ink",
-		", ".join(cel_failures))
 	var hand_attachments := booth.find_children("*", "BoneAttachment3D", true, false).size()
 	_check(hand_attachments == 0,
-		"no procedural prop is parented to a DJ hand any more",
+		"no prop is parented to a hand any more (there is no hand)",
 		"%d hand attachment(s)" % hand_attachments)
-
-	# Acting: the same combat cues crossfade the delivered selectors.
+	_check(booth.find_children("DJ*", "Node3D", true, false).is_empty()
+			and booth.find_children("Mixamo*", "Node3D", true, false).is_empty()
+			and booth.empty_slot_count() == 0,
+		"the booth owns no DJ anchor and no imported character",
+		"%d empty slot(s)" % booth.empty_slot_count())
+	# The acting API stays alive over an empty list: every cue is harmless and creates nothing.
+	var booth_nodes_before := booth.get_child_count()
 	booth.settle()
-	var neutral_clip := booth.model_clip_of(0)
-	atmosphere.notify_combat_event(&"heavy_hit", 0)
+	booth.react(&"heavy_hit", 0)
+	booth.nod()
 	booth.tick(0.1)
-	_check(booth.model_act_of(0) == CharacterModelSlots.ACT_HYPE,
-		"the selectors crossfade to the hype take when they point at the fighters",
-		String(booth.model_act_of(0)))
+	atmosphere.notify_combat_event(&"heavy_hit", 0)
+	atmosphere.notify_combat_event(&"ko", 0)
 	booth.settle()
-	_check(booth.model_act_of(0) == CharacterModelSlots.ACT_NEUTRAL
-			and booth.model_clip_of(0) == neutral_clip,
-		"a settled booth crossfades back to the selector's own loop",
-		booth.model_clip_of(0))
-	# ---- Every DJ surface carries a real albedo (playtest 2026-11-24) ------------------
-	var unbound := 0
-	var surfaces := 0
-	for model in booth.model_slots():
-		surfaces += _count_cel_surfaces(model)
-		unbound += CharacterModelSlots.report_albedo("dj", model)
-	_check(unbound == 0 and surfaces >= booth.model_slots().size(),
-		"every DJ surface binds a delivered albedo — none is null",
-		"%d surfaces / %d unbound" % [surfaces, unbound])
-	var tint_amount := 1.0
-	for model in booth.model_slots():
-		for child in model.find_children("*", "MeshInstance3D", true, false):
-			var mi := child as MeshInstance3D
-			if mi == null or mi.mesh == null or mi.mesh.get_surface_count() == 0:
-				continue
-			var material := mi.get_surface_override_material(0) as ShaderMaterial
-			if material != null:
-				tint_amount = minf(tint_amount,
-					float(material.get_shader_parameter("shadow_tint_amount")))
-	_check(tint_amount <= 0.001,
-		"no global darkening on the cel shader — DJ albedo renders at full brightness",
-		"shadow_tint_amount %.3f" % tint_amount)
+	_check(booth.get_child_count() == booth_nodes_before and booth.dj_count() == 0
+			and not booth.pointing() and not booth.celebrating(),
+		"every DJ cue runs with zero null references and creates no rig",
+		"%d → %d child(ren)" % [booth_nodes_before, booth.get_child_count()])
+	# The deck keeps its tuned native PBR surface, which is the default look for delivered
+	# props: no toon ramp, a real roughness, a rim band and anisotropic mip filtering.
+	var deck_pbr_ok := booth.deck != null and not booth.deck.native_materials.is_empty()
+	if deck_pbr_ok:
+		var deck_mat: StandardMaterial3D = booth.deck.native_materials[0]
+		deck_pbr_ok = deck_mat.roughness > 0.0 and deck_mat.roughness < 1.0 \
+			and deck_mat.rim_enabled \
+			and deck_mat.texture_filter \
+				== BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	_check(deck_pbr_ok,
+		"the shack wears a tuned native StandardMaterial3D, not a toon ramp",
+		"%d material(s)" % (booth.deck.native_materials.size() if booth.deck != null else 0))
+
 	# ---- Music bed cannot bleed into Match 2+ (owner playtest, 2026-11-23) --------------
 	music_bed.play_victory()
 	_check(music_bed.is_playing() and not music_bed.is_off(),
@@ -2385,8 +2454,10 @@ func _run() -> void:
 	_check(absf(PropLoader.seat_scale_for(AABB(), 2.0) - 1.0) < 0.0001,
 		"a degenerate box is never scaled")
 	var table_ok := true
+	# PART M (intentional change): the wide slots carry the brief's full-size arcade
+	# dimensions — 2.50 m towers beside a 2.45 m shack — instead of the table-top 2.6/1.15.
 	var prop_heights := {
-		"jamaican_speaker": 2.6, "rasta_speaker": 2.6, "dj_booth": 1.15,
+		"jamaican_speaker": 2.5, "rasta_speaker": 2.5, "dj_booth": 2.45,
 		"wireless_mic": 0.0, "mic_stand": 0.0,
 	}
 	for stem in prop_heights:
@@ -2395,7 +2466,7 @@ func _run() -> void:
 			table_ok = false
 	_check(table_ok,
 		"every prop slot resolves its table height from the file stem",
-		"speakers 2.6, booth 1.15, mic and stand native")
+		"speakers 2.50, booth 2.45, mic and stand native")
 	# The longest-dimension mode (2026-11-27): a mic is sized by how long it is, and the scale is
 	# taken in world metres so the rig scale on the hand bone is divided out.
 	_check(is_equal_approx(PropLoader.TARGET_LONGEST_M.get("wireless_mic", 0.0), 0.24)
@@ -2455,13 +2526,18 @@ func _run() -> void:
 		_check(absf(spk_box.position.y) <= 0.01,
 			"the tower's lowest vertex sits on the sand within 1 cm",
 			"y %+.4f m" % spk_box.position.y)
-		# Fix pass commit 2 (intentional change): the delivered tower is authored at 2.6 m, and the
-		# stage's perspective compensation multiplies it by the 1.25× the brief allows so it keeps
-		# its read after moving 4.45 m further back. Both numbers are asserted, separately.
-		var authored: float = 2.6 * float(prop_yard.stage_speaker_scale())
+		# PART M (intentional change): the brief's real-world size, not an apparent-size
+		# compensation. The delivered tower is seated at `SPEAKER_TARGET_HEIGHT` and the stage
+		# scale normalises anything a future upload measures, so the number asserted is the
+		# world height the player sees: 2.3–2.7 m.
+		var authored: float = StageLayout.SPEAKER_TARGET_HEIGHT \
+			* float(prop_yard.stage_speaker_scale())
 		_check(absf(spk_box.size.y - authored) / authored <= 0.02,
-			"the tower stands its authored 2.6 m times the stage scale, within 2 %",
-			"%.3f m (2.60 × %.2f×)" % [spk_box.size.y, prop_yard.stage_speaker_scale()])
+			"the tower stands its 2.50 m target, within 2 %",
+			"%.3f m (2.50 × %.2f×)" % [spk_box.size.y, prop_yard.stage_speaker_scale()])
+		_check(spk_box.size.y >= 2.3 and spk_box.size.y <= 2.7,
+			"the towers stand inside the brief's 2.3–2.7 m band",
+			"%.3f m tall, %.2f m wide" % [spk_box.size.y, spk_box.size.x])
 		var spk_tris := 0
 		for node in speaker.model.find_children("*", "MeshInstance3D", true, false):
 			var spk_mi := node as MeshInstance3D
@@ -2492,16 +2568,16 @@ func _run() -> void:
 				spk_nearest = String(model.name)
 		_check(spk_crowd_clear, "the tower overlaps no crowd rig",
 			spk_nearest if not spk_crowd_clear else "%d spk_rigs clear" % spk_rigs.size())
-		var spk_rail: Node3D = prop_yard.get_node_or_null("BarrierRail")
-		var spk_rail_box := _prop_world_bounds(spk_rail)
-		# Fix pass commit 2 (intentional change of what this asserts): the rail moved back with the
-		# set, because at z −2.55 it stood inside the clean sand strip and cut across the booth.
-		# It is now BEHIND the towers, which is the ordering asserted here.
-		_check(spk_rail != null and not spk_box.intersects(spk_rail_box)
-				and spk_rail_box.position.z < spk_box.position.z,
-			"the barrier now stands behind the tower, clear of it",
-			"tower z %.2f..%.2f, spk_rail z %.2f..%.2f" % [spk_box.position.z, spk_box.end.z,
-				spk_rail_box.position.z, spk_rail_box.end.z])
+		# PART M (intentional change): the crowd barrier is DELETED. What used to be "the rail
+		# stands behind the tower" is now the absence of any rail at all — no code-built box is
+		# left in the yard — plus the tower clearing every remaining volume.
+		_check(prop_yard.get_node_or_null("BarrierRail") == null
+				and prop_yard.get_node_or_null("BarrierLower") == null
+				and prop_yard._yard_solids.is_empty()
+				and spk_crowd_clear,
+			"the barrier fence and its posts are removed, and the tower clears the yard",
+			"%d code-built box(es), %d crowd rig(s) clear" % [prop_yard._yard_solids.size(),
+				spk_rigs.size()])
 		var spk_lane_left := (BaseFighter.STAGE_LEFT - 640.0) / 140.0
 		var spk_lane_right := (BaseFighter.STAGE_RIGHT - 640.0) / 140.0
 		var spk_lane := AABB(Vector3(spk_lane_left, 0.0, -0.5), Vector3(spk_lane_right - spk_lane_left, 2.2, 1.0))
@@ -2539,48 +2615,52 @@ func _run() -> void:
 				prop_yard.stage_booth_z()])
 		var s_booth: float = prop_yard.stage_booth_scale()
 		var s_tower: float = prop_yard.stage_speaker_scale()
-		_check(s_booth >= StageLayout.SCALE_MIN and s_booth <= StageLayout.SCALE_MAX
-				and s_tower >= StageLayout.SCALE_MIN and s_tower <= StageLayout.SCALE_MAX,
-			"both perspective scales sit inside the 1.0–1.25 clamp",
+		_check(s_booth >= StageLayout.STAGE_SCALE_MIN and s_booth <= StageLayout.STAGE_SCALE_MAX
+				and s_tower >= StageLayout.STAGE_SCALE_MIN
+				and s_tower <= StageLayout.STAGE_SCALE_MAX,
+			"both stage scales sit inside the normalisation clamp",
 			"booth %.3f× / tower %.3f×" % [s_booth, s_tower])
-		# Apparent size, measured the way the brief means it: world height over lens distance.
+		# PART M (intentional change): the old checks kept the props' APPARENT size within 15 %
+		# of where they stood before the set moved back, which is exactly what kept the shack a
+		# miniature. The brief asks for real arcade proportions instead, so the shack is measured
+		# in metres: ~2.35–2.55 m tall and ~3.4–3.7 m wide, seated flush on Y = 0.
 		var deck_box := _prop_world_bounds(prop_yard.dj_booth.deck.model)
-		var booth_ratio: float = StageLayout.apparent_height(deck_box.size.y,
-				prop_yard.stage_booth_z()) / StageLayout.apparent_height(1.15,
-				StageLayout.LEGACY_BOOTH_Z)
-		var tower_ratio: float = StageLayout.apparent_height(spk_box.size.y,
-				prop_yard.stage_speaker_z()) / StageLayout.apparent_height(2.6,
-				StageLayout.LEGACY_SPEAKER_Z)
-		_check(absf(booth_ratio - 1.0) <= 0.15,
-			"the booth keeps its apparent size within 15 % after moving back",
-			"%.3f× of today's at %.2f× scale" % [booth_ratio, s_booth])
-		# The towers moved 4.45 m back, further than the booth. With the compensation capped at
-		# 1.25× their apparent size lands below the 15 % window; measured and logged rather
-		# than hidden (AGENTS.md PART J2).
-		_check(tower_ratio >= 0.65,
-			"the towers keep at least 65 % of their old apparent size at the 1.25× clamp",
-			"%.3f× of today's at %.2f× scale" % [tower_ratio, s_tower])
-		var dj_clear := true
-		var dj_detail := ""
-		for dj_index in prop_yard.dj_booth.dj_count():
-			var dj_box: AABB = prop_yard.dj_booth.dj_world_bounds(dj_index)
-			if dj_box.size == Vector3.ZERO or dj_box.intersects(deck_box) \
-					or dj_box.position.z >= deck_box.position.z:
-				dj_clear = false
-				dj_detail += " #%d z %.2f..%.2f" % [dj_index, dj_box.position.z, dj_box.end.z]
-		_check(dj_clear, "both DJ rigs stand behind the deck without interpenetrating it",
-			dj_detail if not dj_clear else "deck z %.2f..%.2f, %d men behind" % [
-				deck_box.position.z, deck_box.end.z, prop_yard.dj_booth.dj_count()])
-		# ---- The thatched deck uploaded 2026-11-27: counter, canopy and selector stands ------
-		# Every number is measured from the live mesh, never copied from the asset brief. The
-		# deck is authored at 1.15 m and the stage multiplies it by 1.178x, so the working
-		# surface of this low beach counter lands at 0.38 m, not the 1.10-1.20 m the brief
-		# wanted: reaching 1.10 m would need a 3.9 m authored hut whose 4.4 m depth breaks the
-		# sand strip, the tower separation and the frame (AGENTS.md PART K2).
+		_check(deck_box.size.y >= 2.35 and deck_box.size.y <= 2.55,
+			"the thatched shack stands full size: 2.35–2.55 m tall",
+			"%.3f × %.3f × %.3f m" % [deck_box.size.x, deck_box.size.y, deck_box.size.z])
+		_check(deck_box.size.x >= 3.4 and deck_box.size.x <= 3.7,
+			"the thatched shack reads as a real shack: 3.4–3.7 m wide",
+			"%.3f m wide at %.3f m deep" % [deck_box.size.x, deck_box.size.z])
+		_check(absf(deck_box.position.y) <= 0.01,
+			"the shack is seated flush at Y = 0",
+			"lowest vertex y %+.4f m" % deck_box.position.y)
+		# The two props' world sizes come out of the DATA rule too, with no scene involved, so a
+		# replacement upload of any size lands in the same band.
+		var normalised: Dictionary = StageLayout.compute(Vector3(0.947, 0.659, 0.630),
+			Vector3(1.682, 1.899, 0.575))
+		_check(absf(float(normalised["booth_scale"]) - 2.45 / 0.659) <= 0.001
+				and absf(float(normalised["speaker_scale"]) - 2.50 / 1.899) <= 0.001,
+			"the placement rule normalises the authored files to the brief's sizes",
+			"booth %.3f× / tower %.3f×" % [float(normalised["booth_scale"]),
+				float(normalised["speaker_scale"])])
+		# There is no DJ rig left to stand behind the deck (PART M), and the deck now owns its own
+		# soft contact shadow so it reads as standing ON the sand.
+		_check(prop_yard.dj_booth.dj_count() == 0
+				and prop_yard.dj_booth.dj_world_bounds(0).size == Vector3.ZERO,
+			"no selector rig stands behind the deck any more",
+			"%d DJ(s)" % prop_yard.dj_booth.dj_count())
+		var stage_shadows: Array = prop_yard.find_children("StageContactShadow*", "MeshInstance3D", true, false)
+		_check(stage_shadows.size() == 2,
+			"the shack and the delivered tower each own a contact shadow on the sand",
+			"%d shadow quad(s)" % stage_shadows.size())
+		# ---- The thatched deck: counter and canopy, measured off the live mesh --------------
+		# PART M (intentional change): the deck is now seated at 2.45 m instead of 1.355 m, so
+		# the counter its triangles carry moved from 0.38 m to ~0.69 m and the canopy underside
+		# from ~0.85 m to ~1.54 m. Both are re-measured here rather than assumed.
 		var counter_y: float = prop_yard.dj_booth.deck_counter_y()
 		var canopy_y: float = prop_yard.dj_booth.deck_canopy_underside_y()
-		_check(counter_y >= 0.30 and counter_y <= 0.45 and canopy_y > counter_y + 0.5,
-			"the thatched deck's counter and canopy are measured where they were calibrated",
+		_check(counter_y >= 0.55 and counter_y <= 0.85 and canopy_y > counter_y + 0.6,
+			"the full-size deck's counter and canopy scale with the shack",
 			"counter %.3f m, canopy underside %.3f m" % [counter_y, canopy_y])
 		var deck_cam: Camera3D = prop_yard.camera
 		var cam_y := deck_cam.global_position.y
@@ -2592,18 +2672,6 @@ func _run() -> void:
 			"the thatched canopy stays inside the neutral frame with the 12 px margin",
 			"%.0f px above the roof (roof %.2f m, frame top %.2f m)" % [
 				top_margin_px, deck_box.end.y, frame_top])
-		var dj_feet := 0.0
-		var dj_gap := INF
-		for dj_index in prop_yard.dj_booth.dj_count():
-			var dj_box: AABB = prop_yard.dj_booth.dj_world_bounds(dj_index)
-			if dj_box.size == Vector3.ZERO:
-				dj_gap = -INF
-				continue
-			dj_feet = maxf(dj_feet, absf(dj_box.position.y))
-			dj_gap = minf(dj_gap, deck_box.position.z - dj_box.end.z)
-		_check(dj_feet <= 0.01 and dj_gap >= 0.10,
-			"both selectors stand on the sand, clear of the deck's back wall, posts and roof",
-			"feet %+.4f m, %.2f m of air behind the deck" % [dj_feet, dj_gap])
 		# Data-driven proof, no mesh and no scene involved: a synthetic booth and tower of
 		# different sizes go through the same rule and keep the same contract.
 		var synthetic: Dictionary = StageLayout.compute(Vector3(3.2, 1.4, 1.6),
@@ -2624,9 +2692,6 @@ func _run() -> void:
 		var back_most := INF
 		for box in prop_yard.prop_bounds():
 			back_most = minf(back_most, box.position.z)
-		var barrier_node: Node3D = prop_yard.get_node_or_null("BarrierRail")
-		if barrier_node != null:
-			back_most = minf(back_most, _prop_world_bounds(barrier_node).position.z)
 		_check(is_finite(floor_back) and floor_back <= back_most - 1.0,
 			"the sand floor runs at least 1 m behind the back-most prop",
 			"floor back z %.2f vs prop back z %.2f" % [floor_back, back_most])
@@ -3150,13 +3215,21 @@ func _run() -> void:
 				var std := mat as StandardMaterial3D
 				if std.albedo_texture != null:
 					native_tex_w = maxi(native_tex_w, std.albedo_texture.get_width())
-				native_ok = std.albedo_texture != null and is_equal_approx(std.roughness, 1.0) \
+				# PART M (intentional change): the surface used to be fully diffuse (roughness 1,
+			# specular disabled). It is a TUNED PBR material now — 0.55 roughness, a 0.35
+			# dielectric specular and the clean rim band — which is the whole point of the
+			# crisp-PBR default.
+				native_ok = std.albedo_texture != null \
+					and is_equal_approx(std.roughness, PropLoader.PBR_ROUGHNESS) \
 					and is_zero_approx(std.metallic) \
+					and std.specular_mode != BaseMaterial3D.SPECULAR_DISABLED \
+					and std.rim_enabled \
 					and std.cull_mode == BaseMaterial3D.CULL_DISABLED \
 					and std.texture_filter == BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 		_check(native_ok and native_tex_w == 2048,
-			"the delivered 2048 albedo is kept on a StandardMaterial3D (roughness 1, metallic 0, "
-			+ "culling disabled, mipmaps+anisotropic)", "%d surface(s), %d px" % [native_count, native_tex_w])
+			"the delivered 2048 albedo is kept on a TUNED StandardMaterial3D (PBR roughness, "
+			+ "dielectric specular, rim band, culling disabled, mipmaps+anisotropic)",
+			"%d surface(s), %d px" % [native_count, native_tex_w])
 		# ... and the time-of-day pass must not repaint it: the same albedo, at every preset.
 		var kept_texture: Texture2D = null
 		var kept_ok := true

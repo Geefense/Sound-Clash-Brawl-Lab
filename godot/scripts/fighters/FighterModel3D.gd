@@ -245,6 +245,22 @@ var skeleton: Skeleton3D = null
 var animation: AnimationPlayer = null
 var meshes: Array[MeshInstance3D] = []
 var materials: Array[ShaderMaterial] = []
+## PART M (2026-11-27): the DEFAULT look is now the imported PBR surface — one
+## `StandardMaterial3D` per mesh with tuned roughness, a dielectric specular and the clean
+## rim band — and the toon/cel shader above is the F6 A/B alternative. Both sets are built
+## once at bind; `set_toon_look()` swaps the surface overrides, so neither path allocates or
+## rebuilds a material during a match. Every per-frame writer (flash, parry rim, preset rim,
+## mirror tint) writes to BOTH sets, so switching look mid-fight can never leave one stale.
+var pbr_materials: Array[StandardMaterial3D] = []
+## PBR values for a delivered photogrammetric body. 0.62 roughness keeps the jacket and the
+## trousers matte; a 0.30 dielectric specular gives the Clarks and the mic a highlight without
+## turning the body plastic; the rim band is what separates a dark silhouette from the sky.
+const PBR_ROUGHNESS := 0.62
+const PBR_SPECULAR := 0.30
+const PBR_METALLIC := 0.0
+const PBR_RIM_TINT := 0.75
+## False is the default (PBR). F6 sets it through `Arena3D.set_legacy_look()`.
+var look_toon: bool = false
 ## role -> animation name for the owner's Mixamo takes (2026-11-24). Empty when the fighter
 ## has no uploaded clips, in which case the whole-body procedural stance stays in charge.
 var clips: Dictionary = {}
@@ -512,6 +528,10 @@ func is_mirror_variant() -> bool:
 
 
 func shader_tint() -> Color:
+	if look_toon and not materials.is_empty():
+		return materials[0].get_shader_parameter("tint") as Color
+	if not pbr_materials.is_empty():
+		return pbr_materials[0].albedo_color
 	if materials.is_empty():
 		return _base_tint
 	return materials[0].get_shader_parameter("tint") as Color
@@ -523,6 +543,10 @@ func _apply_variant() -> void:
 	for mat in materials:
 		mat.set_shader_parameter("tint", tint)
 		mat.set_shader_parameter("hue_shift", hue)
+	# The PBR path has no hue rotor, so the mirror accent rides the albedo multiply, which is
+	# the same player-identity cue expressed on a StandardMaterial3D.
+	for mat in pbr_materials:
+		mat.albedo_color = tint
 	_apply_rim()
 
 
@@ -537,6 +561,15 @@ func _apply_rim() -> void:
 		mat.set_shader_parameter("rim_colour", rim)
 		if preset_rim_strength >= 0.0:
 			mat.set_shader_parameter("rim_strength", preset_rim_strength)
+	# `StandardMaterial3D` has no rim COLOUR (Godot 4's `rim` is the band's amount and
+	# `rim_tint` how much albedo bleeds into it), so the PBR path carries the preset's rim
+	# STRENGTH while the coloured band stays with the toon A/B material and the props.
+	var band := clampf(PBR_RIM_TINT * (preset_rim_strength if preset_rim_strength >= 0.0 else 1.0),
+		0.0, 1.0)
+	for mat in pbr_materials:
+		mat.rim_enabled = true
+		mat.rim = band
+		mat.rim_tint = 0.35
 
 
 ## Called by the stage whenever its Afternoon / Sunset / Night preset changes. Presentation
@@ -678,8 +711,58 @@ func _apply_materials(src: Dictionary) -> void:
 		ink.set_shader_parameter("ink_colour", src["ink"])
 		mat.next_pass = ink
 		materials.append(mat)
+		# The default surface: a tuned StandardMaterial3D around the same delivered albedo.
+		# The inverted-hull ink ride-along makes it a `next_pass` on the PBR material too, so
+		# F6 changes the shading model without changing the drawing.
+		var pbr := StandardMaterial3D.new()
+		pbr.albedo_texture = texture
+		pbr.albedo_color = src["tint"]
+		pbr.roughness = PBR_ROUGHNESS
+		pbr.metallic = PBR_METALLIC
+		pbr.metallic_specular = PBR_SPECULAR
+		pbr.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+		pbr.rim_enabled = true
+		pbr.rim = PBR_RIM_TINT
+		pbr.rim_tint = 0.30
+		pbr.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+		var ink_pbr := ShaderMaterial.new()
+		ink_pbr.shader = OUTLINE_SHADER
+		ink_pbr.set_shader_parameter("ink_colour", src["ink"])
+		pbr.next_pass = ink_pbr
+		pbr_materials.append(pbr)
+		# PBR is the DEFAULT look (PART M); the toon set is only bound by `set_toon_look`.
 		for surface in mi.mesh.get_surface_count():
-			mi.set_surface_override_material(surface, mat)
+			mi.set_surface_override_material(surface, pbr)
+
+
+## F6 A/B: bind the legacy toon/cel material (true) or the default PBR material (false).
+## Returns the mode now live. Presentation only — no combat value, collider or hitbox is
+## involved, and both material sets were built once at bind so this is a pointer swap.
+func set_toon_look(on: bool) -> bool:
+	look_toon = on
+	var pick: Material = materials[0] if on and not materials.is_empty() else null
+	for i in meshes.size():
+		var mi := meshes[i]
+		if mi == null:
+			continue
+		var source: Material = pick
+		if source == null:
+			source = pbr_materials[i] if i < pbr_materials.size() else null
+		if source == null:
+			continue
+		for surface in mi.mesh.get_surface_count():
+			mi.set_surface_override_material(surface, source)
+	return look_toon
+
+
+## True while the delivered PBR surface is the live one (the default).
+func look_is_pbr() -> bool:
+	return not look_toon
+
+
+## The default PBR material, for the look audit. Null on the billboard fallback.
+func pbr_material() -> StandardMaterial3D:
+	return pbr_materials[0] if not pbr_materials.is_empty() else null
 
 
 func _play_baked_idle() -> void:
@@ -1648,6 +1731,8 @@ func _push_flash() -> void:
 		if parry:
 			for mat in materials:
 				mat.set_shader_parameter("rim_colour", PARRY_RIM)
+			for mat in pbr_materials:
+				mat.rim = 1.0
 		else:
 			# Back to whatever owns the rim: the P2 mirror accent, the stage preset, or the
 			# body's own authored colour. A parry flash must never leave a preset rim lost.
@@ -1657,6 +1742,12 @@ func _push_flash() -> void:
 	_flash = target
 	for mat in materials:
 		mat.set_shader_parameter("flash_amount", _flash)
+	# PBR has no ramp to lift, so the impact strobe is the material's own emission: one crisp
+	# white frame on contact, off the very next frame, exactly like the cel path.
+	for mat in pbr_materials:
+		mat.emission_enabled = _flash > 0.0
+		mat.emission = Color(1.0, 0.97, 0.90) * _flash
+		mat.emission_energy_multiplier = 1.0
 
 
 # =========================================================================

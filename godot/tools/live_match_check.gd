@@ -757,12 +757,13 @@ func _check_arena_integrity() -> void:
 		"%.2f × %.2f × %.2f m" % [deck.size.x, deck.size.y, deck.size.z])
 	_check(absf(deck.position.y) <= 0.01,
 		"the deck's lowest vertex sits on the sand within 1 cm", "y %+.4f m" % deck.position.y)
-	# Fix pass commit 2 (intentional change): the deck is authored at 1.15 m and the stage's
-	# perspective compensation multiplies it, so the asserted height is 1.15 × that scale.
+	# PART M (intentional change): the shack is FULL SIZE now — 2.35–2.55 m tall and 3.4–3.7 m
+	# wide, seated flush on the sand — instead of the 1.15 m miniature the old check asserted.
 	var deck_scale: float = yard3d.stage_booth_scale() if yard3d != null else 1.0
-	_check(absf(deck.size.y / deck_scale - 1.15) / 1.15 <= 0.02,
-		"the deck stands its authored 1.15 m under the stage scale, within 2 %",
-		"%.3f m (1.15 × %.2f×)" % [deck.size.y, deck_scale])
+	_check(deck.size.y >= 2.35 and deck.size.y <= 2.55
+			and deck.size.x >= 3.4 and deck.size.x <= 3.7,
+		"the thatched shack stands at full arcade size (2.35–2.55 m tall, 3.4–3.7 m wide)",
+		"%.3f × %.3f m (stage scale %.2f×)" % [deck.size.x, deck.size.y, deck_scale])
 	var deck_front := Vector3.ZERO
 	var mic_slots := 0
 	var mic_lengths := ""
@@ -1161,10 +1162,15 @@ func _check_lighting_clarity() -> void:
 	var facing_before: int = arena.p1.facing
 	arena._unhandled_input(_key_event(KEY_F6))
 	await process_frame
-	_check(a3d.look_label() == "LEGACY A/B" \
+	var body_after_f6 := a3d.models.get("p1") as FighterModel3D
+	_check(a3d.look_label().contains("LEGACY") \
+			and a3d.shading_model() == "toon" \
+			and body_after_f6 != null and not body_after_f6.look_is_pbr() \
 			and a3d.tonemap_mode() == Environment.TONE_MAPPER_ACES \
 			and a3d.fog_enabled() and env.glow_enabled,
-		"F6 restores the previous graded look (ACES + glow + fog)")
+		"F6 restores the graded look AND the legacy toon shader on the bodies",
+		"look %s / body %s" % [a3d.look_label(),
+			"toon" if body_after_f6 != null and not body_after_f6.look_is_pbr() else "pbr"])
 	_check(a3d.camera.global_transform.is_equal_approx(cam_before) \
 			and is_equal_approx(a3d.camera.fov, fov_before) \
 			and arena.p1.facing == facing_before,
@@ -1176,9 +1182,12 @@ func _check_lighting_clarity() -> void:
 		String(hud.debug_chip) if hud != null else "no HUD")
 	arena._unhandled_input(_key_event(KEY_F6))
 	await process_frame
-	_check(a3d.look_label() == "CLEAN" \
+	_check(a3d.look_label().contains("CLEAN") \
+			and a3d.shading_model() == "pbr" \
+			and body_after_f6 != null and body_after_f6.look_is_pbr() \
 			and a3d.tonemap_mode() == Environment.TONE_MAPPER_LINEAR,
-		"F6 returns to the clean look, which stays the default")
+		"F6 returns to the crisp PBR clean look, which stays the default",
+		"look %s" % a3d.look_label())
 	_check(hud != null and String(hud.debug_chip).contains("CLEAN"),
 		"the HUD label follows the look back",
 		String(hud.debug_chip) if hud != null else "no HUD")
@@ -1339,19 +1348,16 @@ func _check_camera_stage_clearance() -> void:
 			_check(rays_blocked == "",
 				"%s vs %s: no camera-to-fighter ray crosses a prop" % [a, b],
 				rays_blocked if rays_blocked != "" else "%d prop box(es) x 6 rays" % prop_boxes.size())
+			# PART M (intentional change): the two DJ rigs are removed, so this asserts the
+			# ABSENCE — no selector node stands behind the deck, and both DJ slots are empty.
 			var deck_box := _prop_bounds(arena3d, "dj_booth.glb")
-			var dj_clear := true
-			var dj_detail := ""
-			for dj_index in arena3d.dj_booth.dj_count():
-				var dj_box: AABB = arena3d.dj_booth.dj_world_bounds(dj_index)
-				if dj_box.size == Vector3.ZERO or dj_box.intersects(deck_box) \
-						or dj_box.position.z >= deck_box.position.z:
-					dj_clear = false
-					dj_detail += " #%d z %.2f..%.2f" % [dj_index, dj_box.position.z, dj_box.end.z]
-			_check(dj_clear,
-				"%s vs %s: both DJ rigs stand behind the deck without interpenetrating it" % [a, b],
-				dj_detail if not dj_clear else "deck z %.2f..%.2f" % [deck_box.position.z,
-					deck_box.end.z])
+			_check(arena3d.dj_booth.dj_count() == 0
+					and arena3d.dj_booth.get_node_or_null("DJ1") == null
+					and arena3d.dj_booth.get_node_or_null("DJ2") == null
+					and arena3d.dj_count() == 0,
+				"%s vs %s: no non-fighting person stands on the stage" % [a, b],
+				"%d DJ(s), deck z %.2f..%.2f" % [arena3d.dj_booth.dj_count(),
+					deck_box.position.z, deck_box.end.z])
 			# PART 2 commit 5: the clearance must hold with the crowd at its ERUPTION PEAK, so
 			# the yard is erupting before the obstacle boxes are measured and stays erupting
 			# (0.9 s peak) across all four stacks.

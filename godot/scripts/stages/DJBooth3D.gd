@@ -17,8 +17,16 @@ extends Node3D
 ##
 ## The men still nod, point, celebrate and raise the selector's hand on a tag — those are clip
 ## acts and states, not props — so the booth reads even while the deck model is missing.
-
-const DJ_COUNT := 2
+##
+## PART M (2026-11-27): **the two DJ rigs are removed from the stage.** The beach set is now a
+## clean illustrated backdrop with the shack and the towers on it, and the owner's brief is
+## explicit that no non-fighting human rig may be instantiated or drawn anywhere on the stage.
+## `djs_enabled` therefore defaults to false and the booth builds the delivered deck only: no
+## `DJ1`/`DJ2` anchor, no imported character, no cel material, no clip. The acting API
+## (`react`, `nod`, `tick`, `settle`) stays alive over an empty list, so every cue the arena
+## already forwards — including `SPEAKER BOX!` — still runs with zero null references.
+@export var djs_enabled: bool = false
+const DJ_COUNT := 0
 const STATE_IDLE := &"idle"
 const STATE_FADER := &"fader"
 const STATE_POINT := &"point"
@@ -68,6 +76,9 @@ var _counter_y: float = 0.0
 var _canopy_underside_y: float = 0.0
 var _profile_measured: bool = false
 var _time: float = 0.0
+## Build runs exactly once even with no DJ slot (PART M): `_ready` used to re-run it whenever
+## the slot list was empty, which would rebuild the deck on every scene load.
+var _built: bool = false
 var _rng := RandomNumberGenerator.new()
 ## The perspective compensation `Arena3D` applied to the deck (`StageLayout`). The DJs are
 ## people, not set dressing, so the scale rides the deck slot only, never this node.
@@ -80,13 +91,15 @@ func _ready() -> void:
 
 
 func build() -> void:
-	if not _djs.is_empty():
+	if _built:
 		return
+	_built = true
 	_rng.seed = 20261122
 	_build_booth_slot()
-	_make_dj(0, -0.62)
-	_make_dj(1, 0.62)
-	_load_models()
+	if djs_enabled:
+		_make_dj(0, -0.62)
+		_make_dj(1, 0.62)
+		_load_models()
 	# Standalone instances (the editor, a unit test) place themselves; `Arena3D` re-places after
 	# it has applied the perspective scale, which is why this is safe to call twice.
 	place_djs()

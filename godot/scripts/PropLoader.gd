@@ -34,6 +34,14 @@ const TARGET_HEIGHT_M := {
 	"wireless_mic": 0.0,
 	"mic_stand": 0.0,
 }
+## Per-slot target LONGEST dimension in metres, keyed by the model's file stem (overnight props
+## pass, 2026-11-27). A handheld wireless mic is sized by how long it is, not how tall, and it
+## hangs off a hand bone whose space the rig's own `fit_height` factor has already scaled — so
+## this mode measures in WORLD metres and divides that ancestor scale back out.
+## `0.0`/absent keeps the height table above: no other slot changes behaviour.
+const TARGET_LONGEST_M := {
+	"wireless_mic": 0.24,
+}
 ## Below this the measured AABB is treated as degenerate and no seating is attempted.
 const SEAT_EPSILON := 0.0005
 
@@ -70,6 +78,16 @@ const SEAT_EPSILON := 0.0005
 ## metallic is 0, specular is off and the imported two-sided culling is preserved, with
 ## mipmaps and anisotropic filtering so 12 m of texture stops shimmering at distance.
 @export var native_material: bool = false
+## Which LOCAL axis of the delivered model the artwork faces: `"+z"`, `"-z"`, `"+x"` or
+## `"-x"`. The arena camera looks along −Z from +Z, so a prop whose painted front is not +Z is
+## turned to meet the stage by `front_yaw_degrees()`. Measured, not guessed: both delivered
+## props were rendered from +Z, −Z, +X and −X before this was set.
+@export var front_axis: StringName = &"+z"
+## Owner override: flip the front 180° without re-exporting the model.
+@export var front_flip: bool = false
+## Overrides the per-slot longest-dimension table for this slot when it is above 0.0. `0.0`
+## uses the table, which is what every slot except the mic does.
+@export var target_longest_m: float = 0.0
 
 ## The instanced model, or null while the file is missing.
 var model: Node3D = null
@@ -112,10 +130,12 @@ func load_model() -> bool:
 	_seat_model(node)
 	# Placement yaw (PART 3 commit 8): an aim, not a mirror. The seat pass above measured the
 	# unturned box, and a Y rotation cannot change the model's height or its lowest vertex, so
-	# the tower stays seated on Y = 0 at any yaw.
-	if not is_zero_approx(yaw_degrees):
+	# the tower stays seated on Y = 0 at any yaw. The turn is the delivered front axis plus the
+	# slot's own aim, so a prop painted on −Z faces the stage without a second export.
+	var turn := front_yaw_degrees()
+	if not is_zero_approx(turn):
 		var turned := node.rotation_degrees
-		node.rotation_degrees = Vector3(turned.x, turned.y + yaw_degrees, turned.z)
+		node.rotation_degrees = Vector3(turned.x, turned.y + turn, turned.z)
 	# Same cel/ink treatment the fighters and crowd wear, with a white tint and the shader's
 	# shadow bias off, so the delivered albedo renders at full brightness. `apply_cel` skips
 	# any surface the exporter left without a texture and warns about it; the model stays.
@@ -183,6 +203,32 @@ func resolved_target_height() -> float:
 	return target_height_for(model_path)
 
 
+## The target longest dimension in metres: the export override, else the per-slot table entry,
+## else 0.0 (height mode).
+func resolved_target_longest() -> float:
+	if target_longest_m > 0.0:
+		return target_longest_m
+	return float(TARGET_LONGEST_M.get(model_path.get_file().get_basename(), 0.0))
+
+
+## Total yaw this slot applies to the model: the delivered front turned to +Z, the owner flip,
+## then the slot's own aim. Degrees, all about the model's Y axis.
+func front_yaw_degrees() -> float:
+	var yaw := 0.0
+	match front_axis:
+		&"-z":
+			yaw = 180.0
+		&"+x":
+			yaw = -90.0
+		&"-x":
+			yaw = 90.0
+		_:
+			yaw = 0.0
+	if front_flip:
+		yaw += 180.0
+	return yaw + yaw_degrees
+
+
 ## Table lookup by file stem, so a slot never has to repeat its height.
 static func target_height_for(path: String) -> float:
 	return float(TARGET_HEIGHT_M.get(path.get_file().get_basename(), 0.0))
@@ -203,6 +249,19 @@ static func seat_offset_y(box: AABB, uniform_scale: float) -> float:
 	return -box.position.y * uniform_scale
 
 
+## Uniform scale that brings the model's LONGEST axis to `target_longest` metres. `box` is in
+## slot-local units and `world_scale` is how many metres one of those units is worth, so a prop
+## hanging off a scaled rig still ends up the size a hand can hold. 1.0 on a 0.0 target or a
+## degenerate box.
+static func longest_scale_for(box: AABB, target_longest: float, world_scale: float) -> float:
+	if target_longest <= 0.0 or world_scale <= SEAT_EPSILON:
+		return 1.0
+	var longest := maxf(box.size.x, maxf(box.size.y, box.size.z))
+	if longest <= SEAT_EPSILON:
+		return 1.0
+	return target_longest / (longest * world_scale)
+
+
 ## One measure-then-place pass at load: uniform scale to the target height, then the lowest
 ## vertex flushed to Y = 0.0. The AABB is measured once, from the real meshes, in the slot's
 ## local space; nothing here runs per frame.
@@ -210,8 +269,9 @@ func _seat_model(node: Node3D) -> void:
 	measured_aabb = _local_mesh_bounds(node)
 	if measured_aabb.size == Vector3.ZERO:
 		return
-	var target := resolved_target_height()
-	var s := seat_scale_for(measured_aabb, target)
+	var longest := resolved_target_longest()
+	var s := seat_scale_for(measured_aabb, resolved_target_height()) if longest <= 0.0 \
+		else longest_scale_for(measured_aabb, longest, inherited_scale(node))
 	if not is_equal_approx(s, 1.0):
 		node.scale = node.scale * s
 	seat_scale_applied = s
@@ -220,6 +280,16 @@ func _seat_model(node: Node3D) -> void:
 		p.y += seat_offset_y(measured_aabb, s)
 		node.position = p
 		seat_offset_applied = seat_offset_y(measured_aabb, s)
+
+
+## Metres per slot-local unit, taken from the scale the slot inherits from its ancestors. A
+## hand prop hangs off a Mixamo rig that `CharacterModelSlots.fit_height()` has already scaled
+## (a centimetre export lands near 0.01), so a measurement in slot-local units is not a
+## measurement in metres. 1.0 when the chain is unscaled.
+func inherited_scale(node: Node3D) -> float:
+	var scale := node.global_transform.basis.get_scale()
+	var mean := (scale.x + scale.y + scale.z) / 3.0
+	return mean if mean > SEAT_EPSILON else 1.0
 
 
 ## Union of the model's mesh boxes in this slot's local space.

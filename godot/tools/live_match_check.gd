@@ -721,11 +721,11 @@ func _check_arena_integrity() -> void:
 				stray_meshes += 1
 				if mi.mesh is PrimitiveMesh:
 					primitive_meshes += 1
-	_check(empty == slots.size() - 1,
-		"four of the five prop slots stay empty; only the delivered tower is filled",
+	_check(empty == 1,
+		"four of the five prop slots are filled and only the rasta speaker stays empty",
 		"%d of %d" % [empty, slots.size()])
-	_check(stray_meshes == 1 and primitive_meshes == 0,
-		"the one prop mesh is the delivered tower — no slot draws a procedural stand-in",
+	_check(stray_meshes == 4 and primitive_meshes == 0,
+		"the four prop meshes are the delivered files — no slot draws a procedural stand-in",
 		"%d mesh(es), %d primitive(s)" % [stray_meshes, primitive_meshes])
 	var wanted := ["jamaican_speaker.glb", "rasta_speaker.glb", "dj_booth.glb"]
 	var stage_slots := 0
@@ -737,6 +737,57 @@ func _check_arena_integrity() -> void:
 	_check(paths.count("wireless_mic.glb") == 2,
 		"both adult fighters mount a wireless-mic slot",
 		"%d wireless_mic.glb" % paths.count("wireless_mic.glb"))
+
+	# ---- The two props delivered 2026-11-27: the deck and the wireless mic ------------------
+	# Every number below is measured from the live scene, not copied from the asset brief.
+	for i in 3:
+		await process_frame
+	var yard3d = arena.get_node_or_null("Arena3D")
+	var deck := _prop_bounds(yard3d, "dj_booth.glb")
+	_check(deck.size != Vector3.ZERO,
+		"the delivered DJ deck stands in the yard",
+		"%.2f × %.2f × %.2f m" % [deck.size.x, deck.size.y, deck.size.z])
+	_check(absf(deck.position.y) <= 0.01,
+		"the deck's lowest vertex sits on the sand within 1 cm", "y %+.4f m" % deck.position.y)
+	_check(absf(deck.size.y - 1.15) / 1.15 <= 0.02,
+		"the deck stands 1.15 m tall within 2 %", "%.3f m" % deck.size.y)
+	var deck_front := Vector3.ZERO
+	var mic_slots := 0
+	var mic_lengths := ""
+	var mic_length_ok := true
+	var mic_material := ""
+	for node in slots:
+		var slot := node as PropLoader
+		if slot.is_empty():
+			continue
+		if String(slot.model_path).ends_with("dj_booth.glb"):
+			# The artwork is on the model's LOCAL −Z face, so the slot turns it 180° and the
+			# direction those panels face is minus the model's own +Z basis.
+			deck_front = -slot.model.global_transform.basis.z.normalized()
+		if String(slot.model_path).ends_with("wireless_mic.glb"):
+			mic_slots += 1
+			var length := _prop_longest_world(slot)
+			mic_lengths += "%.3f m " % length
+			if absf(length - 0.24) / 0.24 > 0.02:
+				mic_length_ok = false
+		# Only the two props this pass delivered: the tower's native material has its own
+		# dedicated block in the roster check.
+		var delivered_here: bool = String(slot.model_path).ends_with("dj_booth.glb") \
+			or String(slot.model_path).ends_with("wireless_mic.glb")
+		if delivered_here and mic_material == "":
+			mic_material = _prop_material_problem(slot)
+	var cam_dir := Vector3(yard3d.camera.global_position.x - deck.get_center().x, 0.0,
+		yard3d.camera.global_position.z - deck.get_center().z).normalized()
+	_check(deck_front.dot(cam_dir) > 0.8,
+		"the deck's Soundclash face is turned toward the camera side",
+		"front (%+.2f, %+.2f), camera dot %.2f" % [deck_front.x, deck_front.z,
+			deck_front.dot(cam_dir)])
+	_check(mic_slots == 2 and mic_length_ok,
+		"both adult fighters carry the delivered mic, 0.24 m long within 2 %",
+		mic_lengths.strip_edges())
+	_check(mic_material == "",
+		"both props keep a native StandardMaterial3D with mipmaps, anisotropy and no toon ramp",
+		mic_material if mic_material != "" else "every surface native")
 
 	var stage3d = arena.get_node_or_null("Arena3D")
 	if stage3d != null:
@@ -788,8 +839,11 @@ func _check_arena_integrity() -> void:
 	_check(moore_paths.has("mic_stand.glb"),
 		"L!kkle Moore's mic-stand slot is present and empty",
 		", ".join(moore_paths))
-	_check(moore_empty == moore_paths.size() - 1 and moore_stray == 1,
-		"his mic stand and dictionary draw nothing, while the delivered tower does",
+	# Overnight props pass: the mic stand is still undelivered (and his dictionary has no slot at
+	# all), while three slots now draw real files — the tower, the deck, and Feedback's mic. This
+	# replaces the old "one mesh, four empty" contract.
+	_check(moore_empty == 2 and moore_stray == 3,
+		"his mic stand and dictionary draw nothing, while the tower, deck and mic do",
 		"%d empty, %d mesh(es)" % [moore_empty, moore_stray])
 	await _free(moore)
 
@@ -1278,6 +1332,32 @@ func _check_camera_stage_clearance() -> void:
 						"%s: camera-to-fighter rays clear the speaker tower" % label,
 						blocked if blocked != "" else "6 rays, tower z %.2f..%.2f" % [
 							tower.position.z, tower.end.z])
+					# (4b) Overnight props (2026-11-27): the deck stands behind the barrier and the mic
+					# rides in a hand, so neither may enter the play lane or cut a camera-to-body ray.
+					var deck := _prop_bounds(arena3d, "dj_booth.glb")
+					var mic_box := _prop_bounds(arena3d, "wireless_mic.glb")
+					var lane_left: float = arena3d.px_to_world_x(BaseFighter.STAGE_LEFT)
+					var lane_right: float = arena3d.px_to_world_x(BaseFighter.STAGE_RIGHT)
+					var lane := AABB(Vector3(lane_left, 0.0, -0.5),
+						Vector3(lane_right - lane_left, 2.2, 1.0))
+					var deck_blocked := ""
+					for fighter in [arena.p1, arena.p2]:
+						var at_x: float = arena3d.px_to_world_x(fighter.global_position.x)
+						for h in [0.35, 1.0, 1.65]:
+							if _ray_hits_box(cam.global_position, Vector3(at_x, h, 0.0), deck):
+								deck_blocked = "deck in front of %s at y %.2f" % [fighter.fighter_key, h]
+					_check(deck.size != Vector3.ZERO and not deck.intersects(lane)
+							and deck_blocked == "",
+						"%s: the DJ deck stays out of the play lane and off both ray sets" % label,
+						deck_blocked if deck_blocked != "" else "deck z %.2f..%.2f" % [
+							deck.position.z, deck.end.z])
+					# The kid carries the (still undelivered) stand instead of the mic, so an empty box is
+					# the correct answer for that pairing.
+					var mic_ok: bool = mic_box.size.x < 0.30 and mic_box.size.y < 0.30 \
+						and mic_box.size.z < 0.30
+					_check(mic_ok,
+						"%s: the hand mic is a 0.24 m prop, never a stage obstacle" % label,
+						"%.2f × %.2f × %.2f m" % [mic_box.size.x, mic_box.size.y, mic_box.size.z])
 					# (5) PART D: the comic callout clamp holds at THIS stacked extreme. Every
 					# phrase, at both impact points and at three points outside the stage, must
 					# land inside the safe play rectangle.
@@ -1374,6 +1454,69 @@ func _fist_extent(arena3d, model: Node3D) -> float:
 	var hips := _bone_world(model, "Hips")
 	var view := _view_size()
 	return absf(cam.unproject_position(hand).x - cam.unproject_position(hips).x) / maxf(view.x, 1.0)
+
+
+## World-space AABB of the first loaded slot whose file name ends with `file`, or an empty box
+## while it is missing. Audit only: allocates nothing in the game path.
+func _prop_bounds(arena3d, file: String) -> AABB:
+	var out := AABB()
+	if arena3d == null:
+		return out
+	for node in arena3d.find_children("*", "PropLoader", true, false):
+		var slot := node as PropLoader
+		if slot == null or slot.model == null or slot.is_empty():
+			continue
+		if not String(slot.model_path).ends_with(file):
+			continue
+		var first := true
+		for child in slot.model.find_children("*", "MeshInstance3D", true, false):
+			var mi := child as MeshInstance3D
+			if mi == null or mi.mesh == null:
+				continue
+			var box: AABB = mi.global_transform * mi.mesh.get_aabb()
+			out = box if first else out.merge(box)
+			first = false
+	return out
+
+
+## Longest dimension of a loaded prop in WORLD metres, measured on the model's own axes so a
+## hand rotation cannot inflate it the way an axis-aligned world box would.
+func _prop_longest_world(slot: PropLoader) -> float:
+	if slot == null or slot.model == null:
+		return 0.0
+	var box := AABB()
+	var first := true
+	for child in slot.model.find_children("*", "MeshInstance3D", true, false):
+		var mi := child as MeshInstance3D
+		if mi != null and mi.mesh != null:
+			box = mi.mesh.get_aabb() if first else box.merge(mi.mesh.get_aabb())
+			first = false
+	return maxf(box.size.x, maxf(box.size.y, box.size.z)) \
+		* slot.model.global_transform.basis.get_scale().y
+
+
+## "" when every surface of a loaded slot is a native `StandardMaterial3D` carrying its own
+## albedo with mipmaps and anisotropic filtering, else the first offending surface.
+func _prop_material_problem(slot: PropLoader) -> String:
+	if slot == null or slot.model == null:
+		return ""
+	for node in slot.model.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi == null or mi.mesh == null:
+			continue
+		for surface in mi.mesh.get_surface_count():
+			var mat := mi.get_active_material(surface)
+			if not (mat is StandardMaterial3D):
+				return "%s surface %d is %s, not native" % [mi.name, surface,
+					mat.get_class() if mat != null else "unbound"]
+			var std := mat as StandardMaterial3D
+			if std.texture_filter != BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC:
+				return "%s surface %d has filter %d" % [mi.name, surface, std.texture_filter]
+			if std.albedo_texture == null:
+				return "%s surface %d lost its albedo" % [mi.name, surface]
+			if slot.double_sided and std.cull_mode != BaseMaterial3D.CULL_DISABLED:
+				return "%s surface %d dropped its two-sided culling" % [mi.name, surface]
+	return ""
 
 
 ## World-space AABB of the delivered speaker tower, or an empty box while it is missing.

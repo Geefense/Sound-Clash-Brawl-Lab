@@ -43,7 +43,7 @@ static func attach_for(model: Node3D, skeleton: Skeleton3D, key: StringName) -> 
 		return built
 	match key:
 		&"feedback", &"lickshot":
-			built.append(_slot(skeleton, bone, MIC_MODEL, "MicInHand", MIC_PLACE))
+			built.append(_slot(skeleton, bone, MIC_MODEL, "MicInHand", MIC_PLACE, true))
 		&"young_selecta":
 			built.append(_slot(skeleton, bone, STAND_MODEL, "MicStandInHand", STAND_PLACE))
 	return built
@@ -67,8 +67,16 @@ static func hand_bone(skeleton: Skeleton3D) -> String:
 
 ## One `BoneAttachment3D` + `PropLoader` pair. The loader does the rest: it instances the
 ## model when the file exists and warns once when it does not.
+##
+## `delivered_hand_prop` is the wireless mic's contract (overnight props pass, 2026-11-27): its
+## own photographic albedo instead of the cel ramp, its own two-sided culling (it is an open
+## shell — 198 of 3 331 edges are boundary edges — and the glTF material says `doubleSided`),
+## and NO ground seat, because a hand prop's floor is the grip: the model is centred on the hand
+## bone so the midpoint sits inside the fist, where seating it at Y = 0 would push half its
+## length out of the bottom of the hand. It must be set BEFORE `add_child()`, because the
+## loader builds its materials in `_ready`.
 static func _slot(skeleton: Skeleton3D, bone: String, path: String, label: String,
-		offset: Vector3) -> BoneAttachment3D:
+		offset: Vector3, delivered_hand_prop: bool = false) -> BoneAttachment3D:
 	var attachment := BoneAttachment3D.new()
 	attachment.name = label
 	attachment.bone_name = bone
@@ -77,6 +85,10 @@ static func _slot(skeleton: Skeleton3D, bone: String, path: String, label: Strin
 	var loader := PropLoader.new()
 	loader.name = label + "Slot"
 	loader.model_path = path
+	if delivered_hand_prop:
+		loader.native_material = true
+		loader.double_sided = true
+		loader.auto_ground_y = false
 	attachment.add_child(loader)
 	return attachment
 

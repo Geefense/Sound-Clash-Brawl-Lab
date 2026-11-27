@@ -619,8 +619,10 @@ func _run() -> void:
 		"Feedback carries a prop slot on mixamorig_RightHand",
 		"%d slots on %s" % [mp1_model.hand_prop_count() if mp1_model != null else -1,
 			mp1_model.hand_bone_name() if mp1_model != null else "-"])
-	_check(mp1_model != null and FighterProps.prop_triangles(mp1_model.model_root) == 0,
-		"no procedural microphone geometry is built into the hand",
+	# The mic itself is now a delivered mesh (2026-11-27), so this is no longer "0 triangles":
+	# it is exactly the delivered 2 378-triangle model and nothing built in code beside it.
+	_check(mp1_model != null and FighterProps.prop_triangles(mp1_model.model_root) == 2378,
+		"the hand carries the delivered 2 378-triangle mic and no procedural geometry",
 		"%d prop tris" % (FighterProps.prop_triangles(mp1_model.model_root)
 			if mp1_model != null else 0))
 	# Every roster fighter, built straight from its body file: the two adults ask for a
@@ -1989,8 +1991,8 @@ func _run() -> void:
 		"%d in disbelief" % crowd3d.zone_state_count(1, CrowdController3D.STATE_DISBELIEF))
 	_check(booth.pointing(), "a DJ points at the fighters on a heavy hit")
 	_check(booth.deck != null and booth.deck.model_path.ends_with("dj_booth.glb")
-			and not booth.deck_loaded(),
-		"the deck is an empty PropLoader slot for dj_booth.glb",
+			and booth.deck_loaded(),
+		"the deck slot loads the delivered dj_booth.glb",
 		"%s loaded=%s" % [booth.deck_path(), str(booth.deck_loaded())])
 
 	# Knockdown, K.O. and DJ tag: horns up and the booth celebrates.
@@ -2613,6 +2615,16 @@ func _run() -> void:
 		"%d slot(s)" % prop_slots.size())
 	var wanted := ["jamaican_speaker.glb", "rasta_speaker.glb", "dj_booth.glb",
 		"wireless_mic.glb", "mic_stand.glb"]
+	# Overnight props pass, 2026-11-27: the owner delivered the deck and the mic, so three of
+	# the five slots now load real files and only `rasta_speaker.glb` / `mic_stand.glb` stay
+	# empty. This is the intentional replacement of the old "four slots empty" contract.
+	var prop_delivered := {
+		"jamaican_speaker.glb": true,
+		"rasta_speaker.glb": false,
+		"dj_booth.glb": true,
+		"wireless_mic.glb": true,
+		"mic_stand.glb": false,
+	}
 	var delivered_prop := "jamaican_speaker.glb"
 	for name in wanted:
 		var matched := ""
@@ -2621,7 +2633,7 @@ func _run() -> void:
 			if String(slot.model_path).ends_with(name):
 				matched = slot.model_path
 				loaded = not slot.is_empty()
-		var want_loaded: bool = String(name) == delivered_prop
+		var want_loaded: bool = bool(prop_delivered.get(String(name), false))
 		_check(matched != "" and loaded == want_loaded,
 			"the %s slot %s" % [name, "loads the delivered .glb" if want_loaded else "stays empty"],
 			"%s loaded=%s" % [matched, str(loaded)])
@@ -2633,9 +2645,16 @@ func _run() -> void:
 			slot_meshes += 1
 			if mi == null or mi.mesh == null or mi.mesh is PrimitiveMesh:
 				primitive_meshes += 1
-	_check(slot_meshes == 1 and primitive_meshes == 0,
-		"the delivered tower is the only prop mesh, and it is imported — not a primitive",
-		"%d mesh(es), %d primitive(s)" % [slot_meshes, primitive_meshes])
+	var slot_mesh_report := ""
+	for slot in prop_slots:
+		slot_mesh_report += "%s=%d " % [slot.model_path.get_file(),
+			slot.find_children("*", "MeshInstance3D", true, false).size()]
+	# This yard pairs Feedback with the kid, so it carries one wireless mic and the (still
+	# undelivered) stand: tower + deck + mic = three delivered prop meshes.
+	_check(slot_meshes == 3 and primitive_meshes == 0,
+		"the delivered tower, deck and mic are the only prop meshes, and all imported",
+		"%d mesh(es), %d primitive(s): %s" % [slot_meshes, primitive_meshes,
+			slot_mesh_report.strip_edges()])
 	_check(FileAccess.file_exists("res://assets/models/props/README.md"),
 		"the props folder documents the five expected files")
 
@@ -2668,14 +2687,41 @@ func _run() -> void:
 	_check(table_ok,
 		"every prop slot resolves its table height from the file stem",
 		"speakers 2.6, booth 1.15, mic and stand native")
+	# The longest-dimension mode (2026-11-27): a mic is sized by how long it is, and the scale is
+	# taken in world metres so the rig scale on the hand bone is divided out.
+	_check(is_equal_approx(PropLoader.TARGET_LONGEST_M.get("wireless_mic", 0.0), 0.24)
+			and not PropLoader.TARGET_LONGEST_M.has("jamaican_speaker"),
+		"only the mic is sized by its longest axis, and it targets 0.24 m",
+		str(PropLoader.TARGET_LONGEST_M))
+	var mic_box := AABB(Vector3(-0.27, -0.95, -0.27), Vector3(0.54, 1.9, 0.54))
+	_check(is_equal_approx(PropLoader.longest_scale_for(mic_box, 0.24, 1.0), 0.24 / 1.9),
+		"a 1.9 m mic box scales to the 0.24 m target",
+		"x%.4f" % PropLoader.longest_scale_for(mic_box, 0.24, 1.0))
+	_check(is_equal_approx(PropLoader.longest_scale_for(mic_box, 0.24, 0.01), 0.24 / 0.019),
+		"the same box under a centimetre-scaled rig still lands at 0.24 m in the world",
+		"x%.4f" % PropLoader.longest_scale_for(mic_box, 0.24, 0.01))
+	_check(is_equal_approx(PropLoader.longest_scale_for(mic_box, 0.0, 1.0), 1.0),
+		"a 0.0 longest target keeps the delivered scale")
 	var defaults_ok := true
 	for slot in prop_slots:
-		if not slot.auto_ground_y or not is_zero_approx(slot.target_height_m):
+		# The delivered hand prop (the wireless mic) is centred on the grip instead of standing
+		# on Y = 0, so its ground seat is off by design; every floor prop keeps it on. The
+		# still-undelivered stand slot keeps its untouched defaults until it is wired the same
+		# way, so it is not part of this rule yet.
+		var hand_prop: bool = String(slot.model_path).ends_with("wireless_mic.glb")
+		if bool(slot.auto_ground_y) == hand_prop:
+			defaults_ok = false
+		if not is_zero_approx(slot.target_height_m):
 			defaults_ok = false
 		if not is_equal_approx(slot.resolved_target_height(),
 				PropLoader.target_height_for(slot.model_path)):
 			defaults_ok = false
-	_check(defaults_ok, "the five slots ship with seating on and no override")
+	var default_report := ""
+	for slot in prop_slots:
+		default_report += "%s[ground=%s h=%.2f longest=%.2f] " % [slot.model_path.get_file(),
+			str(slot.auto_ground_y), slot.resolved_target_height(), slot.resolved_target_longest()]
+	_check(defaults_ok, "the five slots ship with the right seat mode and no height override",
+		default_report.strip_edges())
 	var empty_seating := true
 	for slot in prop_slots:
 		if slot.is_empty() and (not is_zero_approx(slot.seated_bottom())

@@ -6943,3 +6943,130 @@ no branch rule at all.
 No frame was rendered in this pass: no GPU, no Xvfb stack on the runner, so every number here is
 a bone/vertex measurement and the RSS/workflow change was not executed (no Actions run was
 watched; `gh` is unauthenticated in this workspace).
+
+## PART H (2026-11-27) — Overnight pass 1 of 2: the DJ deck and the wireless mic
+
+### What arrived
+
+The owner uploaded two models to the **repository root** on 2026-11-27 (`2ffc4ce`
+`dj_booth.glb`, `2ef9592` `wireless_mic.glb`, both "Add files via upload"). They were moved into
+`godot/assets/models/props/` with `git mv`; nothing else about the delivery was changed.
+
+### Facts, measured from the files (not from a delivery note)
+
+| | `dj_booth.glb` | `wireless_mic.glb` |
+| --- | --- | --- |
+| bytes | 12,292,616 | 12,184,288 |
+| generator metadata | `Khronos glTF Blender I/O v4.4.55` | same |
+| nodes / meshes / materials | 1 / 1 / 1 | 1 / 1 / 1 |
+| triangles | 2,666 | 2,378 |
+| bounds (m) | 1.893 × 0.909 × 1.019 | 0.532 × 1.897 × 0.529 |
+| open shell | yes — 130 of 3,999 edges are boundary | yes — 198 of 3,331 edges are boundary |
+| material | `BakedMaterial`, `doubleSided: true` | same |
+| embedded images | 4 × 2,048² PNG (albedo, normal, metallic-roughness, emissive) | same |
+| skeleton / animation | none / none | none / none |
+
+Both are open shells and their glTF material is two-sided, so both slots run `double_sided`
+(`CULL_DISABLED`); nothing is closed up in code.
+
+### Which side is the booth's front, and why
+
+Both models were rendered from **+Z, −Z, +X and −X** by a small software rasteriser
+(`_scratch/glb_render.py`, which parses the glb, samples the albedo with the triangles' UVs and
+z-buffers an orthographic view) and the four images were looked at. The **local −Z** face is the
+front: it is the only side where the two "Soundclash" panels, the VU meters, the grilles and the
+knob rows read **upright and unmirrored**. The +Z face is the rack's back (recessed connector bay),
+and ±X are plain side panels. The mic's authored orientation is already right — capsule up +Y,
+handle −Y — and is kept as delivered.
+
+`PropLoader` therefore gained `front_axis` (`"+z"` default, `"-z"`/`"+x"`/`"-x"` accepted) and
+`front_flip`, and `front_yaw_degrees()` turns the painted face toward +Z, where the stage and the
+camera are. `DJBooth3D` sets `front_axis = &"-z"`, so the deck faces the camera at yaw 180°. The
+existing `yaw_degrees` aim is still added on top, so the speaker slots are untouched (diag: tower
+`rot.y = 12°`, deck `rot.y = 180°`).
+
+### Scale and seat
+
+- **Deck:** table height 1.15 m (unchanged), so the delivered 0.909 m box is scaled ×1.265 and
+  seated with its lowest vertex on Y = 0. Final footprint 2.40 m wide × 1.29 m deep.
+- **Mic:** new longest-dimension mode. `TARGET_LONGEST_M = {"wireless_mic": 0.24}` and
+  `longest_scale_for(box, target, world_scale)` size a hand prop by its longest axis **in world
+  metres**, dividing out the scale the slot inherits from its ancestors — a Mixamo rig has already
+  been fitted by `CharacterModelSlots.fit_height()`, so a slot-local measurement is not a metric
+  one. No other slot's behaviour changes: `TARGET_HEIGHT_M` is untouched and `dj_booth` keeps 1.15.
+  Measured result: **0.2400 m** on both adult fighters.
+- **The mic does not stand on the floor.** `FighterProps` mounts it on
+  `mixamorig_RightHand/MicInHand`, a `BoneAttachment3D` — there is no stage surface under it.
+  The brief's "rest on a real surface, lowest vertex touching" was written for a floor prop, so
+  the safest reading was taken: the grip **is** the surface. `auto_ground_y` is off for the mic
+  and the model is centred on the hand bone, so the fist closes around the middle of the body;
+  seating it at Y = 0 would have pushed half its length out of the bottom of the hand. Logged as
+  an intentional deviation, not an oversight. The alternative — a spare mic on the deck's top
+  surface — would need a sixth slot, and the contract is exactly five.
+- **DJs:** the seated deck is 1.29 m deep, so the two selectors at local z −0.62 stood **inside**
+  the cabinet. They were moved (not the deck) to `DJ_Z = −1.05`, feet on the sand, behind the rack
+  with 0.10 m of clearance from its back face. The booth keeps its authored slot transform.
+
+### Materials
+
+Both slots use `native_material` (imported albedo, roughness 1, metallic 0, specular off,
+`TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC`), never the cel ramp; `double_sided` keeps their
+imported two-sided culling. Shadow casting stays **off** for both: the brief allowed the deck to
+cast onto the sand only if the fighters' shadows were numerically unchanged, and the arena's
+fighter shadows are the contact slabs, so the guarantee is kept by not adding a caster at all.
+
+Textures: the delivered `.glb` files keep their 2,048² images untouched. The **derived** imports
+Godot extracts beside them were resized — 1,024² albedo, 512² normal and metallic-roughness,
+lossless 1K emissive — because at 2,048² VRAM with both S3TC and ETC2 variants each prop cost
+6.79 MiB of pack. Measured pack delta after the resize: **2.46 MiB per prop**
+(base pack 53,832,092 B → 58,987,456 B with both, 56.25 MiB total).
+
+### The 5-slot contract
+
+`PropLoader.EXPECTED_MODELS` is unchanged: five files. Three are now delivered
+(`jamaican_speaker`, `dj_booth`, `wireless_mic` — the last used twice, once per adult fighter) and
+two stay empty, each still logging its single `PropLoader: missing …` line. No slot ever draws a
+stand-in.
+
+### Tests changed on purpose
+
+| Test | Was | Now | Why |
+| --- | --- | --- | --- |
+| `the %s slot …` (roster) | only `jamaican_speaker` loads | a `prop_delivered` table: tower, deck and mic load; `rasta_speaker` and `mic_stand` stay empty | the files exist now |
+| `the delivered … prop meshes` (roster) | 1 mesh | 3 meshes in that yard (tower + deck + Feedback's mic) | same |
+| `the deck slot` (roster) | `not deck_loaded()` | `deck_loaded()` | same |
+| `no procedural microphone geometry` | `prop_triangles == 0` | `== 2378`, the delivered mesh | the mic is real now; the point of the test (nothing built in code) is kept |
+| `the five slots ship with seating on` | every slot `auto_ground_y` true | true for floor props, **false for the delivered mic** | a hand prop is centred on the grip |
+| `four of five slots stay empty` (live) | 4 empty | 1 empty, 4 meshes | same |
+| `his mic stand … draw nothing` (live) | 1 mesh, 4 empty | 3 meshes, 2 empty | same |
+| `the hand mic is a 0.24 m prop` (live) | — | new: mic AABB < 0.30 m on every axis, at all 9 pairings and every camera extreme | new prop |
+| `the DJ deck stays out of the play lane …` (live) | — | new: deck AABB never intersects the play lane, and camera-to-fighter rays never cross it | new prop |
+
+New checks also cover: deck seated within 1 cm of Y = 0 and 1.15 m ±2 %, deck front dot camera
+direction > 0.8, mic longest axis 0.24 m ±2 %, native material with mipmaps + anisotropy and no
+toon ramp on every surface of both props, and the longest-dimension maths (including the
+centimetre-scaled-rig case). Suite counts only went up: roster 490 → **494**, live 500 → **578**.
+
+### Deploy hygiene (checked, nothing to fix)
+
+`.github/workflows/deploy-web.yml` already publishes correctly: it `git init`s a throw-away repo
+in `$RUNNER_TEMP/web`, makes **one root commit** (no parents — an orphan) and `git push --force
+... HEAD:gh-pages`, so the `gh-pages` branch is replaced wholesale on every run instead of
+gaining history. It never touches `feature/3d-cel-shaded`, and `concurrency: gh-pages-publish`
+keeps two publishes from racing. No change was made and the Pages settings were not touched.
+
+### Not verified
+
+No frame was rendered in this pass. The runner has no GPU and `sudo` is blocked by the
+`no_new_privileges` flag, so the Xvfb stack cannot be installed; the front-axis decision rests on
+the four software-rendered views, and the in-engine look of the deck, the mic in the hand and the
+two DJs behind the rack has **not** been seen. The lighting numbers for the deck at Afternoon /
+Sunset / Night were not measured separately either: the props keep their own albedo, cast no
+shadow and are lit by the existing stage rigs.
+
+## Progress (overnight pass)
+
+| When | What | HEAD |
+| --- | --- | --- |
+| 2026-11-27, after STEP 0 | Confirmed `feature/3d-cel-shaded` at the remote tip `2ef9592` (the owner's two upload commits). Baselines before any change: roster 490, live 500, facing 310, feel 444, 0 FAIL. TASK 0 checked: the workflow already publishes one orphan commit per run. | `2ef9592` |
+| 2026-11-27, props done | TASK 1: deck + mic delivered, inspected, wired, tested, measured. Four suites green: roster 494, live 578, facing 310, feel 444, 0 FAIL. **Next: TASK 2, supine knockdowns (12 cells).** | see the commit below |

@@ -30,6 +30,11 @@ const DJ_RIM := Color(1.0, 0.78, 0.34)
 const HAND_BONE := "mixamorig_RightHand"
 const BOOTH_MODEL := "res://assets/models/props/dj_booth.glb"
 const DJ_HEIGHT := 1.62
+## Where the two selectors stand, in this node's own space. The delivered deck is 2.40 m wide
+## and 1.29 m deep once seated at 1.15 m tall, so −0.62 put both men inside the cabinet; at
+## −1.05 they stand behind it with their hands over the top, feet on the sand (overnight props
+## pass, 2026-11-27). The rack itself keeps its authored slot transform.
+const DJ_Z := -1.05
 
 
 class DJ:
@@ -78,6 +83,14 @@ func _build_booth_slot() -> void:
 	deck.name = "PropLoader"
 	deck.model_path = BOOTH_MODEL
 	deck.required = true
+	# The delivered rack is an open shell (130 of its 3 999 edges are boundary edges) and its     # glTF material is `doubleSided`, so it keeps its own culling.
+	deck.double_sided = true
+	# Its artwork — the two “Soundclash” panels, the VU meters, the grilles — is on its LOCAL
+	# −Z face. Both props were rendered from +Z, −Z, +X and −X before this was set; the front is
+	# the side where that lettering reads unmirrored and upright.
+	deck.front_axis = &"-z"
+	# Photographic albedo, not the cel ramp (PART A step 3's rule for delivered props).
+	deck.native_material = true
 	add_child(deck)
 
 
@@ -325,7 +338,7 @@ func _make_dj(index: int, x: float) -> void:
 
 	var node := Node3D.new()
 	node.name = "DJ%d" % (index + 1)
-	node.position = Vector3(x, 0.0, -0.62)
+	node.position = Vector3(x, 0.0, DJ_Z)
 	add_child(node)
 
 	dj.node = node

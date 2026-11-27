@@ -1,8 +1,10 @@
 # Sound Clash Brawl — build the Godot Web export and publish it to GitHub Pages.
 #
 # The committed docs/ folder is still served by the branch today; this workflow is the
-# replacement path and is NOT enabled until the owner switches Settings → Pages → Source
-# to "GitHub Actions". See AGENTS.md ("PART C · commit 9") for the owner steps.
+# replacement path. It publishes to a `gh-pages` branch, so it needs no `github-pages`
+# environment and no branch rule. One owner step switches the site over: Settings -> Pages ->
+# Source: "Deploy from a branch" -> `gh-pages` / `(root)`. After that every push to
+# `feature/3d-cel-shaded` republishes automatically (PART A4).
 #
 # The Web preset is the single-threaded GL Compatibility export
 # (godot/export_presets.cfg → variant/thread_support=false), so the build needs no
@@ -21,14 +23,14 @@ on:
     branches:
       - feature/3d-cel-shaded
 
+# `contents: write` is what the gh-pages push needs; the Pages/OIDC permissions are gone
+# with the environment deployment.
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
-# One Pages deployment at a time; never cancel a run that is already publishing.
+# One publish at a time; never cancel a run that is already pushing gh-pages.
 concurrency:
-  group: pages
+  group: gh-pages-publish
   cancel-in-progress: false
 
 env:
@@ -111,22 +113,26 @@ jobs:
           test -s "$out/index.wasm"
           test -s "$out/index.js"
 
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload the Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ${{ runner.temp }}/web
-
-  deploy:
-    name: Deploy to GitHub Pages
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy the uploaded artifact
-        id: deployment
-        uses: actions/deploy-pages@v4
+      # Publish the exported build to a `gh-pages` branch instead of through the Pages
+      # deployment environment. `actions/deploy-pages` only works once the repository has
+      # Pages switched on with `GitHub Actions` as its source and the `github-pages`
+      # environment allowed for the branch, which is a manual owner step; a branch push works
+      # from any branch that is allowed to run, with no environment rules at all. The owner
+      # then sets Settings -> Pages -> Source to "Deploy from a branch" -> `gh-pages` / `(root)`
+      # once, and every run after that is automatic.
+      - name: Publish the build to the gh-pages branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/web"
+          test -s "$out/index.html"
+          # A build never contains files to keep, so a mirror push is exact, not destructive.
+          touch "$out/.nojekyll"   # GitHub Pages runs Jekyll otherwise and drops `_`-prefixed files
+          cd "$out"
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Publish the Web export from ${GITHUB_SHA::7}"
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:gh-pages

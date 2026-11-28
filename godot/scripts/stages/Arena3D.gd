@@ -285,6 +285,11 @@ var _prop_cel_materials: Array[ShaderMaterial] = []
 ## staggered silhouette crowd. Both are presentation only and are ticked from `_process`.
 ## `_stage_layout` is what `_place_stage_set()` measured and applied (fix pass commit 2).
 var _stage_layout: Dictionary = {}
+## Which prop each `StageContactShadow*` quad belongs to, so the per-prop gates below can hide a
+## booth shadow without touching the towers' shadows (additive, 2026-11-28: the sprite test asks
+## for separate booth and speaker visibility). The all-or-nothing gate above stays authoritative.
+var _booth_shadow: MeshInstance3D = null
+var _speaker_shadows: Array[MeshInstance3D] = []
 var crowd3d: CrowdController3D = null
 var dj_booth: DJBooth3D = null
 var _pulse: float = 0.0
@@ -1544,6 +1549,35 @@ func set_stage_props_enabled(on: bool) -> void:
 	_set_stage_props_visible(on)
 
 
+## Per-prop gates (sprite test, 2026-11-28). Additive: they move the same nodes the
+## all-or-nothing gate above moves, and each one carries its own contact shadow with it.
+func set_booth_visible(on: bool) -> void:
+	if dj_booth != null:
+		dj_booth.visible = on
+	if _booth_shadow != null:
+		_booth_shadow.visible = on
+
+
+func set_speakers_visible(on: bool) -> void:
+	for slot in _sound_stacks:
+		if slot != null:
+			slot.visible = on
+	for shadow in _speaker_shadows:
+		if shadow != null:
+			shadow.visible = on
+
+
+func booth_visible() -> bool:
+	return dj_booth != null and dj_booth.visible
+
+
+func speakers_visible() -> bool:
+	for slot in _sound_stacks:
+		if slot != null and slot.visible:
+			return true
+	return false
+
+
 ## Every prop contact-shadow quad still in the yard (`StageContactShadow*`), drawn or not.
 func stage_contact_shadow_count() -> int:
 	return find_children("StageContactShadow*", "MeshInstance3D", true, false).size()
@@ -1630,7 +1664,14 @@ func _build_stage_contact_shadows() -> void:
 		shadow.rotation.x = -PI * 0.5
 		shadow.position = Vector3(box.get_center().x, 0.016, box.get_center().z)
 		shadow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		# `placed` puts the booth deck first when it exists, so index 0 is its shadow.
+		var booth_owner := i == 0 and dj_booth != null and dj_booth.deck != null \
+			and dj_booth.deck.model != null
 		add_child(shadow)
+		if booth_owner:
+			_booth_shadow = shadow
+		else:
+			_speaker_shadows.append(shadow)
 
 
 ## Authored size of a filled prop slot's model in metres: what `PropLoader` measured from the

@@ -8281,3 +8281,217 @@ fighter lying on the sand. What is proved is state: node visibility, light count
 directions at the full fall, and screen-space rectangles for every HUD chip. The owner should press
 `F6` once and look at a sunset and a night round, a knockdown, and the HUD at the narrowest supported
 aspect before signing this off.
+
+## PART O — SPRITE STAGE TEST (2026-11-28, preview/sprite-test)
+
+Isolated, playable visual test: the illustrated Feedback frames on the current 3D beach stage.
+One actor, FX off, fight-camera distance. **Preview only** — nothing here is referenced by the
+match, and `BaseFighter.gd`, match logic, frame data, combat and fighter displacement are
+untouched.
+
+### O1. Branch, baseline and environment
+
+| Item | Value |
+| --- | --- |
+| `git fetch origin --prune`; `origin/feature/3d-cel-shaded` | **`1333b6275b71167db95c903f5341d10159814473`** (starting SHA) |
+| Preview branch | `preview/sprite-test`, created at that SHA (no existing branch was present) |
+| Engine | Godot `4.5.stable.official.876b29033`, headless, installed locally (not committed) |
+| Headless import | `godot --headless --path godot --import` → exit 0, 219 assets, one pass |
+| Baseline suites (untouched tree) | roster **505**, live **676**, facing **310**, feel **444** — **0 FAIL** each |
+| New headless checks | `tools/sprite_stage_check.gd` **43 / 0 FAIL**; `tools/sprite_stage_metrics.gd` 0 measurement problems |
+
+The baseline was GREEN before any edit; no red build was committed. `git status` was clean apart
+from `.godot/` (ignored) at the time the numbers above were taken.
+
+### O2. Art recovered and catalogued
+
+Byte-identical copies only (`cp -p`, verified by SHA-256). No redraw, retouch, recolor, resample,
+upscale or regeneration; contact sheets are review artifacts, never runtime assets.
+
+| Runtime file (`godot/assets/sprites/legacy_feedback/`) | Source | Pixels | Pivot (px) | Bytes | SHA-256 |
+| --- | --- | --- | --- | --- | --- |
+| `idle_01.png` | `godot/assets/sprites/feedback/aligned/01_idle.png` | 1536×1024 | (768, 900) | 158,283 | `d2e47bb73ca0…` |
+| `walk_01_contact_a.png` | `…/feedback/walk-four-keys/poses/01_contact_a.png` | 460×620 | (229.7, 566) | 143,607 | `e946d6e1cd15…` |
+| `walk_02_pass_a.png` | `…/walk-four-keys/poses/02_pass_a.png` | 460×620 | (229.7, 566) | 133,218 | `51bcf134ab76…` |
+| `walk_03_contact_b.png` | `…/walk-four-keys/poses/03_contact_b.png` | 460×620 | (229.7, 566) | 147,326 | `5f1d8a276a91…` |
+| `walk_04_pass_b.png` | `…/walk-four-keys/poses/04_pass_b.png` | 460×620 | (229.7, 566) | 132,189 | `3ced3bdf9e20…` |
+| `box_01_windup.png` | `…/feedback/aligned/12_backhand_windup.png` | 1536×1024 | (768, 900) | 218,838 | `6532d7788974…` |
+| `box_02_contact.png` | `…/feedback/aligned/13_box_palm.png` | 1536×1024 | (768, 900) | 319,195 | `40fd81c2efec…` |
+| `box_03_followthrough.png` | `…/feedback/aligned/14_followthrough.png` | 1536×1024 | (768, 900) | 229,821 | `83345247bad8…` |
+| `guard_01.png` | `…/feedback/aligned/08_block.png` | 1536×1024 | (768, 900) | 192,309 | `50856507ec85…` |
+
+**Committed frame bytes: 1,674,786 B (9 PNGs).** Pivots are the pack's own authored anchors
+(`feedback.poses.json` → `(768, 900)`, "visually estimated"; the four-key panel's support-sole
+line at y 566 with the torso centred at x 229.7 from `loop-check.json`). Import settings:
+lossless, `mipmaps/generate=true`, `detect_3d/compress_to=0` (no VRAM compression of the art).
+
+Review artifacts (not runtime): `artifacts/sound-clash/art-source/feedback/sprite-test-2026-11-28/`
+→ `contact-sprite-sets.png` (idle / walk / BOX / guard, native pixels), `contact-box-hand-growth.png`
+(the oversized hand at native scale), `frame-catalog.json` (per-frame dims, pivot, duration, source
+path, SHA-256).
+
+**Gaps, named exactly.** The aligned pack is *pose illustrations*, not animation. Idle = ONE
+stance (no idle animation); guard = ONE pose (no entry/recovery art in this pack — the 3D build
+plays `mic-defence` 01–06 instead); walk = four keys, no in-betweens, and PASS B is the documented
+mismatched sub-phase; BOX = three drawings (wind-up / contact / follow-through). The oversized-hand
+impact frame is **`13_box_palm` (`box_02_contact`)** — its alpha extends to x 1272 against the
+wind-up's 1014 (+258 px).
+
+**Other Feedback sources found (not used, Feedback is the only actor):**
+`Feedback_Forward_Prepared_Transparent.zip` on `origin/main` holds the six swagger/skank studies
+(`01_point_swagger` … `06_come_here_swagger`, 1600×1280-class RGBA). They are **not** byte-identical
+to the copies already in `godot/assets/sprites/feedback/imported-poses/` (different SHA-256 — a
+re-export), so the ZIP was extracted only for that comparison and nothing was added to the runtime.
+`Feedback_Walk_Video_Import.py` reconstructs the 3,695,350 B walk-test MP4 from 19 base64 parts;
+`Feedback_Crossed_Arms_Import.py` carries the approved crossed-arms idle reference;
+`Feedback_Baseball_Pitch_BOX_Foot_Off_Ground.png` and `…_Lean_Comparison.mp4` are the BOX lean
+references. The MP4 was not converted here (no ffmpeg in this sandbox) and no video is committed.
+
+**L!ckshot sets found:** `godot/assets/sprites/lickshot/` (idle, walk, skank, hitstun, airborne,
+ground, celebration, guard stance, high kick, sonic clap wind-up/impact, upper box, skank point,
+`_archive/`) plus the originals in `art-source/fighters/lickshot/` — 54 PNGs. Catalogued only; not
+used in this test.
+
+### O3. How the sprite is sized (measured, not guessed)
+
+* Reference 3D Feedback idle height: **1.542 m**, read live from the real `TestArena` p1 via
+  `FighterModel3D.measured_height()` (live mesh AABBs through every ancestor transform), against an
+  authored `model_height` of 1.550 m. Camera in that run: z 4.10 m, fov 30°.
+* Illustrated idle figure: **488 px** alpha bbox height at the runtime scissor (alpha ≥ 0.22).
+* **`pixel_size` = 1.542 / 488 = 0.003160 m/px**, used for EVERY frame (deliberate: a per-set
+  normalisation would hide the disagreement between the aligned pack and the four-key panel).
+  Consequence, reported rather than corrected: the walk keys render 1.432–1.485 m and BOX
+  1.536–1.552 m, i.e. the four-key panel is ~6 % smaller in the world than the idle.
+
+### O4. The playable loop
+
+`idle (1 beat) → walk CONTACT A → PASS A → CONTACT B → PASS B (1 beat each) → BOX wind-up 150 ms
+→ contact 66.7 ms → recovery 300 ms → guard 227 ms → pause 114 ms` = **2.221 s**, hard cuts, no
+interpolation. Walk holds are 132 BPM beats (the project's beat and the owner-approved walk tempo);
+BOX holds are the live `BaseFighter.attacks[&"strong"]` phases (9 / 4 / 18 ticks), not invented.
+
+Sprite: billboard `Sprite3D`, unshaded, linear + mipmaps, alpha scissor 0.22, `pixel_size` above,
+offset = −pivot so the foot anchor sits on the sand at the fighters' z 0 plane (actor root at world
+y 0). The pristine stage is `Arena3D` itself (backdrop, sand, lights, booth, speakers, presets),
+built once by its own `_ready`; its `_process` is then frozen so its fighter camera cannot fight the
+test camera. Booth and speakers start OFF because that is how the shipped match stage configures
+them (`stage_props_enabled = false`), with separate gates to reveal each.
+
+### O5. Controls (all on screen; touch-friendly)
+
+`Q` stage beach/flat · `E` booth · `R` speakers · `C` camera fight 30° / long 16° / ortho (all
+three measure the SAME fighter framing: 505.3 / 505.1 / 505.3 px) · `V` shadow ellipse / none /
+cast · `L` Afternoon / Sunset / Night · `F` footwork authored / measured / manual (slider) · `G`
+unshaded / preset tint · `X` P2 flip · `T` linear / nearest · `SPACE` pause · `←`/`→` frame step ·
+`Z` 0.25× · `H` ghost 30 % · `P` contact-sheet capture (shown in the preview, saved to
+`user://sprite_stage_contact.png`). No F4/F6/F7/F8/F10 binding exists (they belong to the match
+HUD); F1/F3/F5/F9/F11/F12 (browser/OS) are avoided too. Ghost ellipse exposes offset / size /
+opacity sliders. Playback rebuilds no string and allocates nothing per frame; the HUD text is
+rewritten only when the displayed frame or the sampled tick changes.
+
+### O6. Measurements (`tools/sprite_stage_metrics.gd`, headless)
+
+Walk slide, `world_foot_x = root_x + (contact_x − pivot_x) × pixel_size`, planted shoe followed
+across each support interval (contact keys carry both soles, so they are flagged ambiguous):
+
+| interval | step | planted shoe | contact_x px | Δ px | zero-slide v | drift at authored 1.623 m/s |
+| --- | --- | --- | --- | --- | --- | --- |
+| A contact → A pass | 1 | screen-right | 342.5 → 246.5 | −96.0 | 1.335 m/s | +6.56 cm/key (0.48 cm/tick) |
+| A pass → B contact | 1 | screen-right | 246.5 → 110.0 | −136.5 | 1.898 m/s | −6.24 cm/key (−0.46 cm/tick) |
+| B contact → B pass | 2 | screen-right | 352.0 → 199.5 | −152.5 | 2.120 m/s | **−11.29 cm/key** (worst) |
+| B pass → A contact (seam) | 2 | screen-left | 199.5 → 117.5 | −82.0 | 1.140 m/s | +10.99 cm/key |
+
+Least-squares slide-minimising speed = **1.623 m/s**; authored speed (boot separation at contact
+over one beat) = **1.623 m/s**. The two agree, which is *not* a clean walk: the per-interval
+optimum spans 1.14–2.12 m/s, so at any single speed the planted shoe slips up to ~11 cm per key
+inside an interval and the two halves disagree — exactly the PASS B phase error recorded in
+`walk-four-keys/four-key-loop-note.md`, now measured in the world rather than in panel pixels.
+The four intervals cancel over a cycle (net +0.02 cm), so the walk does not accumulate drift.
+Facing: the flip mirrors `contact_x` about the frame width, so each interval's speed keeps its
+magnitude and flips sign.
+
+BOX weight shift (centroid = alpha-weighted silhouette centroid, a **visual proxy**, never a centre
+of mass; lead foot = the screen-right shoe, the art faces +X):
+
+| frame | lead foot cx | centroid − lead foot | without the hand region |
+| --- | --- | --- | --- |
+| `box 0` wind-up | 913 | −210.2 px (−0.664 m) | −210.2 px (−0.664 m) |
+| `box 1` contact | 900 | −2.9 px (−0.009 m) | −108.6 px (−0.343 m) |
+| `box 2` follow-through | 911 | −129.8 px (−0.410 m) | −129.8 px (−0.410 m) |
+
+Hand region = columns past the wind-up's right edge (x > 1014). First hand-growth frame:
+**`box 1`**, +258 px of silhouette. Visible shift preceding it: one frame — the wind-up — **150 ms**;
+no earlier drawing exists in this pack, so no sub-frame anticipation can be measured.
+
+Timing, read-only against the live 3D BOX (`BaseFighter.attacks[&"strong"]`, K / BOX head backhand,
+anim keys `box_startup` / `box_active` / `box_recovery`):
+
+| phase | illustrated poses | illustrated hold | 3D BOX ticks | 3D ms |
+| --- | --- | --- | --- | --- |
+| startup / wind-up | 1 | 150.0 ms | 9 | 150.0 |
+| impact / active | 1 | 66.7 ms | 4 | 66.7 |
+| recovery | 1 | 300.0 ms | 18 | 300.0 |
+| total | 3 | 516.7 ms | 31 | 516.7 |
+
+Ground alignment (signed sole-to-sand offset in SOURCE pixels; + = floating, − = sinking):
+
+| frame | pivot y | visible sole row | offset | flag |
+| --- | --- | --- | --- | --- |
+| idle 0 | 900 | 899 | +1 px (+0.003 m) | at the 1 px limit |
+| walk 0 CONTACT A | 566 | 571 | **−5 px (−0.016 m)** | >1 px: the drawn sole reaches 5 px below the panel's 566 sole line |
+| walk 1 PASS A | 566 | 572 | **−6 px (−0.019 m)** | >1 px; swing foot deliberately lifted to 525 |
+| walk 2 CONTACT B | 566 | 571 | **−5 px (−0.016 m)** | >1 px |
+| walk 3 PASS B | 566 | 570 | **−4 px (−0.013 m)** | >1 px; swing foot lifted to 522 |
+| box 0 wind-up | 900 | 900 | 0 px | — |
+| box 1 contact | 900 | 898 | +2 px (+0.006 m) | >1 px; the pose is the foot-off-ground lean |
+| box 2 follow-through | 900 | 900 | 0 px | — |
+| guard 0 | 900 | 899 | +1 px (+0.003 m) | at the 1 px limit |
+
+Deliberately lifted feet are reported per frame in the tool (PASS A 525, PASS B 522, idle guard-side
+893–895) and are never counted as grounded soles; the four-key panel is the only set whose
+*grounded* sole misses its own alignment line, by 1.3–1.9 cm in the world.
+
+### O7. Exports and production protection
+
+* Production preset `Web` (unchanged options) now excludes `assets/sprites/legacy_feedback/*`,
+  `scenes/SpriteStageTest.tscn` and `scripts/sprite_test/*` in addition to its existing list.
+* New preset `Web Preview` (same single-threaded GL Compatibility settings) keeps them; it is a
+  second preset, not a change to the shipped one, and its `export_path` points at `build/`
+  (git-ignored), never `/docs`.
+* Exported to `/tmp` only: production `index.pck` **49,573,796 B**; preview `index.pck`
+  **51,386,664 B**; delta **+1,812,868 B (+3.66 %)** for 1,674,786 B of committed PNG plus the
+  preview's mipmap chain and the two scripts/scene. Both exports are the same Godot 4.5 build on
+  the same tree — no cross-build comparison.
+* Exclusion verified against the packs: the production PCK contains **no** `legacy_feedback`
+  `.import`/`.ctex`, **no** `SpriteStageTest` scene or script. Its only occurrences of those names
+  are path strings inside the project-wide `uid_cache.bin` (Godot packs that file for every
+  project) — no asset bytes. Export `docs/` was not touched.
+* Protected things re-proved: `BaseFighter.gd`, match logic, `attacks` frame data, combat and
+  fighter displacement are byte-identical (`git diff --stat` shows only the files listed in O8);
+  the four suites are green at the baseline counts.
+
+### O8. What changed, and what is NOT verified
+
+Changed: `godot/assets/sprites/legacy_feedback/` (9 PNGs + imports), `godot/scripts/sprite_test/`
+(two files), `godot/scenes/SpriteStageTest.tscn`, `godot/tools/sprite_stage_metrics.gd`,
+`godot/tools/sprite_stage_check.gd`, `godot/export_presets.cfg` (one added preset + one exclude
+list), `godot/scripts/stages/Arena3D.gd` (two additive per-prop gates + shadow ownership),
+`godot/scripts/ui/TitleScreen.gd` (a guarded `?sprite=1` boot check), the art artifacts folder,
+`AGENTS.md` and `godot/AGENTS.md`.
+
+**Not verified: anything rendered.** This sandbox has no GPU, so no frame of the illustrated
+Feedback on the sand, of any lighting preset, of the cast-shadow option or of the HUD has been
+seen. The headless checks prove state, geometry, frame order/timing, camera framing arithmetic,
+gate visibility and the capture buffer — never pixels. The Web Preview PCK was built here but the
+browser playback itself was not run, so any URL is *expected*, not confirmed. Projected
+alpha-cut cast shadows on a `Sprite3D` under the Compatibility renderer are the option most likely
+to need a visual decision; the ground-ellipse default avoids that risk. On the Web build the
+contact sheet always appears in the preview, while `user://` is IndexedDB-backed, so the saved PNG
+is not a Downloads-folder file.
+
+**Preview publication blocker.** `.github/workflows/deploy-web.yml` mirrors a fresh build to the
+**root of `gh-pages`** with `git push --force HEAD:gh-pages`, so any `preview/sprite-test/` folder
+committed there would be deleted on the next production deploy. The current `gh-pages` tip
+(`565d0ce`) has no preview folders at all. A preview was therefore **not** published: the Web
+Preview export is returned instead, and a preview route needs the production workflow to stop
+replacing the whole tree (or a separate preview branch/repository) before it can be safe.

@@ -53,6 +53,12 @@ var _lock_flash: float = 0.0
 
 
 func _ready() -> void:
+	# Sprite Stage Test (preview build only, 2026-11-28): `?sprite=1` opens the isolated
+	# diagnostic scene instead of the game. Both the scene and the legacy art are stripped from
+	# the production export, so `ResourceLoader.exists` is false there and this is one check.
+	if _wants_sprite_test():
+		get_tree().change_scene_to_file("res://scenes/SpriteStageTest.tscn")
+		return
 	# The active beat starts with the screen and keeps the select menu alive. It is faded
 	# out again in `_start()` so FIGHT! has no background music under the round sting.
 	MusicBed.play_title()
@@ -477,3 +483,14 @@ func _draw_beat_toast(width: float) -> void:
 	draw_rect(box, Color(1.0, 0.86, 0.32, 0.8 * fade), false, 1.0)
 	_text(Vector2(box.position.x, box.position.y + 27.0), _beat_toast, FONT_BODY, font_size,
 		Color(1.0, 0.93, 0.72, fade), HORIZONTAL_ALIGNMENT_CENTER, box_w)
+
+
+## True only in a Web build that actually carries the sprite-test scene and was opened with
+## `?sprite=1`. Nothing in a desktop build or the production Web export can enter this path.
+func _wants_sprite_test() -> bool:
+	if not OS.has_feature("web"):
+		return false
+	if not ResourceLoader.exists("res://scenes/SpriteStageTest.tscn"):
+		return false
+	var raw = JavaScriptBridge.eval("window.location.search", true)
+	return raw != null and String(raw).contains("sprite=1")

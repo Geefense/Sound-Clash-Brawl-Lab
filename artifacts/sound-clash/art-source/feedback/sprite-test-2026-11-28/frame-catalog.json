@@ -1,0 +1,221 @@
+{
+ "note": "Sprite Stage Test frame catalog. Byte-identical copies of the source art; no redraw, retouch, recolor or resample.",
+ "frames": [
+  {
+   "animation": "idle",
+   "frame_index": 0,
+   "runtime_file": "idle_01.png",
+   "source_path": "godot/assets/sprites/feedback/aligned/01_idle.png",
+   "pixels": [
+    1536,
+    1024
+   ],
+   "foot_pivot_px": [
+    768,
+    900
+   ],
+   "seconds": 0.4545,
+   "tier_fps": 2.2,
+   "alpha_bbox_0_22": [
+    623,
+    412,
+    865,
+    900
+   ],
+   "bytes": 158283,
+   "sha256": "d2e47bb73ca0676b73abb9529f194bd50ecd3fe0158a9ced035162c7c53dbdf2"
+  },
+  {
+   "animation": "walk",
+   "frame_index": 0,
+   "runtime_file": "walk_01_contact_a.png",
+   "source_path": "godot/assets/sprites/feedback/walk-four-keys/poses/01_contact_a.png",
+   "pixels": [
+    460,
+    620
+   ],
+   "foot_pivot_px": [
+    229.7,
+    566
+   ],
+   "seconds": 0.2273,
+   "tier_fps": 4.399,
+   "alpha_bbox_0_22": [
+    66,
+    112,
+    409,
+    572
+   ],
+   "bytes": 143607,
+   "sha256": "e946d6e1cd1598df452baeae31dd1f4dbc4a3b8f1b770ca8c8f0611a880fce34"
+  },
+  {
+   "animation": "walk",
+   "frame_index": 1,
+   "runtime_file": "walk_02_pass_a.png",
+   "source_path": "godot/assets/sprites/feedback/walk-four-keys/poses/02_pass_a.png",
+   "pixels": [
+    460,
+    620
+   ],
+   "foot_pivot_px": [
+    229.7,
+    566
+   ],
+   "seconds": 0.2273,
+   "tier_fps": 4.399,
+   "alpha_bbox_0_22": [
+    129,
+    120,
+    351,
+    573
+   ],
+   "bytes": 133218,
+   "sha256": "51bcf134ab7602f547004c0554e4570112cfda87ebaddd3e0cf2e28700483258"
+  },
+  {
+   "animation": "walk",
+   "frame_index": 2,
+   "runtime_file": "walk_03_contact_b.png",
+   "source_path": "godot/assets/sprites/feedback/walk-four-keys/poses/03_contact_b.png",
+   "pixels": [
+    460,
+    620
+   ],
+   "foot_pivot_px": [
+    229.7,
+    566
+   ],
+   "seconds": 0.2273,
+   "tier_fps": 4.399,
+   "alpha_bbox_0_22": [
+    58,
+    102,
+    420,
+    572
+   ],
+   "bytes": 147326,
+   "sha256": "5f1d8a276a9135e393b7f25d35930d235af234613ed215d818b18001db2edf22"
+  },
+  {
+   "animation": "walk",
+   "frame_index": 3,
+   "runtime_file": "walk_04_pass_b.png",
+   "source_path": "godot/assets/sprites/feedback/walk-four-keys/poses/04_pass_b.png",
+   "pixels": [
+    460,
+    620
+   ],
+   "foot_pivot_px": [
+    229.7,
+    566
+   ],
+   "seconds": 0.2273,
+   "tier_fps": 4.399,
+   "alpha_bbox_0_22": [
+    123,
+    111,
+    354,
+    571
+   ],
+   "bytes": 132189,
+   "sha256": "3ced3bdf9e20466d40623ef5bc01a2649c5aa77ebdb025c04a7eba3a6f8d2612"
+  },
+  {
+   "animation": "box",
+   "frame_index": 0,
+   "runtime_file": "box_01_windup.png",
+   "source_path": "godot/assets/sprites/feedback/aligned/12_backhand_windup.png",
+   "pixels": [
+    1536,
+    1024
+   ],
+   "foot_pivot_px": [
+    768,
+    900
+   ],
+   "seconds": 0.15,
+   "tier_fps": 6.667,
+   "alpha_bbox_0_22": [
+    474,
+    410,
+    1014,
+    901
+   ],
+   "bytes": 218838,
+   "sha256": "6532d7788974f8fb7231478e9965852b067826fb36c184ff8ccbec17b7b3ed28"
+  },
+  {
+   "animation": "box",
+   "frame_index": 1,
+   "runtime_file": "box_02_contact.png",
+   "source_path": "godot/assets/sprites/feedback/aligned/13_box_palm.png",
+   "pixels": [
+    1536,
+    1024
+   ],
+   "foot_pivot_px": [
+    768,
+    900
+   ],
+   "seconds": 0.0667,
+   "tier_fps": 14.993,
+   "alpha_bbox_0_22": [
+    498,
+    412,
+    1272,
+    899
+   ],
+   "bytes": 319195,
+   "sha256": "40fd81c2efec60b918a8db253fb2dd52e96b0dd74ed7d10c73dbf522d28e95f2"
+  },
+  {
+   "animation": "box",
+   "frame_index": 2,
+   "runtime_file": "box_03_followthrough.png",
+   "source_path": "godot/assets/sprites/feedback/aligned/14_followthrough.png",
+   "pixels": [
+    1536,
+    1024
+   ],
+   "foot_pivot_px": [
+    768,
+    900
+   ],
+   "seconds": 0.3,
+   "tier_fps": 3.333,
+   "alpha_bbox_0_22": [
+    479,
+    415,
+    968,
+    901
+   ],
+   "bytes": 229821,
+   "sha256": "83345247bad8d195e96cda35ef916f58174bd34f352708b47eb2fda66c0c31b3"
+  },
+  {
+   "animation": "guard",
+   "frame_index": 0,
+   "runtime_file": "guard_01.png",
+   "source_path": "godot/assets/sprites/feedback/aligned/08_block.png",
+   "pixels": [
+    1536,
+    1024
+   ],
+   "foot_pivot_px": [
+    768,
+    900
+   ],
+   "seconds": 0.2273,
+   "tier_fps": 4.399,
+   "alpha_bbox_0_22": [
+    592,
+    405,
+    909,
+    900
+   ],
+   "bytes": 192309,
+   "sha256": "50856507ec85a780f5b2e634442877f5831a0619e6e1037b6c498b468e91b7ed"
+  }
+ ]
+}
